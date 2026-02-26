@@ -1,0 +1,12 @@
+version: v2
+plugins:
+  - remote: buf.build/protocolbuffers/go
+    out: internal/proto
+    opt:
+      - paths=source_relative
+  - remote: buf.build/community/stephenh-ts-proto
+    out: worker/src/proto
+    opt:
+      - esModuleInterop=true
+      - outputJsonMethods=true
+      - oneof=unions
