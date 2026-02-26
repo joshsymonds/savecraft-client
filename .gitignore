@@ -1,0 +1,29 @@
+# devenv
+.devenv/
+.devenv.flake.nix
+
+# direnv
+.direnv/
+
+# local secrets
+.envrc.local
+
+# Go
+/bin/
+/vendor/
+
+# Node
+node_modules/
+
+# Cloudflare
+.wrangler/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
