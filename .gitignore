@@ -16,6 +16,9 @@ worker/src/proto/
 /bin/
 /vendor/
 
+# Compiled WASM plugins
+plugins/**/*.wasm
+
 # Node
 node_modules/
 
