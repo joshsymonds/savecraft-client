@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/joshsymonds/savecraft.gg/internal/daemon"
@@ -207,5 +208,112 @@ func TestWazeroRunner_InvalidWasm(t *testing.T) {
 	loadErr := runner.LoadPlugin(ctx, "bad", []byte("not valid wasm"))
 	if loadErr == nil {
 		t.Error("expected error for invalid wasm bytes")
+	}
+}
+
+func TestWazeroRunner_NoopPlugin_NoResult(t *testing.T) {
+	ctx := context.Background()
+
+	runner, err := NewWazeroRunner(ctx)
+	if err != nil {
+		t.Fatalf("new runner: %v", err)
+	}
+	defer runner.Close(ctx)
+
+	wasm := buildPlugin(t, pluginPath("noop"))
+	if loadErr := runner.LoadPlugin(ctx, "noop", wasm); loadErr != nil {
+		t.Fatalf("load plugin: %v", loadErr)
+	}
+
+	_, runErr := runner.Run(ctx, "noop", []byte("data"), nil)
+	if runErr == nil {
+		t.Fatal("expected error for plugin with no result")
+	}
+	if !strings.Contains(runErr.Error(), "no result") {
+		t.Errorf("error = %q, want to contain 'no result'", runErr.Error())
+	}
+}
+
+func TestWazeroRunner_CrashPlugin_NonZeroExit(t *testing.T) {
+	ctx := context.Background()
+
+	runner, err := NewWazeroRunner(ctx)
+	if err != nil {
+		t.Fatalf("new runner: %v", err)
+	}
+	defer runner.Close(ctx)
+
+	wasm := buildPlugin(t, pluginPath("crash"))
+	if loadErr := runner.LoadPlugin(ctx, "crash", wasm); loadErr != nil {
+		t.Fatalf("load plugin: %v", loadErr)
+	}
+
+	_, runErr := runner.Run(ctx, "crash", []byte("data"), nil)
+	if runErr == nil {
+		t.Fatal("expected error from crashing plugin")
+	}
+	if !strings.Contains(runErr.Error(), "plugin execution failed") {
+		t.Errorf("error = %q, want to contain 'plugin execution failed'", runErr.Error())
+	}
+	if !strings.Contains(runErr.Error(), "something went wrong") {
+		t.Errorf("error = %q, want to contain stderr output", runErr.Error())
+	}
+}
+
+func TestParsePluginOutput_SkipsInvalidJSON(t *testing.T) {
+	runner := &WazeroRunner{}
+
+	input := strings.NewReader(
+		"not json\n" +
+			`{"type":"result","identity":{"characterName":"Test","gameId":"t"},"summary":"Test","sections":{}}` + "\n",
+	)
+
+	state, err := runner.parsePluginOutput(input, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if state == nil {
+		t.Fatal("expected result")
+	}
+	if state.Identity.CharacterName != "Test" {
+		t.Errorf("name = %q, want Test", state.Identity.CharacterName)
+	}
+}
+
+func TestParsePluginOutput_EmptyInput(t *testing.T) {
+	runner := &WazeroRunner{}
+
+	state, err := runner.parsePluginOutput(strings.NewReader(""), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if state != nil {
+		t.Errorf("expected nil state, got %+v", state)
+	}
+}
+
+func TestParsePluginOutput_StatusForwarding(t *testing.T) {
+	runner := &WazeroRunner{}
+
+	var statuses []string
+	input := strings.NewReader(
+		`{"type":"status","message":"step 1"}` + "\n" +
+			`{"type":"status","message":"step 2"}` + "\n",
+	)
+
+	state, err := runner.parsePluginOutput(input, func(msg string) {
+		statuses = append(statuses, msg)
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if state != nil {
+		t.Errorf("expected nil state")
+	}
+	if len(statuses) != 2 {
+		t.Fatalf("got %d statuses, want 2", len(statuses))
+	}
+	if statuses[0] != "step 1" || statuses[1] != "step 2" {
+		t.Errorf("statuses = %v", statuses)
 	}
 }

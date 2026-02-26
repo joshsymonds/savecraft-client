@@ -99,9 +99,10 @@ func (de *fakeDirEntry) Info() (fs.FileInfo, error) {
 }
 
 type fakeWatcher struct {
-	events chan FileEvent
-	added  []string
-	mu     sync.Mutex
+	events  chan FileEvent
+	added   []string
+	removed []string
+	mu      sync.Mutex
 }
 
 func newFakeWatcher() *fakeWatcher {
@@ -112,6 +113,13 @@ func (w *fakeWatcher) Add(path string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.added = append(w.added, path)
+	return nil
+}
+
+func (w *fakeWatcher) Remove(path string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.removed = append(w.removed, path)
 	return nil
 }
 
@@ -648,6 +656,201 @@ func TestHandleCommand_TestPath_Invalid(t *testing.T) {
 	}
 	if result["valid"] != false {
 		t.Errorf("valid = %v, want false", result["valid"])
+	}
+}
+
+// --- Tests: handleConfigUpdate ---
+
+func TestConfigUpdate_AddsNewGame(t *testing.T) {
+	ws := newFakeWSClient()
+	watcher := newFakeWatcher()
+	runner := d2rRunner()
+	fsys := d2rFS()
+	cfg := Config{DeviceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
+
+	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws)
+
+	cmd, _ := json.Marshal(map[string]any{
+		"configUpdate": map[string]any{
+			"games": map[string]any{
+				"d2r": map[string]any{
+					"savePath":       "/saves/d2r",
+					"enabled":        true,
+					"fileExtensions": []string{".d2s"},
+				},
+			},
+		},
+	})
+	d.handleCommand(context.Background(), cmd)
+
+	// Should have scanned the new game.
+	if !slices.Contains(ws.sentEventTypes(), "scanStarted") {
+		t.Error("missing scanStarted for new game")
+	}
+	if !slices.Contains(ws.sentEventTypes(), "gameDetected") {
+		t.Error("missing gameDetected for new game")
+	}
+
+	// Watcher should have added the save directory.
+	watcher.mu.Lock()
+	added := slices.Clone(watcher.added)
+	watcher.mu.Unlock()
+	if !slices.Contains(added, "/saves/d2r") {
+		t.Errorf("watcher.added = %v, want /saves/d2r", added)
+	}
+
+	// Config should be updated.
+	gameCfg, ok := d.cfg.Games["d2r"]
+	if !ok {
+		t.Fatal("d2r not in config after update")
+	}
+	if gameCfg.SavePath != "/saves/d2r" {
+		t.Errorf("SavePath = %s", gameCfg.SavePath)
+	}
+}
+
+func TestConfigUpdate_DisablesGame(t *testing.T) {
+	ws := newFakeWSClient()
+	watcher := newFakeWatcher()
+	cfg := d2rConfig()
+
+	d := New(cfg, d2rFS(), watcher, d2rRunner(), &fakePushClient{}, ws)
+	d.watchedDirs["/saves/d2r"] = "d2r"
+
+	cmd, _ := json.Marshal(map[string]any{
+		"configUpdate": map[string]any{
+			"games": map[string]any{
+				"d2r": map[string]any{
+					"savePath":       "/saves/d2r",
+					"enabled":        false,
+					"fileExtensions": []string{".d2s"},
+				},
+			},
+		},
+	})
+	d.handleCommand(context.Background(), cmd)
+
+	// Watcher should have removed the directory.
+	watcher.mu.Lock()
+	removed := slices.Clone(watcher.removed)
+	watcher.mu.Unlock()
+	if !slices.Contains(removed, "/saves/d2r") {
+		t.Errorf("watcher.removed = %v, want /saves/d2r", removed)
+	}
+
+	// watchedDirs should be cleared.
+	if _, ok := d.watchedDirs["/saves/d2r"]; ok {
+		t.Error("watchedDirs still contains /saves/d2r")
+	}
+}
+
+func TestConfigUpdate_RemovesGame(t *testing.T) {
+	ws := newFakeWSClient()
+	watcher := newFakeWatcher()
+	cfg := d2rConfig()
+
+	d := New(cfg, d2rFS(), watcher, d2rRunner(), &fakePushClient{}, ws)
+	d.watchedDirs["/saves/d2r"] = "d2r"
+
+	// Send empty config — d2r is no longer present.
+	cmd, _ := json.Marshal(map[string]any{
+		"configUpdate": map[string]any{
+			"games": map[string]any{},
+		},
+	})
+	d.handleCommand(context.Background(), cmd)
+
+	// Watcher should have removed the directory.
+	watcher.mu.Lock()
+	removed := slices.Clone(watcher.removed)
+	watcher.mu.Unlock()
+	if !slices.Contains(removed, "/saves/d2r") {
+		t.Errorf("watcher.removed = %v, want /saves/d2r", removed)
+	}
+
+	// Game should be removed from config.
+	if _, ok := d.cfg.Games["d2r"]; ok {
+		t.Error("d2r still in config after removal")
+	}
+}
+
+func TestConfigUpdate_ChangesPath(t *testing.T) {
+	ws := newFakeWSClient()
+	watcher := newFakeWatcher()
+	runner := d2rRunner()
+	fsys := &fakeFS{
+		dirs:  map[string][]string{"/new/path": {"Hero.d2s"}},
+		files: map[string][]byte{"/new/path/Hero.d2s": []byte("save data")},
+	}
+	cfg := d2rConfig()
+
+	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws)
+	d.watchedDirs["/saves/d2r"] = "d2r"
+
+	cmd, _ := json.Marshal(map[string]any{
+		"configUpdate": map[string]any{
+			"games": map[string]any{
+				"d2r": map[string]any{
+					"savePath":       "/new/path",
+					"enabled":        true,
+					"fileExtensions": []string{".d2s"},
+				},
+			},
+		},
+	})
+	d.handleCommand(context.Background(), cmd)
+
+	// Should have removed old path.
+	watcher.mu.Lock()
+	removed := slices.Clone(watcher.removed)
+	added := slices.Clone(watcher.added)
+	watcher.mu.Unlock()
+	if !slices.Contains(removed, "/saves/d2r") {
+		t.Errorf("watcher.removed = %v, want /saves/d2r", removed)
+	}
+
+	// Should have added new path.
+	if !slices.Contains(added, "/new/path") {
+		t.Errorf("watcher.added = %v, want /new/path", added)
+	}
+
+	// Config should reflect new path.
+	if d.cfg.Games["d2r"].SavePath != "/new/path" {
+		t.Errorf("SavePath = %s, want /new/path", d.cfg.Games["d2r"].SavePath)
+	}
+}
+
+func TestConfigUpdate_ReenablesGame(t *testing.T) {
+	ws := newFakeWSClient()
+	watcher := newFakeWatcher()
+	runner := d2rRunner()
+	fsys := d2rFS()
+	cfg := Config{
+		DeviceID: "deck",
+		Version:  "0.1.0",
+		Games: map[string]GameConfig{
+			"d2r": {SavePath: "/saves/d2r", FileExtensions: []string{".d2s"}, Enabled: false},
+		},
+	}
+
+	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws)
+
+	cmd, _ := json.Marshal(map[string]any{
+		"configUpdate": map[string]any{
+			"games": map[string]any{
+				"d2r": map[string]any{
+					"savePath":       "/saves/d2r",
+					"enabled":        true,
+					"fileExtensions": []string{".d2s"},
+				},
+			},
+		},
+	})
+	d.handleCommand(context.Background(), cmd)
+
+	// Should scan the re-enabled game.
+	if !slices.Contains(ws.sentEventTypes(), "scanStarted") {
+		t.Error("missing scanStarted for re-enabled game")
 	}
 }
 

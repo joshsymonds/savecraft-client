@@ -186,6 +186,7 @@ message ConfigUpdate {
 message GameConfig {
   string save_path = 1;
   bool enabled = 2;
+  repeated string file_extensions = 3;
 }
 
 // Request the daemon to rescan a game's save directory.

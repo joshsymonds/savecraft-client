@@ -131,6 +131,10 @@ linters:
     - godox
 
   settings:
+    gosec:
+      excludes:
+        - G704 # SSRF taint analysis — false positive for daemon HTTP clients with configured URLs
+
     cyclop:
       max-complexity: 30
       package-average: 10.0
@@ -180,6 +184,7 @@ linters:
         - (*text/tabwriter.Writer).Flush
         - os.Setenv
         - os.Unsetenv
+        - (*github.com/coder/websocket.Conn).Close
 
     exhaustive:
       check:

@@ -72,7 +72,7 @@ type PushResult struct {
 // Config holds all daemon configuration.
 type Config struct {
 	ServerURL string
-	AuthToken string
+	AuthToken string `json:"-"`
 	DeviceID  string
 	Version   string
 	Games     map[string]GameConfig
@@ -90,6 +90,7 @@ type GameConfig struct {
 // Watcher watches directories for file changes.
 type Watcher interface {
 	Add(path string) error
+	Remove(path string) error
 	Events() <-chan FileEvent
 	Close() error
 }
@@ -364,6 +365,8 @@ func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
 	}
 
 	switch cmdType {
+	case "configUpdate":
+		d.handleConfigUpdate(ctx, payload)
 	case "rescanGame":
 		var cmd struct {
 			GameID string `json:"gameId"`
@@ -384,6 +387,70 @@ func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
 		}
 		d.handleTestPath(cmd.GameID, cmd.Path)
 	}
+}
+
+func (d *Daemon) handleConfigUpdate(ctx context.Context, payload json.RawMessage) {
+	var update struct {
+		Games map[string]struct {
+			SavePath       string   `json:"savePath"`
+			Enabled        bool     `json:"enabled"`
+			FileExtensions []string `json:"fileExtensions"`
+		} `json:"games"`
+	}
+	if err := json.Unmarshal(payload, &update); err != nil {
+		return
+	}
+
+	newGameIDs := make(map[string]bool, len(update.Games))
+	for gameID := range update.Games {
+		newGameIDs[gameID] = true
+	}
+
+	// Remove games that are no longer in the config.
+	for gameID, oldCfg := range d.cfg.Games {
+		if !newGameIDs[gameID] {
+			d.unwatchGame(oldCfg.SavePath)
+			delete(d.cfg.Games, gameID)
+		}
+	}
+
+	// Add or update games.
+	for gameID, newGame := range update.Games {
+		gameCfg := GameConfig{
+			SavePath:       newGame.SavePath,
+			Enabled:        newGame.Enabled,
+			FileExtensions: newGame.FileExtensions,
+		}
+
+		oldCfg, existed := d.cfg.Games[gameID]
+		d.cfg.Games[gameID] = gameCfg
+
+		switch {
+		case !newGame.Enabled:
+			// Disable: stop watching.
+			if existed {
+				d.unwatchGame(oldCfg.SavePath)
+			}
+		case !existed || !oldCfg.Enabled:
+			// New game or re-enabled: scan it.
+			d.scanGame(ctx, gameID, gameCfg)
+		case oldCfg.SavePath != newGame.SavePath:
+			// Path changed: remove old watch, scan new path.
+			d.unwatchGame(oldCfg.SavePath)
+			d.scanGame(ctx, gameID, gameCfg)
+		}
+	}
+}
+
+func (d *Daemon) unwatchGame(savePath string) {
+	if _, ok := d.watchedDirs[savePath]; !ok {
+		return
+	}
+	if removeErr := d.watcher.Remove(savePath); removeErr != nil {
+		// Path may already be gone; clean up internal state regardless.
+		_ = removeErr
+	}
+	delete(d.watchedDirs, savePath)
 }
 
 func (d *Daemon) handleTestPath(gameID, path string) {
