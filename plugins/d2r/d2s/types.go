@@ -12,23 +12,24 @@ type D2S struct {
 	GolemItem   *Item
 }
 
-// Header contains the fixed-size character data (bytes 0-764).
+// Header contains the fixed-size character data.
 type Header struct {
 	Name       string
 	Status     Status
 	Class      Class
 	Level      byte
 	LastPlayed uint32
+	Realm      byte // 1=Classic, 2=LoD, 3=RotW (v105+)
 
-	AssignedSkills     [16]uint32
-	LeftSkill          uint32
-	RightSkill         uint32
-	LeftSwapSkill      uint32
-	RightSwapSkill     uint32
+	AssignedSkills [16]uint32
+	LeftSkill      uint32
+	RightSkill     uint32
+	LeftSwapSkill  uint32
+	RightSwapSkill uint32
 
-	CurrentDifficulty  Difficulty
-	MapID              uint32
-	Mercenary          Mercenary
+	CurrentDifficulty Difficulty
+	MapID             uint32
+	Mercenary         Mercenary
 
 	// Raw section data preserved for round-tripping.
 	QuestData    []byte
@@ -47,14 +48,16 @@ type Status struct {
 // Class represents a D2 character class.
 type Class byte
 
+// Character class constants.
 const (
-	Amazon     Class = 0
-	Sorceress  Class = 1
+	Amazon      Class = 0
+	Sorceress   Class = 1
 	Necromancer Class = 2
-	Paladin    Class = 3
-	Barbarian  Class = 4
-	Druid      Class = 5
-	Assassin   Class = 6
+	Paladin     Class = 3
+	Barbarian   Class = 4
+	Druid       Class = 5
+	Assassin    Class = 6
+	Warlock     Class = 7 // RotW expansion
 )
 
 func (c Class) String() string {
@@ -73,6 +76,8 @@ func (c Class) String() string {
 		return "Druid"
 	case Assassin:
 		return "Assassin"
+	case Warlock:
+		return "Warlock"
 	default:
 		return "Unknown"
 	}
@@ -88,6 +93,7 @@ type Difficulty struct {
 // DiffLevel is the difficulty tier.
 type DiffLevel byte
 
+// Difficulty level constants.
 const (
 	Normal    DiffLevel = 0
 	Nightmare DiffLevel = 1
@@ -210,6 +216,12 @@ type Item struct {
 	// Weapon damage (resolved from item code)
 	BaseDamage *WeaponDamage
 
+	// Quest item data
+	QuestDifficulty int // quest items only
+
+	// RotW advanced stash
+	AdvancedStashQuantity byte // realm=3 stackable items
+
 	// Ear data (PvP kill trophy)
 	EarClass byte
 	EarLevel byte
@@ -217,11 +229,16 @@ type Item struct {
 
 	// Item version from the bitstream (not the file version)
 	Version uint
+
+	// nrSocketedItems tracks how many inline socketed items follow.
+	// Unexported — only used during parsing.
+	nrSocketedItems uint
 }
 
 // Quality represents the quality tier of an item.
 type Quality byte
 
+// Item quality constants.
 const (
 	QualityLow     Quality = 1
 	QualityNormal  Quality = 2
@@ -272,8 +289,13 @@ type WeaponDamage struct {
 }
 
 // MagicPropertyDef describes how to read a magical property from the bit stream.
+// Fields are sourced from ItemStatCost.txt game data.
 type MagicPropertyDef struct {
-	Bits []uint  // Bit lengths for each value component
-	Bias int64   // Offset subtracted from decoded values
-	Name string  // Display template with {0}, {1} placeholders
+	SaveBits      uint   // Number of bits to read for the value
+	SaveAdd       int64  // Offset subtracted from the raw value
+	SaveParamBits uint   // Number of bits for parameter (skill ID, etc.)
+	Encode        int    // Encoding type: 0=default, 2=chance-to-cast, 3=charges, 4=bytime
+	DescFunc      int    // Description function: 14=skilltab
+	NumProps      int    // Number of consecutive stats consumed (compound properties)
+	Name          string // Display template with {0}, {1} placeholders
 }

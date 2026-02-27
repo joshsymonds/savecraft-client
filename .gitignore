@@ -22,6 +22,9 @@ plugins/**/*.wasm
 # Node
 node_modules/
 
+# SvelteKit generated
+.svelte-kit/
+
 # Cloudflare
 .wrangler/
 

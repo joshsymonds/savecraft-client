@@ -518,6 +518,25 @@ linters:
         linters:
           - forbidigo
 
+      # Binary format parser — data tables, magic numbers, complex parsing, and
+      # sequential error-checking with shadowed err are all inherent to the format.
+      - path: plugins/d2r/.*\.go
+        linters:
+          - gochecknoglobals
+          - gocognit
+          - gocyclo
+          - cyclop
+          - funlen
+          - mnd
+          - varnamelen
+          - goconst
+          - dupl
+          - gosec
+          - forbidigo
+          - nestif
+          - godox
+          - govet
+
       # Generated protobuf code — do not lint
       - path: internal/proto/.*\.go
         linters:

@@ -1,2 +1,40 @@
 build:
     GOOS=wasip1 GOARCH=wasm go build -o d2r.wasm .
+
+test:
+    go test -v ./d2s/
+
+lint:
+    golangci-lint run ./d2s/
+
+# Build casc-extract (requires cmake, C compiler, zlib)
+build-casc-extract:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd tools/casc-extract
+    if [ ! -d CascLib ]; then
+        git clone https://github.com/ladislav-zezula/CascLib.git
+    fi
+    mkdir -p build && cd build
+    cmake .. -DCMAKE_BUILD_TYPE=Release
+    make -j"$(nproc)"
+    echo "Built: tools/casc-extract/build/casc-extract"
+
+# Extract a file from D2R CASC: just casc-extract "data/global/excel/Skills.txt"
+casc-extract file:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    extractor="tools/casc-extract/build/casc-extract"
+    casc="../../reference/d2r-casc"
+    dest="../../reference/d2r-rotw-excel"
+    if [ ! -f "$extractor" ]; then
+        echo "casc-extract not built. Run: just build-casc-extract" >&2
+        exit 1
+    fi
+    if [ ! -d "$casc" ]; then
+        echo "CASC data not found at $casc. Copy your D2R Data directory there." >&2
+        exit 1
+    fi
+    mkdir -p "$dest"
+    basename=$(basename "{{file}}")
+    "$extractor" "$casc" "{{file}}" "$dest/$basename"

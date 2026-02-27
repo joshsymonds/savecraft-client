@@ -43,9 +43,6 @@ test-go-race:
 test-worker:
     cd worker && npm test
 
-# Run all tests
-test: test-go test-worker
-
 # Start Worker dev server (Miniflare)
 dev-worker:
     cd worker && npx wrangler dev
@@ -79,5 +76,36 @@ build-plugin name:
 build-plugins:
     @for dir in plugins/*/; do just build-plugin "$(basename "$dir")"; done
 
+# Run Web tests
+test-web:
+    cd web && npm test
+
+# Lint Web (SvelteKit)
+lint-web:
+    cd web && npx eslint .
+
+# Type-check Web (SvelteKit)
+check-web:
+    cd web && npm run check
+
+# Format Web (SvelteKit)
+fmt-web:
+    cd web && npx prettier --write .
+
+# Check Web formatting
+fmt-web-check:
+    cd web && npx prettier --check .
+
+# Start Web dev server
+dev-web:
+    cd web && npm run dev
+
+# Start Storybook
+storybook:
+    cd web && npm run storybook
+
+# Run all tests
+test: test-go test-worker test-web
+
 # Check everything: lint, generate, format, test
-check: proto-lint proto lint-go lint-worker fmt-worker-check test
+check: proto-lint proto lint-go lint-worker lint-web fmt-worker-check fmt-web-check check-web test
