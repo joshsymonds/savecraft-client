@@ -72,6 +72,10 @@ fmt-worker-check:
 build-plugin name:
     cd plugins/{{name}} && just build
 
+# Generate manifest.json for a plugin from its plugin.toml + built wasm
+plugin-manifest name:
+    go run ./cmd/plugin-manifest/ plugins/{{name}}
+
 # Build all plugins
 build-plugins:
     @for dir in plugins/*/; do just build-plugin "$(basename "$dir")"; done

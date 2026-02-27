@@ -1,0 +1,105 @@
+name: Release Plugin
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "plugins/*/plugin.toml"
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Release changed plugins
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - uses: taiki-e/install-action@just
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install wrangler
+        run: npm install -g wrangler
+
+      - name: Detect changed plugins
+        id: changed
+        run: |
+          changed=$(git diff --name-only HEAD~1 HEAD -- 'plugins/*/plugin.toml' \
+            | sed 's|plugins/\([^/]*\)/plugin.toml|\1|' \
+            | sort -u \
+            | tr '\n' ' ')
+          echo "plugins=${changed}" >> "$GITHUB_OUTPUT"
+          if [ -z "$changed" ]; then
+            echo "No plugin.toml changes detected"
+          else
+            echo "Changed plugins: ${changed}"
+          fi
+
+      - name: Decode signing key
+        if: steps.changed.outputs.plugins != ''
+        run: echo "$SIGNING_KEY" | base64 -d > /tmp/signing_key.priv
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
+
+      - name: Build, sign, and upload plugins
+        if: steps.changed.outputs.plugins != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CHANGED_PLUGINS: ${{ steps.changed.outputs.plugins }}
+        run: |
+          for game_id in $CHANGED_PLUGINS; do
+            echo "==> Processing plugin: ${game_id}"
+
+            # Read version from plugin.toml
+            new_version=$(grep '^version' "plugins/${game_id}/plugin.toml" | head -1 | sed 's/.*= *"\(.*\)"/\1/')
+            echo "    Local version: ${new_version}"
+
+            # Fetch current manifest from R2 to compare versions
+            set +e
+            current_manifest=$(wrangler r2 object get "savecraft-plugins/plugins/${game_id}/manifest.json" 2>/dev/null)
+            fetch_rc=$?
+            set -e
+
+            if [ $fetch_rc -eq 0 ] && [ -n "$current_manifest" ]; then
+              current_version=$(echo "$current_manifest" | jq -r '.version // empty')
+              if [ "$current_version" = "$new_version" ]; then
+                echo "    Version ${new_version} already published — skipping"
+                continue
+              fi
+              echo "    Current R2 version: ${current_version} → upgrading to ${new_version}"
+            else
+              echo "    No existing manifest in R2 — first release"
+            fi
+
+            # Build WASM
+            just build-plugin "$game_id"
+
+            # Sign WASM
+            wasm_file="plugins/${game_id}/${game_id}.wasm"
+            go run ./cmd/savecraft-sign/ "$wasm_file" /tmp/signing_key.priv
+
+            # Generate manifest.json from plugin.toml
+            go run ./cmd/plugin-manifest/ "plugins/${game_id}"
+
+            # Upload to R2
+            wrangler r2 object put "savecraft-plugins/plugins/${game_id}/parser.wasm" --file "$wasm_file"
+            wrangler r2 object put "savecraft-plugins/plugins/${game_id}/parser.wasm.sig" --file "${wasm_file}.sig"
+            wrangler r2 object put "savecraft-plugins/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json"
+
+            echo "    Published ${game_id} v${new_version}"
+          done
+
+      - name: Clean up signing key
+        if: always()
+        run: rm -f /tmp/signing_key.priv

@@ -14,9 +14,11 @@ worker/.dev.vars
 /bin/
 /vendor/
 /savecraftd
+/plugin-manifest
 
 # Compiled WASM plugins and binaries
 plugins/**/*.wasm
+plugins/**/manifest.json
 /d2r
 
 # Node

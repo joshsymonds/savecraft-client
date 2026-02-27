@@ -1,4 +1,4 @@
-name: Release
+name: Release Daemon
 
 on:
   push:
@@ -29,15 +29,10 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: just build-daemon-all "$VERSION"
 
-      - name: Build d2r plugin
-        run: just build-plugin d2r
-
       - uses: actions/upload-artifact@v4
         with:
-          name: build-artifacts
-          path: |
-            dist/savecraft-daemon-*
-            plugins/d2r/d2r.wasm
+          name: daemon-artifacts
+          path: dist/savecraft-daemon-*
 
   sign:
     name: Sign
@@ -52,7 +47,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: build-artifacts
+          name: daemon-artifacts
 
       - name: Decode signing key
         run: echo "$SIGNING_KEY" | base64 -d > /tmp/signing_key.priv
@@ -66,19 +61,10 @@ jobs:
             go run ./cmd/savecraft-sign/ "$f" /tmp/signing_key.priv
           done
 
-      - name: Sign plugins
-        run: |
-          for f in plugins/d2r/d2r.wasm; do
-            [ -f "$f" ] || continue
-            go run ./cmd/savecraft-sign/ "$f" /tmp/signing_key.priv
-          done
-
       - name: Generate checksums
         run: |
           cd dist
           sha256sum savecraft-daemon-* > checksums-sha256.txt
-          cd ../plugins/d2r
-          sha256sum d2r.wasm d2r.wasm.sig >> ../../dist/checksums-sha256.txt
 
       - name: Clean up signing key
         if: always()
@@ -86,12 +72,10 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: signed-artifacts
+          name: signed-daemon-artifacts
           path: |
             dist/savecraft-daemon-*
             dist/checksums-sha256.txt
-            plugins/d2r/d2r.wasm
-            plugins/d2r/d2r.wasm.sig
 
   release:
     name: GitHub Release
@@ -102,7 +86,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: signed-artifacts
+          name: signed-daemon-artifacts
 
       - name: Extract version
         id: version
@@ -133,46 +117,3 @@ jobs:
             dist/savecraft-daemon-* \
             dist/checksums-sha256.txt \
             install/install.sh
-
-  publish-plugins:
-    name: Publish Plugins to R2
-    needs: sign
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: signed-artifacts
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Install wrangler
-        run: npm install -g wrangler
-
-      - name: Extract version
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Upload plugins to R2
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          for wasm in plugins/*/*.wasm; do
-            [ -f "$wasm" ] || continue
-            game_id=$(basename "$(dirname "$wasm")")
-            wrangler r2 object put "savecraft-plugins/plugins/${game_id}/parser.wasm" --file "$wasm"
-            wrangler r2 object put "savecraft-plugins/plugins/${game_id}/parser.wasm.sig" --file "${wasm}.sig"
-          done
-
-      - name: Generate and upload manifest
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          bash scripts/generate-plugin-manifest.sh "$VERSION" > /tmp/manifest.json
-          wrangler r2 object put "savecraft-plugins/plugins/manifest.json" --file /tmp/manifest.json
