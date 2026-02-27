@@ -58,7 +58,7 @@ lint-worker:
 
 # Format Go code
 fmt-go:
-    goimports -w internal/ cmd/ plugins/
+    find internal/ cmd/ plugins/ -name '*.go' -not -path 'internal/proto/*' -print0 | xargs -0 goimports -w
 
 # Format Worker (TypeScript)
 fmt-worker:
