@@ -34,6 +34,9 @@ web/screenshots/
 # Cloudflare
 .wrangler/
 
+# Coverage artifacts
+worker/coverage/
+
 # OS
 .DS_Store
 Thumbs.db
