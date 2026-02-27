@@ -317,9 +317,9 @@ func waitFor(t *testing.T, condition func() bool) {
 func newD2RState() *GameState {
 	return &GameState{
 		Identity: Identity{
-			CharacterName: "Hammerdin",
-			GameID:        "d2r",
-			Extra:         map[string]any{"class": "Paladin", "level": float64(89)},
+			SaveName: "Hammerdin",
+			GameID:   "d2r",
+			Extra:    map[string]any{"class": "Paladin", "level": float64(89)},
 		},
 		Summary: "Hammerdin, Level 89 Paladin",
 		Sections: map[string]Section{
@@ -363,14 +363,14 @@ func newStashState() *GameState {
 
 // --- Tests: game-scoped identity ---
 
-func TestGameScopedIdentity_OmitsCharacterName(t *testing.T) {
+func TestGameScopedIdentity_OmitsSaveName(t *testing.T) {
 	state := newStashState()
 	data, err := json.Marshal(state)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	// characterName should not appear in JSON when empty.
+	// saveName should not appear in JSON when empty.
 	var raw map[string]json.RawMessage
 	if unmarshalErr := json.Unmarshal(data, &raw); unmarshalErr != nil {
 		t.Fatalf("unmarshal: %v", unmarshalErr)
@@ -379,8 +379,8 @@ func TestGameScopedIdentity_OmitsCharacterName(t *testing.T) {
 	if unmarshalErr := json.Unmarshal(raw["identity"], &identity); unmarshalErr != nil {
 		t.Fatalf("unmarshal identity: %v", unmarshalErr)
 	}
-	if _, hasCharName := identity["characterName"]; hasCharName {
-		t.Error("game-scoped identity should not have characterName key")
+	if _, hasCharName := identity["saveName"]; hasCharName {
+		t.Error("game-scoped identity should not have saveName key")
 	}
 	if string(identity["gameId"]) != `"d2r"` {
 		t.Errorf("gameId = %s, want \"d2r\"", identity["gameId"])
@@ -416,16 +416,16 @@ func TestParseAndPush_GameScopedSave(t *testing.T) {
 	if !ok {
 		t.Fatal("parseCompleted missing identity")
 	}
-	if _, hasCharName := identity["characterName"]; hasCharName {
-		t.Error("game-scoped parseCompleted should not have characterName")
+	if _, hasCharName := identity["saveName"]; hasCharName {
+		t.Error("game-scoped parseCompleted should not have saveName")
 	}
 
-	// Pushed state should have empty CharacterName.
+	// Pushed state should have empty SaveName.
 	if len(pusher.calls) != 1 {
 		t.Fatalf("pusher called %d times, want 1", len(pusher.calls))
 	}
-	if pusher.calls[0].State.Identity.CharacterName != "" {
-		t.Errorf("pushed characterName = %q, want empty", pusher.calls[0].State.Identity.CharacterName)
+	if pusher.calls[0].State.Identity.SaveName != "" {
+		t.Errorf("pushed saveName = %q, want empty", pusher.calls[0].State.Identity.SaveName)
 	}
 	if pusher.calls[0].State.Identity.GameID != "d2r" {
 		t.Errorf("pushed gameId = %q, want d2r", pusher.calls[0].State.Identity.GameID)

@@ -65,8 +65,8 @@ func TestWazeroRunner_EchoPlugin(t *testing.T) {
 		t.Fatalf("run: %v", runErr)
 	}
 
-	if state.Identity.CharacterName != "Hammerdin" {
-		t.Errorf("character_name = %q, want Hammerdin", state.Identity.CharacterName)
+	if state.Identity.SaveName != "Hammerdin" {
+		t.Errorf("save_name = %q, want Hammerdin", state.Identity.SaveName)
 	}
 	if state.Identity.GameID != "echo" {
 		t.Errorf("game_id = %q, want echo", state.Identity.GameID)
@@ -105,8 +105,8 @@ func TestWazeroRunner_EchoPlugin_EmptyInput(t *testing.T) {
 		t.Fatalf("run: %v", runErr)
 	}
 
-	if state.Identity.CharacterName != "unnamed" {
-		t.Errorf("character_name = %q, want unnamed", state.Identity.CharacterName)
+	if state.Identity.SaveName != "unnamed" {
+		t.Errorf("save_name = %q, want unnamed", state.Identity.SaveName)
 	}
 }
 
@@ -132,10 +132,10 @@ func TestWazeroRunner_EchoPlugin_ConcurrentRuns(t *testing.T) {
 				errc <- runErr
 				return
 			}
-			if state.Identity.CharacterName != name {
+			if state.Identity.SaveName != name {
 				errc <- fmt.Errorf(
-					"character_name = %q, want %q",
-					state.Identity.CharacterName,
+					"save_name = %q, want %q",
+					state.Identity.SaveName,
 					name,
 				)
 				return
@@ -266,7 +266,7 @@ func TestParsePluginOutput_SkipsInvalidJSON(t *testing.T) {
 
 	input := strings.NewReader(
 		"not json\n" +
-			`{"type":"result","identity":{"characterName":"Test","gameId":"t"},"summary":"Test","sections":{}}` + "\n",
+			`{"type":"result","identity":{"saveName":"Test","gameId":"t"},"summary":"Test","sections":{}}` + "\n",
 	)
 
 	state, err := runner.parsePluginOutput(input, nil)
@@ -276,8 +276,8 @@ func TestParsePluginOutput_SkipsInvalidJSON(t *testing.T) {
 	if state == nil {
 		t.Fatal("expected result")
 	}
-	if state.Identity.CharacterName != "Test" {
-		t.Errorf("name = %q, want Test", state.Identity.CharacterName)
+	if state.Identity.SaveName != "Test" {
+		t.Errorf("name = %q, want Test", state.Identity.SaveName)
 	}
 }
 

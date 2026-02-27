@@ -28,9 +28,9 @@ type GameState struct {
 
 // Identity identifies a specific save within a game.
 type Identity struct {
-	CharacterName string         `json:"characterName,omitempty"`
-	GameID        string         `json:"gameId"`
-	Extra         map[string]any `json:"extra,omitempty"`
+	SaveName string         `json:"saveName,omitempty"`
+	GameID   string         `json:"gameId"`
+	Extra    map[string]any `json:"extra,omitempty"`
 }
 
 // Section is a named block of game state data.

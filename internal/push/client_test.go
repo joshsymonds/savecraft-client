@@ -20,8 +20,8 @@ func testParsedAt() time.Time {
 func testState() *daemon.GameState {
 	return &daemon.GameState{
 		Identity: daemon.Identity{
-			CharacterName: "Hammerdin",
-			GameID:        "d2r",
+			SaveName: "Hammerdin",
+			GameID:   "d2r",
 		},
 		Summary: "Hammerdin, Level 89 Paladin",
 		Sections: map[string]daemon.Section{
@@ -130,21 +130,21 @@ func TestPush_RequestBody(t *testing.T) {
 	if unmarshalErr := json.Unmarshal(captured.body, &state); unmarshalErr != nil {
 		t.Fatalf("unmarshal body: %v", unmarshalErr)
 	}
-	if state.Identity.CharacterName != "Hammerdin" {
-		t.Errorf("body character = %q, want Hammerdin", state.Identity.CharacterName)
+	if state.Identity.SaveName != "Hammerdin" {
+		t.Errorf("body saveName = %q, want Hammerdin", state.Identity.SaveName)
 	}
 	if state.Summary != "Hammerdin, Level 89 Paladin" {
 		t.Errorf("body summary = %q", state.Summary)
 	}
 }
 
-func TestPush_GameScopedBody_OmitsCharacterName(t *testing.T) {
+func TestPush_GameScopedBody_OmitsSaveName(t *testing.T) {
 	srv, captured := newTestServer(t, http.StatusCreated, daemon.PushResult{})
 
 	state := &daemon.GameState{
 		Identity: daemon.Identity{
 			GameID: "d2r",
-			// CharacterName intentionally empty — game-scoped save.
+			// SaveName intentionally empty — game-scoped save.
 		},
 		Summary: "Shared Stash (Softcore), 60 items",
 		Sections: map[string]daemon.Section{
@@ -158,7 +158,7 @@ func TestPush_GameScopedBody_OmitsCharacterName(t *testing.T) {
 		t.Fatalf("Push: %v", err)
 	}
 
-	// The JSON body should not include characterName at all.
+	// The JSON body should not include saveName at all.
 	var raw map[string]json.RawMessage
 	if unmarshalErr := json.Unmarshal(captured.body, &raw); unmarshalErr != nil {
 		t.Fatalf("unmarshal body: %v", unmarshalErr)
@@ -167,8 +167,8 @@ func TestPush_GameScopedBody_OmitsCharacterName(t *testing.T) {
 	if unmarshalErr := json.Unmarshal(raw["identity"], &identity); unmarshalErr != nil {
 		t.Fatalf("unmarshal identity: %v", unmarshalErr)
 	}
-	if _, hasCharName := identity["characterName"]; hasCharName {
-		t.Error("game-scoped push body should not have characterName key")
+	if _, hasCharName := identity["saveName"]; hasCharName {
+		t.Error("game-scoped push body should not have saveName key")
 	}
 	if string(identity["gameId"]) != `"d2r"` {
 		t.Errorf("gameId = %s, want \"d2r\"", identity["gameId"])
