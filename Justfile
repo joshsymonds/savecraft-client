@@ -58,7 +58,7 @@ lint-worker:
 
 # Format Go code
 fmt-go:
-    goimports -w .
+    goimports -w internal/ cmd/ plugins/
 
 # Format Worker (TypeScript)
 fmt-worker:
