@@ -266,6 +266,28 @@ func (ws *fakeWSClient) sentEvent(eventType string, index int) map[string]any {
 	return nil
 }
 
+type fakePluginManager struct {
+	ensured   []string
+	ensureErr map[string]error
+	mu        sync.Mutex
+}
+
+func (pm *fakePluginManager) EnsurePlugin(_ context.Context, gameID string) error {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	pm.ensured = append(pm.ensured, gameID)
+	if pm.ensureErr != nil {
+		if err, ok := pm.ensureErr[gameID]; ok {
+			return err
+		}
+	}
+	return nil
+}
+
+func (pm *fakePluginManager) CheckForUpdates(_ context.Context) ([]string, error) {
+	return nil, nil
+}
+
 func waitFor(t *testing.T, condition func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)
@@ -368,7 +390,7 @@ func TestParseAndPush_GameScopedSave(t *testing.T) {
 		},
 	}
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws)
+	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{})
 	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/SharedStash.d2i", "SharedStash.d2i")
 
 	types := ws.sentEventTypes()
@@ -408,7 +430,7 @@ func TestScanGame_DetectsGame(t *testing.T) {
 	fsys := d2rFS()
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, watcher, runner, pusher, ws)
+	d := New(cfg, fsys, watcher, runner, pusher, ws, &fakePluginManager{})
 	d.scanGame(context.Background(), "d2r", cfg.Games["d2r"])
 
 	types := ws.sentEventTypes()
@@ -452,7 +474,7 @@ func TestScanGame_MissingDir(t *testing.T) {
 	fsys := &fakeFS{dirs: map[string][]string{}, files: map[string][]byte{}}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws)
+	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{})
 	d.scanGame(context.Background(), "d2r", cfg.Games["d2r"])
 
 	types := ws.sentEventTypes()
@@ -474,7 +496,7 @@ func TestScanGame_NoMatchingFiles(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws)
+	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{})
 	d.scanGame(context.Background(), "d2r", cfg.Games["d2r"])
 
 	types := ws.sentEventTypes()
@@ -500,7 +522,7 @@ func TestHandleFileEvent_ParseAndPush(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws)
+	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{})
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	d.handleFileEvent(context.Background(), FileEvent{
@@ -526,7 +548,7 @@ func TestHandleFileEvent_IgnoresNonMatchingExtension(t *testing.T) {
 	ws := newFakeWSClient()
 	cfg := d2rConfig()
 
-	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws)
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{})
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	d.handleFileEvent(context.Background(), FileEvent{
@@ -542,7 +564,7 @@ func TestHandleFileEvent_IgnoresNonMatchingExtension(t *testing.T) {
 func TestHandleFileEvent_IgnoresRemove(t *testing.T) {
 	ws := newFakeWSClient()
 
-	d := New(Config{}, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws)
+	d := New(Config{}, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{})
 	d.handleFileEvent(context.Background(), FileEvent{
 		Path: "/saves/d2r/Hammerdin.d2s",
 		Op:   FileRemove,
@@ -557,7 +579,7 @@ func TestHandleFileEvent_IgnoresUnwatchedDir(t *testing.T) {
 	ws := newFakeWSClient()
 	cfg := d2rConfig()
 
-	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws)
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{})
 	// watchedDirs is empty — no directories are being watched
 
 	d.handleFileEvent(context.Background(), FileEvent{
@@ -584,7 +606,7 @@ func TestParseAndPush_PluginError(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws)
+	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, &fakePluginManager{})
 	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/bad.d2s", "bad.d2s")
 
 	types := ws.sentEventTypes()
@@ -606,7 +628,7 @@ func TestParseAndPush_FileReadError(t *testing.T) {
 	fsys := &fakeFS{files: map[string][]byte{}} // file doesn't exist
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws)
+	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{})
 	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/missing.d2s", "missing.d2s")
 
 	types := ws.sentEventTypes()
@@ -629,7 +651,7 @@ func TestParseAndPush_PushError(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws)
+	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{})
 	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s")
 
 	types := ws.sentEventTypes()
@@ -652,7 +674,7 @@ func TestParseAndPush_ForwardsPluginStatus(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws)
+	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, &fakePluginManager{})
 	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s")
 
 	statusCount := 0
@@ -683,7 +705,7 @@ func TestHandleCommand_RescanGame(t *testing.T) {
 	fsys := d2rFS()
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws)
+	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, &fakePluginManager{})
 
 	cmd, _ := json.Marshal(map[string]any{
 		"rescanGame": map[string]any{"gameId": "d2r"},
@@ -702,7 +724,7 @@ func TestHandleCommand_TestPath_Valid(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws)
+	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{})
 
 	cmd, _ := json.Marshal(map[string]any{
 		"testPath": map[string]any{"gameId": "d2r", "path": "/custom/path"},
@@ -726,7 +748,7 @@ func TestHandleCommand_TestPath_Invalid(t *testing.T) {
 	fsys := &fakeFS{dirs: map[string][]string{}, files: map[string][]byte{}}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws)
+	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{})
 
 	cmd, _ := json.Marshal(map[string]any{
 		"testPath": map[string]any{"gameId": "d2r", "path": "/nonexistent"},
@@ -751,7 +773,7 @@ func TestConfigUpdate_AddsNewGame(t *testing.T) {
 	fsys := d2rFS()
 	cfg := Config{DeviceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
 
-	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws)
+	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws, &fakePluginManager{})
 
 	cmd, _ := json.Marshal(map[string]any{
 		"configUpdate": map[string]any{
@@ -797,7 +819,7 @@ func TestConfigUpdate_DisablesGame(t *testing.T) {
 	watcher := newFakeWatcher()
 	cfg := d2rConfig()
 
-	d := New(cfg, d2rFS(), watcher, d2rRunner(), &fakePushClient{}, ws)
+	d := New(cfg, d2rFS(), watcher, d2rRunner(), &fakePushClient{}, ws, &fakePluginManager{})
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	cmd, _ := json.Marshal(map[string]any{
@@ -832,7 +854,7 @@ func TestConfigUpdate_RemovesGame(t *testing.T) {
 	watcher := newFakeWatcher()
 	cfg := d2rConfig()
 
-	d := New(cfg, d2rFS(), watcher, d2rRunner(), &fakePushClient{}, ws)
+	d := New(cfg, d2rFS(), watcher, d2rRunner(), &fakePushClient{}, ws, &fakePluginManager{})
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	// Send empty config — d2r is no longer present.
@@ -867,7 +889,7 @@ func TestConfigUpdate_ChangesPath(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws)
+	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws, &fakePluginManager{})
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	cmd, _ := json.Marshal(map[string]any{
@@ -916,7 +938,7 @@ func TestConfigUpdate_ReenablesGame(t *testing.T) {
 		},
 	}
 
-	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws)
+	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws, &fakePluginManager{})
 
 	cmd, _ := json.Marshal(map[string]any{
 		"configUpdate": map[string]any{
@@ -947,7 +969,7 @@ func TestRun_LifecycleEvents(t *testing.T) {
 		Games:    map[string]GameConfig{},
 	}
 
-	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws)
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -990,7 +1012,7 @@ func TestRun_FileEventTriggersParseAndPush(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, watcher, runner, pusher, ws)
+	d := New(cfg, fsys, watcher, runner, pusher, ws, &fakePluginManager{})
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1034,7 +1056,7 @@ func TestRun_WSCommandHandled(t *testing.T) {
 	fsys := d2rFS()
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws)
+	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws, &fakePluginManager{})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1063,4 +1085,76 @@ func TestRun_WSCommandHandled(t *testing.T) {
 
 	cancel()
 	<-done
+}
+
+// --- Tests: PluginManager integration ---
+
+func TestConfigUpdate_EnsurePluginFailed_SkipsGame(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := d2rRunner()
+	fsys := d2rFS()
+	cfg := Config{DeviceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
+
+	pm := &fakePluginManager{
+		ensureErr: map[string]error{"d2r": fmt.Errorf("download failed")},
+	}
+
+	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, pm)
+
+	cmd, _ := json.Marshal(map[string]any{
+		"configUpdate": map[string]any{
+			"games": map[string]any{
+				"d2r": map[string]any{
+					"savePath":       "/saves/d2r",
+					"enabled":        true,
+					"fileExtensions": []string{".d2s"},
+				},
+			},
+		},
+	})
+	d.handleCommand(context.Background(), cmd)
+
+	types := ws.sentEventTypes()
+	if !slices.Contains(types, "pluginDownloadFailed") {
+		t.Error("missing pluginDownloadFailed event")
+	}
+	if slices.Contains(types, "scanStarted") {
+		t.Error("should not scan when plugin download fails")
+	}
+
+	failed := ws.sentEvent("pluginDownloadFailed", 0)
+	if failed["gameId"] != "d2r" {
+		t.Errorf("pluginDownloadFailed gameId = %v, want d2r", failed["gameId"])
+	}
+}
+
+func TestRun_EnsurePluginFailed_SkipsGame(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := d2rRunner()
+	fsys := d2rFS()
+	cfg := d2rConfig()
+
+	pm := &fakePluginManager{
+		ensureErr: map[string]error{"d2r": fmt.Errorf("network error")},
+	}
+
+	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, pm)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- d.Run(ctx) }()
+
+	waitFor(t, func() bool {
+		return slices.Contains(ws.sentEventTypes(), "pluginDownloadFailed")
+	})
+
+	// Should NOT have scanned.
+	if slices.Contains(ws.sentEventTypes(), "scanStarted") {
+		t.Error("should not scan when EnsurePlugin fails at startup")
+	}
+
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
 }

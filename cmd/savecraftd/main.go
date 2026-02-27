@@ -3,15 +3,16 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 
 	"github.com/joshsymonds/savecraft.gg/internal/daemon"
 	"github.com/joshsymonds/savecraft.gg/internal/osfs"
+	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
 	"github.com/joshsymonds/savecraft.gg/internal/push"
 	"github.com/joshsymonds/savecraft.gg/internal/runner"
 	"github.com/joshsymonds/savecraft.gg/internal/signing"
@@ -77,8 +78,18 @@ func run(logger *slog.Logger) error {
 		}
 	}()
 
-	if loadErr := loadPlugins(ctx, logger, wr, cfg, skipVerify); loadErr != nil {
-		return fmt.Errorf("load plugins: %w", loadErr)
+	cacheDir := pluginmgr.DefaultCacheDir()
+	cache := pluginmgr.NewCache(cacheDir)
+	reg := pluginmgr.NewHTTPRegistry(cfg.ServerURL, cfg.AuthToken)
+
+	var pubKey ed25519.PublicKey
+	if !skipVerify {
+		pubKey = signing.PublicKey()
+	}
+
+	mgr := pluginmgr.NewManager(reg, cache, wr, pubKey, logger)
+	if cfg.PluginDir != "" {
+		mgr.SetLocalDir(cfg.PluginDir)
 	}
 
 	pusher, err := push.New(cfg.ServerURL, cfg.AuthToken)
@@ -89,7 +100,7 @@ func run(logger *slog.Logger) error {
 	wsURL := cfg.ServerURL + "/ws/daemon"
 	ws := wsconn.New(wsURL, cfg.AuthToken)
 
-	dmn := daemon.New(cfg.Daemon, fsys, wt, wr, pusher, ws)
+	dmn := daemon.New(cfg.Daemon, fsys, wt, wr, pusher, ws, mgr)
 
 	logger.Info("starting daemon",
 		slog.String("server", cfg.ServerURL),
@@ -133,9 +144,6 @@ func loadConfig() (*appConfig, error) {
 	}
 
 	pluginDir := os.Getenv("SAVECRAFT_PLUGIN_DIR")
-	if pluginDir == "" {
-		pluginDir = "plugins"
-	}
 
 	cfgVersion := os.Getenv("SAVECRAFT_VERSION")
 	if cfgVersion == "" {
@@ -155,56 +163,4 @@ func loadConfig() (*appConfig, error) {
 			Games:     make(map[string]daemon.GameConfig),
 		},
 	}, nil
-}
-
-func loadPlugins(
-	ctx context.Context, logger *slog.Logger, wr *runner.WazeroRunner,
-	cfg *appConfig, skipVerify bool,
-) error {
-	pluginDir := cfg.PluginDir
-	entries, err := os.ReadDir(pluginDir)
-	if os.IsNotExist(err) {
-		logger.WarnContext(ctx, "plugin directory not found, no plugins loaded", slog.String("path", pluginDir))
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("read plugin dir %s: %w", pluginDir, err)
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".wasm" {
-			continue
-		}
-
-		name := entry.Name()
-		gameID := name[:len(name)-len(".wasm")]
-		pluginPath := filepath.Join(pluginDir, name)
-
-		wasmBytes, readErr := os.ReadFile(filepath.Clean(pluginPath))
-		if readErr != nil {
-			return fmt.Errorf("read plugin %s: %w", name, readErr)
-		}
-
-		var sigBytes []byte
-		sigPath := pluginPath + ".sig"
-		sigBytes, readErr = os.ReadFile(filepath.Clean(sigPath))
-		if readErr != nil {
-			switch {
-			case os.IsNotExist(readErr) && skipVerify:
-				logger.WarnContext(ctx, "no signature file, verification skipped", slog.String("plugin", name))
-			case os.IsNotExist(readErr):
-				return fmt.Errorf("signature file missing for %s (set SAVECRAFT_SKIP_VERIFY=1 for dev mode)", name)
-			default:
-				return fmt.Errorf("read signature %s: %w", sigPath, readErr)
-			}
-		}
-
-		if loadErr := wr.LoadPlugin(ctx, gameID, wasmBytes, sigBytes); loadErr != nil {
-			return fmt.Errorf("load plugin %s: %w", name, loadErr)
-		}
-
-		logger.InfoContext(ctx, "loaded plugin", slog.String("game_id", gameID), slog.String("file", name))
-	}
-
-	return nil
 }

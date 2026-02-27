@@ -116,6 +116,10 @@ keygen:
 sign file:
     go run ./cmd/savecraft-sign/ {{file}}
 
+# Verify a file's Ed25519 signature
+verify file:
+    go run ./cmd/savecraft-verify/ {{file}}
+
 # Sign all compiled WASM plugins
 sign-plugins:
     #!/usr/bin/env bash

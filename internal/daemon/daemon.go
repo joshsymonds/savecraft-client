@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+const pluginUpdateInterval = 24 * time.Hour
+
 // --- Domain types ---
 
 // GameState is the structured output from parsing a save file.
@@ -97,12 +99,22 @@ type Watcher interface {
 
 // Runner runs a WASM plugin to parse save file bytes.
 type Runner interface {
-	Run(ctx context.Context, gameID string, saveBytes []byte, onStatus func(string)) (*GameState, error)
+	Run(
+		ctx context.Context,
+		gameID string,
+		saveBytes []byte,
+		onStatus func(string),
+	) (*GameState, error)
 }
 
 // PushClient pushes parsed game state to the server.
 type PushClient interface {
-	Push(ctx context.Context, gameID string, state *GameState, parsedAt time.Time) (*PushResult, error)
+	Push(
+		ctx context.Context,
+		gameID string,
+		state *GameState,
+		parsedAt time.Time,
+	) (*PushResult, error)
 }
 
 // WSClient handles WebSocket communication with the server.
@@ -120,6 +132,12 @@ type FS interface {
 	ReadFile(path string) ([]byte, error)
 }
 
+// PluginManager handles plugin download, verification, caching, and loading.
+type PluginManager interface {
+	EnsurePlugin(ctx context.Context, gameID string) error
+	CheckForUpdates(ctx context.Context) ([]string, error)
+}
+
 // --- Daemon ---
 
 // Daemon coordinates file watching, plugin execution, and server communication.
@@ -130,13 +148,22 @@ type Daemon struct {
 	runner  Runner
 	pusher  PushClient
 	ws      WSClient
+	plugins PluginManager
 
 	// Maps watched directory → game ID.
 	watchedDirs map[string]string
 }
 
 // New creates a Daemon with the given dependencies.
-func New(cfg Config, fsys FS, watcher Watcher, runner Runner, pusher PushClient, ws WSClient) *Daemon {
+func New(
+	cfg Config,
+	fsys FS,
+	watcher Watcher,
+	runner Runner,
+	pusher PushClient,
+	ws WSClient,
+	plugins PluginManager,
+) *Daemon {
 	return &Daemon{
 		cfg:         cfg,
 		fs:          fsys,
@@ -144,6 +171,7 @@ func New(cfg Config, fsys FS, watcher Watcher, runner Runner, pusher PushClient,
 		runner:      runner,
 		pusher:      pusher,
 		ws:          ws,
+		plugins:     plugins,
 		watchedDirs: make(map[string]string),
 	}
 }
@@ -169,7 +197,18 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 		if !gameCfg.Enabled {
 			continue
 		}
+		if !d.ensurePluginReady(ctx, gameID) {
+			continue
+		}
 		d.scanGame(ctx, gameID, gameCfg)
+	}
+
+	var updateTicker *time.Ticker
+	var updateCh <-chan time.Time
+	if d.plugins != nil {
+		updateTicker = time.NewTicker(pluginUpdateInterval)
+		updateCh = updateTicker.C
+		defer updateTicker.Stop()
 	}
 
 	for {
@@ -183,11 +222,48 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 			d.handleFileEvent(ctx, ev)
 		case msg := <-d.ws.Messages():
 			d.handleCommand(ctx, msg)
+		case <-updateCh:
+			d.checkPluginUpdates(ctx)
 		}
 	}
 }
 
-func (d *Daemon) scanGame(ctx context.Context, gameID string, cfg GameConfig) {
+func (d *Daemon) checkPluginUpdates(ctx context.Context) {
+	updated, err := d.plugins.CheckForUpdates(ctx)
+	if err != nil {
+		d.sendEvent("pluginUpdateCheckFailed", map[string]any{
+			"message": err.Error(),
+		})
+		return
+	}
+	for _, gameID := range updated {
+		d.sendEvent("pluginUpdated", map[string]any{
+			"gameId": gameID,
+		})
+	}
+}
+
+// ensurePluginReady downloads/verifies the plugin for gameID if a
+// PluginManager is configured. Returns true if the plugin is ready.
+func (d *Daemon) ensurePluginReady(
+	ctx context.Context, gameID string,
+) bool {
+	if d.plugins == nil {
+		return true
+	}
+	if ensureErr := d.plugins.EnsurePlugin(ctx, gameID); ensureErr != nil {
+		d.sendEvent("pluginDownloadFailed", map[string]any{
+			"gameId":  gameID,
+			"message": ensureErr.Error(),
+		})
+		return false
+	}
+	return true
+}
+
+func (d *Daemon) scanGame(
+	ctx context.Context, gameID string, cfg GameConfig,
+) {
 	d.sendEvent("scanStarted", map[string]any{
 		"gameId": gameID,
 		"path":   cfg.SavePath,
@@ -272,7 +348,9 @@ func (d *Daemon) handleFileEvent(ctx context.Context, ev FileEvent) {
 	d.parseAndPush(ctx, gameID, ev.Path, fileName)
 }
 
-func (d *Daemon) parseAndPush(ctx context.Context, gameID, fullPath, fileName string) {
+func (d *Daemon) parseAndPush(
+	ctx context.Context, gameID, fullPath, fileName string,
+) {
 	d.sendEvent("parseStarted", map[string]any{
 		"gameId":   gameID,
 		"fileName": fileName,
@@ -300,8 +378,7 @@ func (d *Daemon) parseAndPush(ctx context.Context, gameID, fullPath, fileName st
 	state, err := d.runner.Run(ctx, gameID, saveBytes, onStatus)
 	if err != nil {
 		errorType := "PARSE_ERROR_TYPE_PARSE_ERROR"
-		var pluginErr *PluginError
-		if errors.As(err, &pluginErr) {
+		if pluginErr, ok := errors.AsType[*PluginError](err); ok {
 			errorType = pluginErr.Type
 		}
 		d.sendEvent("parseFailed", map[string]any{
@@ -389,7 +466,9 @@ func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
 	}
 }
 
-func (d *Daemon) handleConfigUpdate(ctx context.Context, payload json.RawMessage) {
+func (d *Daemon) handleConfigUpdate(
+	ctx context.Context, payload json.RawMessage,
+) {
 	var update struct {
 		Games map[string]struct {
 			SavePath       string   `json:"savePath"`
@@ -401,20 +480,8 @@ func (d *Daemon) handleConfigUpdate(ctx context.Context, payload json.RawMessage
 		return
 	}
 
-	newGameIDs := make(map[string]bool, len(update.Games))
-	for gameID := range update.Games {
-		newGameIDs[gameID] = true
-	}
+	d.removeStaleGames(update.Games)
 
-	// Remove games that are no longer in the config.
-	for gameID, oldCfg := range d.cfg.Games {
-		if !newGameIDs[gameID] {
-			d.unwatchGame(oldCfg.SavePath)
-			delete(d.cfg.Games, gameID)
-		}
-	}
-
-	// Add or update games.
 	for gameID, newGame := range update.Games {
 		gameCfg := GameConfig{
 			SavePath:       newGame.SavePath,
@@ -427,17 +494,39 @@ func (d *Daemon) handleConfigUpdate(ctx context.Context, payload json.RawMessage
 
 		switch {
 		case !newGame.Enabled:
-			// Disable: stop watching.
 			if existed {
 				d.unwatchGame(oldCfg.SavePath)
 			}
 		case !existed || !oldCfg.Enabled:
-			// New game or re-enabled: scan it.
+			if !d.ensurePluginReady(ctx, gameID) {
+				continue
+			}
 			d.scanGame(ctx, gameID, gameCfg)
 		case oldCfg.SavePath != newGame.SavePath:
-			// Path changed: remove old watch, scan new path.
 			d.unwatchGame(oldCfg.SavePath)
+			if !d.ensurePluginReady(ctx, gameID) {
+				continue
+			}
 			d.scanGame(ctx, gameID, gameCfg)
+		}
+	}
+}
+
+func (d *Daemon) removeStaleGames(newGames map[string]struct {
+	SavePath       string   `json:"savePath"`
+	Enabled        bool     `json:"enabled"`
+	FileExtensions []string `json:"fileExtensions"`
+},
+) {
+	newGameIDs := make(map[string]bool, len(newGames))
+	for gameID := range newGames {
+		newGameIDs[gameID] = true
+	}
+
+	for gameID, oldCfg := range d.cfg.Games {
+		if !newGameIDs[gameID] {
+			d.unwatchGame(oldCfg.SavePath)
+			delete(d.cfg.Games, gameID)
 		}
 	}
 }
@@ -488,7 +577,9 @@ func (d *Daemon) handleTestPath(gameID, path string) {
 	})
 }
 
-func (d *Daemon) filterByExtension(entries []fs.DirEntry, extensions []string) []string {
+func (d *Daemon) filterByExtension(
+	entries []fs.DirEntry, extensions []string,
+) []string {
 	var names []string
 	for _, entry := range entries {
 		if entry.IsDir() {
@@ -522,10 +613,14 @@ func (d *Daemon) sendEvent(eventType string, payload any) {
 	}
 }
 
-func parseMessage(data []byte) (string, json.RawMessage, error) {
+func parseMessage(
+	data []byte,
+) (string, json.RawMessage, error) {
 	var envelope map[string]json.RawMessage
 	if err := json.Unmarshal(data, &envelope); err != nil {
-		return "", nil, fmt.Errorf("unmarshal message envelope: %w", err)
+		return "", nil, fmt.Errorf(
+			"unmarshal message envelope: %w", err,
+		)
 	}
 	for key, val := range envelope {
 		return key, val, nil
