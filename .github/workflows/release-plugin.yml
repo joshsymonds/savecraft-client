@@ -5,6 +5,12 @@ on:
     branches: [main]
     paths:
       - "plugins/*/plugin.toml"
+  workflow_dispatch:
+    inputs:
+      plugin:
+        description: "Plugin game_id to release (e.g. d2r)"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -35,11 +41,16 @@ jobs:
         id: changed
         env:
           BEFORE_SHA: ${{ github.event.before }}
+          MANUAL_PLUGIN: ${{ inputs.plugin }}
         run: |
-          changed=$(git diff --name-only "$BEFORE_SHA" HEAD -- 'plugins/*/plugin.toml' \
-            | sed 's|plugins/\([^/]*\)/plugin.toml|\1|' \
-            | sort -u \
-            | tr '\n' ' ')
+          if [ -n "$MANUAL_PLUGIN" ]; then
+            changed="$MANUAL_PLUGIN"
+          else
+            changed=$(git diff --name-only "$BEFORE_SHA" HEAD -- 'plugins/*/plugin.toml' \
+              | sed 's|plugins/\([^/]*\)/plugin.toml|\1|' \
+              | sort -u \
+              | tr '\n' ' ')
+          fi
           echo "plugins=${changed}" >> "$GITHUB_OUTPUT"
           if [ -z "$changed" ]; then
             echo "No plugin.toml changes detected"
