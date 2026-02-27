@@ -137,9 +137,9 @@ func loadConfig() (*appConfig, error) {
 		pluginDir = "plugins"
 	}
 
-	version := os.Getenv("SAVECRAFT_VERSION")
-	if version == "" {
-		version = "dev"
+	cfgVersion := os.Getenv("SAVECRAFT_VERSION")
+	if cfgVersion == "" {
+		cfgVersion = "dev"
 	}
 
 	return &appConfig{
@@ -151,13 +151,16 @@ func loadConfig() (*appConfig, error) {
 			ServerURL: serverURL,
 			AuthToken: authToken,
 			DeviceID:  deviceID,
-			Version:   version,
+			Version:   cfgVersion,
 			Games:     make(map[string]daemon.GameConfig),
 		},
 	}, nil
 }
 
-func loadPlugins(ctx context.Context, logger *slog.Logger, wr *runner.WazeroRunner, cfg *appConfig, skipVerify bool) error {
+func loadPlugins(
+	ctx context.Context, logger *slog.Logger, wr *runner.WazeroRunner,
+	cfg *appConfig, skipVerify bool,
+) error {
 	pluginDir := cfg.PluginDir
 	entries, err := os.ReadDir(pluginDir)
 	if os.IsNotExist(err) {
@@ -186,11 +189,12 @@ func loadPlugins(ctx context.Context, logger *slog.Logger, wr *runner.WazeroRunn
 		sigPath := pluginPath + ".sig"
 		sigBytes, readErr = os.ReadFile(filepath.Clean(sigPath))
 		if readErr != nil {
-			if os.IsNotExist(readErr) && skipVerify {
+			switch {
+			case os.IsNotExist(readErr) && skipVerify:
 				logger.WarnContext(ctx, "no signature file, verification skipped", slog.String("plugin", name))
-			} else if os.IsNotExist(readErr) {
+			case os.IsNotExist(readErr):
 				return fmt.Errorf("signature file missing for %s (set SAVECRAFT_SKIP_VERIFY=1 for dev mode)", name)
-			} else {
+			default:
 				return fmt.Errorf("read signature %s: %w", sigPath, readErr)
 			}
 		}

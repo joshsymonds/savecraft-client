@@ -17,6 +17,7 @@ worker/.dev.vars
 # Go
 /bin/
 /vendor/
+/savecraftd
 
 # Compiled WASM plugins and binaries
 plugins/**/*.wasm

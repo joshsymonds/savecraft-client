@@ -488,6 +488,7 @@ linters:
           - gocognit
           - goconst
           - gosec
+          - govet
           - noctx
           - wrapcheck
           - containedctx
@@ -497,11 +498,13 @@ linters:
           - varnamelen
           - musttag
 
-      # Allow panic in main.go for CLI apps
-      - path: main\.go
-        text: "panic"
+      # CLI entrypoints: fmt.Print, file I/O from args, arg count checks, err reuse are idiomatic
+      - path: cmd/.*main\.go
         linters:
           - forbidigo
+          - gosec
+          - govet
+          - mnd
 
       # Allow local replacements in go.mod
       - path: go\.mod

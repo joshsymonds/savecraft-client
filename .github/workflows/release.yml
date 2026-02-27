@@ -1,0 +1,178 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - uses: taiki-e/install-action@just
+
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build daemon (all platforms)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: just build-daemon-all "$VERSION"
+
+      - name: Build d2r plugin
+        run: just build-plugin d2r
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            dist/savecraft-daemon-*
+            plugins/d2r/d2r.wasm
+
+  sign:
+    name: Sign
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+
+      - name: Decode signing key
+        run: echo "$SIGNING_KEY" | base64 -d > /tmp/signing_key.priv
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
+
+      - name: Sign daemon binaries
+        run: |
+          for f in dist/savecraft-daemon-*; do
+            [ -f "$f" ] || continue
+            go run ./cmd/savecraft-sign/ "$f" /tmp/signing_key.priv
+          done
+
+      - name: Sign plugins
+        run: |
+          for f in plugins/d2r/d2r.wasm; do
+            [ -f "$f" ] || continue
+            go run ./cmd/savecraft-sign/ "$f" /tmp/signing_key.priv
+          done
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum savecraft-daemon-* > checksums-sha256.txt
+          cd ../plugins/d2r
+          sha256sum d2r.wasm d2r.wasm.sig >> ../../dist/checksums-sha256.txt
+
+      - name: Clean up signing key
+        if: always()
+        run: rm -f /tmp/signing_key.priv
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-artifacts
+          path: |
+            dist/savecraft-daemon-*
+            dist/checksums-sha256.txt
+            plugins/d2r/d2r.wasm
+            plugins/d2r/d2r.wasm.sig
+
+  release:
+    name: GitHub Release
+    needs: sign
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-artifacts
+
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Bake public key into install.sh
+        run: |
+          tmp_der=$(mktemp)
+          printf '\x30\x2a\x30\x05\x06\x03\x2b\x65\x70\x03\x21\x00' > "$tmp_der"
+          cat internal/signing/signing_key.pub >> "$tmp_der"
+          b64_key=$(base64 -w0 < "$tmp_der")
+          rm -f "$tmp_der"
+          sed -i "s|REPLACE_WITH_BASE64_PUBKEY|${b64_key}|" install/install.sh
+
+      - name: Substitute version in install.sh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: sed -i "s|^readonly VERSION=.*|readonly VERSION=\"${VERSION}\"|" install/install.sh
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --generate-notes \
+            dist/savecraft-daemon-* \
+            dist/checksums-sha256.txt \
+            install/install.sh
+
+  publish-plugins:
+    name: Publish Plugins to R2
+    needs: sign
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-artifacts
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install wrangler
+        run: npm install -g wrangler
+
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload plugins to R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          for wasm in plugins/*/*.wasm; do
+            [ -f "$wasm" ] || continue
+            game_id=$(basename "$(dirname "$wasm")")
+            wrangler r2 object put "savecraft-plugins/plugins/${game_id}/parser.wasm" --file "$wasm"
+            wrangler r2 object put "savecraft-plugins/plugins/${game_id}/parser.wasm.sig" --file "${wasm}.sig"
+          done
+
+      - name: Generate and upload manifest
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          bash scripts/generate-plugin-manifest.sh "$VERSION" > /tmp/manifest.json
+          wrangler r2 object put "savecraft-plugins/plugins/manifest.json" --file /tmp/manifest.json

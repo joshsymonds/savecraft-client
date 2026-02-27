@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  go:
+    name: Go (lint + test + proto)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Install goimports
+        run: go install golang.org/x/tools/cmd/goimports@latest
+
+      - uses: taiki-e/install-action@just
+
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          args: ./internal/... ./cmd/...
+
+      - name: Check formatting
+        run: |
+          just fmt-go
+          git diff --exit-code || (echo "goimports produced changes — run 'just fmt-go' locally" && exit 1)
+
+      - name: Deadcode
+        run: go run golang.org/x/tools/cmd/deadcode@latest -test ./internal/... ./cmd/...
+
+      - name: Test
+        run: just test-go
+
+      - name: Install buf
+        uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
+      - name: Lint proto
+        run: just proto-lint
+
+      - name: Check generated proto
+        run: |
+          just proto
+          git diff --exit-code || (echo "Generated proto code is stale — run 'just proto' locally" && exit 1)
+
+  worker:
+    name: Worker (lint + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - run: npm ci
+
+      - uses: taiki-e/install-action@just
+
+      - name: Lint
+        run: just lint-worker
+        working-directory: .
+
+      - name: Check formatting
+        run: just fmt-worker-check
+        working-directory: .
+
+      - name: Test
+        run: just test-worker
+        working-directory: .
+
+  web:
+    name: Web (lint + typecheck + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
+      - uses: taiki-e/install-action@just
+
+      - name: Lint
+        run: just lint-web
+        working-directory: .
+
+      - name: Check formatting
+        run: just fmt-web-check
+        working-directory: .
+
+      - name: Typecheck
+        run: just check-web
+        working-directory: .
+
+      - name: Test
+        run: just test-web
+        working-directory: .
