@@ -488,6 +488,7 @@ func (d *Daemon) parseAndPush(
 		"saveUuid":          result.SaveUUID,
 		"summary":           state.Summary,
 		"snapshotSizeBytes": len(stateJSON),
+		"identity":          state.Identity,
 	})
 }
 

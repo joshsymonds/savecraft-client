@@ -8,10 +8,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
-
-	"strings"
 
 	"github.com/joshsymonds/savecraft.gg/internal/signing"
 )

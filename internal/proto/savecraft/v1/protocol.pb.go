@@ -1421,6 +1421,7 @@ type PushCompleted struct {
 	Summary           string                 `protobuf:"bytes,3,opt,name=summary,proto3" json:"summary,omitempty"`
 	SnapshotSizeBytes int64                  `protobuf:"varint,4,opt,name=snapshot_size_bytes,json=snapshotSizeBytes,proto3" json:"snapshot_size_bytes,omitempty"`
 	DurationMs        int32                  `protobuf:"varint,5,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`
+	Identity          *SaveIdentity          `protobuf:"bytes,6,opt,name=identity,proto3" json:"identity,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1488,6 +1489,13 @@ func (x *PushCompleted) GetDurationMs() int32 {
 		return x.DurationMs
 	}
 	return 0
+}
+
+func (x *PushCompleted) GetIdentity() *SaveIdentity {
+	if x != nil {
+		return x.Identity
+	}
+	return nil
 }
 
 // Upload failed. will_retry indicates if the daemon will retry automatically.
@@ -2391,14 +2399,15 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\agame_id\x18\x01 \x01(\tR\x06gameId\x12\x18\n" +
 	"\asummary\x18\x02 \x01(\tR\asummary\x12\x1d\n" +
 	"\n" +
-	"size_bytes\x18\x03 \x01(\x03R\tsizeBytes\"\xb0\x01\n" +
+	"size_bytes\x18\x03 \x01(\x03R\tsizeBytes\"\xe8\x01\n" +
 	"\rPushCompleted\x12\x17\n" +
 	"\agame_id\x18\x01 \x01(\tR\x06gameId\x12\x1b\n" +
 	"\tsave_uuid\x18\x02 \x01(\tR\bsaveUuid\x12\x18\n" +
 	"\asummary\x18\x03 \x01(\tR\asummary\x12.\n" +
 	"\x13snapshot_size_bytes\x18\x04 \x01(\x03R\x11snapshotSizeBytes\x12\x1f\n" +
 	"\vduration_ms\x18\x05 \x01(\x05R\n" +
-	"durationMs\"^\n" +
+	"durationMs\x126\n" +
+	"\bidentity\x18\x06 \x01(\v2\x1a.savecraft.v1.SaveIdentityR\bidentity\"^\n" +
 	"\n" +
 	"PushFailed\x12\x17\n" +
 	"\agame_id\x18\x01 \x01(\tR\x06gameId\x12\x18\n" +
@@ -2552,22 +2561,23 @@ var file_savecraft_v1_protocol_proto_depIdxs = []int32{
 	11, // 25: savecraft.v1.GamesDiscovered.games:type_name -> savecraft.v1.DiscoveredGame
 	31, // 26: savecraft.v1.ParseCompleted.identity:type_name -> savecraft.v1.SaveIdentity
 	0,  // 27: savecraft.v1.ParseFailed.error_type:type_name -> savecraft.v1.ParseErrorType
-	32, // 28: savecraft.v1.ConfigUpdate.games:type_name -> savecraft.v1.ConfigUpdate.GamesEntry
-	26, // 29: savecraft.v1.DeviceState.devices:type_name -> savecraft.v1.DeviceInfo
-	33, // 30: savecraft.v1.DeviceInfo.last_seen:type_name -> google.protobuf.Timestamp
-	27, // 31: savecraft.v1.DeviceInfo.games:type_name -> savecraft.v1.GameInfo
-	1,  // 32: savecraft.v1.GameInfo.status:type_name -> savecraft.v1.GameStatusEnum
-	28, // 33: savecraft.v1.GameInfo.saves:type_name -> savecraft.v1.SaveInfo
-	33, // 34: savecraft.v1.GameInfo.last_activity:type_name -> google.protobuf.Timestamp
-	31, // 35: savecraft.v1.SaveInfo.identity:type_name -> savecraft.v1.SaveIdentity
-	33, // 36: savecraft.v1.SaveInfo.last_updated:type_name -> google.protobuf.Timestamp
-	34, // 37: savecraft.v1.SaveIdentity.extra:type_name -> google.protobuf.Struct
-	21, // 38: savecraft.v1.ConfigUpdate.GamesEntry.value:type_name -> savecraft.v1.GameConfig
-	39, // [39:39] is the sub-list for method output_type
-	39, // [39:39] is the sub-list for method input_type
-	39, // [39:39] is the sub-list for extension type_name
-	39, // [39:39] is the sub-list for extension extendee
-	0,  // [0:39] is the sub-list for field type_name
+	31, // 28: savecraft.v1.PushCompleted.identity:type_name -> savecraft.v1.SaveIdentity
+	32, // 29: savecraft.v1.ConfigUpdate.games:type_name -> savecraft.v1.ConfigUpdate.GamesEntry
+	26, // 30: savecraft.v1.DeviceState.devices:type_name -> savecraft.v1.DeviceInfo
+	33, // 31: savecraft.v1.DeviceInfo.last_seen:type_name -> google.protobuf.Timestamp
+	27, // 32: savecraft.v1.DeviceInfo.games:type_name -> savecraft.v1.GameInfo
+	1,  // 33: savecraft.v1.GameInfo.status:type_name -> savecraft.v1.GameStatusEnum
+	28, // 34: savecraft.v1.GameInfo.saves:type_name -> savecraft.v1.SaveInfo
+	33, // 35: savecraft.v1.GameInfo.last_activity:type_name -> google.protobuf.Timestamp
+	31, // 36: savecraft.v1.SaveInfo.identity:type_name -> savecraft.v1.SaveIdentity
+	33, // 37: savecraft.v1.SaveInfo.last_updated:type_name -> google.protobuf.Timestamp
+	34, // 38: savecraft.v1.SaveIdentity.extra:type_name -> google.protobuf.Struct
+	21, // 39: savecraft.v1.ConfigUpdate.GamesEntry.value:type_name -> savecraft.v1.GameConfig
+	40, // [40:40] is the sub-list for method output_type
+	40, // [40:40] is the sub-list for method input_type
+	40, // [40:40] is the sub-list for extension type_name
+	40, // [40:40] is the sub-list for extension extendee
+	0,  // [0:40] is the sub-list for field type_name
 }
 
 func init() { file_savecraft_v1_protocol_proto_init() }
