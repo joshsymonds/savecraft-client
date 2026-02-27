@@ -170,6 +170,8 @@ jobs:
         include:
           - env: staging
             d1_database: savecraft-staging
+          - env: production
+            d1_database: savecraft
     defaults:
       run:
         working-directory: worker
