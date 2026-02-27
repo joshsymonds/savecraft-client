@@ -28,6 +28,7 @@ node_modules/
 
 # Storybook
 web/storybook-static/
+web/screenshots/
 
 # Cloudflare
 .wrangler/
