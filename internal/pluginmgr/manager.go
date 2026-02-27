@@ -57,6 +57,25 @@ func (m *Manager) SetLocalDir(dir string) {
 	m.localDir = dir
 }
 
+// Manifests returns the plugin manifest, fetching it if not already cached.
+func (m *Manager) Manifests(
+	ctx context.Context,
+) (map[string]PluginInfo, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.manifest != nil {
+		return m.manifest, nil
+	}
+
+	manifest, err := m.registry.FetchManifest(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("fetch manifest: %w", err)
+	}
+	m.manifest = manifest
+	return manifest, nil
+}
+
 // EnsurePlugin guarantees the plugin for gameID is loaded into the runner.
 // It checks local dir, then cache, then downloads from registry.
 func (m *Manager) EnsurePlugin(ctx context.Context, gameID string) error {

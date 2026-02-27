@@ -4,11 +4,16 @@ package pluginmgr
 import "context"
 
 // PluginInfo describes a plugin available from the registry.
+//
+//nolint:tagliatelle // manifest JSON uses snake_case to match server wire format
 type PluginInfo struct {
-	GameID  string `json:"gameId"`
-	Version string `json:"version"`
-	SHA256  string `json:"sha256"`
-	URL     string `json:"url"`
+	GameID         string            `json:"game_id"`
+	Name           string            `json:"name"`
+	Version        string            `json:"version"`
+	SHA256         string            `json:"sha256"`
+	URL            string            `json:"url"`
+	DefaultPaths   map[string]string `json:"default_paths"`
+	FileExtensions []string          `json:"file_extensions"`
 }
 
 // Registry provides access to the plugin manifest and downloads.

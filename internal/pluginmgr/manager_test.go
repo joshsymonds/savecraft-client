@@ -63,6 +63,18 @@ func (l *fakeLoader) LoadPlugin(
 	return nil
 }
 
+type countingRegistry struct {
+	fakeRegistry
+	fetchCount int
+}
+
+func (r *countingRegistry) FetchManifest(
+	ctx context.Context,
+) (map[string]PluginInfo, error) {
+	r.fetchCount++
+	return r.fakeRegistry.FetchManifest(ctx)
+}
+
 // --- Helpers ---
 
 func testLogger() *slog.Logger {
@@ -659,6 +671,57 @@ func TestCheckForUpdates_LoaderFailure(t *testing.T) {
 	}
 	if len(updated) != 0 {
 		t.Errorf("updated = %v, want empty (loader failed)", updated)
+	}
+}
+
+func TestManifests_FetchesAndCaches(t *testing.T) {
+	manifest := map[string]PluginInfo{
+		"d2r": {
+			GameID:  "d2r",
+			Name:    "Diablo II: Resurrected",
+			Version: "1.0.0",
+			SHA256:  "abc",
+			URL:     pluginURL,
+			DefaultPaths: map[string]string{
+				"linux": "~/Games/d2r",
+			},
+			FileExtensions: []string{".d2s"},
+		},
+	}
+
+	reg := &countingRegistry{
+		fakeRegistry: fakeRegistry{manifest: manifest},
+	}
+
+	mgr := NewManager(
+		reg, NewCache(t.TempDir()), &fakeLoader{}, nil, testLogger(),
+	)
+
+	// First call should fetch.
+	got, err := mgr.Manifests(context.Background())
+	if err != nil {
+		t.Fatalf("Manifests: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d plugins, want 1", len(got))
+	}
+	if got["d2r"].Name != "Diablo II: Resurrected" {
+		t.Errorf("name = %q", got["d2r"].Name)
+	}
+	if reg.fetchCount != 1 {
+		t.Errorf("fetchCount = %d after first call, want 1", reg.fetchCount)
+	}
+
+	// Second call should return cached (no additional fetch).
+	got2, err := mgr.Manifests(context.Background())
+	if err != nil {
+		t.Fatalf("Manifests (cached): %v", err)
+	}
+	if len(got2) != 1 {
+		t.Fatalf("cached got %d plugins, want 1", len(got2))
+	}
+	if reg.fetchCount != 1 {
+		t.Errorf("fetchCount = %d after second call, want 1 (should be cached)", reg.fetchCount)
 	}
 }
 

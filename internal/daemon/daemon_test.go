@@ -7,10 +7,13 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
 )
 
 // --- Fakes ---
@@ -267,9 +270,11 @@ func (ws *fakeWSClient) sentEvent(eventType string, index int) map[string]any {
 }
 
 type fakePluginManager struct {
-	ensured   []string
-	ensureErr map[string]error
-	mu        sync.Mutex
+	ensured     []string
+	ensureErr   map[string]error
+	manifests   map[string]pluginmgr.PluginInfo
+	manifestErr error
+	mu          sync.Mutex
 }
 
 func (pm *fakePluginManager) EnsurePlugin(_ context.Context, gameID string) error {
@@ -286,6 +291,13 @@ func (pm *fakePluginManager) EnsurePlugin(_ context.Context, gameID string) erro
 
 func (pm *fakePluginManager) CheckForUpdates(_ context.Context) ([]string, error) {
 	return nil, nil
+}
+
+func (pm *fakePluginManager) Manifests(_ context.Context) (map[string]pluginmgr.PluginInfo, error) {
+	if pm.manifestErr != nil {
+		return nil, pm.manifestErr
+	}
+	return pm.manifests, nil
 }
 
 func waitFor(t *testing.T, condition func() bool) {
@@ -1156,5 +1168,214 @@ func TestRun_EnsurePluginFailed_SkipsGame(t *testing.T) {
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatalf("Run returned error: %v", err)
+	}
+}
+
+// --- Tests: discoverGames ---
+
+func TestDiscoverGames_FindsGame(t *testing.T) {
+	ws := newFakeWSClient()
+	fsys := &fakeFS{
+		dirs:  map[string][]string{"/home/user/saves/d2r": {"Hammerdin.d2s", "readme.txt"}},
+		files: map[string][]byte{},
+	}
+
+	pm := &fakePluginManager{
+		manifests: map[string]pluginmgr.PluginInfo{
+			"d2r": {
+				GameID:         "d2r",
+				Name:           "Diablo II: Resurrected",
+				DefaultPaths:   map[string]string{runtime.GOOS: "/home/user/saves/d2r"},
+				FileExtensions: []string{".d2s"},
+			},
+		},
+	}
+
+	d := New(
+		Config{Games: map[string]GameConfig{}}, fsys,
+		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm,
+	)
+	d.discoverGames(context.Background())
+
+	event := ws.sentEvent("gamesDiscovered", 0)
+	if event == nil {
+		t.Fatal("missing gamesDiscovered event")
+	}
+
+	games, ok := event["games"].([]any)
+	if !ok || len(games) != 1 {
+		t.Fatalf("games = %v, want 1 game", event["games"])
+	}
+
+	game, ok2 := games[0].(map[string]any)
+	if !ok2 {
+		t.Fatal("game is not a map")
+	}
+	if game["gameId"] != "d2r" {
+		t.Errorf("gameId = %v, want d2r", game["gameId"])
+	}
+	if game["name"] != "Diablo II: Resurrected" {
+		t.Errorf("name = %v", game["name"])
+	}
+	if game["path"] != "/home/user/saves/d2r" {
+		t.Errorf("path = %v", game["path"])
+	}
+	if game["fileCount"] != float64(1) {
+		t.Errorf("fileCount = %v, want 1", game["fileCount"])
+	}
+}
+
+func TestDiscoverGames_NilPluginManager(t *testing.T) {
+	ws := newFakeWSClient()
+	cfg := Config{Games: map[string]GameConfig{}}
+	d := New(
+		cfg, &fakeFS{}, newFakeWatcher(),
+		&fakeRunner{}, &fakePushClient{}, ws, nil,
+	)
+	d.discoverGames(context.Background())
+
+	if len(ws.sentEventTypes()) != 0 {
+		t.Error("should not send events with nil plugin manager")
+	}
+}
+
+func TestDiscoverGames_NoMatchingPaths(t *testing.T) {
+	ws := newFakeWSClient()
+	fsys := &fakeFS{
+		dirs:  map[string][]string{},
+		files: map[string][]byte{},
+	}
+
+	pm := &fakePluginManager{
+		manifests: map[string]pluginmgr.PluginInfo{
+			"d2r": {
+				GameID:         "d2r",
+				Name:           "Diablo II: Resurrected",
+				DefaultPaths:   map[string]string{runtime.GOOS: "/nonexistent/path"},
+				FileExtensions: []string{".d2s"},
+			},
+		},
+	}
+
+	d := New(
+		Config{Games: map[string]GameConfig{}}, fsys,
+		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm,
+	)
+	d.discoverGames(context.Background())
+
+	event := ws.sentEvent("gamesDiscovered", 0)
+	if event == nil {
+		t.Fatal("missing gamesDiscovered event")
+	}
+
+	// games should be nil/empty since path doesn't exist.
+	if event["games"] != nil {
+		games, ok := event["games"].([]any)
+		if ok && len(games) != 0 {
+			t.Errorf("games = %v, want empty", event["games"])
+		}
+	}
+}
+
+func TestDiscoverGames_MixedResults(t *testing.T) {
+	ws := newFakeWSClient()
+	fsys := &fakeFS{
+		dirs: map[string][]string{
+			"/home/user/saves/d2r": {"Hammerdin.d2s"},
+		},
+		files: map[string][]byte{},
+	}
+
+	pm := &fakePluginManager{
+		manifests: map[string]pluginmgr.PluginInfo{
+			"d2r": {
+				GameID:         "d2r",
+				Name:           "Diablo II: Resurrected",
+				DefaultPaths:   map[string]string{runtime.GOOS: "/home/user/saves/d2r"},
+				FileExtensions: []string{".d2s"},
+			},
+			"poe": {
+				GameID:         "poe",
+				Name:           "Path of Exile",
+				DefaultPaths:   map[string]string{runtime.GOOS: "/nonexistent/poe"},
+				FileExtensions: []string{".filter"},
+			},
+		},
+	}
+
+	d := New(
+		Config{Games: map[string]GameConfig{}}, fsys,
+		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm,
+	)
+	d.discoverGames(context.Background())
+
+	event := ws.sentEvent("gamesDiscovered", 0)
+	if event == nil {
+		t.Fatal("missing gamesDiscovered event")
+	}
+
+	games, ok := event["games"].([]any)
+	if !ok || len(games) != 1 {
+		t.Fatalf("games len = %v, want 1 (only d2r found)", event["games"])
+	}
+
+	game, ok2 := games[0].(map[string]any)
+	if !ok2 {
+		t.Fatal("game is not a map")
+	}
+	if game["gameId"] != "d2r" {
+		t.Errorf("found game = %v, want d2r", game["gameId"])
+	}
+}
+
+func TestDiscoverGames_ManifestError(t *testing.T) {
+	ws := newFakeWSClient()
+
+	pm := &fakePluginManager{
+		manifestErr: fmt.Errorf("network error"),
+	}
+
+	d := New(
+		Config{Games: map[string]GameConfig{}}, &fakeFS{},
+		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm,
+	)
+	d.discoverGames(context.Background())
+
+	// Should not send any event when manifest fetch fails.
+	if len(ws.sentEventTypes()) != 0 {
+		t.Errorf("sent events = %v, want none on manifest error", ws.sentEventTypes())
+	}
+}
+
+func TestHandleCommand_DiscoverGames(t *testing.T) {
+	ws := newFakeWSClient()
+	fsys := &fakeFS{
+		dirs:  map[string][]string{"/saves/d2r": {"Hero.d2s"}},
+		files: map[string][]byte{},
+	}
+
+	pm := &fakePluginManager{
+		manifests: map[string]pluginmgr.PluginInfo{
+			"d2r": {
+				GameID:         "d2r",
+				Name:           "Diablo II: Resurrected",
+				DefaultPaths:   map[string]string{runtime.GOOS: "/saves/d2r"},
+				FileExtensions: []string{".d2s"},
+			},
+		},
+	}
+
+	d := New(
+		Config{Games: map[string]GameConfig{}}, fsys,
+		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm,
+	)
+
+	cmd, _ := json.Marshal(map[string]any{
+		"discoverGames": map[string]any{},
+	})
+	d.handleCommand(context.Background(), cmd)
+
+	if !slices.Contains(ws.sentEventTypes(), "gamesDiscovered") {
+		t.Error("missing gamesDiscovered event from command")
 	}
 }

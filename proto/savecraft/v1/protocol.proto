@@ -22,6 +22,7 @@ message Message {
     GameDetected game_detected = 12;
     GameNotFound game_not_found = 13;
     Watching watching = 14;
+    GamesDiscovered games_discovered = 15;
 
     // Parse lifecycle (20-29)
     ParseStarted parse_started = 20;
@@ -41,6 +42,7 @@ message Message {
     ConfigUpdate config_update = 50;
     RescanGame rescan_game = 51;
     PluginAvailable plugin_available = 52;
+    DiscoverGames discover_games = 53;
 
     // State: server → UI (60-69)
     DeviceState device_state = 60;
@@ -100,6 +102,18 @@ message Watching {
   string game_id = 1;
   string path = 2;
   int32 files_monitored = 3;
+}
+
+// Results of daemon auto-discovery of save directories.
+message GamesDiscovered {
+  repeated DiscoveredGame games = 1;
+}
+
+message DiscoveredGame {
+  string game_id = 1;
+  string name = 2;
+  string path = 3;
+  int32 file_count = 4;
 }
 
 // --- Parse lifecycle ---
@@ -200,6 +214,9 @@ message PluginAvailable {
   string version = 2;
   string url = 3;
 }
+
+// Request the daemon to re-run save directory discovery.
+message DiscoverGames {}
 
 // --- State: server → UI ---
 

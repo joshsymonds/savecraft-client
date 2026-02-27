@@ -8,8 +8,11 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
+
+	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
 )
 
 const pluginUpdateInterval = 24 * time.Hour
@@ -136,6 +139,15 @@ type FS interface {
 type PluginManager interface {
 	EnsurePlugin(ctx context.Context, gameID string) error
 	CheckForUpdates(ctx context.Context) ([]string, error)
+	Manifests(ctx context.Context) (map[string]pluginmgr.PluginInfo, error)
+}
+
+// DiscoveredGame represents a game whose save directory was found on disk.
+type DiscoveredGame struct {
+	GameID    string `json:"gameId"`
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	FileCount int    `json:"fileCount"`
 }
 
 // --- Daemon ---
@@ -192,6 +204,8 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 		"deviceId": d.cfg.DeviceID,
 		"version":  d.cfg.Version,
 	})
+
+	d.discoverGames(ctx)
 
 	for gameID, gameCfg := range d.cfg.Games {
 		if !gameCfg.Enabled {
@@ -259,6 +273,48 @@ func (d *Daemon) ensurePluginReady(
 		return false
 	}
 	return true
+}
+
+func (d *Daemon) discoverGames(ctx context.Context) {
+	if d.plugins == nil {
+		return
+	}
+
+	manifests, err := d.plugins.Manifests(ctx)
+	if err != nil {
+		return
+	}
+
+	var discovered []DiscoveredGame
+	for gameID, info := range manifests {
+		pathTemplate, ok := info.DefaultPaths[runtime.GOOS]
+		if !ok || pathTemplate == "" {
+			continue
+		}
+
+		path := expandPath(pathTemplate)
+		stat, statErr := d.fs.Stat(path)
+		if statErr != nil || !stat.IsDir() {
+			continue
+		}
+
+		entries, readErr := d.fs.ReadDir(path)
+		if readErr != nil {
+			continue
+		}
+
+		matching := d.filterByExtension(entries, info.FileExtensions)
+		discovered = append(discovered, DiscoveredGame{
+			GameID:    gameID,
+			Name:      info.Name,
+			Path:      path,
+			FileCount: len(matching),
+		})
+	}
+
+	d.sendEvent("gamesDiscovered", map[string]any{
+		"games": discovered,
+	})
 }
 
 func (d *Daemon) scanGame(
@@ -463,6 +519,8 @@ func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
 			return
 		}
 		d.handleTestPath(cmd.GameID, cmd.Path)
+	case "discoverGames":
+		d.discoverGames(ctx)
 	}
 }
 

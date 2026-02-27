@@ -2,21 +2,29 @@ package pluginmgr
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
 
 func TestHTTPRegistry_FetchManifest(t *testing.T) {
-	manifest := map[string]PluginInfo{
-		"d2r": {
-			GameID:  "d2r",
-			Version: "1.0.0",
-			SHA256:  "abc123",
-			URL:     "https://example.com/d2r.wasm",
-		},
-	}
+	// Serve raw JSON with snake_case keys to verify deserialization.
+	rawJSON := `{
+		"plugins": {
+			"d2r": {
+				"game_id": "d2r",
+				"name": "Diablo II: Resurrected",
+				"version": "1.0.0",
+				"sha256": "abc123",
+				"url": "https://example.com/d2r.wasm",
+				"default_paths": {
+					"windows": "%USERPROFILE%/Saved Games/Diablo II Resurrected",
+					"linux": "~/Games/d2r/saves"
+				},
+				"file_extensions": [".d2s", ".d2i"]
+			}
+		}
+	}`
 
 	srv := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
@@ -27,10 +35,7 @@ func TestHTTPRegistry_FetchManifest(t *testing.T) {
 				t.Errorf("auth header = %q, want Bearer tok123", got)
 			}
 			w.Header().Set("Content-Type", "application/json")
-			body := struct {
-				Plugins map[string]PluginInfo `json:"plugins"`
-			}{Plugins: manifest}
-			_ = json.NewEncoder(w).Encode(body)
+			_, _ = w.Write([]byte(rawJSON))
 		},
 	))
 	defer srv.Close()
@@ -47,6 +52,18 @@ func TestHTTPRegistry_FetchManifest(t *testing.T) {
 	if info.Version != "1.0.0" {
 		t.Errorf("version = %q, want 1.0.0", info.Version)
 	}
+	if info.Name != "Diablo II: Resurrected" {
+		t.Errorf("name = %q, want Diablo II: Resurrected", info.Name)
+	}
+	if len(info.DefaultPaths) != 2 {
+		t.Errorf("default_paths len = %d, want 2", len(info.DefaultPaths))
+	}
+	if info.DefaultPaths["windows"] != "%USERPROFILE%/Saved Games/Diablo II Resurrected" {
+		t.Errorf("default_paths[windows] = %q", info.DefaultPaths["windows"])
+	}
+	if len(info.FileExtensions) != 2 || info.FileExtensions[0] != ".d2s" {
+		t.Errorf("file_extensions = %v, want [.d2s .d2i]", info.FileExtensions)
+	}
 }
 
 func TestHTTPRegistry_FetchManifest_NoAuth(t *testing.T) {
@@ -55,10 +72,7 @@ func TestHTTPRegistry_FetchManifest_NoAuth(t *testing.T) {
 			if got := r.Header.Get("Authorization"); got != "" {
 				t.Errorf("auth header = %q, want empty", got)
 			}
-			body := struct {
-				Plugins map[string]PluginInfo `json:"plugins"`
-			}{Plugins: map[string]PluginInfo{}}
-			_ = json.NewEncoder(w).Encode(body)
+			_, _ = w.Write([]byte(`{"plugins":{}}`))
 		},
 	))
 	defer srv.Close()

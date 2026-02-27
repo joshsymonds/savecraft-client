@@ -144,6 +144,7 @@ type Message struct {
 	//	*Message_GameDetected
 	//	*Message_GameNotFound
 	//	*Message_Watching
+	//	*Message_GamesDiscovered
 	//	*Message_ParseStarted
 	//	*Message_PluginStatus
 	//	*Message_ParseCompleted
@@ -155,6 +156,7 @@ type Message struct {
 	//	*Message_ConfigUpdate
 	//	*Message_RescanGame
 	//	*Message_PluginAvailable
+	//	*Message_DiscoverGames
 	//	*Message_DeviceState
 	//	*Message_TestPath
 	//	*Message_TestPathResult
@@ -263,6 +265,15 @@ func (x *Message) GetWatching() *Watching {
 	return nil
 }
 
+func (x *Message) GetGamesDiscovered() *GamesDiscovered {
+	if x != nil {
+		if x, ok := x.Payload.(*Message_GamesDiscovered); ok {
+			return x.GamesDiscovered
+		}
+	}
+	return nil
+}
+
 func (x *Message) GetParseStarted() *ParseStarted {
 	if x != nil {
 		if x, ok := x.Payload.(*Message_ParseStarted); ok {
@@ -362,6 +373,15 @@ func (x *Message) GetPluginAvailable() *PluginAvailable {
 	return nil
 }
 
+func (x *Message) GetDiscoverGames() *DiscoverGames {
+	if x != nil {
+		if x, ok := x.Payload.(*Message_DiscoverGames); ok {
+			return x.DiscoverGames
+		}
+	}
+	return nil
+}
+
 func (x *Message) GetDeviceState() *DeviceState {
 	if x != nil {
 		if x, ok := x.Payload.(*Message_DeviceState); ok {
@@ -423,6 +443,10 @@ type Message_Watching struct {
 	Watching *Watching `protobuf:"bytes,14,opt,name=watching,proto3,oneof"`
 }
 
+type Message_GamesDiscovered struct {
+	GamesDiscovered *GamesDiscovered `protobuf:"bytes,15,opt,name=games_discovered,json=gamesDiscovered,proto3,oneof"`
+}
+
 type Message_ParseStarted struct {
 	// Parse lifecycle (20-29)
 	ParseStarted *ParseStarted `protobuf:"bytes,20,opt,name=parse_started,json=parseStarted,proto3,oneof"`
@@ -471,6 +495,10 @@ type Message_PluginAvailable struct {
 	PluginAvailable *PluginAvailable `protobuf:"bytes,52,opt,name=plugin_available,json=pluginAvailable,proto3,oneof"`
 }
 
+type Message_DiscoverGames struct {
+	DiscoverGames *DiscoverGames `protobuf:"bytes,53,opt,name=discover_games,json=discoverGames,proto3,oneof"`
+}
+
 type Message_DeviceState struct {
 	// State: server → UI (60-69)
 	DeviceState *DeviceState `protobuf:"bytes,60,opt,name=device_state,json=deviceState,proto3,oneof"`
@@ -499,6 +527,8 @@ func (*Message_GameNotFound) isMessage_Payload() {}
 
 func (*Message_Watching) isMessage_Payload() {}
 
+func (*Message_GamesDiscovered) isMessage_Payload() {}
+
 func (*Message_ParseStarted) isMessage_Payload() {}
 
 func (*Message_PluginStatus) isMessage_Payload() {}
@@ -520,6 +550,8 @@ func (*Message_ConfigUpdate) isMessage_Payload() {}
 func (*Message_RescanGame) isMessage_Payload() {}
 
 func (*Message_PluginAvailable) isMessage_Payload() {}
+
+func (*Message_DiscoverGames) isMessage_Payload() {}
 
 func (*Message_DeviceState) isMessage_Payload() {}
 
@@ -938,6 +970,119 @@ func (x *Watching) GetFilesMonitored() int32 {
 	return 0
 }
 
+// Results of daemon auto-discovery of save directories.
+type GamesDiscovered struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Games         []*DiscoveredGame      `protobuf:"bytes,1,rep,name=games,proto3" json:"games,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GamesDiscovered) Reset() {
+	*x = GamesDiscovered{}
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GamesDiscovered) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GamesDiscovered) ProtoMessage() {}
+
+func (x *GamesDiscovered) ProtoReflect() protoreflect.Message {
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GamesDiscovered.ProtoReflect.Descriptor instead.
+func (*GamesDiscovered) Descriptor() ([]byte, []int) {
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *GamesDiscovered) GetGames() []*DiscoveredGame {
+	if x != nil {
+		return x.Games
+	}
+	return nil
+}
+
+type DiscoveredGame struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	GameId        string                 `protobuf:"bytes,1,opt,name=game_id,json=gameId,proto3" json:"game_id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Path          string                 `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
+	FileCount     int32                  `protobuf:"varint,4,opt,name=file_count,json=fileCount,proto3" json:"file_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiscoveredGame) Reset() {
+	*x = DiscoveredGame{}
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiscoveredGame) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiscoveredGame) ProtoMessage() {}
+
+func (x *DiscoveredGame) ProtoReflect() protoreflect.Message {
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiscoveredGame.ProtoReflect.Descriptor instead.
+func (*DiscoveredGame) Descriptor() ([]byte, []int) {
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *DiscoveredGame) GetGameId() string {
+	if x != nil {
+		return x.GameId
+	}
+	return ""
+}
+
+func (x *DiscoveredGame) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *DiscoveredGame) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *DiscoveredGame) GetFileCount() int32 {
+	if x != nil {
+		return x.FileCount
+	}
+	return 0
+}
+
 // Daemon detected a file change and is feeding it to the WASM plugin.
 type ParseStarted struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -949,7 +1094,7 @@ type ParseStarted struct {
 
 func (x *ParseStarted) Reset() {
 	*x = ParseStarted{}
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[8]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -961,7 +1106,7 @@ func (x *ParseStarted) String() string {
 func (*ParseStarted) ProtoMessage() {}
 
 func (x *ParseStarted) ProtoReflect() protoreflect.Message {
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[8]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -974,7 +1119,7 @@ func (x *ParseStarted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ParseStarted.ProtoReflect.Descriptor instead.
 func (*ParseStarted) Descriptor() ([]byte, []int) {
-	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{8}
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ParseStarted) GetGameId() string {
@@ -1004,7 +1149,7 @@ type PluginStatus struct {
 
 func (x *PluginStatus) Reset() {
 	*x = PluginStatus{}
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[9]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1016,7 +1161,7 @@ func (x *PluginStatus) String() string {
 func (*PluginStatus) ProtoMessage() {}
 
 func (x *PluginStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[9]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1029,7 +1174,7 @@ func (x *PluginStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PluginStatus.ProtoReflect.Descriptor instead.
 func (*PluginStatus) Descriptor() ([]byte, []int) {
-	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{9}
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *PluginStatus) GetGameId() string {
@@ -1068,7 +1213,7 @@ type ParseCompleted struct {
 
 func (x *ParseCompleted) Reset() {
 	*x = ParseCompleted{}
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[10]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1080,7 +1225,7 @@ func (x *ParseCompleted) String() string {
 func (*ParseCompleted) ProtoMessage() {}
 
 func (x *ParseCompleted) ProtoReflect() protoreflect.Message {
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[10]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1093,7 +1238,7 @@ func (x *ParseCompleted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ParseCompleted.ProtoReflect.Descriptor instead.
 func (*ParseCompleted) Descriptor() ([]byte, []int) {
-	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{10}
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ParseCompleted) GetGameId() string {
@@ -1151,7 +1296,7 @@ type ParseFailed struct {
 
 func (x *ParseFailed) Reset() {
 	*x = ParseFailed{}
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[11]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1163,7 +1308,7 @@ func (x *ParseFailed) String() string {
 func (*ParseFailed) ProtoMessage() {}
 
 func (x *ParseFailed) ProtoReflect() protoreflect.Message {
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[11]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1176,7 +1321,7 @@ func (x *ParseFailed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ParseFailed.ProtoReflect.Descriptor instead.
 func (*ParseFailed) Descriptor() ([]byte, []int) {
-	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{11}
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ParseFailed) GetGameId() string {
@@ -1219,7 +1364,7 @@ type PushStarted struct {
 
 func (x *PushStarted) Reset() {
 	*x = PushStarted{}
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[12]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1231,7 +1376,7 @@ func (x *PushStarted) String() string {
 func (*PushStarted) ProtoMessage() {}
 
 func (x *PushStarted) ProtoReflect() protoreflect.Message {
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[12]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1244,7 +1389,7 @@ func (x *PushStarted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PushStarted.ProtoReflect.Descriptor instead.
 func (*PushStarted) Descriptor() ([]byte, []int) {
-	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{12}
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *PushStarted) GetGameId() string {
@@ -1282,7 +1427,7 @@ type PushCompleted struct {
 
 func (x *PushCompleted) Reset() {
 	*x = PushCompleted{}
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[13]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1294,7 +1439,7 @@ func (x *PushCompleted) String() string {
 func (*PushCompleted) ProtoMessage() {}
 
 func (x *PushCompleted) ProtoReflect() protoreflect.Message {
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[13]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1307,7 +1452,7 @@ func (x *PushCompleted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PushCompleted.ProtoReflect.Descriptor instead.
 func (*PushCompleted) Descriptor() ([]byte, []int) {
-	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{13}
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *PushCompleted) GetGameId() string {
@@ -1357,7 +1502,7 @@ type PushFailed struct {
 
 func (x *PushFailed) Reset() {
 	*x = PushFailed{}
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[14]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1369,7 +1514,7 @@ func (x *PushFailed) String() string {
 func (*PushFailed) ProtoMessage() {}
 
 func (x *PushFailed) ProtoReflect() protoreflect.Message {
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[14]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1382,7 +1527,7 @@ func (x *PushFailed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PushFailed.ProtoReflect.Descriptor instead.
 func (*PushFailed) Descriptor() ([]byte, []int) {
-	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{14}
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *PushFailed) GetGameId() string {
@@ -1417,7 +1562,7 @@ type PluginUpdated struct {
 
 func (x *PluginUpdated) Reset() {
 	*x = PluginUpdated{}
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[15]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1429,7 +1574,7 @@ func (x *PluginUpdated) String() string {
 func (*PluginUpdated) ProtoMessage() {}
 
 func (x *PluginUpdated) ProtoReflect() protoreflect.Message {
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[15]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1442,7 +1587,7 @@ func (x *PluginUpdated) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PluginUpdated.ProtoReflect.Descriptor instead.
 func (*PluginUpdated) Descriptor() ([]byte, []int) {
-	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{15}
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *PluginUpdated) GetGameId() string {
@@ -1469,7 +1614,7 @@ type ConfigUpdate struct {
 
 func (x *ConfigUpdate) Reset() {
 	*x = ConfigUpdate{}
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[16]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1481,7 +1626,7 @@ func (x *ConfigUpdate) String() string {
 func (*ConfigUpdate) ProtoMessage() {}
 
 func (x *ConfigUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[16]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1494,7 +1639,7 @@ func (x *ConfigUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigUpdate.ProtoReflect.Descriptor instead.
 func (*ConfigUpdate) Descriptor() ([]byte, []int) {
-	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{16}
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ConfigUpdate) GetGames() map[string]*GameConfig {
@@ -1515,7 +1660,7 @@ type GameConfig struct {
 
 func (x *GameConfig) Reset() {
 	*x = GameConfig{}
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[17]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1527,7 +1672,7 @@ func (x *GameConfig) String() string {
 func (*GameConfig) ProtoMessage() {}
 
 func (x *GameConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[17]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1540,7 +1685,7 @@ func (x *GameConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GameConfig.ProtoReflect.Descriptor instead.
 func (*GameConfig) Descriptor() ([]byte, []int) {
-	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{17}
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *GameConfig) GetSavePath() string {
@@ -1574,7 +1719,7 @@ type RescanGame struct {
 
 func (x *RescanGame) Reset() {
 	*x = RescanGame{}
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[18]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1586,7 +1731,7 @@ func (x *RescanGame) String() string {
 func (*RescanGame) ProtoMessage() {}
 
 func (x *RescanGame) ProtoReflect() protoreflect.Message {
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[18]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1599,7 +1744,7 @@ func (x *RescanGame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RescanGame.ProtoReflect.Descriptor instead.
 func (*RescanGame) Descriptor() ([]byte, []int) {
-	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{18}
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *RescanGame) GetGameId() string {
@@ -1621,7 +1766,7 @@ type PluginAvailable struct {
 
 func (x *PluginAvailable) Reset() {
 	*x = PluginAvailable{}
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[19]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1633,7 +1778,7 @@ func (x *PluginAvailable) String() string {
 func (*PluginAvailable) ProtoMessage() {}
 
 func (x *PluginAvailable) ProtoReflect() protoreflect.Message {
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[19]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1646,7 +1791,7 @@ func (x *PluginAvailable) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PluginAvailable.ProtoReflect.Descriptor instead.
 func (*PluginAvailable) Descriptor() ([]byte, []int) {
-	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{19}
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *PluginAvailable) GetGameId() string {
@@ -1670,6 +1815,43 @@ func (x *PluginAvailable) GetUrl() string {
 	return ""
 }
 
+// Request the daemon to re-run save directory discovery.
+type DiscoverGames struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiscoverGames) Reset() {
+	*x = DiscoverGames{}
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiscoverGames) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiscoverGames) ProtoMessage() {}
+
+func (x *DiscoverGames) ProtoReflect() protoreflect.Message {
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiscoverGames.ProtoReflect.Descriptor instead.
+func (*DiscoverGames) Descriptor() ([]byte, []int) {
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{22}
+}
+
 // Full device state snapshot. Sent to UI on WebSocket connect for cold start.
 // Constructed from D1 persisted events so the page isn't blank.
 type DeviceState struct {
@@ -1681,7 +1863,7 @@ type DeviceState struct {
 
 func (x *DeviceState) Reset() {
 	*x = DeviceState{}
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[20]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1693,7 +1875,7 @@ func (x *DeviceState) String() string {
 func (*DeviceState) ProtoMessage() {}
 
 func (x *DeviceState) ProtoReflect() protoreflect.Message {
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[20]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1706,7 +1888,7 @@ func (x *DeviceState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeviceState.ProtoReflect.Descriptor instead.
 func (*DeviceState) Descriptor() ([]byte, []int) {
-	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{20}
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *DeviceState) GetDevices() []*DeviceInfo {
@@ -1728,7 +1910,7 @@ type DeviceInfo struct {
 
 func (x *DeviceInfo) Reset() {
 	*x = DeviceInfo{}
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[21]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1740,7 +1922,7 @@ func (x *DeviceInfo) String() string {
 func (*DeviceInfo) ProtoMessage() {}
 
 func (x *DeviceInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[21]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1753,7 +1935,7 @@ func (x *DeviceInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeviceInfo.ProtoReflect.Descriptor instead.
 func (*DeviceInfo) Descriptor() ([]byte, []int) {
-	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{21}
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *DeviceInfo) GetDeviceId() string {
@@ -1797,7 +1979,7 @@ type GameInfo struct {
 
 func (x *GameInfo) Reset() {
 	*x = GameInfo{}
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[22]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1809,7 +1991,7 @@ func (x *GameInfo) String() string {
 func (*GameInfo) ProtoMessage() {}
 
 func (x *GameInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[22]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1822,7 +2004,7 @@ func (x *GameInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GameInfo.ProtoReflect.Descriptor instead.
 func (*GameInfo) Descriptor() ([]byte, []int) {
-	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{22}
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GameInfo) GetGameId() string {
@@ -1872,7 +2054,7 @@ type SaveInfo struct {
 
 func (x *SaveInfo) Reset() {
 	*x = SaveInfo{}
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[23]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1884,7 +2066,7 @@ func (x *SaveInfo) String() string {
 func (*SaveInfo) ProtoMessage() {}
 
 func (x *SaveInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[23]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1897,7 +2079,7 @@ func (x *SaveInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveInfo.ProtoReflect.Descriptor instead.
 func (*SaveInfo) Descriptor() ([]byte, []int) {
-	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{23}
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *SaveInfo) GetSaveUuid() string {
@@ -1939,7 +2121,7 @@ type TestPath struct {
 
 func (x *TestPath) Reset() {
 	*x = TestPath{}
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[24]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1951,7 +2133,7 @@ func (x *TestPath) String() string {
 func (*TestPath) ProtoMessage() {}
 
 func (x *TestPath) ProtoReflect() protoreflect.Message {
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[24]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1964,7 +2146,7 @@ func (x *TestPath) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TestPath.ProtoReflect.Descriptor instead.
 func (*TestPath) Descriptor() ([]byte, []int) {
-	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{24}
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *TestPath) GetGameId() string {
@@ -1995,7 +2177,7 @@ type TestPathResult struct {
 
 func (x *TestPathResult) Reset() {
 	*x = TestPathResult{}
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[25]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2007,7 +2189,7 @@ func (x *TestPathResult) String() string {
 func (*TestPathResult) ProtoMessage() {}
 
 func (x *TestPathResult) ProtoReflect() protoreflect.Message {
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[25]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2020,7 +2202,7 @@ func (x *TestPathResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TestPathResult.ProtoReflect.Descriptor instead.
 func (*TestPathResult) Descriptor() ([]byte, []int) {
-	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{25}
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *TestPathResult) GetGameId() string {
@@ -2072,7 +2254,7 @@ type SaveIdentity struct {
 
 func (x *SaveIdentity) Reset() {
 	*x = SaveIdentity{}
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[26]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2084,7 +2266,7 @@ func (x *SaveIdentity) String() string {
 func (*SaveIdentity) ProtoMessage() {}
 
 func (x *SaveIdentity) ProtoReflect() protoreflect.Message {
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[26]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2097,7 +2279,7 @@ func (x *SaveIdentity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveIdentity.ProtoReflect.Descriptor instead.
 func (*SaveIdentity) Descriptor() ([]byte, []int) {
-	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{26}
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *SaveIdentity) GetName() string {
@@ -2118,7 +2300,7 @@ var File_savecraft_v1_protocol_proto protoreflect.FileDescriptor
 
 const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\n" +
-	"\x1bsavecraft/v1/protocol.proto\x12\fsavecraft.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\"\x85\v\n" +
+	"\x1bsavecraft/v1/protocol.proto\x12\fsavecraft.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\"\x97\f\n" +
 	"\aMessage\x12A\n" +
 	"\rdaemon_online\x18\x01 \x01(\v2\x1a.savecraft.v1.DaemonOnlineH\x00R\fdaemonOnline\x12D\n" +
 	"\x0edaemon_offline\x18\x02 \x01(\v2\x1b.savecraft.v1.DaemonOfflineH\x00R\rdaemonOffline\x12>\n" +
@@ -2127,7 +2309,8 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\x0escan_completed\x18\v \x01(\v2\x1b.savecraft.v1.ScanCompletedH\x00R\rscanCompleted\x12A\n" +
 	"\rgame_detected\x18\f \x01(\v2\x1a.savecraft.v1.GameDetectedH\x00R\fgameDetected\x12B\n" +
 	"\x0egame_not_found\x18\r \x01(\v2\x1a.savecraft.v1.GameNotFoundH\x00R\fgameNotFound\x124\n" +
-	"\bwatching\x18\x0e \x01(\v2\x16.savecraft.v1.WatchingH\x00R\bwatching\x12A\n" +
+	"\bwatching\x18\x0e \x01(\v2\x16.savecraft.v1.WatchingH\x00R\bwatching\x12J\n" +
+	"\x10games_discovered\x18\x0f \x01(\v2\x1d.savecraft.v1.GamesDiscoveredH\x00R\x0fgamesDiscovered\x12A\n" +
 	"\rparse_started\x18\x14 \x01(\v2\x1a.savecraft.v1.ParseStartedH\x00R\fparseStarted\x12A\n" +
 	"\rplugin_status\x18\x15 \x01(\v2\x1a.savecraft.v1.PluginStatusH\x00R\fpluginStatus\x12G\n" +
 	"\x0fparse_completed\x18\x16 \x01(\v2\x1c.savecraft.v1.ParseCompletedH\x00R\x0eparseCompleted\x12>\n" +
@@ -2140,7 +2323,8 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\rconfig_update\x182 \x01(\v2\x1a.savecraft.v1.ConfigUpdateH\x00R\fconfigUpdate\x12;\n" +
 	"\vrescan_game\x183 \x01(\v2\x18.savecraft.v1.RescanGameH\x00R\n" +
 	"rescanGame\x12J\n" +
-	"\x10plugin_available\x184 \x01(\v2\x1d.savecraft.v1.PluginAvailableH\x00R\x0fpluginAvailable\x12>\n" +
+	"\x10plugin_available\x184 \x01(\v2\x1d.savecraft.v1.PluginAvailableH\x00R\x0fpluginAvailable\x12D\n" +
+	"\x0ediscover_games\x185 \x01(\v2\x1b.savecraft.v1.DiscoverGamesH\x00R\rdiscoverGames\x12>\n" +
 	"\fdevice_state\x18< \x01(\v2\x19.savecraft.v1.DeviceStateH\x00R\vdeviceState\x125\n" +
 	"\ttest_path\x18F \x01(\v2\x16.savecraft.v1.TestPathH\x00R\btestPath\x12H\n" +
 	"\x10test_path_result\x18G \x01(\v2\x1c.savecraft.v1.TestPathResultH\x00R\x0etestPathResultB\t\n" +
@@ -2173,7 +2357,15 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\bWatching\x12\x17\n" +
 	"\agame_id\x18\x01 \x01(\tR\x06gameId\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12'\n" +
-	"\x0ffiles_monitored\x18\x03 \x01(\x05R\x0efilesMonitored\"D\n" +
+	"\x0ffiles_monitored\x18\x03 \x01(\x05R\x0efilesMonitored\"E\n" +
+	"\x0fGamesDiscovered\x122\n" +
+	"\x05games\x18\x01 \x03(\v2\x1c.savecraft.v1.DiscoveredGameR\x05games\"p\n" +
+	"\x0eDiscoveredGame\x12\x17\n" +
+	"\agame_id\x18\x01 \x01(\tR\x06gameId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
+	"\x04path\x18\x03 \x01(\tR\x04path\x12\x1d\n" +
+	"\n" +
+	"file_count\x18\x04 \x01(\x05R\tfileCount\"D\n" +
 	"\fParseStarted\x12\x17\n" +
 	"\agame_id\x18\x01 \x01(\tR\x06gameId\x12\x1b\n" +
 	"\tfile_name\x18\x02 \x01(\tR\bfileName\"^\n" +
@@ -2233,7 +2425,8 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\x0fPluginAvailable\x12\x17\n" +
 	"\agame_id\x18\x01 \x01(\tR\x06gameId\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12\x10\n" +
-	"\x03url\x18\x03 \x01(\tR\x03url\"A\n" +
+	"\x03url\x18\x03 \x01(\tR\x03url\"\x0f\n" +
+	"\rDiscoverGames\"A\n" +
 	"\vDeviceState\x122\n" +
 	"\adevices\x18\x01 \x03(\v2\x18.savecraft.v1.DeviceInfoR\adevices\"\xa8\x01\n" +
 	"\n" +
@@ -2292,7 +2485,7 @@ func file_savecraft_v1_protocol_proto_rawDescGZIP() []byte {
 }
 
 var file_savecraft_v1_protocol_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_savecraft_v1_protocol_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_savecraft_v1_protocol_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_savecraft_v1_protocol_proto_goTypes = []any{
 	(ParseErrorType)(0),           // 0: savecraft.v1.ParseErrorType
 	(GameStatusEnum)(0),           // 1: savecraft.v1.GameStatusEnum
@@ -2304,28 +2497,31 @@ var file_savecraft_v1_protocol_proto_goTypes = []any{
 	(*GameDetected)(nil),          // 7: savecraft.v1.GameDetected
 	(*GameNotFound)(nil),          // 8: savecraft.v1.GameNotFound
 	(*Watching)(nil),              // 9: savecraft.v1.Watching
-	(*ParseStarted)(nil),          // 10: savecraft.v1.ParseStarted
-	(*PluginStatus)(nil),          // 11: savecraft.v1.PluginStatus
-	(*ParseCompleted)(nil),        // 12: savecraft.v1.ParseCompleted
-	(*ParseFailed)(nil),           // 13: savecraft.v1.ParseFailed
-	(*PushStarted)(nil),           // 14: savecraft.v1.PushStarted
-	(*PushCompleted)(nil),         // 15: savecraft.v1.PushCompleted
-	(*PushFailed)(nil),            // 16: savecraft.v1.PushFailed
-	(*PluginUpdated)(nil),         // 17: savecraft.v1.PluginUpdated
-	(*ConfigUpdate)(nil),          // 18: savecraft.v1.ConfigUpdate
-	(*GameConfig)(nil),            // 19: savecraft.v1.GameConfig
-	(*RescanGame)(nil),            // 20: savecraft.v1.RescanGame
-	(*PluginAvailable)(nil),       // 21: savecraft.v1.PluginAvailable
-	(*DeviceState)(nil),           // 22: savecraft.v1.DeviceState
-	(*DeviceInfo)(nil),            // 23: savecraft.v1.DeviceInfo
-	(*GameInfo)(nil),              // 24: savecraft.v1.GameInfo
-	(*SaveInfo)(nil),              // 25: savecraft.v1.SaveInfo
-	(*TestPath)(nil),              // 26: savecraft.v1.TestPath
-	(*TestPathResult)(nil),        // 27: savecraft.v1.TestPathResult
-	(*SaveIdentity)(nil),          // 28: savecraft.v1.SaveIdentity
-	nil,                           // 29: savecraft.v1.ConfigUpdate.GamesEntry
-	(*timestamppb.Timestamp)(nil), // 30: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),       // 31: google.protobuf.Struct
+	(*GamesDiscovered)(nil),       // 10: savecraft.v1.GamesDiscovered
+	(*DiscoveredGame)(nil),        // 11: savecraft.v1.DiscoveredGame
+	(*ParseStarted)(nil),          // 12: savecraft.v1.ParseStarted
+	(*PluginStatus)(nil),          // 13: savecraft.v1.PluginStatus
+	(*ParseCompleted)(nil),        // 14: savecraft.v1.ParseCompleted
+	(*ParseFailed)(nil),           // 15: savecraft.v1.ParseFailed
+	(*PushStarted)(nil),           // 16: savecraft.v1.PushStarted
+	(*PushCompleted)(nil),         // 17: savecraft.v1.PushCompleted
+	(*PushFailed)(nil),            // 18: savecraft.v1.PushFailed
+	(*PluginUpdated)(nil),         // 19: savecraft.v1.PluginUpdated
+	(*ConfigUpdate)(nil),          // 20: savecraft.v1.ConfigUpdate
+	(*GameConfig)(nil),            // 21: savecraft.v1.GameConfig
+	(*RescanGame)(nil),            // 22: savecraft.v1.RescanGame
+	(*PluginAvailable)(nil),       // 23: savecraft.v1.PluginAvailable
+	(*DiscoverGames)(nil),         // 24: savecraft.v1.DiscoverGames
+	(*DeviceState)(nil),           // 25: savecraft.v1.DeviceState
+	(*DeviceInfo)(nil),            // 26: savecraft.v1.DeviceInfo
+	(*GameInfo)(nil),              // 27: savecraft.v1.GameInfo
+	(*SaveInfo)(nil),              // 28: savecraft.v1.SaveInfo
+	(*TestPath)(nil),              // 29: savecraft.v1.TestPath
+	(*TestPathResult)(nil),        // 30: savecraft.v1.TestPathResult
+	(*SaveIdentity)(nil),          // 31: savecraft.v1.SaveIdentity
+	nil,                           // 32: savecraft.v1.ConfigUpdate.GamesEntry
+	(*timestamppb.Timestamp)(nil), // 33: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),       // 34: google.protobuf.Struct
 }
 var file_savecraft_v1_protocol_proto_depIdxs = []int32{
 	3,  // 0: savecraft.v1.Message.daemon_online:type_name -> savecraft.v1.DaemonOnline
@@ -2335,40 +2531,43 @@ var file_savecraft_v1_protocol_proto_depIdxs = []int32{
 	7,  // 4: savecraft.v1.Message.game_detected:type_name -> savecraft.v1.GameDetected
 	8,  // 5: savecraft.v1.Message.game_not_found:type_name -> savecraft.v1.GameNotFound
 	9,  // 6: savecraft.v1.Message.watching:type_name -> savecraft.v1.Watching
-	10, // 7: savecraft.v1.Message.parse_started:type_name -> savecraft.v1.ParseStarted
-	11, // 8: savecraft.v1.Message.plugin_status:type_name -> savecraft.v1.PluginStatus
-	12, // 9: savecraft.v1.Message.parse_completed:type_name -> savecraft.v1.ParseCompleted
-	13, // 10: savecraft.v1.Message.parse_failed:type_name -> savecraft.v1.ParseFailed
-	14, // 11: savecraft.v1.Message.push_started:type_name -> savecraft.v1.PushStarted
-	15, // 12: savecraft.v1.Message.push_completed:type_name -> savecraft.v1.PushCompleted
-	16, // 13: savecraft.v1.Message.push_failed:type_name -> savecraft.v1.PushFailed
-	17, // 14: savecraft.v1.Message.plugin_updated:type_name -> savecraft.v1.PluginUpdated
-	18, // 15: savecraft.v1.Message.config_update:type_name -> savecraft.v1.ConfigUpdate
-	20, // 16: savecraft.v1.Message.rescan_game:type_name -> savecraft.v1.RescanGame
-	21, // 17: savecraft.v1.Message.plugin_available:type_name -> savecraft.v1.PluginAvailable
-	22, // 18: savecraft.v1.Message.device_state:type_name -> savecraft.v1.DeviceState
-	26, // 19: savecraft.v1.Message.test_path:type_name -> savecraft.v1.TestPath
-	27, // 20: savecraft.v1.Message.test_path_result:type_name -> savecraft.v1.TestPathResult
-	30, // 21: savecraft.v1.DaemonOnline.timestamp:type_name -> google.protobuf.Timestamp
-	30, // 22: savecraft.v1.DaemonOffline.timestamp:type_name -> google.protobuf.Timestamp
-	28, // 23: savecraft.v1.ParseCompleted.identity:type_name -> savecraft.v1.SaveIdentity
-	0,  // 24: savecraft.v1.ParseFailed.error_type:type_name -> savecraft.v1.ParseErrorType
-	29, // 25: savecraft.v1.ConfigUpdate.games:type_name -> savecraft.v1.ConfigUpdate.GamesEntry
-	23, // 26: savecraft.v1.DeviceState.devices:type_name -> savecraft.v1.DeviceInfo
-	30, // 27: savecraft.v1.DeviceInfo.last_seen:type_name -> google.protobuf.Timestamp
-	24, // 28: savecraft.v1.DeviceInfo.games:type_name -> savecraft.v1.GameInfo
-	1,  // 29: savecraft.v1.GameInfo.status:type_name -> savecraft.v1.GameStatusEnum
-	25, // 30: savecraft.v1.GameInfo.saves:type_name -> savecraft.v1.SaveInfo
-	30, // 31: savecraft.v1.GameInfo.last_activity:type_name -> google.protobuf.Timestamp
-	28, // 32: savecraft.v1.SaveInfo.identity:type_name -> savecraft.v1.SaveIdentity
-	30, // 33: savecraft.v1.SaveInfo.last_updated:type_name -> google.protobuf.Timestamp
-	31, // 34: savecraft.v1.SaveIdentity.extra:type_name -> google.protobuf.Struct
-	19, // 35: savecraft.v1.ConfigUpdate.GamesEntry.value:type_name -> savecraft.v1.GameConfig
-	36, // [36:36] is the sub-list for method output_type
-	36, // [36:36] is the sub-list for method input_type
-	36, // [36:36] is the sub-list for extension type_name
-	36, // [36:36] is the sub-list for extension extendee
-	0,  // [0:36] is the sub-list for field type_name
+	10, // 7: savecraft.v1.Message.games_discovered:type_name -> savecraft.v1.GamesDiscovered
+	12, // 8: savecraft.v1.Message.parse_started:type_name -> savecraft.v1.ParseStarted
+	13, // 9: savecraft.v1.Message.plugin_status:type_name -> savecraft.v1.PluginStatus
+	14, // 10: savecraft.v1.Message.parse_completed:type_name -> savecraft.v1.ParseCompleted
+	15, // 11: savecraft.v1.Message.parse_failed:type_name -> savecraft.v1.ParseFailed
+	16, // 12: savecraft.v1.Message.push_started:type_name -> savecraft.v1.PushStarted
+	17, // 13: savecraft.v1.Message.push_completed:type_name -> savecraft.v1.PushCompleted
+	18, // 14: savecraft.v1.Message.push_failed:type_name -> savecraft.v1.PushFailed
+	19, // 15: savecraft.v1.Message.plugin_updated:type_name -> savecraft.v1.PluginUpdated
+	20, // 16: savecraft.v1.Message.config_update:type_name -> savecraft.v1.ConfigUpdate
+	22, // 17: savecraft.v1.Message.rescan_game:type_name -> savecraft.v1.RescanGame
+	23, // 18: savecraft.v1.Message.plugin_available:type_name -> savecraft.v1.PluginAvailable
+	24, // 19: savecraft.v1.Message.discover_games:type_name -> savecraft.v1.DiscoverGames
+	25, // 20: savecraft.v1.Message.device_state:type_name -> savecraft.v1.DeviceState
+	29, // 21: savecraft.v1.Message.test_path:type_name -> savecraft.v1.TestPath
+	30, // 22: savecraft.v1.Message.test_path_result:type_name -> savecraft.v1.TestPathResult
+	33, // 23: savecraft.v1.DaemonOnline.timestamp:type_name -> google.protobuf.Timestamp
+	33, // 24: savecraft.v1.DaemonOffline.timestamp:type_name -> google.protobuf.Timestamp
+	11, // 25: savecraft.v1.GamesDiscovered.games:type_name -> savecraft.v1.DiscoveredGame
+	31, // 26: savecraft.v1.ParseCompleted.identity:type_name -> savecraft.v1.SaveIdentity
+	0,  // 27: savecraft.v1.ParseFailed.error_type:type_name -> savecraft.v1.ParseErrorType
+	32, // 28: savecraft.v1.ConfigUpdate.games:type_name -> savecraft.v1.ConfigUpdate.GamesEntry
+	26, // 29: savecraft.v1.DeviceState.devices:type_name -> savecraft.v1.DeviceInfo
+	33, // 30: savecraft.v1.DeviceInfo.last_seen:type_name -> google.protobuf.Timestamp
+	27, // 31: savecraft.v1.DeviceInfo.games:type_name -> savecraft.v1.GameInfo
+	1,  // 32: savecraft.v1.GameInfo.status:type_name -> savecraft.v1.GameStatusEnum
+	28, // 33: savecraft.v1.GameInfo.saves:type_name -> savecraft.v1.SaveInfo
+	33, // 34: savecraft.v1.GameInfo.last_activity:type_name -> google.protobuf.Timestamp
+	31, // 35: savecraft.v1.SaveInfo.identity:type_name -> savecraft.v1.SaveIdentity
+	33, // 36: savecraft.v1.SaveInfo.last_updated:type_name -> google.protobuf.Timestamp
+	34, // 37: savecraft.v1.SaveIdentity.extra:type_name -> google.protobuf.Struct
+	21, // 38: savecraft.v1.ConfigUpdate.GamesEntry.value:type_name -> savecraft.v1.GameConfig
+	39, // [39:39] is the sub-list for method output_type
+	39, // [39:39] is the sub-list for method input_type
+	39, // [39:39] is the sub-list for extension type_name
+	39, // [39:39] is the sub-list for extension extendee
+	0,  // [0:39] is the sub-list for field type_name
 }
 
 func init() { file_savecraft_v1_protocol_proto_init() }
@@ -2384,6 +2583,7 @@ func file_savecraft_v1_protocol_proto_init() {
 		(*Message_GameDetected)(nil),
 		(*Message_GameNotFound)(nil),
 		(*Message_Watching)(nil),
+		(*Message_GamesDiscovered)(nil),
 		(*Message_ParseStarted)(nil),
 		(*Message_PluginStatus)(nil),
 		(*Message_ParseCompleted)(nil),
@@ -2395,6 +2595,7 @@ func file_savecraft_v1_protocol_proto_init() {
 		(*Message_ConfigUpdate)(nil),
 		(*Message_RescanGame)(nil),
 		(*Message_PluginAvailable)(nil),
+		(*Message_DiscoverGames)(nil),
 		(*Message_DeviceState)(nil),
 		(*Message_TestPath)(nil),
 		(*Message_TestPathResult)(nil),
@@ -2405,7 +2606,7 @@ func file_savecraft_v1_protocol_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_savecraft_v1_protocol_proto_rawDesc), len(file_savecraft_v1_protocol_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   28,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
