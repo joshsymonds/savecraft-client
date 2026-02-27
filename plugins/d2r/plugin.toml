@@ -4,11 +4,10 @@ description = "Parses .d2s character save files from Reign of the Warlock (v105)
 version = "0.0.1"
 channel = "beta"
 coverage = "partial"
-file_extensions = [".d2s"]
+file_extensions = [".d2s", ".d2i"]
 homepage = "https://savecraft.gg/plugins/d2r"
 
 limitations = [
-  "Shared stash (.d2i) not yet supported",
   "Only Reign of the Warlock (v105) saves — classic LoD not supported",
 ]
 

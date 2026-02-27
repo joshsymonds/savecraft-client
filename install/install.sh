@@ -228,21 +228,33 @@ create_env_template() {
         return
     fi
 
-    cat > "${CONFIG_DIR}/env" << 'ENV'
-# Savecraft Daemon configuration
-# Uncomment and fill in the values below.
+    {
+        echo "# Savecraft Daemon configuration"
+        echo ""
+        # Write actual values from env vars if provided, otherwise commented template
+        if [[ -n "${SAVECRAFT_SERVER_URL:-}" ]]; then
+            echo "SAVECRAFT_SERVER_URL=${SAVECRAFT_SERVER_URL}"
+        else
+            echo "# Server URL (default: wss://api.savecraft.gg)"
+            echo "# SAVECRAFT_SERVER_URL=wss://api.savecraft.gg"
+        fi
+        echo ""
+        if [[ -n "${SAVECRAFT_AUTH_TOKEN:-}" ]]; then
+            echo "SAVECRAFT_AUTH_TOKEN=${SAVECRAFT_AUTH_TOKEN}"
+        else
+            echo "# Authentication token from your savecraft.gg account"
+            echo "# SAVECRAFT_AUTH_TOKEN="
+        fi
+        echo ""
+        echo "# Log level: debug, info, warn, error (default: info)"
+        echo "# SAVECRAFT_LOG_LEVEL=info"
+    } > "${CONFIG_DIR}/env"
 
-# Server URL (default: wss://api.savecraft.gg)
-# SAVECRAFT_SERVER_URL=wss://api.savecraft.gg
-
-# Authentication token from your savecraft.gg account
-# SAVECRAFT_AUTH_TOKEN=
-
-# Log level: debug, info, warn, error (default: info)
-# SAVECRAFT_LOG_LEVEL=info
-ENV
-
-    info "Created env template at ${CONFIG_DIR}/env"
+    if [[ -n "${SAVECRAFT_AUTH_TOKEN:-}" ]]; then
+        ok "Created env file with auth token at ${CONFIG_DIR}/env"
+    else
+        info "Created env template at ${CONFIG_DIR}/env"
+    fi
 }
 
 # ---------------------------------------------------------------------------
