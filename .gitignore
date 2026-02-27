@@ -2,10 +2,6 @@
 .devenv/
 .devenv.flake.nix
 
-# Generated protobuf code
-internal/proto/
-worker/src/proto/
-
 # direnv
 .direnv/
 

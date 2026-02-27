@@ -7,7 +7,6 @@ issues:
   max-issues-per-linter: 0
   max-same-issues: 50
   new: false
-  exclude-generated: false
 
 formatters:
   enable:
@@ -16,14 +15,15 @@ formatters:
 
   settings:
     goimports:
-      local-prefixes: github.com/joshsymonds/savecraft.gg
+      local-prefixes:
+        - github.com/joshsymonds/savecraft.gg
 
     golines:
       max-len: 120
       chain-split-dots: true
 
 linters:
-  disable-all: true
+  default: none
   enable:
     # Essential - Must Have
     - errcheck
@@ -380,7 +380,6 @@ linters:
     goconst:
       min-len: 3
       min-occurrences: 3
-      ignore-tests: true
 
     dupl:
       threshold: 150
@@ -402,7 +401,7 @@ linters:
         - any
 
     wrapcheck:
-      ignoreSigs:
+      ignore-sigs:
         - .Errorf(
         - errors.New(
         - errors.Unwrap(
@@ -412,11 +411,8 @@ linters:
         - .WithMessage(
         - .WithMessagef(
         - .WithStack(
-      ignorePackageGlobs:
+      ignore-package-globs:
         - testing
-
-    errname:
-      skip-single: true
 
     unparam:
       check-exported: true
@@ -562,6 +558,5 @@ run:
   timeout: 5m
   concurrency: 0
   tests: true
-  skip-dirs-use-default: true
   modules-download-mode: readonly
   build-tags: []

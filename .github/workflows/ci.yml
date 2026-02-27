@@ -97,6 +97,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Generate SvelteKit types
+        run: npx svelte-kit sync
+
       - uses: taiki-e/install-action@just
 
       - name: Lint
