@@ -315,6 +315,89 @@ func d2rRunner() *fakeRunner {
 	return &fakeRunner{results: map[string]*GameState{"d2r": newD2RState()}}
 }
 
+func newStashState() *GameState {
+	return &GameState{
+		Identity: Identity{
+			GameID: "d2r",
+		},
+		Summary: "Shared Stash (Softcore), 60 items, 0 gold",
+		Sections: map[string]Section{
+			"overview": {Description: "Shared stash overview", Data: map[string]any{"gold": float64(0)}},
+		},
+	}
+}
+
+// --- Tests: game-scoped identity ---
+
+func TestGameScopedIdentity_OmitsCharacterName(t *testing.T) {
+	state := newStashState()
+	data, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	// characterName should not appear in JSON when empty.
+	var raw map[string]json.RawMessage
+	if unmarshalErr := json.Unmarshal(data, &raw); unmarshalErr != nil {
+		t.Fatalf("unmarshal: %v", unmarshalErr)
+	}
+	var identity map[string]json.RawMessage
+	if unmarshalErr := json.Unmarshal(raw["identity"], &identity); unmarshalErr != nil {
+		t.Fatalf("unmarshal identity: %v", unmarshalErr)
+	}
+	if _, hasCharName := identity["characterName"]; hasCharName {
+		t.Error("game-scoped identity should not have characterName key")
+	}
+	if string(identity["gameId"]) != `"d2r"` {
+		t.Errorf("gameId = %s, want \"d2r\"", identity["gameId"])
+	}
+}
+
+func TestParseAndPush_GameScopedSave(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := &fakeRunner{results: map[string]*GameState{"d2r": newStashState()}}
+	pusher := &fakePushClient{}
+	fsys := &fakeFS{
+		files: map[string][]byte{"/saves/d2r/SharedStash.d2i": []byte("stash data")},
+	}
+	cfg := Config{
+		DeviceID: "deck",
+		Version:  "0.1.0",
+		Games: map[string]GameConfig{
+			"d2r": {SavePath: "/saves/d2r", FileExtensions: []string{".d2s", ".d2i"}, Enabled: true},
+		},
+	}
+
+	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws)
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/SharedStash.d2i", "SharedStash.d2i")
+
+	types := ws.sentEventTypes()
+	if !slices.Contains(types, "pushCompleted") {
+		t.Error("missing pushCompleted")
+	}
+
+	// Identity in parseCompleted should have empty name for game-scoped saves.
+	completed := ws.sentEvent("parseCompleted", 0)
+	identity, ok := completed["identity"].(map[string]any)
+	if !ok {
+		t.Fatal("parseCompleted missing identity")
+	}
+	if _, hasCharName := identity["characterName"]; hasCharName {
+		t.Error("game-scoped parseCompleted should not have characterName")
+	}
+
+	// Pushed state should have empty CharacterName.
+	if len(pusher.calls) != 1 {
+		t.Fatalf("pusher called %d times, want 1", len(pusher.calls))
+	}
+	if pusher.calls[0].State.Identity.CharacterName != "" {
+		t.Errorf("pushed characterName = %q, want empty", pusher.calls[0].State.Identity.CharacterName)
+	}
+	if pusher.calls[0].State.Identity.GameID != "d2r" {
+		t.Errorf("pushed gameId = %q, want d2r", pusher.calls[0].State.Identity.GameID)
+	}
+}
+
 // --- Tests: scanGame ---
 
 func TestScanGame_DetectsGame(t *testing.T) {

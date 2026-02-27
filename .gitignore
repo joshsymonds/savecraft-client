@@ -16,14 +16,18 @@ worker/src/proto/
 /bin/
 /vendor/
 
-# Compiled WASM plugins
+# Compiled WASM plugins and binaries
 plugins/**/*.wasm
+/d2r
 
 # Node
 node_modules/
 
 # SvelteKit generated
 .svelte-kit/
+
+# Storybook
+web/storybook-static/
 
 # Cloudflare
 .wrangler/

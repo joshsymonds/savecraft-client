@@ -210,7 +210,7 @@ type pluginLine struct {
 }
 
 type pluginIdentity struct {
-	CharacterName string         `json:"characterName"`
+	CharacterName string         `json:"characterName,omitempty"`
 	GameID        string         `json:"gameId"`
 	Extra         map[string]any `json:"extra,omitempty"`
 }

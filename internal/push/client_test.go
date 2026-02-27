@@ -138,6 +138,43 @@ func TestPush_RequestBody(t *testing.T) {
 	}
 }
 
+func TestPush_GameScopedBody_OmitsCharacterName(t *testing.T) {
+	srv, captured := newTestServer(t, http.StatusCreated, daemon.PushResult{})
+
+	state := &daemon.GameState{
+		Identity: daemon.Identity{
+			GameID: "d2r",
+			// CharacterName intentionally empty — game-scoped save.
+		},
+		Summary: "Shared Stash (Softcore), 60 items",
+		Sections: map[string]daemon.Section{
+			"overview": {Description: "Shared stash overview", Data: map[string]any{"gold": float64(0)}},
+		},
+	}
+
+	client := newTestClient(t, srv.URL, "token")
+	_, err := client.Push(context.Background(), "d2r", state, testParsedAt())
+	if err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+
+	// The JSON body should not include characterName at all.
+	var raw map[string]json.RawMessage
+	if unmarshalErr := json.Unmarshal(captured.body, &raw); unmarshalErr != nil {
+		t.Fatalf("unmarshal body: %v", unmarshalErr)
+	}
+	var identity map[string]json.RawMessage
+	if unmarshalErr := json.Unmarshal(raw["identity"], &identity); unmarshalErr != nil {
+		t.Fatalf("unmarshal identity: %v", unmarshalErr)
+	}
+	if _, hasCharName := identity["characterName"]; hasCharName {
+		t.Error("game-scoped push body should not have characterName key")
+	}
+	if string(identity["gameId"]) != `"d2r"` {
+		t.Errorf("gameId = %s, want \"d2r\"", identity["gameId"])
+	}
+}
+
 func TestPush_ServerError(t *testing.T) {
 	srv, _ := newTestServer(t, http.StatusInternalServerError, nil)
 
