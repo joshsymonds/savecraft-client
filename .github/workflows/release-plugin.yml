@@ -80,7 +80,7 @@ jobs:
 
             # Fetch current manifest from R2 to compare versions
             set +e
-            current_manifest=$(wrangler r2 object get "savecraft-plugins/plugins/${game_id}/manifest.json" 2>/dev/null)
+            current_manifest=$(wrangler r2 object get "savecraft-snapshots/plugins/${game_id}/manifest.json" 2>/dev/null)
             fetch_rc=$?
             set -e
 
@@ -106,9 +106,9 @@ jobs:
             go run ./cmd/plugin-manifest/ "plugins/${game_id}"
 
             # Upload to R2
-            wrangler r2 object put "savecraft-plugins/plugins/${game_id}/parser.wasm" --file "$wasm_file"
-            wrangler r2 object put "savecraft-plugins/plugins/${game_id}/parser.wasm.sig" --file "${wasm_file}.sig"
-            wrangler r2 object put "savecraft-plugins/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json"
+            wrangler r2 object put "savecraft-snapshots/plugins/${game_id}/parser.wasm" --file "$wasm_file"
+            wrangler r2 object put "savecraft-snapshots/plugins/${game_id}/parser.wasm.sig" --file "${wasm_file}.sig"
+            wrangler r2 object put "savecraft-snapshots/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json"
 
             echo "    Published ${game_id} v${new_version}"
           done
