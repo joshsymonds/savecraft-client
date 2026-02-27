@@ -1,6 +1,7 @@
 { pkgs, ... }:
 
 {
+  dotenv.enable = true;
   packages = [
     # Go daemon + plugins
     pkgs.go_1_26
@@ -40,5 +41,6 @@
     export MINIFLARE_WORKERD_PATH="$(find ${pkgs.nodePackages.wrangler}/lib -name workerd -path '*/workerd-linux-64/bin/workerd' | head -1)"
   '';
 
+  processes.web.exec = "cd web && npm run dev";
   processes.storybook.exec = "cd web && npm run storybook";
 }

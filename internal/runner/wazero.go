@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,22 +18,37 @@ import (
 	"github.com/tetratelabs/wazero/sys"
 
 	"github.com/joshsymonds/savecraft.gg/internal/daemon"
+	"github.com/joshsymonds/savecraft.gg/internal/signing"
 )
 
 const maxResultSize = 2 * 1024 * 1024 // 2MB
 
+// Option configures a WazeroRunner.
+type Option func(*WazeroRunner)
+
+// WithVerifier enables Ed25519 signature verification on plugin load.
+// When set, LoadPlugin requires a valid signature for the WASM bytes.
+func WithVerifier(publicKey ed25519.PublicKey) Option {
+	return func(wr *WazeroRunner) {
+		wr.verifier = func(wasmBytes, sigBytes []byte) error {
+			return signing.Verify(publicKey, wasmBytes, sigBytes)
+		}
+	}
+}
+
 // WazeroRunner runs WASM plugins using the wazero runtime.
 // It satisfies the daemon.Runner interface.
 type WazeroRunner struct {
-	runtime wazero.Runtime
-	modules map[string]wazero.CompiledModule
-	mu      sync.RWMutex
-	counter atomic.Uint64
+	runtime  wazero.Runtime
+	modules  map[string]wazero.CompiledModule
+	mu       sync.RWMutex
+	counter  atomic.Uint64
+	verifier func(wasmBytes, sigBytes []byte) error
 }
 
 // NewWazeroRunner creates a new WazeroRunner backed by a wazero runtime with
 // WASI snapshot preview1 support.
-func NewWazeroRunner(ctx context.Context) (*WazeroRunner, error) {
+func NewWazeroRunner(ctx context.Context, opts ...Option) (*WazeroRunner, error) {
 	rt := wazero.NewRuntime(ctx)
 	if _, err := wasi_snapshot_preview1.Instantiate(ctx, rt); err != nil {
 		if closeErr := rt.Close(ctx); closeErr != nil {
@@ -43,14 +59,24 @@ func NewWazeroRunner(ctx context.Context) (*WazeroRunner, error) {
 		}
 		return nil, fmt.Errorf("instantiate wasi: %w", err)
 	}
-	return &WazeroRunner{
+	wr := &WazeroRunner{
 		runtime: rt,
 		modules: make(map[string]wazero.CompiledModule),
-	}, nil
+	}
+	for _, opt := range opts {
+		opt(wr)
+	}
+	return wr, nil
 }
 
 // LoadPlugin compiles a WASM binary and registers it for the given game ID.
-func (wr *WazeroRunner) LoadPlugin(ctx context.Context, gameID string, wasmBytes []byte) error {
+// When a verifier is configured, sigBytes must contain a valid Ed25519 signature.
+func (wr *WazeroRunner) LoadPlugin(ctx context.Context, gameID string, wasmBytes, sigBytes []byte) error {
+	if wr.verifier != nil {
+		if err := wr.verifier(wasmBytes, sigBytes); err != nil {
+			return fmt.Errorf("verify plugin %s: %w", gameID, err)
+		}
+	}
 	compiled, err := wr.runtime.CompileModule(ctx, wasmBytes)
 	if err != nil {
 		return fmt.Errorf("compile plugin %s: %w", gameID, err)

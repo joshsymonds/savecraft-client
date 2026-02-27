@@ -14,11 +14,19 @@ import (
 	"github.com/joshsymonds/savecraft.gg/internal/osfs"
 	"github.com/joshsymonds/savecraft.gg/internal/push"
 	"github.com/joshsymonds/savecraft.gg/internal/runner"
+	"github.com/joshsymonds/savecraft.gg/internal/signing"
 	"github.com/joshsymonds/savecraft.gg/internal/watcher"
 	"github.com/joshsymonds/savecraft.gg/internal/wsconn"
 )
 
+var version = "dev"
+
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--version" {
+		fmt.Println("savecraft-daemon " + version)
+		return
+	}
+
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
@@ -51,7 +59,15 @@ func run(logger *slog.Logger) error {
 		}
 	}()
 
-	wr, err := runner.NewWazeroRunner(ctx)
+	var opts []runner.Option
+	skipVerify := os.Getenv("SAVECRAFT_SKIP_VERIFY") != ""
+	if skipVerify {
+		logger.Warn("plugin signature verification disabled via SAVECRAFT_SKIP_VERIFY")
+	} else {
+		opts = append(opts, runner.WithVerifier(signing.PublicKey()))
+	}
+
+	wr, err := runner.NewWazeroRunner(ctx, opts...)
 	if err != nil {
 		return fmt.Errorf("create runner: %w", err)
 	}
@@ -61,7 +77,7 @@ func run(logger *slog.Logger) error {
 		}
 	}()
 
-	if loadErr := loadPlugins(ctx, logger, wr, cfg); loadErr != nil {
+	if loadErr := loadPlugins(ctx, logger, wr, cfg, skipVerify); loadErr != nil {
 		return fmt.Errorf("load plugins: %w", loadErr)
 	}
 
@@ -141,7 +157,7 @@ func loadConfig() (*appConfig, error) {
 	}, nil
 }
 
-func loadPlugins(ctx context.Context, logger *slog.Logger, wr *runner.WazeroRunner, cfg *appConfig) error {
+func loadPlugins(ctx context.Context, logger *slog.Logger, wr *runner.WazeroRunner, cfg *appConfig, skipVerify bool) error {
 	pluginDir := cfg.PluginDir
 	entries, err := os.ReadDir(pluginDir)
 	if os.IsNotExist(err) {
@@ -166,7 +182,20 @@ func loadPlugins(ctx context.Context, logger *slog.Logger, wr *runner.WazeroRunn
 			return fmt.Errorf("read plugin %s: %w", name, readErr)
 		}
 
-		if loadErr := wr.LoadPlugin(ctx, gameID, wasmBytes); loadErr != nil {
+		var sigBytes []byte
+		sigPath := pluginPath + ".sig"
+		sigBytes, readErr = os.ReadFile(filepath.Clean(sigPath))
+		if readErr != nil {
+			if os.IsNotExist(readErr) && skipVerify {
+				logger.WarnContext(ctx, "no signature file, verification skipped", slog.String("plugin", name))
+			} else if os.IsNotExist(readErr) {
+				return fmt.Errorf("signature file missing for %s (set SAVECRAFT_SKIP_VERIFY=1 for dev mode)", name)
+			} else {
+				return fmt.Errorf("read signature %s: %w", sigPath, readErr)
+			}
+		}
+
+		if loadErr := wr.LoadPlugin(ctx, gameID, wasmBytes, sigBytes); loadErr != nil {
 			return fmt.Errorf("load plugin %s: %w", name, loadErr)
 		}
 

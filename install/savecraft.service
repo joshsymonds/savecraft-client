@@ -1,0 +1,21 @@
+[Unit]
+Description=Savecraft Daemon
+After=network-online.target
+
+[Service]
+ExecStart=%h/.local/bin/savecraft-daemon
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=-%h/.config/savecraft/env
+
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.config/savecraft %h/.cache/savecraft
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+RestrictAddressFamilies=AF_INET AF_INET6
+
+[Install]
+WantedBy=default.target

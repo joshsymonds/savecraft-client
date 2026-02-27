@@ -104,6 +104,77 @@ dev-web:
 storybook:
     cd web && npm run storybook
 
+# Generate Ed25519 keypair for plugin signing
+keygen:
+    go run ./cmd/savecraft-keygen/
+
+# Sign a file with Ed25519
+sign file:
+    go run ./cmd/savecraft-sign/ {{file}}
+
+# Sign all compiled WASM plugins
+sign-plugins:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for wasm in plugins/*/*.wasm; do
+        [[ -f "$wasm" ]] || continue
+        go run ./cmd/savecraft-sign/ "$wasm"
+    done
+
+# Cross-compile daemon binary: just build-daemon linux amd64
+build-daemon os arch version="dev":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p dist
+    CGO_ENABLED=0 GOOS={{os}} GOARCH={{arch}} go build \
+        -ldflags "-s -w -X main.version={{version}}" \
+        -o "dist/savecraft-daemon-{{os}}-{{arch}}" \
+        ./cmd/savecraftd/
+
+# Build daemon for all release platforms
+build-daemon-all version="dev":
+    just build-daemon linux amd64 {{version}}
+    just build-daemon linux arm64 {{version}}
+    just build-daemon darwin amd64 {{version}}
+    just build-daemon darwin arm64 {{version}}
+    just build-daemon windows amd64 {{version}}
+
+# Build and sign test fixtures for the install integration test
+install-fixtures version="0.1.0":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just build-daemon linux amd64 {{version}}
+    just build-daemon linux arm64 {{version}}
+    # Sign both binaries
+    go run ./cmd/savecraft-sign/ dist/savecraft-daemon-linux-amd64
+    go run ./cmd/savecraft-sign/ dist/savecraft-daemon-linux-arm64
+    # Create fixture directory
+    mkdir -p install/test/fixtures/v{{version}}
+    cp dist/savecraft-daemon-linux-amd64     install/test/fixtures/v{{version}}/
+    cp dist/savecraft-daemon-linux-amd64.sig install/test/fixtures/v{{version}}/
+    cp dist/savecraft-daemon-linux-arm64     install/test/fixtures/v{{version}}/
+    cp dist/savecraft-daemon-linux-arm64.sig install/test/fixtures/v{{version}}/
+    # Bake real public key into installer copy
+    # DER prefix for Ed25519 public key: 302a300506032b6570032100
+    # Use file I/O to avoid bash stripping null bytes from binary key
+    tmp_der=$(mktemp)
+    printf '\x30\x2a\x30\x05\x06\x03\x2b\x65\x70\x03\x21\x00' > "$tmp_der"
+    cat internal/signing/signing_key.pub >> "$tmp_der"
+    b64_key=$(base64 -w0 < "$tmp_der")
+    rm -f "$tmp_der"
+    sed "s|REPLACE_WITH_BASE64_PUBKEY|${b64_key}|" install/install.sh \
+        > install/test/fixtures/install.sh
+    chmod +x install/test/fixtures/install.sh
+    echo "Fixtures ready in install/test/fixtures/"
+
+# Run install integration test in Docker
+test-install:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just install-fixtures
+    docker build -t savecraft-install-test install/test/
+    docker run --rm savecraft-install-test
+
 # Run all tests
 test: test-go test-worker test-web
 

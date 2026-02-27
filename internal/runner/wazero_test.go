@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/joshsymonds/savecraft.gg/internal/daemon"
+	"github.com/joshsymonds/savecraft.gg/internal/signing"
 )
 
 func buildPlugin(t *testing.T, pluginDir string) []byte {
@@ -49,7 +50,7 @@ func TestWazeroRunner_EchoPlugin(t *testing.T) {
 	defer runner.Close(ctx)
 
 	wasm := buildPlugin(t, pluginPath("echo"))
-	if loadErr := runner.LoadPlugin(ctx, "echo", wasm); loadErr != nil {
+	if loadErr := runner.LoadPlugin(ctx, "echo", wasm, nil); loadErr != nil {
 		t.Fatalf("load plugin: %v", loadErr)
 	}
 
@@ -95,7 +96,7 @@ func TestWazeroRunner_EchoPlugin_EmptyInput(t *testing.T) {
 	defer runner.Close(ctx)
 
 	wasm := buildPlugin(t, pluginPath("echo"))
-	if loadErr := runner.LoadPlugin(ctx, "echo", wasm); loadErr != nil {
+	if loadErr := runner.LoadPlugin(ctx, "echo", wasm, nil); loadErr != nil {
 		t.Fatalf("load plugin: %v", loadErr)
 	}
 
@@ -119,7 +120,7 @@ func TestWazeroRunner_EchoPlugin_ConcurrentRuns(t *testing.T) {
 	defer runner.Close(ctx)
 
 	wasm := buildPlugin(t, pluginPath("echo"))
-	if loadErr := runner.LoadPlugin(ctx, "echo", wasm); loadErr != nil {
+	if loadErr := runner.LoadPlugin(ctx, "echo", wasm, nil); loadErr != nil {
 		t.Fatalf("load plugin: %v", loadErr)
 	}
 
@@ -160,7 +161,7 @@ func TestWazeroRunner_ErrorPlugin(t *testing.T) {
 	defer runner.Close(ctx)
 
 	wasm := buildPlugin(t, pluginPath("error"))
-	if loadErr := runner.LoadPlugin(ctx, "error", wasm); loadErr != nil {
+	if loadErr := runner.LoadPlugin(ctx, "error", wasm, nil); loadErr != nil {
 		t.Fatalf("load plugin: %v", loadErr)
 	}
 
@@ -205,7 +206,7 @@ func TestWazeroRunner_InvalidWasm(t *testing.T) {
 	}
 	defer runner.Close(ctx)
 
-	loadErr := runner.LoadPlugin(ctx, "bad", []byte("not valid wasm"))
+	loadErr := runner.LoadPlugin(ctx, "bad", []byte("not valid wasm"), nil)
 	if loadErr == nil {
 		t.Error("expected error for invalid wasm bytes")
 	}
@@ -221,7 +222,7 @@ func TestWazeroRunner_NoopPlugin_NoResult(t *testing.T) {
 	defer runner.Close(ctx)
 
 	wasm := buildPlugin(t, pluginPath("noop"))
-	if loadErr := runner.LoadPlugin(ctx, "noop", wasm); loadErr != nil {
+	if loadErr := runner.LoadPlugin(ctx, "noop", wasm, nil); loadErr != nil {
 		t.Fatalf("load plugin: %v", loadErr)
 	}
 
@@ -244,7 +245,7 @@ func TestWazeroRunner_CrashPlugin_NonZeroExit(t *testing.T) {
 	defer runner.Close(ctx)
 
 	wasm := buildPlugin(t, pluginPath("crash"))
-	if loadErr := runner.LoadPlugin(ctx, "crash", wasm); loadErr != nil {
+	if loadErr := runner.LoadPlugin(ctx, "crash", wasm, nil); loadErr != nil {
 		t.Fatalf("load plugin: %v", loadErr)
 	}
 
@@ -315,5 +316,96 @@ func TestParsePluginOutput_StatusForwarding(t *testing.T) {
 	}
 	if statuses[0] != "step 1" || statuses[1] != "step 2" {
 		t.Errorf("statuses = %v", statuses)
+	}
+}
+
+func TestLoadPlugin_VerificationSuccess(t *testing.T) {
+	ctx := context.Background()
+	pub, priv, err := signing.GenerateKeypair()
+	if err != nil {
+		t.Fatalf("generate keypair: %v", err)
+	}
+
+	runner, err := NewWazeroRunner(ctx, WithVerifier(pub))
+	if err != nil {
+		t.Fatalf("new runner: %v", err)
+	}
+	defer runner.Close(ctx)
+
+	wasm := buildPlugin(t, pluginPath("echo"))
+	sig := signing.Sign(priv, wasm)
+
+	if loadErr := runner.LoadPlugin(ctx, "echo", wasm, sig); loadErr != nil {
+		t.Fatalf("load plugin with valid sig: %v", loadErr)
+	}
+}
+
+func TestLoadPlugin_VerificationFailure_Tampered(t *testing.T) {
+	ctx := context.Background()
+	pub, priv, err := signing.GenerateKeypair()
+	if err != nil {
+		t.Fatalf("generate keypair: %v", err)
+	}
+
+	runner, err := NewWazeroRunner(ctx, WithVerifier(pub))
+	if err != nil {
+		t.Fatalf("new runner: %v", err)
+	}
+	defer runner.Close(ctx)
+
+	wasm := buildPlugin(t, pluginPath("echo"))
+	sig := signing.Sign(priv, wasm)
+
+	// Flip a byte in the wasm.
+	tampered := make([]byte, len(wasm))
+	copy(tampered, wasm)
+	tampered[0] ^= 0xff
+
+	loadErr := runner.LoadPlugin(ctx, "echo", tampered, sig)
+	if loadErr == nil {
+		t.Fatal("expected error for tampered wasm")
+	}
+	if !strings.Contains(loadErr.Error(), "verify plugin") {
+		t.Errorf("error = %q, want to contain 'verify plugin'", loadErr)
+	}
+}
+
+func TestLoadPlugin_VerificationFailure_NilSig(t *testing.T) {
+	ctx := context.Background()
+	pub, _, err := signing.GenerateKeypair()
+	if err != nil {
+		t.Fatalf("generate keypair: %v", err)
+	}
+
+	runner, err := NewWazeroRunner(ctx, WithVerifier(pub))
+	if err != nil {
+		t.Fatalf("new runner: %v", err)
+	}
+	defer runner.Close(ctx)
+
+	wasm := buildPlugin(t, pluginPath("echo"))
+
+	loadErr := runner.LoadPlugin(ctx, "echo", wasm, nil)
+	if loadErr == nil {
+		t.Fatal("expected error for nil sig with verifier")
+	}
+	if !strings.Contains(loadErr.Error(), "verify plugin") {
+		t.Errorf("error = %q, want to contain 'verify plugin'", loadErr)
+	}
+}
+
+func TestLoadPlugin_NoVerifier_NilSigOk(t *testing.T) {
+	ctx := context.Background()
+
+	runner, err := NewWazeroRunner(ctx)
+	if err != nil {
+		t.Fatalf("new runner: %v", err)
+	}
+	defer runner.Close(ctx)
+
+	wasm := buildPlugin(t, pluginPath("echo"))
+
+	if loadErr := runner.LoadPlugin(ctx, "echo", wasm, nil); loadErr != nil {
+		t.Fatalf("load plugin without verifier: %v", loadErr)
 	}
 }
