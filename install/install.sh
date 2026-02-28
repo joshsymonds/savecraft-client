@@ -143,9 +143,9 @@ detect_games() {
 }
 
 # ---------------------------------------------------------------------------
-# install_systemd_unit — write the unit file via heredoc
+# write_unit_file — write the systemd unit heredoc (no activation)
 # ---------------------------------------------------------------------------
-install_systemd_unit() {
+write_unit_file() {
     mkdir -p "${SYSTEMD_DIR}"
 
     cat > "${SYSTEMD_DIR}/savecraft.service" << 'UNIT'
@@ -171,52 +171,24 @@ RestrictAddressFamilies=AF_INET AF_INET6
 [Install]
 WantedBy=default.target
 UNIT
+}
 
+# ---------------------------------------------------------------------------
+# install_systemd_unit — write + enable (+ start if configured)
+# ---------------------------------------------------------------------------
+install_systemd_unit() {
+    write_unit_file
     info "Installed systemd user unit to ${SYSTEMD_DIR}/savecraft.service"
 
     systemctl --user daemon-reload
 
-    # Only enable (and potentially start) if the auth token is configured.
     if [[ -f "${CONFIG_DIR}/env" ]] && grep -q '^SAVECRAFT_AUTH_TOKEN=' "${CONFIG_DIR}/env"; then
-        systemctl --user enable savecraft.service
-        ok "Enabled savecraft.service (auth token found)"
+        systemctl --user enable --now savecraft.service
+        ok "Enabled and started savecraft.service"
     else
         systemctl --user enable savecraft.service
         warn "Enabled savecraft.service but NOT starting — set SAVECRAFT_AUTH_TOKEN in ${CONFIG_DIR}/env first"
     fi
-}
-
-# ---------------------------------------------------------------------------
-# write_service_file — write the systemd unit without activating it
-# ---------------------------------------------------------------------------
-write_service_file() {
-    mkdir -p "${SYSTEMD_DIR}"
-
-    cat > "${SYSTEMD_DIR}/savecraft.service" << 'UNIT'
-[Unit]
-Description=Savecraft Daemon
-After=network-online.target
-
-[Service]
-ExecStart=%h/.local/bin/savecraft-daemon
-Restart=always
-RestartSec=5
-EnvironmentFile=-%h/.config/savecraft/env
-
-ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=%h/.config/savecraft %h/.cache/savecraft %h/.local/bin
-
-NoNewPrivileges=yes
-PrivateTmp=yes
-
-RestrictAddressFamilies=AF_INET AF_INET6
-
-[Install]
-WantedBy=default.target
-UNIT
-
-    info "Wrote systemd unit file to ${SYSTEMD_DIR}/savecraft.service (not activated)"
 }
 
 # ---------------------------------------------------------------------------
@@ -346,7 +318,8 @@ main() {
         install_systemd_unit
     else
         info "Skipping systemd unit installation (--no-systemd)"
-        write_service_file
+        write_unit_file
+        info "Wrote systemd unit file to ${SYSTEMD_DIR}/savecraft.service (not activated)"
     fi
 
     # Game detection
