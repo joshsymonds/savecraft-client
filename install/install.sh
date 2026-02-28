@@ -6,7 +6,7 @@ set -euo pipefail
 # Designed for Linux desktops and Steam Deck (SteamOS).
 # ---------------------------------------------------------------------------
 
-readonly VERSION="0.1.0"
+readonly VERSION="dev"
 readonly BASE_URL="${SAVECRAFT_BASE_URL:-https://github.com/joshsymonds/savecraft.gg/releases/download}"
 
 readonly BIN_DIR="${HOME}/.local/bin"
