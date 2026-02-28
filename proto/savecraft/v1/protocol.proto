@@ -38,6 +38,11 @@ message Message {
     // Plugin management (40-49)
     PluginUpdated plugin_updated = 40;
 
+    // Daemon management (41-43)
+    DaemonUpdateAvailable daemon_update_available = 41;
+    DaemonUpdateStarted daemon_update_started = 42;
+    DaemonUpdateFailed daemon_update_failed = 43;
+
     // Commands: server → daemon (50-59)
     ConfigUpdate config_update = 50;
     RescanGame rescan_game = 51;
@@ -60,6 +65,7 @@ message DaemonOnline {
   string device_id = 1;
   string version = 2;
   google.protobuf.Timestamp timestamp = 3;
+  string platform = 4;
 }
 
 // Daemon shutting down gracefully (SIGTERM).
@@ -272,6 +278,27 @@ message TestPathResult {
   bool valid = 3;
   int32 files_found = 4;
   repeated string file_names = 5;
+}
+
+// --- Daemon management ---
+
+// Server notifies daemon that a newer binary is available.
+message DaemonUpdateAvailable {
+  string version = 1;
+  string url = 2;
+  string signature_url = 3;
+  string sha256 = 4;
+}
+
+// Daemon acknowledges it is downloading and applying the update.
+message DaemonUpdateStarted {
+  string version = 1;
+}
+
+// Daemon failed to apply the update.
+message DaemonUpdateFailed {
+  string version = 1;
+  string message = 2;
 }
 
 // --- Shared types ---

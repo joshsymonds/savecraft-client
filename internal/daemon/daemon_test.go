@@ -300,6 +300,30 @@ func (pm *fakePluginManager) Manifests(_ context.Context) (map[string]pluginmgr.
 	return pm.manifests, nil
 }
 
+type fakeUpdater struct {
+	checkResult *UpdateInfo
+	checkErr    error
+	applyErr    error
+	applyCalls  []applyCall
+	mu          sync.Mutex
+}
+
+type applyCall struct {
+	Info       *UpdateInfo
+	BinaryPath string
+}
+
+func (u *fakeUpdater) Check(_ context.Context, _, _ string) (*UpdateInfo, error) {
+	return u.checkResult, u.checkErr
+}
+
+func (u *fakeUpdater) Apply(_ context.Context, info *UpdateInfo, binaryPath string) error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.applyCalls = append(u.applyCalls, applyCall{Info: info, BinaryPath: binaryPath})
+	return u.applyErr
+}
+
 func waitFor(t *testing.T, condition func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)
@@ -402,7 +426,7 @@ func TestParseAndPush_GameScopedSave(t *testing.T) {
 		},
 	}
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{})
+	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil)
 	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/SharedStash.d2i", "SharedStash.d2i")
 
 	types := ws.sentEventTypes()
@@ -442,7 +466,7 @@ func TestScanGame_DetectsGame(t *testing.T) {
 	fsys := d2rFS()
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, watcher, runner, pusher, ws, &fakePluginManager{})
+	d := New(cfg, fsys, watcher, runner, pusher, ws, &fakePluginManager{}, nil)
 	d.scanGame(context.Background(), "d2r", cfg.Games["d2r"])
 
 	types := ws.sentEventTypes()
@@ -486,7 +510,7 @@ func TestScanGame_MissingDir(t *testing.T) {
 	fsys := &fakeFS{dirs: map[string][]string{}, files: map[string][]byte{}}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{})
+	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil)
 	d.scanGame(context.Background(), "d2r", cfg.Games["d2r"])
 
 	types := ws.sentEventTypes()
@@ -508,7 +532,7 @@ func TestScanGame_NoMatchingFiles(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{})
+	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil)
 	d.scanGame(context.Background(), "d2r", cfg.Games["d2r"])
 
 	types := ws.sentEventTypes()
@@ -534,7 +558,7 @@ func TestHandleFileEvent_ParseAndPush(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{})
+	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil)
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	d.handleFileEvent(context.Background(), FileEvent{
@@ -560,7 +584,7 @@ func TestHandleFileEvent_IgnoresNonMatchingExtension(t *testing.T) {
 	ws := newFakeWSClient()
 	cfg := d2rConfig()
 
-	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{})
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil)
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	d.handleFileEvent(context.Background(), FileEvent{
@@ -576,7 +600,7 @@ func TestHandleFileEvent_IgnoresNonMatchingExtension(t *testing.T) {
 func TestHandleFileEvent_IgnoresRemove(t *testing.T) {
 	ws := newFakeWSClient()
 
-	d := New(Config{}, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{})
+	d := New(Config{}, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil)
 	d.handleFileEvent(context.Background(), FileEvent{
 		Path: "/saves/d2r/Hammerdin.d2s",
 		Op:   FileRemove,
@@ -591,7 +615,7 @@ func TestHandleFileEvent_IgnoresUnwatchedDir(t *testing.T) {
 	ws := newFakeWSClient()
 	cfg := d2rConfig()
 
-	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{})
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil)
 	// watchedDirs is empty — no directories are being watched
 
 	d.handleFileEvent(context.Background(), FileEvent{
@@ -618,7 +642,7 @@ func TestParseAndPush_PluginError(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, &fakePluginManager{})
+	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, &fakePluginManager{}, nil)
 	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/bad.d2s", "bad.d2s")
 
 	types := ws.sentEventTypes()
@@ -640,7 +664,7 @@ func TestParseAndPush_FileReadError(t *testing.T) {
 	fsys := &fakeFS{files: map[string][]byte{}} // file doesn't exist
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{})
+	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil)
 	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/missing.d2s", "missing.d2s")
 
 	types := ws.sentEventTypes()
@@ -663,7 +687,7 @@ func TestParseAndPush_PushError(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{})
+	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil)
 	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s")
 
 	types := ws.sentEventTypes()
@@ -686,7 +710,7 @@ func TestParseAndPush_ForwardsPluginStatus(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, &fakePluginManager{})
+	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, &fakePluginManager{}, nil)
 	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s")
 
 	statusCount := 0
@@ -717,7 +741,7 @@ func TestHandleCommand_RescanGame(t *testing.T) {
 	fsys := d2rFS()
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, &fakePluginManager{})
+	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, &fakePluginManager{}, nil)
 
 	cmd, _ := json.Marshal(map[string]any{
 		"rescanGame": map[string]any{"gameId": "d2r"},
@@ -736,7 +760,7 @@ func TestHandleCommand_TestPath_Valid(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{})
+	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil)
 
 	cmd, _ := json.Marshal(map[string]any{
 		"testPath": map[string]any{"gameId": "d2r", "path": "/custom/path"},
@@ -760,7 +784,7 @@ func TestHandleCommand_TestPath_Invalid(t *testing.T) {
 	fsys := &fakeFS{dirs: map[string][]string{}, files: map[string][]byte{}}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{})
+	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil)
 
 	cmd, _ := json.Marshal(map[string]any{
 		"testPath": map[string]any{"gameId": "d2r", "path": "/nonexistent"},
@@ -785,7 +809,7 @@ func TestConfigUpdate_AddsNewGame(t *testing.T) {
 	fsys := d2rFS()
 	cfg := Config{DeviceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
 
-	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws, &fakePluginManager{})
+	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws, &fakePluginManager{}, nil)
 
 	cmd, _ := json.Marshal(map[string]any{
 		"configUpdate": map[string]any{
@@ -831,7 +855,7 @@ func TestConfigUpdate_DisablesGame(t *testing.T) {
 	watcher := newFakeWatcher()
 	cfg := d2rConfig()
 
-	d := New(cfg, d2rFS(), watcher, d2rRunner(), &fakePushClient{}, ws, &fakePluginManager{})
+	d := New(cfg, d2rFS(), watcher, d2rRunner(), &fakePushClient{}, ws, &fakePluginManager{}, nil)
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	cmd, _ := json.Marshal(map[string]any{
@@ -866,7 +890,7 @@ func TestConfigUpdate_RemovesGame(t *testing.T) {
 	watcher := newFakeWatcher()
 	cfg := d2rConfig()
 
-	d := New(cfg, d2rFS(), watcher, d2rRunner(), &fakePushClient{}, ws, &fakePluginManager{})
+	d := New(cfg, d2rFS(), watcher, d2rRunner(), &fakePushClient{}, ws, &fakePluginManager{}, nil)
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	// Send empty config — d2r is no longer present.
@@ -901,7 +925,7 @@ func TestConfigUpdate_ChangesPath(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws, &fakePluginManager{})
+	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws, &fakePluginManager{}, nil)
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	cmd, _ := json.Marshal(map[string]any{
@@ -950,7 +974,7 @@ func TestConfigUpdate_ReenablesGame(t *testing.T) {
 		},
 	}
 
-	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws, &fakePluginManager{})
+	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws, &fakePluginManager{}, nil)
 
 	cmd, _ := json.Marshal(map[string]any{
 		"configUpdate": map[string]any{
@@ -981,7 +1005,7 @@ func TestRun_LifecycleEvents(t *testing.T) {
 		Games:    map[string]GameConfig{},
 	}
 
-	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{})
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -1024,7 +1048,7 @@ func TestRun_FileEventTriggersParseAndPush(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, watcher, runner, pusher, ws, &fakePluginManager{})
+	d := New(cfg, fsys, watcher, runner, pusher, ws, &fakePluginManager{}, nil)
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1068,7 +1092,7 @@ func TestRun_WSCommandHandled(t *testing.T) {
 	fsys := d2rFS()
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws, &fakePluginManager{})
+	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws, &fakePluginManager{}, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1111,7 +1135,7 @@ func TestConfigUpdate_EnsurePluginFailed_SkipsGame(t *testing.T) {
 		ensureErr: map[string]error{"d2r": fmt.Errorf("download failed")},
 	}
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, pm)
+	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, pm, nil)
 
 	cmd, _ := json.Marshal(map[string]any{
 		"configUpdate": map[string]any{
@@ -1150,7 +1174,7 @@ func TestRun_EnsurePluginFailed_SkipsGame(t *testing.T) {
 		ensureErr: map[string]error{"d2r": fmt.Errorf("network error")},
 	}
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, pm)
+	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, pm, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -1193,7 +1217,7 @@ func TestDiscoverGames_FindsGame(t *testing.T) {
 
 	d := New(
 		Config{Games: map[string]GameConfig{}}, fsys,
-		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm,
+		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm, nil,
 	)
 	d.discoverGames(context.Background())
 
@@ -1230,7 +1254,7 @@ func TestDiscoverGames_NilPluginManager(t *testing.T) {
 	cfg := Config{Games: map[string]GameConfig{}}
 	d := New(
 		cfg, &fakeFS{}, newFakeWatcher(),
-		&fakeRunner{}, &fakePushClient{}, ws, nil,
+		&fakeRunner{}, &fakePushClient{}, ws, nil, nil,
 	)
 	d.discoverGames(context.Background())
 
@@ -1259,7 +1283,7 @@ func TestDiscoverGames_NoMatchingPaths(t *testing.T) {
 
 	d := New(
 		Config{Games: map[string]GameConfig{}}, fsys,
-		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm,
+		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm, nil,
 	)
 	d.discoverGames(context.Background())
 
@@ -1305,7 +1329,7 @@ func TestDiscoverGames_MixedResults(t *testing.T) {
 
 	d := New(
 		Config{Games: map[string]GameConfig{}}, fsys,
-		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm,
+		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm, nil,
 	)
 	d.discoverGames(context.Background())
 
@@ -1337,7 +1361,7 @@ func TestDiscoverGames_ManifestError(t *testing.T) {
 
 	d := New(
 		Config{Games: map[string]GameConfig{}}, &fakeFS{},
-		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm,
+		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm, nil,
 	)
 	d.discoverGames(context.Background())
 
@@ -1367,7 +1391,7 @@ func TestHandleCommand_DiscoverGames(t *testing.T) {
 
 	d := New(
 		Config{Games: map[string]GameConfig{}}, fsys,
-		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm,
+		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm, nil,
 	)
 
 	cmd, _ := json.Marshal(map[string]any{
@@ -1377,5 +1401,111 @@ func TestHandleCommand_DiscoverGames(t *testing.T) {
 
 	if !slices.Contains(ws.sentEventTypes(), "gamesDiscovered") {
 		t.Error("missing gamesDiscovered event from command")
+	}
+}
+
+// --- Tests: daemon self-update ---
+
+func TestHandleCommand_DaemonUpdateAvailable(t *testing.T) {
+	ws := newFakeWSClient()
+	updater := &fakeUpdater{}
+	cfg := Config{
+		DeviceID:   "deck",
+		Version:    "0.1.0",
+		BinaryPath: "/usr/local/bin/savecraft-daemon",
+		Games:      map[string]GameConfig{},
+	}
+
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, updater)
+	var exitCode int
+	d.exitFunc = func(code int) { exitCode = code }
+
+	cmd, _ := json.Marshal(map[string]any{
+		"daemonUpdateAvailable": map[string]any{
+			"version":      "0.2.0",
+			"url":          "https://example.com/daemon",
+			"signatureUrl": "https://example.com/daemon.sig",
+			"sha256":       "abc123",
+		},
+	})
+	d.handleCommand(context.Background(), cmd)
+
+	if !slices.Contains(ws.sentEventTypes(), "daemonUpdateStarted") {
+		t.Error("missing daemonUpdateStarted event")
+	}
+	if !slices.Contains(ws.sentEventTypes(), "daemonOffline") {
+		t.Error("missing daemonOffline after successful update")
+	}
+	if exitCode != 0 {
+		t.Errorf("exitFunc called with %d, want 0", exitCode)
+	}
+
+	updater.mu.Lock()
+	calls := len(updater.applyCalls)
+	updater.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("updater.Apply called %d times, want 1", calls)
+	}
+	if updater.applyCalls[0].Info.Version != "0.2.0" {
+		t.Errorf("version = %s, want 0.2.0", updater.applyCalls[0].Info.Version)
+	}
+	if updater.applyCalls[0].BinaryPath != "/usr/local/bin/savecraft-daemon" {
+		t.Errorf("binaryPath = %s", updater.applyCalls[0].BinaryPath)
+	}
+}
+
+func TestHandleCommand_DaemonUpdateFailed(t *testing.T) {
+	ws := newFakeWSClient()
+	updater := &fakeUpdater{applyErr: fmt.Errorf("disk full")}
+	cfg := Config{
+		DeviceID:   "deck",
+		Version:    "0.1.0",
+		BinaryPath: "/usr/local/bin/savecraft-daemon",
+		Games:      map[string]GameConfig{},
+	}
+
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, updater)
+
+	cmd, _ := json.Marshal(map[string]any{
+		"daemonUpdateAvailable": map[string]any{
+			"version":      "0.2.0",
+			"url":          "https://example.com/daemon",
+			"signatureUrl": "https://example.com/daemon.sig",
+			"sha256":       "abc123",
+		},
+	})
+	d.handleCommand(context.Background(), cmd)
+
+	if !slices.Contains(ws.sentEventTypes(), "daemonUpdateStarted") {
+		t.Error("missing daemonUpdateStarted event")
+	}
+	if !slices.Contains(ws.sentEventTypes(), "daemonUpdateFailed") {
+		t.Error("missing daemonUpdateFailed event")
+	}
+
+	failed := ws.sentEvent("daemonUpdateFailed", 0)
+	if failed["message"] != "disk full" {
+		t.Errorf("message = %v, want 'disk full'", failed["message"])
+	}
+}
+
+func TestHandleCommand_DaemonUpdateAvailable_NilUpdater(t *testing.T) {
+	ws := newFakeWSClient()
+	cfg := Config{DeviceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
+
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil)
+
+	cmd, _ := json.Marshal(map[string]any{
+		"daemonUpdateAvailable": map[string]any{
+			"version": "0.2.0",
+			"url":     "https://example.com/daemon",
+			"sha256":  "abc123",
+		},
+	})
+	d.handleCommand(context.Background(), cmd)
+
+	// Should not crash, should not send any update events
+	if slices.Contains(ws.sentEventTypes(), "daemonUpdateStarted") {
+		t.Error("should not start update with nil updater")
 	}
 }

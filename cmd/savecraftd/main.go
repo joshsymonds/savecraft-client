@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/joshsymonds/savecraft.gg/internal/daemon"
@@ -15,6 +16,7 @@ import (
 	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
 	"github.com/joshsymonds/savecraft.gg/internal/push"
 	"github.com/joshsymonds/savecraft.gg/internal/runner"
+	"github.com/joshsymonds/savecraft.gg/internal/selfupdate"
 	"github.com/joshsymonds/savecraft.gg/internal/signing"
 	"github.com/joshsymonds/savecraft.gg/internal/watcher"
 	"github.com/joshsymonds/savecraft.gg/internal/wsconn"
@@ -44,6 +46,12 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+
+	binaryPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("get executable path: %w", err)
+	}
+	cfg.Daemon.BinaryPath = binaryPath
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
@@ -92,6 +100,9 @@ func run(logger *slog.Logger) error {
 		mgr.SetLocalDir(cfg.PluginDir)
 	}
 
+	updateCacheDir := filepath.Join(pluginmgr.DefaultCacheDir(), "updates")
+	updater := selfupdate.New(cfg.ServerURL, cfg.AuthToken, pubKey, updateCacheDir)
+
 	pusher, err := push.New(cfg.ServerURL, cfg.AuthToken)
 	if err != nil {
 		return fmt.Errorf("create push client: %w", err)
@@ -100,7 +111,7 @@ func run(logger *slog.Logger) error {
 	wsURL := cfg.ServerURL + "/ws/daemon"
 	ws := wsconn.New(wsURL, cfg.AuthToken)
 
-	dmn := daemon.New(cfg.Daemon, fsys, wt, wr, pusher, ws, mgr)
+	dmn := daemon.New(cfg.Daemon, fsys, wt, wr, pusher, ws, mgr, updater)
 
 	logger.Info("starting daemon",
 		slog.String("server", cfg.ServerURL),

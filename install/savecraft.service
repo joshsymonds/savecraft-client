@@ -4,13 +4,13 @@ After=network-online.target
 
 [Service]
 ExecStart=%h/.local/bin/savecraft-daemon
-Restart=on-failure
+Restart=always
 RestartSec=5
 EnvironmentFile=-%h/.config/savecraft/env
 
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=%h/.config/savecraft %h/.cache/savecraft
+ReadWritePaths=%h/.config/savecraft %h/.cache/savecraft %h/.local/bin
 
 NoNewPrivileges=yes
 PrivateTmp=yes

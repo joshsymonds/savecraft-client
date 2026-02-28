@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -16,6 +17,7 @@ import (
 )
 
 const pluginUpdateInterval = 24 * time.Hour
+const selfUpdateInterval = 6 * time.Hour
 
 // --- Domain types ---
 
@@ -76,11 +78,12 @@ type PushResult struct {
 
 // Config holds all daemon configuration.
 type Config struct {
-	ServerURL string
-	AuthToken string `json:"-"`
-	DeviceID  string
-	Version   string
-	Games     map[string]GameConfig
+	ServerURL  string
+	AuthToken  string `json:"-"`
+	DeviceID   string
+	Version    string
+	BinaryPath string
+	Games      map[string]GameConfig
 }
 
 // GameConfig holds per-game configuration.
@@ -142,6 +145,20 @@ type PluginManager interface {
 	Manifests(ctx context.Context) (map[string]pluginmgr.PluginInfo, error)
 }
 
+// Updater checks for and applies daemon self-updates.
+type Updater interface {
+	Check(ctx context.Context, currentVersion, platform string) (*UpdateInfo, error)
+	Apply(ctx context.Context, info *UpdateInfo, binaryPath string) error
+}
+
+// UpdateInfo describes an available daemon update.
+type UpdateInfo struct {
+	Version      string `json:"version"`
+	URL          string `json:"url"`
+	SignatureURL string `json:"signatureUrl"`
+	SHA256       string `json:"sha256"`
+}
+
 // DiscoveredGame represents a game whose save directory was found on disk.
 type DiscoveredGame struct {
 	GameID    string `json:"gameId"`
@@ -161,6 +178,11 @@ type Daemon struct {
 	pusher  PushClient
 	ws      WSClient
 	plugins PluginManager
+	updater Updater
+
+	// exitFunc is called after a successful self-update to terminate
+	// the process. Defaults to os.Exit; overridden in tests.
+	exitFunc func(int)
 
 	// Maps watched directory → game ID.
 	watchedDirs map[string]string
@@ -175,6 +197,7 @@ func New(
 	pusher PushClient,
 	ws WSClient,
 	plugins PluginManager,
+	updater Updater,
 ) *Daemon {
 	return &Daemon{
 		cfg:         cfg,
@@ -184,6 +207,8 @@ func New(
 		pusher:      pusher,
 		ws:          ws,
 		plugins:     plugins,
+		updater:     updater,
+		exitFunc:    os.Exit,
 		watchedDirs: make(map[string]string),
 	}
 }
@@ -203,6 +228,7 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 	d.sendEvent("daemonOnline", map[string]any{
 		"deviceId": d.cfg.DeviceID,
 		"version":  d.cfg.Version,
+		"platform": runtime.GOOS + "-" + runtime.GOARCH,
 	})
 
 	d.discoverGames(ctx)
@@ -225,6 +251,14 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 		defer updateTicker.Stop()
 	}
 
+	var selfUpdateTicker *time.Ticker
+	var selfUpdateCh <-chan time.Time
+	if d.updater != nil {
+		selfUpdateTicker = time.NewTicker(selfUpdateInterval)
+		selfUpdateCh = selfUpdateTicker.C
+		defer selfUpdateTicker.Stop()
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -238,8 +272,44 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 			d.handleCommand(ctx, msg)
 		case <-updateCh:
 			d.checkPluginUpdates(ctx)
+		case <-selfUpdateCh:
+			d.checkSelfUpdate(ctx)
 		}
 	}
+}
+
+func (d *Daemon) checkSelfUpdate(ctx context.Context) {
+	if d.updater == nil {
+		return
+	}
+	info, err := d.updater.Check(ctx, d.cfg.Version, runtime.GOOS+"-"+runtime.GOARCH)
+	if err != nil {
+		return
+	}
+	if info == nil {
+		return
+	}
+	d.applyDaemonUpdate(ctx, info)
+}
+
+func (d *Daemon) applyDaemonUpdate(ctx context.Context, info *UpdateInfo) {
+	if d.updater == nil {
+		return
+	}
+	d.sendEvent("daemonUpdateStarted", map[string]any{
+		"version": info.Version,
+	})
+	if err := d.updater.Apply(ctx, info, d.cfg.BinaryPath); err != nil {
+		d.sendEvent("daemonUpdateFailed", map[string]any{
+			"version": info.Version,
+			"message": err.Error(),
+		})
+		return
+	}
+	d.sendEvent("daemonOffline", map[string]any{
+		"deviceId": d.cfg.DeviceID,
+	})
+	d.exitFunc(0)
 }
 
 func (d *Daemon) checkPluginUpdates(ctx context.Context) {
@@ -522,6 +592,12 @@ func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
 		d.handleTestPath(cmd.GameID, cmd.Path)
 	case "discoverGames":
 		d.discoverGames(ctx)
+	case "daemonUpdateAvailable":
+		var info UpdateInfo
+		if err := json.Unmarshal(payload, &info); err != nil {
+			return
+		}
+		d.applyDaemonUpdate(ctx, &info)
 	}
 }
 
