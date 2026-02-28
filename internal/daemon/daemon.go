@@ -50,6 +50,17 @@ type PluginError struct {
 
 func (e *PluginError) Error() string { return e.Message }
 
+// PushStatusError is returned when the server returns an HTTP error.
+// It lives in the daemon package (not push) to avoid circular deps.
+type PushStatusError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *PushStatusError) Error() string {
+	return fmt.Sprintf("push returned status %d: %s", e.StatusCode, e.Body)
+}
+
 // --- Events and results ---
 
 // FileEvent represents a filesystem change notification.
@@ -76,6 +87,18 @@ type PushResult struct {
 
 // --- Configuration ---
 
+// RetryConfig controls exponential backoff for push retries.
+type RetryConfig struct {
+	MaxRetries int
+	BaseDelay  time.Duration
+	MaxDelay   time.Duration
+}
+
+const (
+	httpStatusServer = 500
+	maxBitShift      = 62
+)
+
 // Config holds all daemon configuration.
 type Config struct {
 	ServerURL  string
@@ -83,6 +106,7 @@ type Config struct {
 	DeviceID   string
 	Version    string
 	BinaryPath string
+	Retry      RetryConfig
 	Games      map[string]GameConfig
 }
 
@@ -184,7 +208,7 @@ type Daemon struct {
 	// the process. Defaults to os.Exit; overridden in tests.
 	exitFunc func(int)
 
-	// Maps watched directory → game ID.
+	// Maps watched directory -> game ID.
 	watchedDirs map[string]string
 }
 
@@ -543,13 +567,17 @@ func (d *Daemon) parseAndPush(
 	})
 
 	parsedAt := time.Now().UTC()
-	result, err := d.pusher.Push(ctx, gameID, state, parsedAt)
+	result, err := d.pushWithRetry(ctx, gameID, state, parsedAt, stateJSON)
 	if err != nil {
-		d.sendEvent("pushFailed", map[string]any{
-			"gameId":    gameID,
-			"message":   err.Error(),
-			"willRetry": false,
-		})
+		// pushWithRetry already emitted pushFailed for retryable errors.
+		// For non-retryable errors, emit pushFailed here.
+		if !isPushRetryable(err) {
+			d.sendEvent("pushFailed", map[string]any{
+				"gameId":    gameID,
+				"message":   err.Error(),
+				"willRetry": false,
+			})
+		}
 		return
 	}
 
@@ -560,6 +588,62 @@ func (d *Daemon) parseAndPush(
 		"snapshotSizeBytes": len(stateJSON),
 		"identity":          state.Identity,
 	})
+}
+
+// isPushRetryable returns true for errors that may succeed on retry.
+func isPushRetryable(err error) bool {
+	if statusErr, ok := errors.AsType[*PushStatusError](err); ok {
+		return statusErr.StatusCode >= httpStatusServer
+	}
+	// Connection errors (no PushStatusError) are retryable.
+	return true
+}
+
+func (d *Daemon) pushWithRetry(
+	ctx context.Context,
+	gameID string,
+	state *GameState,
+	parsedAt time.Time,
+	stateJSON []byte,
+) (*PushResult, error) {
+	maxAttempts := max(d.cfg.Retry.MaxRetries+1, 1)
+
+	var lastErr error
+	for attempt := range maxAttempts {
+		if attempt > 0 {
+			shift := uint(min(attempt-1, maxBitShift)) //nolint:gosec // attempt is always small
+			delay := min(d.cfg.Retry.BaseDelay<<shift, d.cfg.Retry.MaxDelay)
+			select {
+			case <-ctx.Done():
+				return nil, fmt.Errorf("push retry interrupted: %w", ctx.Err())
+			case <-time.After(delay):
+			}
+			// Re-emit pushStarted on retry.
+			d.sendEvent("pushStarted", map[string]any{
+				"gameId":    gameID,
+				"summary":   state.Summary,
+				"sizeBytes": len(stateJSON),
+			})
+		}
+
+		result, pushErr := d.pusher.Push(ctx, gameID, state, parsedAt)
+		if pushErr == nil {
+			return result, nil
+		}
+		lastErr = pushErr
+
+		if !isPushRetryable(pushErr) {
+			return nil, fmt.Errorf("push: %w", pushErr)
+		}
+
+		willRetry := attempt < maxAttempts-1
+		d.sendEvent("pushFailed", map[string]any{
+			"gameId":    gameID,
+			"message":   pushErr.Error(),
+			"willRetry": willRetry,
+		})
+	}
+	return nil, lastErr
 }
 
 func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
@@ -634,12 +718,14 @@ func (d *Daemon) handleConfigUpdate(
 			}
 		case !existed || !oldCfg.Enabled:
 			if !d.ensurePluginReady(ctx, gameID) {
+				delete(d.cfg.Games, gameID)
 				continue
 			}
 			d.scanGame(ctx, gameID, gameCfg)
 		case oldCfg.SavePath != newGame.SavePath:
 			d.unwatchGame(oldCfg.SavePath)
 			if !d.ensurePluginReady(ctx, gameID) {
+				delete(d.cfg.Games, gameID)
 				continue
 			}
 			d.scanGame(ctx, gameID, gameCfg)

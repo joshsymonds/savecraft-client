@@ -3,6 +3,7 @@ package push
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -144,7 +145,7 @@ func TestPush_GameScopedBody_OmitsSaveName(t *testing.T) {
 	state := &daemon.GameState{
 		Identity: daemon.Identity{
 			GameID: "d2r",
-			// SaveName intentionally empty — game-scoped save.
+			// SaveName intentionally empty -- game-scoped save.
 		},
 		Summary: "Shared Stash (Softcore), 60 items",
 		Sections: map[string]daemon.Section{
@@ -224,5 +225,41 @@ func TestNew_InvalidURL(t *testing.T) {
 	_, err := New("://invalid", "token")
 	if err == nil {
 		t.Fatal("expected error for invalid URL")
+	}
+}
+
+func TestPush_ServerError_ReturnsPushStatusError(t *testing.T) {
+	srv, _ := newTestServer(t, http.StatusInternalServerError, nil)
+
+	client := newTestClient(t, srv.URL, "token")
+	_, err := client.Push(context.Background(), "d2r", testState(), testParsedAt())
+	if err == nil {
+		t.Fatal("expected error for 500 response")
+	}
+
+	var statusErr *daemon.PushStatusError
+	if !errors.As(err, &statusErr) {
+		t.Fatalf("error type = %T, want *daemon.PushStatusError", err)
+	}
+	if statusErr.StatusCode != http.StatusInternalServerError {
+		t.Errorf("StatusCode = %d, want %d", statusErr.StatusCode, http.StatusInternalServerError)
+	}
+}
+
+func TestPush_ClientError_ReturnsPushStatusError(t *testing.T) {
+	srv, _ := newTestServer(t, http.StatusBadRequest, nil)
+
+	client := newTestClient(t, srv.URL, "token")
+	_, err := client.Push(context.Background(), "d2r", testState(), testParsedAt())
+	if err == nil {
+		t.Fatal("expected error for 400 response")
+	}
+
+	var statusErr *daemon.PushStatusError
+	if !errors.As(err, &statusErr) {
+		t.Fatalf("error type = %T, want *daemon.PushStatusError", err)
+	}
+	if statusErr.StatusCode != http.StatusBadRequest {
+		t.Errorf("StatusCode = %d, want %d", statusErr.StatusCode, http.StatusBadRequest)
 	}
 }

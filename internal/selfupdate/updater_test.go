@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -71,7 +72,7 @@ func TestCheck_AlreadyCurrent(t *testing.T) {
 		},
 	}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		json.NewEncoder(w).Encode(manifest)
 	}))
 	defer srv.Close()
@@ -79,8 +80,8 @@ func TestCheck_AlreadyCurrent(t *testing.T) {
 	u := New(srv.URL, "token", nil, t.TempDir())
 
 	info, err := u.Check(context.Background(), "0.1.0", "linux-amd64")
-	if err != nil {
-		t.Fatalf("Check: %v", err)
+	if !errors.Is(err, ErrUpToDate) {
+		t.Fatalf("Check: got err=%v, want ErrUpToDate", err)
 	}
 	if info != nil {
 		t.Errorf("expected nil for current version, got %+v", info)
@@ -98,7 +99,7 @@ func TestCheck_PlatformNotFound(t *testing.T) {
 		},
 	}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		json.NewEncoder(w).Encode(manifest)
 	}))
 	defer srv.Close()
@@ -106,8 +107,8 @@ func TestCheck_PlatformNotFound(t *testing.T) {
 	u := New(srv.URL, "token", nil, t.TempDir())
 
 	info, err := u.Check(context.Background(), "0.1.0", "linux-amd64")
-	if err != nil {
-		t.Fatalf("Check: %v", err)
+	if !errors.Is(err, ErrNoPlatform) {
+		t.Fatalf("Check: got err=%v, want ErrNoPlatform", err)
 	}
 	if info != nil {
 		t.Errorf("expected nil for missing platform, got %+v", info)
@@ -171,8 +172,8 @@ func TestApply_DownloadsAndReplaces(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat binary: %v", err)
 	}
-	if stat.Mode().Perm() != 0o755 {
-		t.Errorf("binary mode = %v, want 0755", stat.Mode().Perm())
+	if stat.Mode().Perm() != 0o700 {
+		t.Errorf("binary mode = %v, want 0700", stat.Mode().Perm())
 	}
 }
 
@@ -307,7 +308,7 @@ func TestCheck_DowngradeNotReturned(t *testing.T) {
 		},
 	}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		json.NewEncoder(w).Encode(manifest)
 	}))
 	defer srv.Close()
@@ -316,8 +317,8 @@ func TestCheck_DowngradeNotReturned(t *testing.T) {
 
 	// Current version is NEWER than manifest — should not return an update.
 	info, err := u.Check(context.Background(), "0.2.0", "linux-amd64")
-	if err != nil {
-		t.Fatalf("Check: %v", err)
+	if !errors.Is(err, ErrUpToDate) {
+		t.Fatalf("Check: got err=%v, want ErrUpToDate", err)
 	}
 	if info != nil {
 		t.Errorf("expected nil for downgrade, got %+v", info)

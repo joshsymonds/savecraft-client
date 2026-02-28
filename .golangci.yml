@@ -131,10 +131,6 @@ linters:
     - godox
 
   settings:
-    gosec:
-      excludes:
-        - G704 # SSRF taint analysis — false positive for daemon HTTP clients with configured URLs
-
     cyclop:
       max-complexity: 30
       package-average: 10.0
@@ -493,6 +489,18 @@ linters:
           - ireturn
           - varnamelen
           - musttag
+
+      # Daemon HTTP clients use configured server URLs, not user-tainted input
+      - path: 'internal/(pluginmgr|push|selfupdate)/.*\.go'
+        text: 'G704'
+        linters:
+          - gosec
+
+      # Self-updater must chmod downloaded binaries to be executable (0o700)
+      - path: 'internal/selfupdate/.*\.go'
+        text: 'G302'
+        linters:
+          - gosec
 
       # CLI entrypoints: fmt.Print, file I/O from args, arg count checks, err reuse are idiomatic
       - path: cmd/.*main\.go

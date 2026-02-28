@@ -14,7 +14,10 @@ import (
 	"github.com/joshsymonds/savecraft.gg/internal/daemon"
 )
 
-const maxErrorBody = 512
+const (
+	maxErrorBody      = 512
+	pushClientTimeout = 30 * time.Second
+)
 
 // Client pushes parsed game state to the Savecraft API.
 type Client struct {
@@ -30,7 +33,7 @@ func New(serverURL, authToken string) (*Client, error) {
 		return nil, fmt.Errorf("parse server URL: %w", err)
 	}
 	return &Client{
-		httpClient: http.DefaultClient,
+		httpClient: &http.Client{Timeout: pushClientTimeout},
 		baseURL:    baseURL,
 		authToken:  authToken,
 	}, nil
@@ -80,7 +83,13 @@ func (c *Client) Push(
 func readErrorResponse(resp *http.Response) error {
 	errBody, readErr := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
 	if readErr != nil {
-		return fmt.Errorf("push returned status %d (body unreadable)", resp.StatusCode)
+		return &daemon.PushStatusError{
+			StatusCode: resp.StatusCode,
+			Body:       "(body unreadable)",
+		}
 	}
-	return fmt.Errorf("push returned status %d: %s", resp.StatusCode, bytes.TrimSpace(errBody))
+	return &daemon.PushStatusError{
+		StatusCode: resp.StatusCode,
+		Body:       string(bytes.TrimSpace(errBody)),
+	}
 }

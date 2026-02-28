@@ -2,6 +2,19 @@
 
 {
   dotenv.enable = true;
+
+  # Pre-push hook enforces the same lint/format checks that CI runs.
+  # Bypass with: git push --no-verify
+  git-hooks.hooks.lint-all = {
+    enable = true;
+    name = "lint-all";
+    description = "Run all lint and format checks (mirrors CI)";
+    entry = "just lint-all";
+    language = "system";
+    pass_filenames = false;
+    stages = [ "pre-push" ];
+  };
+
   packages = [
     # Go daemon + plugins
     pkgs.go_1_26

@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,6 +20,12 @@ import (
 	"github.com/joshsymonds/savecraft.gg/internal/signing"
 )
 
+// ErrNoPlatform indicates the manifest has no update for the requested platform.
+var ErrNoPlatform = errors.New("no update available for platform")
+
+// ErrUpToDate indicates the current version is already at or ahead of the manifest version.
+var ErrUpToDate = errors.New("already up to date")
+
 // HTTPUpdater checks a remote manifest for daemon updates and applies them.
 type HTTPUpdater struct {
 	serverURL string
@@ -29,7 +36,7 @@ type HTTPUpdater struct {
 }
 
 type manifestResponse struct {
-	Version   string                      `json:"version"`
+	Version   string                       `json:"version"`
 	Platforms map[string]daemon.UpdateInfo `json:"platforms"`
 }
 
@@ -63,17 +70,18 @@ func (u *HTTPUpdater) Check(ctx context.Context, currentVersion, platform string
 	}
 
 	var manifest manifestResponse
-	if err := json.NewDecoder(resp.Body).Decode(&manifest); err != nil {
-		return nil, fmt.Errorf("decode manifest: %w", err)
+	decodeErr := json.NewDecoder(resp.Body).Decode(&manifest)
+	if decodeErr != nil {
+		return nil, fmt.Errorf("decode manifest: %w", decodeErr)
 	}
 
 	info, ok := manifest.Platforms[platform]
 	if !ok {
-		return nil, nil
+		return nil, ErrNoPlatform
 	}
 
 	if !isNewer(manifest.Version, currentVersion) {
-		return nil, nil
+		return nil, ErrUpToDate
 	}
 
 	info.Version = manifest.Version
@@ -83,21 +91,24 @@ func (u *HTTPUpdater) Check(ctx context.Context, currentVersion, platform string
 // isNewer returns true if latest is a strictly newer semver than current.
 func isNewer(latest, current string) bool {
 	parse := func(v string) []int {
-		var parts []int
+		parts := make([]int, 0, 3)
 		for s := range strings.SplitSeq(v, ".") {
-			n, _ := strconv.Atoi(s)
+			n, atoiErr := strconv.Atoi(s)
+			if atoiErr != nil {
+				n = 0
+			}
 			parts = append(parts, n)
 		}
 		return parts
 	}
-	l, c := parse(latest), parse(current)
-	for i := 0; i < len(l) || i < len(c); i++ {
+	latestParts, currentParts := parse(latest), parse(current)
+	for i := 0; i < len(latestParts) || i < len(currentParts); i++ {
 		lp, cp := 0, 0
-		if i < len(l) {
-			lp = l[i]
+		if i < len(latestParts) {
+			lp = latestParts[i]
 		}
-		if i < len(c) {
-			cp = c[i]
+		if i < len(currentParts) {
+			cp = currentParts[i]
 		}
 		if lp > cp {
 			return true
@@ -111,17 +122,14 @@ func isNewer(latest, current string) bool {
 
 // Apply downloads a new daemon binary, verifies its signature and checksum, and replaces binaryPath.
 func (u *HTTPUpdater) Apply(ctx context.Context, info *daemon.UpdateInfo, binaryPath string) error {
-	if err := os.MkdirAll(u.cacheDir, 0o755); err != nil {
+	if err := os.MkdirAll(u.cacheDir, 0o750); err != nil {
 		return fmt.Errorf("create cache dir: %w", err)
 	}
 
 	tempBinaryPath := filepath.Join(u.cacheDir, "savecraft-daemon.new")
 	tempSigPath := filepath.Join(u.cacheDir, "savecraft-daemon.new.sig")
 
-	defer func() {
-		os.Remove(tempBinaryPath)
-		os.Remove(tempSigPath)
-	}()
+	defer cleanupTempFiles(tempBinaryPath, tempSigPath)
 
 	if err := downloadToFile(ctx, info.URL, tempBinaryPath, u.authToken, u.client); err != nil {
 		return fmt.Errorf("download binary: %w", err)
@@ -131,19 +139,20 @@ func (u *HTTPUpdater) Apply(ctx context.Context, info *daemon.UpdateInfo, binary
 		return fmt.Errorf("download signature: %w", err)
 	}
 
-	binaryBytes, err := os.ReadFile(tempBinaryPath)
+	binaryBytes, err := os.ReadFile(filepath.Clean(tempBinaryPath))
 	if err != nil {
 		return fmt.Errorf("read downloaded binary: %w", err)
 	}
 
-	sigBytes, err := os.ReadFile(tempSigPath)
-	if err != nil {
-		return fmt.Errorf("read downloaded signature: %w", err)
+	sigBytes, sigReadErr := os.ReadFile(filepath.Clean(tempSigPath))
+	if sigReadErr != nil {
+		return fmt.Errorf("read downloaded signature: %w", sigReadErr)
 	}
 
 	if u.pubKey != nil {
-		if err := signing.Verify(u.pubKey, binaryBytes, sigBytes); err != nil {
-			return fmt.Errorf("signature verification: %w", err)
+		verifyErr := signing.Verify(u.pubKey, binaryBytes, sigBytes)
+		if verifyErr != nil {
+			return fmt.Errorf("signature verification: %w", verifyErr)
 		}
 	}
 
@@ -153,15 +162,28 @@ func (u *HTTPUpdater) Apply(ctx context.Context, info *daemon.UpdateInfo, binary
 		return fmt.Errorf("sha256 mismatch: got %s, want %s", actualHex, info.SHA256)
 	}
 
-	if err := os.Rename(tempBinaryPath, binaryPath); err != nil {
-		return fmt.Errorf("replace binary: %w", err)
+	renameErr := os.Rename(tempBinaryPath, binaryPath)
+	if renameErr != nil {
+		return fmt.Errorf("replace binary: %w", renameErr)
 	}
 
-	if err := os.Chmod(binaryPath, 0o755); err != nil {
-		return fmt.Errorf("chmod binary: %w", err)
+	chmodErr := os.Chmod(binaryPath, 0o700)
+	if chmodErr != nil {
+		return fmt.Errorf("chmod binary: %w", chmodErr)
 	}
 
 	return nil
+}
+
+// cleanupTempFiles removes temporary download files, ignoring errors since
+// these are best-effort cleanup of files in a temp/cache directory.
+func cleanupTempFiles(paths ...string) {
+	for _, path := range paths {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			// Best-effort cleanup; nothing actionable on failure.
+			continue
+		}
+	}
 }
 
 func downloadToFile(ctx context.Context, url, destPath, authToken string, client *http.Client) error {
@@ -181,16 +203,16 @@ func downloadToFile(ctx context.Context, url, destPath, authToken string, client
 		return fmt.Errorf("download %s returned %d", url, resp.StatusCode)
 	}
 
-	f, err := os.Create(destPath)
+	outFile, err := os.Create(filepath.Clean(destPath))
 	if err != nil {
 		return fmt.Errorf("create %s: %w", destPath, err)
 	}
-	defer f.Close()
+	defer outFile.Close()
 
-	if _, err := io.Copy(f, resp.Body); err != nil {
-		return fmt.Errorf("write %s: %w", destPath, err)
+	_, copyErr := io.Copy(outFile, resp.Body)
+	if copyErr != nil {
+		return fmt.Errorf("write %s: %w", destPath, copyErr)
 	}
 
 	return nil
 }
-

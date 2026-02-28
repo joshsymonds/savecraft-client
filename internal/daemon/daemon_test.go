@@ -19,8 +19,8 @@ import (
 // --- Fakes ---
 
 type fakeFS struct {
-	files map[string][]byte   // full path → contents
-	dirs  map[string][]string // dir path → file names
+	files map[string][]byte   // full path -> contents
+	dirs  map[string][]string // dir path -> file names
 }
 
 func (f *fakeFS) Stat(path string) (fs.FileInfo, error) {
@@ -132,7 +132,7 @@ func (w *fakeWatcher) Close() error             { return nil }
 type fakeRunner struct {
 	results    map[string]*GameState
 	errors     map[string]error
-	statusMsgs map[string][]string // gameID → status messages to emit
+	statusMsgs map[string][]string // gameID -> status messages to emit
 	calls      []runCall
 	mu         sync.Mutex
 }
@@ -168,10 +168,11 @@ func (r *fakeRunner) Run(
 }
 
 type fakePushClient struct {
-	results map[string]*PushResult
-	errors  map[string]error
-	calls   []pushCall
-	mu      sync.Mutex
+	results   map[string]*PushResult
+	errors    map[string]error
+	errorSeqs map[string][]error // per-call error sequence (pops front each call)
+	calls     []pushCall
+	mu        sync.Mutex
 }
 
 type pushCall struct {
@@ -187,7 +188,17 @@ func (p *fakePushClient) Push(
 ) (*PushResult, error) {
 	p.mu.Lock()
 	p.calls = append(p.calls, pushCall{GameID: gameID, State: state})
+
+	// Check errorSeqs first (per-call sequencing).
+	seq := p.popSeqError(gameID)
 	p.mu.Unlock()
+
+	if seq.found {
+		if seq.err != nil {
+			return nil, seq.err
+		}
+		return p.defaultResult(gameID), nil
+	}
 
 	if p.errors != nil {
 		if err, ok := p.errors[gameID]; ok {
@@ -200,6 +211,36 @@ func (p *fakePushClient) Push(
 		}
 	}
 	return &PushResult{SaveUUID: "test-uuid", SnapshotTimestamp: "2026-02-25T21:30:00Z"}, nil
+}
+
+// seqResult holds the result of popping from errorSeqs.
+type seqResult struct {
+	err   error
+	found bool
+}
+
+// popSeqError returns the next error from errorSeqs for gameID.
+// Must be called with p.mu held.
+func (p *fakePushClient) popSeqError(gameID string) seqResult {
+	if p.errorSeqs == nil {
+		return seqResult{}
+	}
+	seq, ok := p.errorSeqs[gameID]
+	if !ok || len(seq) == 0 {
+		return seqResult{}
+	}
+	err := seq[0]
+	p.errorSeqs[gameID] = seq[1:]
+	return seqResult{err: err, found: true}
+}
+
+func (p *fakePushClient) defaultResult(gameID string) *PushResult {
+	if p.results != nil {
+		if r, ok := p.results[gameID]; ok {
+			return r
+		}
+	}
+	return &PushResult{SaveUUID: "test-uuid", SnapshotTimestamp: "2026-02-25T21:30:00Z"}
 }
 
 type fakeWSClient struct {
@@ -616,7 +657,7 @@ func TestHandleFileEvent_IgnoresUnwatchedDir(t *testing.T) {
 	cfg := d2rConfig()
 
 	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil)
-	// watchedDirs is empty — no directories are being watched
+	// watchedDirs is empty -- no directories are being watched
 
 	d.handleFileEvent(context.Background(), FileEvent{
 		Path: "/saves/d2r/Hammerdin.d2s",
@@ -672,7 +713,7 @@ func TestParseAndPush_FileReadError(t *testing.T) {
 		t.Error("missing parseFailed")
 	}
 	if slices.Contains(types, "pluginStatus") {
-		t.Error("unexpected pluginStatus — runner should not have been called")
+		t.Error("unexpected pluginStatus -- runner should not have been called")
 	}
 }
 
@@ -680,7 +721,7 @@ func TestParseAndPush_PushError(t *testing.T) {
 	ws := newFakeWSClient()
 	runner := d2rRunner()
 	pusher := &fakePushClient{
-		errors: map[string]error{"d2r": fmt.Errorf("server unavailable")},
+		errors: map[string]error{"d2r": &PushStatusError{StatusCode: 400, Body: "bad request"}},
 	}
 	fsys := &fakeFS{
 		files: map[string][]byte{"/saves/d2r/test.d2s": []byte("data")},
@@ -696,6 +737,11 @@ func TestParseAndPush_PushError(t *testing.T) {
 	}
 	if slices.Contains(types, "pushCompleted") {
 		t.Error("unexpected pushCompleted after push failure")
+	}
+
+	failed := ws.sentEvent("pushFailed", 0)
+	if failed["willRetry"] != false {
+		t.Errorf("willRetry = %v, want false for 400 error", failed["willRetry"])
 	}
 }
 
@@ -730,6 +776,201 @@ func TestParseAndPush_ForwardsPluginStatus(t *testing.T) {
 	s2 := ws.sentEvent("pluginStatus", 1)
 	if s2["message"] != "Parsing inventory (247 items)" {
 		t.Errorf("status 1 message = %v", s2["message"])
+	}
+}
+
+// --- Tests: push retry ---
+
+func TestPushWithRetry_TransientThenSuccess(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := d2rRunner()
+	pusher := &fakePushClient{
+		errorSeqs: map[string][]error{
+			"d2r": {
+				&PushStatusError{StatusCode: 503, Body: "unavailable"},
+				nil, // success on second attempt
+			},
+		},
+	}
+	fsys := &fakeFS{
+		files: map[string][]byte{"/saves/d2r/test.d2s": []byte("data")},
+	}
+	cfg := d2rConfig()
+	cfg.Retry = RetryConfig{MaxRetries: 3, BaseDelay: time.Millisecond, MaxDelay: time.Millisecond}
+
+	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil)
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s")
+
+	types := ws.sentEventTypes()
+	if !slices.Contains(types, "pushCompleted") {
+		t.Error("missing pushCompleted -- retry should have succeeded")
+	}
+
+	// Should have emitted pushFailed with willRetry=true for the transient failure.
+	failed := ws.sentEvent("pushFailed", 0)
+	if failed == nil {
+		t.Fatal("missing pushFailed for transient error")
+	}
+	if failed["willRetry"] != true {
+		t.Errorf("willRetry = %v, want true", failed["willRetry"])
+	}
+
+	// Should have 2 push calls.
+	pusher.mu.Lock()
+	calls := len(pusher.calls)
+	pusher.mu.Unlock()
+	if calls != 2 {
+		t.Errorf("push calls = %d, want 2", calls)
+	}
+
+	// Should have 2 pushStarted events (initial + retry).
+	pushStartedCount := 0
+	for _, et := range types {
+		if et == "pushStarted" {
+			pushStartedCount++
+		}
+	}
+	if pushStartedCount != 2 {
+		t.Errorf("pushStarted count = %d, want 2", pushStartedCount)
+	}
+}
+
+func TestPushWithRetry_MaxRetriesExhausted(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := d2rRunner()
+	pusher := &fakePushClient{
+		errors: map[string]error{
+			"d2r": &PushStatusError{StatusCode: 503, Body: "unavailable"},
+		},
+	}
+	fsys := &fakeFS{
+		files: map[string][]byte{"/saves/d2r/test.d2s": []byte("data")},
+	}
+	cfg := d2rConfig()
+	cfg.Retry = RetryConfig{MaxRetries: 2, BaseDelay: time.Millisecond, MaxDelay: time.Millisecond}
+
+	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil)
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s")
+
+	types := ws.sentEventTypes()
+	if slices.Contains(types, "pushCompleted") {
+		t.Error("unexpected pushCompleted -- all retries should fail")
+	}
+
+	// Should have 3 push calls (1 initial + 2 retries).
+	pusher.mu.Lock()
+	calls := len(pusher.calls)
+	pusher.mu.Unlock()
+	if calls != 3 {
+		t.Errorf("push calls = %d, want 3", calls)
+	}
+
+	// Last pushFailed should have willRetry=false.
+	pushFailedCount := 0
+	for _, et := range types {
+		if et == "pushFailed" {
+			pushFailedCount++
+		}
+	}
+	if pushFailedCount != 3 {
+		t.Errorf("pushFailed count = %d, want 3", pushFailedCount)
+	}
+
+	// Last failure should have willRetry=false.
+	lastFailed := ws.sentEvent("pushFailed", pushFailedCount-1)
+	if lastFailed["willRetry"] != false {
+		t.Errorf("last pushFailed willRetry = %v, want false", lastFailed["willRetry"])
+	}
+
+	// First failure should have willRetry=true.
+	firstFailed := ws.sentEvent("pushFailed", 0)
+	if firstFailed["willRetry"] != true {
+		t.Errorf("first pushFailed willRetry = %v, want true", firstFailed["willRetry"])
+	}
+}
+
+func TestPushWithRetry_PermanentFailureNoRetry(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := d2rRunner()
+	pusher := &fakePushClient{
+		errors: map[string]error{
+			"d2r": &PushStatusError{StatusCode: 401, Body: "unauthorized"},
+		},
+	}
+	fsys := &fakeFS{
+		files: map[string][]byte{"/saves/d2r/test.d2s": []byte("data")},
+	}
+	cfg := d2rConfig()
+	cfg.Retry = RetryConfig{MaxRetries: 3, BaseDelay: time.Millisecond, MaxDelay: time.Millisecond}
+
+	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil)
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s")
+
+	// Should only have 1 push call -- no retries for 4xx.
+	pusher.mu.Lock()
+	calls := len(pusher.calls)
+	pusher.mu.Unlock()
+	if calls != 1 {
+		t.Errorf("push calls = %d, want 1 (no retry for 4xx)", calls)
+	}
+
+	types := ws.sentEventTypes()
+	if !slices.Contains(types, "pushFailed") {
+		t.Error("missing pushFailed")
+	}
+	if slices.Contains(types, "pushCompleted") {
+		t.Error("unexpected pushCompleted")
+	}
+
+	failed := ws.sentEvent("pushFailed", 0)
+	if failed["willRetry"] != false {
+		t.Errorf("willRetry = %v, want false for permanent failure", failed["willRetry"])
+	}
+}
+
+func TestPushWithRetry_ContextCancellation(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := d2rRunner()
+
+	// First call returns 503, then context gets canceled during backoff
+	pusher := &fakePushClient{
+		errors: map[string]error{
+			"d2r": &PushStatusError{StatusCode: 503, Body: "unavailable"},
+		},
+	}
+	fsys := &fakeFS{
+		files: map[string][]byte{"/saves/d2r/test.d2s": []byte("data")},
+	}
+	cfg := d2rConfig()
+	// Use a longer delay so we can cancel during backoff
+	cfg.Retry = RetryConfig{MaxRetries: 3, BaseDelay: 5 * time.Second, MaxDelay: 5 * time.Second}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil)
+
+	done := make(chan struct{})
+	go func() {
+		d.parseAndPush(ctx, "d2r", "/saves/d2r/test.d2s", "test.d2s")
+		close(done)
+	}()
+
+	// Wait for first push attempt, then cancel
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+
+	select {
+	case <-done:
+		// good, returned promptly
+	case <-time.After(2 * time.Second):
+		t.Fatal("parseAndPush did not return after context cancellation")
+	}
+
+	// Should have only 1 push call
+	pusher.mu.Lock()
+	calls := len(pusher.calls)
+	pusher.mu.Unlock()
+	if calls != 1 {
+		t.Errorf("push calls = %d, want 1", calls)
 	}
 }
 
@@ -893,7 +1134,7 @@ func TestConfigUpdate_RemovesGame(t *testing.T) {
 	d := New(cfg, d2rFS(), watcher, d2rRunner(), &fakePushClient{}, ws, &fakePluginManager{}, nil)
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
-	// Send empty config — d2r is no longer present.
+	// Send empty config -- d2r is no longer present.
 	cmd, _ := json.Marshal(map[string]any{
 		"configUpdate": map[string]any{
 			"games": map[string]any{},
@@ -1192,6 +1433,85 @@ func TestRun_EnsurePluginFailed_SkipsGame(t *testing.T) {
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatalf("Run returned error: %v", err)
+	}
+}
+
+// --- Tests: zombie config removal on plugin failure ---
+
+func TestConfigUpdate_NewGame_PluginFailure_RemovesFromConfig(t *testing.T) {
+	ws := newFakeWSClient()
+	fsys := d2rFS()
+	cfg := Config{DeviceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
+
+	pm := &fakePluginManager{
+		ensureErr: map[string]error{"d2r": fmt.Errorf("download failed")},
+	}
+
+	d := New(cfg, fsys, newFakeWatcher(), d2rRunner(), &fakePushClient{}, ws, pm, nil)
+
+	cmd, _ := json.Marshal(map[string]any{
+		"configUpdate": map[string]any{
+			"games": map[string]any{
+				"d2r": map[string]any{
+					"savePath":       "/saves/d2r",
+					"enabled":        true,
+					"fileExtensions": []string{".d2s"},
+				},
+			},
+		},
+	})
+	d.handleCommand(context.Background(), cmd)
+
+	// Game should be removed from config after plugin failure.
+	if _, ok := d.cfg.Games["d2r"]; ok {
+		t.Error("d2r should be removed from config after plugin download failure")
+	}
+
+	if !slices.Contains(ws.sentEventTypes(), "pluginDownloadFailed") {
+		t.Error("missing pluginDownloadFailed event")
+	}
+}
+
+func TestConfigUpdate_PathChange_PluginFailure_RemovesFromConfig(t *testing.T) {
+	ws := newFakeWSClient()
+	watcher := newFakeWatcher()
+	fsys := &fakeFS{
+		dirs:  map[string][]string{"/new/path": {"Hero.d2s"}},
+		files: map[string][]byte{"/new/path/Hero.d2s": []byte("data")},
+	}
+	cfg := d2rConfig()
+
+	pm := &fakePluginManager{
+		ensureErr: map[string]error{"d2r": fmt.Errorf("download failed")},
+	}
+
+	d := New(cfg, fsys, watcher, d2rRunner(), &fakePushClient{}, ws, pm, nil)
+	d.watchedDirs["/saves/d2r"] = "d2r"
+
+	cmd, _ := json.Marshal(map[string]any{
+		"configUpdate": map[string]any{
+			"games": map[string]any{
+				"d2r": map[string]any{
+					"savePath":       "/new/path",
+					"enabled":        true,
+					"fileExtensions": []string{".d2s"},
+				},
+			},
+		},
+	})
+	d.handleCommand(context.Background(), cmd)
+
+	// Game should be removed from config after plugin failure on path change.
+	if _, ok := d.cfg.Games["d2r"]; ok {
+		t.Error("d2r should be removed from config after plugin download failure on path change")
+	}
+
+	// Old path should have been unwatched.
+	watcher.mu.Lock()
+	removed := slices.Clone(watcher.removed)
+	watcher.mu.Unlock()
+	if !slices.Contains(removed, "/saves/d2r") {
+		t.Errorf("watcher.removed = %v, want /saves/d2r", removed)
 	}
 }
 
@@ -1590,7 +1910,7 @@ func TestCheckSelfUpdate_CheckError(t *testing.T) {
 	}
 }
 
-func TestCheckSelfUpdate_NilUpdater(t *testing.T) {
+func TestCheckSelfUpdate_NilUpdater(_ *testing.T) {
 	ws := newFakeWSClient()
 	cfg := Config{
 		DeviceID: "deck",
