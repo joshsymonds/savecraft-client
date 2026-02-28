@@ -117,3 +117,18 @@ jobs:
             dist/savecraft-daemon-* \
             dist/checksums-sha256.txt \
             install/install.sh
+
+      - name: Notify Discord
+        if: success()
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          body=$(gh release view "$TAG" --json body -q .body | head -c 1800)
+          jq -n \
+            --arg tag "$TAG" \
+            --arg body "$body" \
+            --arg url "https://github.com/joshsymonds/savecraft.gg/releases/tag/$TAG" \
+            '{embeds: [{title: ("Daemon " + $tag + " released"), description: $body, url: $url, color: 5793266}]}' \
+            | curl -s -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" -d @-

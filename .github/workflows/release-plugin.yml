@@ -116,3 +116,18 @@ jobs:
       - name: Clean up signing key
         if: always()
         run: rm -f /tmp/signing_key.priv
+
+      - name: Notify Discord
+        if: success() && steps.changed.outputs.plugins != ''
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
+          CHANGED_PLUGINS: ${{ steps.changed.outputs.plugins }}
+        run: |
+          for game_id in $CHANGED_PLUGINS; do
+            version=$(grep '^version' "plugins/${game_id}/plugin.toml" | head -1 | sed 's/.*= *"\(.*\)"/\1/')
+            jq -n \
+              --arg gid "$game_id" \
+              --arg ver "$version" \
+              '{embeds: [{title: ("Plugin " + $gid + " v" + $ver + " released"), description: ("The " + $gid + " plugin has been updated to v" + $ver + "."), color: 5793266}]}' \
+              | curl -s -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" -d @-
+          done
