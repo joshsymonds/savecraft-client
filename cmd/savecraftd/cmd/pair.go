@@ -58,6 +58,7 @@ func runPairWithPath(cmd *cobra.Command, serverURL string, force bool, envPath s
 
 	// Prompt for the pairing code.
 	reader := resolveInputReader(cmd)
+	defer reader.Close()
 
 	code, err := promptForCodeFromReader(cmd, reader)
 	if err != nil {
@@ -113,13 +114,13 @@ func promptForCodeFromReader(cmd *cobra.Command, reader io.Reader) (string, erro
 
 // resolveInputReader returns the appropriate reader for interactive input.
 // If cobra has a buffer set (tests), use that. If stdin is a pipe (curl|bash),
-// open /dev/tty for interactive input.
-func resolveInputReader(cmd *cobra.Command) io.Reader {
+// open /dev/tty for interactive input. The caller must Close the returned reader.
+func resolveInputReader(cmd *cobra.Command) io.ReadCloser {
 	// If a custom reader was set via cmd.SetIn (e.g., in tests), use it.
 	// We detect this by checking if InOrStdin returns something other than os.Stdin.
 	cmdIn := cmd.InOrStdin()
 	if cmdIn != os.Stdin {
-		return cmdIn
+		return io.NopCloser(cmdIn)
 	}
 
 	// Check if stdin is a pipe.
@@ -132,5 +133,5 @@ func resolveInputReader(cmd *cobra.Command) io.Reader {
 		}
 	}
 
-	return os.Stdin
+	return io.NopCloser(os.Stdin)
 }
