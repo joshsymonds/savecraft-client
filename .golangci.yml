@@ -491,8 +491,14 @@ linters:
           - musttag
 
       # Daemon HTTP clients use configured server URLs, not user-tainted input
-      - path: 'internal/(pluginmgr|push|selfupdate)/.*\.go'
-        text: 'G704'
+      - path: 'internal/(pluginmgr|push|selfupdate|pairclient)/.*\.go'
+        text: 'G(107|704)'
+        linters:
+          - gosec
+
+      # Env file path is from our own config, not user-tainted input
+      - path: 'internal/envfile/.*\.go'
+        text: 'G304'
         linters:
           - gosec
 
@@ -502,9 +508,10 @@ linters:
         linters:
           - gosec
 
-      # CLI entrypoints: fmt.Print, file I/O from args, arg count checks, err reuse are idiomatic
-      - path: cmd/.*main\.go
+      # CLI entrypoints: fmt.Print, file I/O from args, arg count checks, cleanup close are idiomatic
+      - path: 'cmd/.*\.go'
         linters:
+          - errcheck
           - forbidigo
           - gosec
           - govet
