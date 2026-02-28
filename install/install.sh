@@ -318,8 +318,28 @@ main() {
     chmod +x "${BIN_DIR}/${BINARY_NAME}"
     ok "Installed ${BINARY_NAME} to ${BIN_DIR}/${BINARY_NAME}"
 
-    # Env file
-    create_env_template
+    # Pair device or write env file
+    local paired=false
+    if [[ -n "${SAVECRAFT_AUTH_TOKEN:-}" ]]; then
+        # API key flow (headless/automation) — write env directly
+        create_env_template
+    elif [[ -n "${SAVECRAFT_SERVER_URL:-}" ]]; then
+        # Interactive pairing flow
+        echo ""
+        info "Pairing your device..."
+        info "Enter the 6-digit code shown on savecraft.gg"
+        echo ""
+        if "${BIN_DIR}/${BINARY_NAME}" pair --server "${SAVECRAFT_SERVER_URL}"; then
+            ok "Device paired successfully"
+            paired=true
+        else
+            warn "Pairing failed — you can pair later with:"
+            warn "  savecraftd pair --server ${SAVECRAFT_SERVER_URL}"
+            create_env_template
+        fi
+    else
+        create_env_template
+    fi
 
     # Systemd
     if [[ "${no_systemd}" == "false" ]]; then
@@ -342,14 +362,19 @@ main() {
     echo "  Service:  ${SYSTEMD_DIR}/savecraft.service"
     echo ""
 
-    if [[ "${no_systemd}" == "false" ]]; then
+    if [[ "${paired}" == "true" ]]; then
+        echo "  Device is paired and ready."
+        if [[ "${no_systemd}" == "false" ]]; then
+            echo "  Check daemon status: systemctl --user status savecraft"
+        fi
+    elif [[ "${no_systemd}" == "false" ]]; then
         echo "  Next steps:"
-        echo "    1. Edit ${CONFIG_DIR}/env and set SAVECRAFT_AUTH_TOKEN"
+        echo "    1. Pair your device: savecraftd pair --server <your-server-url>"
         echo "    2. Start the daemon: systemctl --user start savecraft"
         echo "    3. Check status:     systemctl --user status savecraft"
     else
         echo "  Next steps:"
-        echo "    1. Edit ${CONFIG_DIR}/env and set SAVECRAFT_AUTH_TOKEN"
+        echo "    1. Pair your device: savecraftd pair --server <your-server-url>"
         echo "    2. Run: ${BIN_DIR}/${BINARY_NAME}"
     fi
     echo ""
