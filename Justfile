@@ -183,8 +183,23 @@ test-install:
     docker build -t savecraft-install-test install/test/
     docker run --rm savecraft-install-test
 
+# Check Go formatting (non-destructive)
+fmt-go-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    files=$(find internal/ cmd/ plugins/ -name '*.go' -not -path 'internal/proto/*')
+    output=$(echo "$files" | xargs goimports -l)
+    if [[ -n "$output" ]]; then
+        echo "Files need goimports formatting:"
+        echo "$output"
+        exit 1
+    fi
+
+# Lint everything (mirrors CI lint steps, no tests — used by pre-push hook)
+lint-all: lint-go lint-worker lint-web fmt-go-check fmt-worker-check fmt-web-check check-web
+
 # Run all tests
 test: test-go test-worker test-web
 
 # Check everything: lint, generate, format, test
-check: proto-lint proto lint-go lint-worker lint-web fmt-worker-check fmt-web-check check-web test
+check: proto-lint proto lint-all test

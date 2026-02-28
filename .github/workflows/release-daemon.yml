@@ -18,7 +18,9 @@ jobs:
         with:
           go-version: "1.26"
 
-      - uses: taiki-e/install-action@just
+      - uses: taiki-e/install-action@a3324fb0eb94b8230ec968c3389c1b7929fc2f3b # v2
+        with:
+          tool: just
 
       - name: Extract version
         id: version
