@@ -1,7 +1,7 @@
 game_id = "d2r"
 name = "Diablo II: Resurrected"
 description = "Parses .d2s character saves and .d2i shared stash from Reign of the Warlock (v105)"
-version = "0.0.2"
+version = "0.0.3"
 channel = "beta"
 coverage = "partial"
 file_extensions = [".d2s", ".d2i"]
