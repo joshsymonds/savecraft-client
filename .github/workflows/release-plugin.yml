@@ -82,18 +82,20 @@ jobs:
 
             # Fetch current manifest from R2 to compare versions
             set +e
-            current_manifest=$(wrangler r2 object get "savecraft-plugins/plugins/${game_id}/manifest.json" --remote 2>/dev/null)
+            wrangler r2 object get "savecraft-plugins/plugins/${game_id}/manifest.json" --file /tmp/current_manifest.json --remote 2>/dev/null
             fetch_rc=$?
             set -e
 
-            if [ $fetch_rc -eq 0 ] && [ -n "$current_manifest" ]; then
-              current_version=$(echo "$current_manifest" | jq -r '.version // empty')
+            if [ $fetch_rc -eq 0 ] && [ -f /tmp/current_manifest.json ]; then
+              current_version=$(jq -r '.version // empty' /tmp/current_manifest.json)
+              rm -f /tmp/current_manifest.json
               if [ "$current_version" = "$new_version" ]; then
                 echo "    Version ${new_version} already published — skipping"
                 continue
               fi
               echo "    Current R2 version: ${current_version} → upgrading to ${new_version}"
             else
+              rm -f /tmp/current_manifest.json
               echo "    No existing manifest in R2 — first release"
             fi
 
