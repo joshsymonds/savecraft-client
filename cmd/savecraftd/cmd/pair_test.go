@@ -207,16 +207,17 @@ func TestLoadEnvFileDefaultsFromPath_SetsUnsetVars(t *testing.T) {
 	dir := t.TempDir()
 	envPath := filepath.Join(dir, "env")
 
+	// t.Setenv registers cleanup to restore the original value (unset).
+	// os.Unsetenv then puts the var into the "truly unset" state the test needs.
+	// This is intentional — t.Setenv's cleanup still correctly restores original state.
 	t.Setenv("SAVECRAFT_ENVTEST_A", "")
+	os.Unsetenv("SAVECRAFT_ENVTEST_A")
 
 	if err := envfile.Write(envPath, map[string]string{
 		"SAVECRAFT_ENVTEST_A": "from_file",
 	}); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-
-	// Clear the var — loadDefaults treats "" as unset.
-	os.Unsetenv("SAVECRAFT_ENVTEST_A")
 
 	loadEnvFileDefaultsFromPath(envPath)
 
