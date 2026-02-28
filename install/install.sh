@@ -143,9 +143,9 @@ detect_games() {
 }
 
 # ---------------------------------------------------------------------------
-# write_unit_file — write the systemd unit heredoc (no activation)
+# install_systemd_unit — write unit file + enable (+ start if configured)
 # ---------------------------------------------------------------------------
-write_unit_file() {
+install_systemd_unit() {
     mkdir -p "${SYSTEMD_DIR}"
 
     cat > "${SYSTEMD_DIR}/savecraft.service" << 'UNIT'
@@ -171,13 +171,7 @@ RestrictAddressFamilies=AF_INET AF_INET6
 [Install]
 WantedBy=default.target
 UNIT
-}
 
-# ---------------------------------------------------------------------------
-# install_systemd_unit — write + enable (+ start if configured)
-# ---------------------------------------------------------------------------
-install_systemd_unit() {
-    write_unit_file
     info "Installed systemd user unit to ${SYSTEMD_DIR}/savecraft.service"
 
     systemctl --user daemon-reload
@@ -318,8 +312,6 @@ main() {
         install_systemd_unit
     else
         info "Skipping systemd unit installation (--no-systemd)"
-        write_unit_file
-        info "Wrote systemd unit file to ${SYSTEMD_DIR}/savecraft.service (not activated)"
     fi
 
     # Game detection
@@ -332,7 +324,9 @@ main() {
     echo "  Binary:   ${BIN_DIR}/${BINARY_NAME}"
     echo "  Config:   ${CONFIG_DIR}/env"
     echo "  Cache:    ${CACHE_DIR}/"
-    echo "  Service:  ${SYSTEMD_DIR}/savecraft.service"
+    if [[ "${no_systemd}" == "false" ]]; then
+        echo "  Service:  ${SYSTEMD_DIR}/savecraft.service"
+    fi
     echo ""
 
     if [[ "${paired}" == "true" ]]; then
