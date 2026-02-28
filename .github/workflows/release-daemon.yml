@@ -50,6 +50,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: daemon-artifacts
+          path: dist
 
       - name: Decode signing key
         run: echo "$SIGNING_KEY" | base64 -d > /tmp/signing_key.priv
@@ -87,6 +88,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: signed-daemon-artifacts
+          path: dist
 
       - name: Extract version
         id: version
@@ -152,6 +154,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: signed-daemon-artifacts
+          path: dist
 
       - name: Extract version
         id: version
