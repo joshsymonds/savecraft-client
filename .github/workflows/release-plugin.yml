@@ -2,9 +2,7 @@ name: Release Plugin
 
 on:
   push:
-    branches: [main]
-    paths:
-      - "plugins/*/plugin.toml"
+    tags: ["plugin-v*"]
   workflow_dispatch:
     inputs:
       plugin:
@@ -13,11 +11,11 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   release:
-    name: Release changed plugins
+    name: Release plugins
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,25 +37,29 @@ jobs:
       - name: Install wrangler
         run: npm install -g wrangler
 
-      - name: Detect changed plugins
+      - name: Detect plugins to release
         id: changed
         env:
-          BEFORE_SHA: ${{ github.event.before }}
           MANUAL_PLUGIN: ${{ inputs.plugin }}
         run: |
           if [ -n "$MANUAL_PLUGIN" ]; then
+            # workflow_dispatch: use provided plugin name
             changed="$MANUAL_PLUGIN"
           else
-            changed=$(git diff --name-only "$BEFORE_SHA" HEAD -- 'plugins/*/plugin.toml' \
-              | sed 's|plugins/\([^/]*\)/plugin.toml|\1|' \
-              | sort -u \
-              | tr '\n' ' ')
+            # Tag push: check all plugins with a plugin.toml
+            changed=""
+            for dir in plugins/*/; do
+              game_id=$(basename "$dir")
+              [ -f "plugins/${game_id}/plugin.toml" ] || continue
+              changed="${changed} ${game_id}"
+            done
+            changed=$(echo "$changed" | xargs)
           fi
           echo "plugins=${changed}" >> "$GITHUB_OUTPUT"
           if [ -z "$changed" ]; then
-            echo "No plugin.toml changes detected"
+            echo "No plugins to check"
           else
-            echo "Changed plugins: ${changed}"
+            echo "Plugins to check: ${changed}"
           fi
 
       - name: Decode signing key
@@ -120,6 +122,29 @@ jobs:
       - name: Clean up signing key
         if: always()
         run: rm -f /tmp/signing_key.priv
+
+      - name: Find previous plugin tag
+        if: steps.changed.outputs.plugins != '' && startsWith(github.ref, 'refs/tags/')
+        id: prev
+        run: |
+          prev_tag=$(git tag -l 'plugin-v*' --sort=-v:refname | sed -n '2p')
+          echo "tag=${prev_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        if: steps.changed.outputs.plugins != '' && startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          PREV_TAG: ${{ steps.prev.outputs.tag }}
+        run: |
+          notes_flag=""
+          if [ -n "$PREV_TAG" ]; then
+            notes_flag="--notes-start-tag $PREV_TAG"
+          fi
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --generate-notes \
+            $notes_flag
 
       - name: Notify Discord
         if: success() && steps.changed.outputs.plugins != ''

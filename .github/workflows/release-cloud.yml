@@ -1,0 +1,177 @@
+name: Release Cloud
+
+on:
+  push:
+    tags: ["cloud-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  test-worker:
+    name: Worker (lint + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - run: npm ci
+
+      - uses: taiki-e/install-action@a3324fb0eb94b8230ec968c3389c1b7929fc2f3b # v2
+        with:
+          tool: just
+
+      - name: Lint
+        run: just lint-worker
+        working-directory: .
+
+      - name: Check formatting
+        run: just fmt-worker-check
+        working-directory: .
+
+      - name: Test
+        run: just test-worker
+        working-directory: .
+
+  test-web:
+    name: Web (lint + typecheck + test)
+    runs-on: ubuntu-latest
+    env:
+      PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_placeholder
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
+      - name: Generate SvelteKit types
+        run: npx svelte-kit sync
+
+      - uses: taiki-e/install-action@a3324fb0eb94b8230ec968c3389c1b7929fc2f3b # v2
+        with:
+          tool: just
+
+      - name: Lint
+        run: just lint-web
+        working-directory: .
+
+      - name: Check formatting
+        run: just fmt-web-check
+        working-directory: .
+
+      - name: Typecheck
+        run: just check-web
+        working-directory: .
+
+      - name: Test
+        run: just test-web
+        working-directory: .
+
+  deploy:
+    name: Deploy to Production
+    needs: [test-worker, test-web]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Install worker dependencies
+        run: npm ci
+        working-directory: worker
+
+      - name: Apply D1 migrations
+        run: npx wrangler d1 migrations apply savecraft --env production --remote
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy worker
+        run: npx wrangler deploy --env production
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Build web
+        run: npm run build
+        working-directory: web
+        env:
+          PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.PUBLIC_CLERK_PUBLISHABLE_KEY }}
+
+      - name: Deploy web to Pages
+        run: npx wrangler pages deploy .svelte-kit/cloudflare --project-name savecraft-web --branch main
+        working-directory: web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  release:
+    name: GitHub Release
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find previous cloud tag
+        id: prev
+        run: |
+          prev_tag=$(git tag -l 'cloud-v*' --sort=-v:refname | sed -n '2p')
+          echo "tag=${prev_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          PREV_TAG: ${{ steps.prev.outputs.tag }}
+        run: |
+          notes_flag=""
+          if [ -n "$PREV_TAG" ]; then
+            notes_flag="--notes-start-tag $PREV_TAG"
+          fi
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --generate-notes \
+            $notes_flag
+
+      - name: Notify Discord
+        if: success()
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          body=$(gh release view "$TAG" --json body -q .body | head -c 1800)
+          jq -n \
+            --arg tag "$TAG" \
+            --arg body "$body" \
+            --arg url "https://github.com/joshsymonds/savecraft.gg/releases/tag/$TAG" \
+            '{embeds: [{title: ("Cloud " + $tag + " deployed"), description: $body, url: $url, color: 5793266}]}' \
+            | curl -s -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" -d @-
