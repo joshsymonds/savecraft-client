@@ -1509,3 +1509,97 @@ func TestHandleCommand_DaemonUpdateAvailable_NilUpdater(t *testing.T) {
 		t.Error("should not start update with nil updater")
 	}
 }
+
+func TestCheckSelfUpdate_TriggersApply(t *testing.T) {
+	ws := newFakeWSClient()
+	updater := &fakeUpdater{
+		checkResult: &UpdateInfo{
+			Version:      "0.3.0",
+			URL:          "https://example.com/daemon",
+			SignatureURL: "https://example.com/daemon.sig",
+			SHA256:       "deadbeef",
+		},
+	}
+	cfg := Config{
+		DeviceID:   "deck",
+		Version:    "0.2.0",
+		BinaryPath: "/usr/local/bin/savecraft-daemon",
+		Games:      map[string]GameConfig{},
+	}
+
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, updater)
+	var exitCode int
+	d.exitFunc = func(code int) { exitCode = code }
+
+	d.checkSelfUpdate(context.Background())
+
+	if !slices.Contains(ws.sentEventTypes(), "daemonUpdateStarted") {
+		t.Error("missing daemonUpdateStarted event")
+	}
+	if !slices.Contains(ws.sentEventTypes(), "daemonOffline") {
+		t.Error("missing daemonOffline after successful update")
+	}
+	if exitCode != 0 {
+		t.Errorf("exitFunc called with %d, want 0", exitCode)
+	}
+
+	updater.mu.Lock()
+	calls := len(updater.applyCalls)
+	updater.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("updater.Apply called %d times, want 1", calls)
+	}
+	if updater.applyCalls[0].Info.Version != "0.3.0" {
+		t.Errorf("version = %s, want 0.3.0", updater.applyCalls[0].Info.Version)
+	}
+}
+
+func TestCheckSelfUpdate_NilResult(t *testing.T) {
+	ws := newFakeWSClient()
+	updater := &fakeUpdater{checkResult: nil}
+	cfg := Config{
+		DeviceID: "deck",
+		Version:  "0.2.0",
+		Games:    map[string]GameConfig{},
+	}
+
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, updater)
+
+	d.checkSelfUpdate(context.Background())
+
+	if slices.Contains(ws.sentEventTypes(), "daemonUpdateStarted") {
+		t.Error("should not start update when Check returns nil")
+	}
+}
+
+func TestCheckSelfUpdate_CheckError(t *testing.T) {
+	ws := newFakeWSClient()
+	updater := &fakeUpdater{checkErr: fmt.Errorf("network error")}
+	cfg := Config{
+		DeviceID: "deck",
+		Version:  "0.2.0",
+		Games:    map[string]GameConfig{},
+	}
+
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, updater)
+
+	d.checkSelfUpdate(context.Background())
+
+	if slices.Contains(ws.sentEventTypes(), "daemonUpdateStarted") {
+		t.Error("should not start update when Check returns error")
+	}
+}
+
+func TestCheckSelfUpdate_NilUpdater(t *testing.T) {
+	ws := newFakeWSClient()
+	cfg := Config{
+		DeviceID: "deck",
+		Version:  "0.2.0",
+		Games:    map[string]GameConfig{},
+	}
+
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil)
+
+	// Should not panic
+	d.checkSelfUpdate(context.Background())
+}
