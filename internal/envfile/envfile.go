@@ -9,7 +9,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 )
@@ -85,58 +84,7 @@ func Write(path string, vars map[string]string) error {
 	return nil
 }
 
-// ConfigDir returns the platform-appropriate configuration directory for savecraft.
-//
-//   - Linux: $XDG_CONFIG_HOME/savecraft or ~/.config/savecraft
-//   - macOS: ~/Library/Application Support/Savecraft
-//   - Windows: %APPDATA%\Savecraft
-func ConfigDir() string {
-	switch runtime.GOOS {
-	case "darwin":
-		return darwinConfigDir()
-	case "windows":
-		return windowsConfigDir()
-	default:
-		return linuxConfigDir()
-	}
-}
-
 // EnvFilePath returns the full path to the daemon's env file.
 func EnvFilePath() string {
 	return filepath.Join(ConfigDir(), "env")
-}
-
-func darwinConfigDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join(".", "savecraft")
-	}
-
-	return filepath.Join(home, "Library", "Application Support", "Savecraft")
-}
-
-func windowsConfigDir() string {
-	if appData := os.Getenv("APPDATA"); appData != "" {
-		return filepath.Join(appData, "Savecraft")
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join(".", "savecraft")
-	}
-
-	return filepath.Join(home, "AppData", "Roaming", "Savecraft")
-}
-
-func linuxConfigDir() string {
-	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, "savecraft")
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join(".", "savecraft")
-	}
-
-	return filepath.Join(home, ".config", "savecraft")
 }

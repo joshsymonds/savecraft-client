@@ -79,6 +79,27 @@ func TestRead(t *testing.T) {
 			t.Errorf("FOO = %q, want %q", vars["FOO"], "bar=baz")
 		}
 	})
+
+	t.Run("skips lines without equals sign", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		path := filepath.Join(dir, "env")
+
+		if err := os.WriteFile(path, []byte("NOEQUALS\nFOO=bar\n"), 0o600); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+
+		vars, err := envfile.Read(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(vars) != 1 {
+			t.Errorf("got %d vars, want 1", len(vars))
+		}
+		if vars["FOO"] != "bar" {
+			t.Errorf("FOO = %q, want %q", vars["FOO"], "bar")
+		}
+	})
 }
 
 func TestWrite(t *testing.T) {
@@ -150,6 +171,15 @@ func TestConfigDir(t *testing.T) {
 	dir := envfile.ConfigDir()
 	if dir == "" {
 		t.Error("ConfigDir returned empty string")
+	}
+}
+
+func TestConfigDirXDG(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "/custom/config")
+
+	dir := envfile.ConfigDir()
+	if dir != "/custom/config/savecraft" {
+		t.Errorf("ConfigDir = %q, want /custom/config/savecraft", dir)
 	}
 }
 
