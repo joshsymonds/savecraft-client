@@ -100,6 +100,26 @@ fmt-web:
 fmt-web-check:
     cd web && npx prettier --check .
 
+# Lint marketing site
+lint-site:
+    cd site && npx eslint .
+
+# Type-check marketing site
+check-site:
+    cd site && npm run check
+
+# Test marketing site
+test-site:
+    cd site && npm test
+
+# Format marketing site
+fmt-site:
+    cd site && npx prettier --write .
+
+# Check marketing site formatting
+fmt-site-check:
+    cd site && npx prettier --check .
+
 # Lint shell scripts (shellcheck)
 lint-sh:
     shellcheck install/install.sh install/test/run-test.sh scripts/generate-plugin-manifest.sh
@@ -208,10 +228,10 @@ fmt-go-check:
     fi
 
 # Lint everything (mirrors CI lint steps, no tests — used by pre-push hook)
-lint-all: lint-go lint-worker lint-web lint-sh fmt-go-check fmt-worker-check fmt-web-check fmt-sh-check check-web
+lint-all: lint-go lint-worker lint-web lint-site lint-sh fmt-go-check fmt-worker-check fmt-web-check fmt-site-check fmt-sh-check check-web check-site
 
 # Run all tests
-test: test-go test-worker test-web
+test: test-go test-worker test-web test-site
 
 # Check everything: lint, generate, format, test
 check: proto-lint proto lint-all test
