@@ -55,7 +55,7 @@ jobs:
 
       - name: Upload curl installer
         if: matrix.target == 'curl'
-        run: npx wrangler r2 object put "${{ needs.environment.outputs.r2_bucket }}/curl/install.sh" --file install/install.sh --content-type "text/x-shellscript" --remote
+        run: npx wrangler r2 object put "${{ needs.environment.outputs.r2_bucket }}/curl/install.sh" --file ../install.sh --content-type "text/x-shellscript" --remote
         working-directory: install/worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
