@@ -24,13 +24,13 @@ import (
 	"github.com/joshsymonds/savecraft.gg/internal/wsconn"
 )
 
-func buildRunFunc(serverURLDefault string) func(cmd *cobra.Command, args []string) error {
+func buildRunFunc(serverURLDefault, installURLDefault string) func(cmd *cobra.Command, args []string) error {
 	return func(_ *cobra.Command, _ []string) error {
-		return runDaemon(serverURLDefault)
+		return runDaemon(serverURLDefault, installURLDefault)
 	}
 }
 
-func runDaemon(serverURLDefault string) error {
+func runDaemon(serverURLDefault, installURLDefault string) error {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
@@ -39,7 +39,7 @@ func runDaemon(serverURLDefault string) error {
 	// Load env file values first (env vars override).
 	loadEnvFileDefaults()
 
-	cfg, err := loadConfig(serverURLDefault)
+	cfg, err := loadConfig(serverURLDefault, installURLDefault)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
@@ -65,6 +65,7 @@ func runDaemon(serverURLDefault string) error {
 
 	logger.Info("starting daemon",
 		slog.String("server", cfg.ServerURL),
+		slog.String("install", cfg.InstallURL),
 		slog.String("device_id", cfg.Daemon.DeviceID),
 		slog.Int("games", len(cfg.Daemon.Games)),
 	)
@@ -135,7 +136,7 @@ func createSubsystems(ctx context.Context, cfg *appConfig, logger *slog.Logger) 
 	}
 
 	updateCacheDir := filepath.Join(cacheDir, "updates")
-	updater := selfupdate.New(cfg.ServerURL, cfg.AuthToken, pubKey, updateCacheDir)
+	updater := selfupdate.New(cfg.InstallURL, pubKey, updateCacheDir)
 
 	pusher, err := push.New(cfg.ServerURL, cfg.AuthToken)
 	if err != nil {
@@ -161,19 +162,25 @@ func createSubsystems(ctx context.Context, cfg *appConfig, logger *slog.Logger) 
 
 // appConfig holds bootstrap configuration loaded from the environment.
 type appConfig struct {
-	ServerURL string
-	AuthToken string `json:"-"`
-	PluginDir string
-	Daemon    daemon.Config
+	ServerURL  string
+	InstallURL string
+	AuthToken  string `json:"-"`
+	PluginDir  string
+	Daemon     daemon.Config
 }
 
-func loadConfig(serverURLDefault string) (*appConfig, error) {
+func loadConfig(serverURLDefault, installURLDefault string) (*appConfig, error) {
 	serverURL := os.Getenv("SAVECRAFT_SERVER_URL")
 	if serverURL == "" {
 		serverURL = serverURLDefault
 	}
 	if serverURL == "" {
 		return nil, fmt.Errorf("SAVECRAFT_SERVER_URL is required (set in env or run 'savecraftd pair' first)")
+	}
+
+	installURL := os.Getenv("SAVECRAFT_INSTALL_URL")
+	if installURL == "" {
+		installURL = installURLDefault
 	}
 
 	authToken := os.Getenv("SAVECRAFT_AUTH_TOKEN")
@@ -199,9 +206,10 @@ func loadConfig(serverURLDefault string) (*appConfig, error) {
 	}
 
 	return &appConfig{
-		ServerURL: serverURL,
-		AuthToken: authToken,
-		PluginDir: pluginDir,
+		ServerURL:  serverURL,
+		InstallURL: installURL,
+		AuthToken:  authToken,
+		PluginDir:  pluginDir,
 		Daemon: daemon.Config{
 			ServerURL: serverURL,
 			AuthToken: authToken,

@@ -27,12 +27,12 @@ var ErrNoPlatform = errors.New("no update available for platform")
 var ErrUpToDate = errors.New("already up to date")
 
 // HTTPUpdater checks a remote manifest for daemon updates and applies them.
+// Downloads are unauthenticated — the install worker serves public binaries.
 type HTTPUpdater struct {
-	serverURL string
-	authToken string
-	pubKey    ed25519.PublicKey
-	cacheDir  string
-	client    *http.Client
+	installURL string
+	pubKey     ed25519.PublicKey
+	cacheDir   string
+	client     *http.Client
 }
 
 type manifestResponse struct {
@@ -40,24 +40,22 @@ type manifestResponse struct {
 	Platforms map[string]daemon.UpdateInfo `json:"platforms"`
 }
 
-// New creates an HTTPUpdater that checks serverURL for updates.
-func New(serverURL, authToken string, pubKey ed25519.PublicKey, cacheDir string) *HTTPUpdater {
+// New creates an HTTPUpdater that checks installURL for updates.
+func New(installURL string, pubKey ed25519.PublicKey, cacheDir string) *HTTPUpdater {
 	return &HTTPUpdater{
-		serverURL: serverURL,
-		authToken: authToken,
-		pubKey:    pubKey,
-		cacheDir:  cacheDir,
-		client:    http.DefaultClient,
+		installURL: installURL,
+		pubKey:     pubKey,
+		cacheDir:   cacheDir,
+		client:     http.DefaultClient,
 	}
 }
 
 // Check fetches the daemon manifest and returns update info if a newer version is available.
 func (u *HTTPUpdater) Check(ctx context.Context, currentVersion, platform string) (*daemon.UpdateInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.serverURL+"/api/v1/daemon/manifest", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.installURL+"/daemon/manifest.json", nil)
 	if err != nil {
 		return nil, fmt.Errorf("create manifest request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+u.authToken)
 
 	resp, err := u.client.Do(req)
 	if err != nil {
@@ -131,11 +129,11 @@ func (u *HTTPUpdater) Apply(ctx context.Context, info *daemon.UpdateInfo, binary
 
 	defer cleanupTempFiles(tempBinaryPath, tempSigPath)
 
-	if err := downloadToFile(ctx, info.URL, tempBinaryPath, u.authToken, u.client); err != nil {
+	if err := downloadToFile(ctx, info.URL, tempBinaryPath, u.client); err != nil {
 		return fmt.Errorf("download binary: %w", err)
 	}
 
-	if err := downloadToFile(ctx, info.SignatureURL, tempSigPath, u.authToken, u.client); err != nil {
+	if err := downloadToFile(ctx, info.SignatureURL, tempSigPath, u.client); err != nil {
 		return fmt.Errorf("download signature: %w", err)
 	}
 
@@ -186,12 +184,11 @@ func cleanupTempFiles(paths ...string) {
 	}
 }
 
-func downloadToFile(ctx context.Context, url, destPath, authToken string, client *http.Client) error {
+func downloadToFile(ctx context.Context, url, destPath string, client *http.Client) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+authToken)
 
 	resp, err := client.Do(req)
 	if err != nil {

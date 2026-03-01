@@ -140,7 +140,7 @@ dev-install:
 deploy-install env:
     cd install/worker && npx wrangler deploy --env {{env}}
 
-# Upload install artifacts to R2: just upload-install staging
+# Upload install script to R2: just upload-install staging
 upload-install env:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -151,6 +151,23 @@ upload-install env:
     fi
     cd install/worker
     npx wrangler r2 object put "${bucket}/curl/install.sh" --file ../install.sh --content-type "text/x-shellscript" --remote
+
+# Upload daemon binaries to R2: just upload-daemon staging
+upload-daemon env:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ "{{env}}" == "production" ]]; then
+        bucket="savecraft-install"
+    else
+        bucket="savecraft-install-staging"
+    fi
+    cd install/worker
+    for f in ../../dist/savecraft-daemon-*; do
+        name="$(basename "$f")"
+        key="daemon/${name}"
+        echo "Uploading ${key}..."
+        npx wrangler r2 object put "${bucket}/${key}" --file "$f" --content-type "application/octet-stream" --remote
+    done
 
 # Start Web dev server
 dev-web:
@@ -181,23 +198,23 @@ sign-plugins:
         go run ./cmd/savecraft-sign/ "$wasm"
     done
 
-# Cross-compile daemon binary: just build-daemon linux amd64 dev https://api.savecraft.gg
-build-daemon os arch version="dev" server_url="https://api.savecraft.gg":
+# Cross-compile daemon binary: just build-daemon linux amd64 dev https://api.savecraft.gg https://install.savecraft.gg
+build-daemon os arch version="dev" server_url="https://api.savecraft.gg" install_url="https://install.savecraft.gg":
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p dist
     CGO_ENABLED=0 GOOS={{os}} GOARCH={{arch}} go build \
-        -ldflags "-s -w -X main.version={{version}} -X main.serverURLDefault={{server_url}}" \
+        -ldflags "-s -w -X main.version={{version}} -X main.serverURLDefault={{server_url}} -X main.installURLDefault={{install_url}}" \
         -o "dist/savecraft-daemon-{{os}}-{{arch}}" \
         ./cmd/savecraftd/
 
 # Build daemon for all release platforms
-build-daemon-all version="dev" server_url="https://api.savecraft.gg":
-    just build-daemon linux amd64 {{version}} {{server_url}}
-    just build-daemon linux arm64 {{version}} {{server_url}}
-    just build-daemon darwin amd64 {{version}} {{server_url}}
-    just build-daemon darwin arm64 {{version}} {{server_url}}
-    just build-daemon windows amd64 {{version}} {{server_url}}
+build-daemon-all version="dev" server_url="https://api.savecraft.gg" install_url="https://install.savecraft.gg":
+    just build-daemon linux amd64 {{version}} {{server_url}} {{install_url}}
+    just build-daemon linux arm64 {{version}} {{server_url}} {{install_url}}
+    just build-daemon darwin amd64 {{version}} {{server_url}} {{install_url}}
+    just build-daemon darwin arm64 {{version}} {{server_url}} {{install_url}}
+    just build-daemon windows amd64 {{version}} {{server_url}} {{install_url}}
 
 # Build and sign test fixtures for the install integration test
 install-fixtures version="0.1.0":
@@ -208,12 +225,12 @@ install-fixtures version="0.1.0":
     # Sign both binaries
     go run ./cmd/savecraft-sign/ dist/savecraft-daemon-linux-amd64
     go run ./cmd/savecraft-sign/ dist/savecraft-daemon-linux-arm64
-    # Create fixture directory
-    mkdir -p install/test/fixtures/daemon-v{{version}}
-    cp dist/savecraft-daemon-linux-amd64     install/test/fixtures/daemon-v{{version}}/
-    cp dist/savecraft-daemon-linux-amd64.sig install/test/fixtures/daemon-v{{version}}/
-    cp dist/savecraft-daemon-linux-arm64     install/test/fixtures/daemon-v{{version}}/
-    cp dist/savecraft-daemon-linux-arm64.sig install/test/fixtures/daemon-v{{version}}/
+    # Create fixture directory (matches R2 layout: daemon/{artifact})
+    mkdir -p install/test/fixtures/daemon
+    cp dist/savecraft-daemon-linux-amd64     install/test/fixtures/daemon/
+    cp dist/savecraft-daemon-linux-amd64.sig install/test/fixtures/daemon/
+    cp dist/savecraft-daemon-linux-arm64     install/test/fixtures/daemon/
+    cp dist/savecraft-daemon-linux-arm64.sig install/test/fixtures/daemon/
     # Bake real public key into installer copy
     # DER prefix for Ed25519 public key: 302a300506032b6570032100
     # Use file I/O to avoid bash stripping null bytes from binary key

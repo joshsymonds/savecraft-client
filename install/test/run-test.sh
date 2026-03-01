@@ -72,6 +72,12 @@ assert_file_contains() {
 
 # ---------------------------------------------------------------------------
 # Start fixture HTTP server
+#
+# The server serves ~/fixtures/ which has:
+#   daemon/savecraft-daemon-linux-amd64      (binary)
+#   daemon/savecraft-daemon-linux-amd64.sig  (signature)
+#   daemon/savecraft-daemon-linux-arm64      (binary)
+#   daemon/savecraft-daemon-linux-arm64.sig  (signature)
 # ---------------------------------------------------------------------------
 start_http_server() {
     info "Starting HTTP server on port ${HTTP_PORT} serving ${FIXTURES}/"
@@ -97,22 +103,10 @@ start_http_server() {
 run_installer() {
     info "Running install.sh --no-systemd"
 
-    export SAVECRAFT_BASE_URL="http://localhost:${HTTP_PORT}"
+    export SAVECRAFT_INSTALL_URL="http://localhost:${HTTP_PORT}"
+    export SAVECRAFT_SERVER_URL="https://api.savecraft.gg"
 
     bash "${FIXTURES}/install.sh" --no-systemd
-}
-
-run_staging_installer() {
-    info "Running install.sh --staging --no-systemd"
-
-    # Clean previous install so assertions reflect this run
-    rm -f "${HOME}/.local/bin/savecraft-daemon"
-    rm -f "${HOME}/.config/savecraft/env"
-
-    # Point staging base URL at the same fixture server (reuses daemon-v0.1.0/ dir)
-    export SAVECRAFT_STAGING_BASE_URL="http://localhost:${HTTP_PORT}/daemon-v0.1.0"
-
-    bash "${FIXTURES}/install.sh" --staging --no-systemd
 }
 
 # ---------------------------------------------------------------------------
@@ -131,8 +125,14 @@ run_assertions() {
         "ProtectSystem=strict" \
         "systemd unit contains ProtectSystem=strict"
 
-    # Env file exists
+    # Env file exists and contains expected URLs
     assert_file_exists "${HOME}/.config/savecraft/env" "env file"
+    assert_file_contains "${HOME}/.config/savecraft/env" \
+        "SAVECRAFT_SERVER_URL=https://api.savecraft.gg" \
+        "env file contains server URL"
+    assert_file_contains "${HOME}/.config/savecraft/env" \
+        "SAVECRAFT_INSTALL_URL=http://localhost:${HTTP_PORT}" \
+        "env file contains install URL"
 
     # Binary runs and outputs a version string
     local version_output
@@ -152,23 +152,6 @@ run_assertions() {
             fail "daemon --version failed with no output"
         fi
     fi
-}
-
-# ---------------------------------------------------------------------------
-# Staging assertions
-# ---------------------------------------------------------------------------
-run_staging_assertions() {
-    info "Running staging assertions..."
-
-    # Binary exists and is executable (same as production)
-    assert_file_exists "${HOME}/.local/bin/savecraft-daemon" "staging daemon binary"
-    assert_executable "${HOME}/.local/bin/savecraft-daemon" "staging daemon binary"
-
-    # Env file contains staging server URL
-    assert_file_exists "${HOME}/.config/savecraft/env" "staging env file"
-    assert_file_contains "${HOME}/.config/savecraft/env" \
-        "SAVECRAFT_SERVER_URL=https://staging-api.savecraft.gg" \
-        "staging env file contains staging server URL"
 }
 
 # ---------------------------------------------------------------------------
@@ -200,15 +183,8 @@ main() {
     echo ""
 
     start_http_server
-
-    info "=== Production install ==="
     run_installer
     run_assertions
-
-    info "=== Staging install ==="
-    run_staging_installer
-    run_staging_assertions
-
     print_summary
 }
 

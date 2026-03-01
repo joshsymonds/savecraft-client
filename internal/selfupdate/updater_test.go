@@ -29,19 +29,19 @@ func TestCheck_NewerVersionAvailable(t *testing.T) {
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/daemon/manifest" {
+		if r.URL.Path != "/daemon/manifest.json" {
 			http.NotFound(w, r)
 			return
 		}
-		if r.Header.Get("Authorization") != "Bearer test-token" {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
+		// Verify no Authorization header is sent (install is unauthenticated)
+		if r.Header.Get("Authorization") != "" {
+			t.Errorf("unexpected Authorization header: %s", r.Header.Get("Authorization"))
 		}
 		json.NewEncoder(w).Encode(manifest)
 	}))
 	defer srv.Close()
 
-	u := New(srv.URL, "test-token", nil, t.TempDir())
+	u := New(srv.URL, nil, t.TempDir())
 
 	info, err := u.Check(context.Background(), "0.1.0", "linux-amd64")
 	if err != nil {
@@ -77,7 +77,7 @@ func TestCheck_AlreadyCurrent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	u := New(srv.URL, "token", nil, t.TempDir())
+	u := New(srv.URL, nil, t.TempDir())
 
 	info, err := u.Check(context.Background(), "0.1.0", "linux-amd64")
 	if !errors.Is(err, ErrUpToDate) {
@@ -104,7 +104,7 @@ func TestCheck_PlatformNotFound(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	u := New(srv.URL, "token", nil, t.TempDir())
+	u := New(srv.URL, nil, t.TempDir())
 
 	info, err := u.Check(context.Background(), "0.1.0", "linux-amd64")
 	if !errors.Is(err, ErrNoPlatform) {
@@ -127,6 +127,10 @@ func TestApply_DownloadsAndReplaces(t *testing.T) {
 	hashHex := hex.EncodeToString(hash[:])
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify no Authorization header on downloads
+		if r.Header.Get("Authorization") != "" {
+			t.Errorf("unexpected Authorization header on download: %s", r.Header.Get("Authorization"))
+		}
 		switch r.URL.Path {
 		case "/binary":
 			w.Write(binaryData)
@@ -147,7 +151,7 @@ func TestApply_DownloadsAndReplaces(t *testing.T) {
 		t.Fatalf("write old binary: %v", err)
 	}
 
-	u := New(srv.URL, "token", pubKey, cacheDir)
+	u := New(srv.URL, pubKey, cacheDir)
 
 	info := &daemon.UpdateInfo{
 		Version:      "0.2.0",
@@ -197,7 +201,7 @@ func TestApply_SHA256Mismatch(t *testing.T) {
 	binaryPath := filepath.Join(targetDir, "savecraft-daemon")
 
 	// nil pubKey skips signature verification, so SHA256 check runs.
-	u := New(srv.URL, "token", nil, cacheDir)
+	u := New(srv.URL, nil, cacheDir)
 
 	info := &daemon.UpdateInfo{
 		Version:      "0.2.0",
@@ -255,7 +259,7 @@ func TestApply_BadSignature(t *testing.T) {
 	targetDir := t.TempDir()
 	binaryPath := filepath.Join(targetDir, "savecraft-daemon")
 
-	u := New(srv.URL, "token", pubKey, cacheDir)
+	u := New(srv.URL, pubKey, cacheDir)
 
 	info := &daemon.UpdateInfo{
 		Version:      "0.2.0",
@@ -313,7 +317,7 @@ func TestCheck_DowngradeNotReturned(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	u := New(srv.URL, "token", nil, t.TempDir())
+	u := New(srv.URL, nil, t.TempDir())
 
 	// Current version is NEWER than manifest — should not return an update.
 	info, err := u.Check(context.Background(), "0.2.0", "linux-amd64")

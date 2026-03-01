@@ -7,7 +7,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 
 readonly VERSION="dev"
-readonly BASE_URL="${SAVECRAFT_BASE_URL:-https://github.com/joshsymonds/savecraft.gg/releases/download}"
+readonly INSTALL_URL="${SAVECRAFT_INSTALL_URL:?SAVECRAFT_INSTALL_URL must be set}"
 
 readonly BIN_DIR="${HOME}/.local/bin"
 readonly CONFIG_DIR="${HOME}/.config/savecraft"
@@ -208,6 +208,13 @@ create_env_template() {
             echo "# SAVECRAFT_SERVER_URL=https://api.savecraft.gg"
         fi
         echo ""
+        if [[ -n "${SAVECRAFT_INSTALL_URL:-}" ]]; then
+            echo "SAVECRAFT_INSTALL_URL=${SAVECRAFT_INSTALL_URL}"
+        else
+            echo "# Install URL for daemon updates (default: https://install.savecraft.gg)"
+            echo "# SAVECRAFT_INSTALL_URL=https://install.savecraft.gg"
+        fi
+        echo ""
         if [[ -n "${SAVECRAFT_AUTH_TOKEN:-}" ]]; then
             echo "SAVECRAFT_AUTH_TOKEN=${SAVECRAFT_AUTH_TOKEN}"
         else
@@ -264,9 +271,8 @@ main() {
 
     # Download binary + signature
     local artifact="${BINARY_NAME}-${os}-${arch}"
-    local release_base="${BASE_URL}/daemon-v${VERSION}"
-    local binary_url="${release_base}/${artifact}"
-    local sig_url="${release_base}/${artifact}.sig"
+    local binary_url="${INSTALL_URL}/daemon/${artifact}"
+    local sig_url="${INSTALL_URL}/daemon/${artifact}.sig"
 
     TMP_BINARY="$(mktemp)"
     TMP_SIG="$(mktemp)"

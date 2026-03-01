@@ -21,6 +21,7 @@ jobs:
     outputs:
       is_production: ${{ steps.detect.outputs.is_production }}
       version: ${{ steps.detect.outputs.version }}
+      install_url: ${{ steps.detect.outputs.install_url }}
       server_url: ${{ steps.detect.outputs.server_url }}
       r2_bucket: ${{ steps.detect.outputs.r2_bucket }}
     steps:
@@ -30,13 +31,16 @@ jobs:
           if [[ "${GITHUB_REF}" == refs/tags/daemon-v* ]]; then
             echo "is_production=true" >> "$GITHUB_OUTPUT"
             echo "version=${GITHUB_REF_NAME#daemon-v}" >> "$GITHUB_OUTPUT"
+            echo "install_url=https://install.savecraft.gg" >> "$GITHUB_OUTPUT"
             echo "server_url=https://api.savecraft.gg" >> "$GITHUB_OUTPUT"
-            echo "r2_bucket=savecraft-plugins" >> "$GITHUB_OUTPUT"
+            echo "r2_bucket=savecraft-install" >> "$GITHUB_OUTPUT"
           else
             echo "is_production=false" >> "$GITHUB_OUTPUT"
-            echo "version=dev" >> "$GITHUB_OUTPUT"
+            short_sha="${GITHUB_SHA::7}"
+            echo "version=0.0.0-dev.${GITHUB_RUN_NUMBER}.${short_sha}" >> "$GITHUB_OUTPUT"
+            echo "install_url=https://install-staging.savecraft.gg" >> "$GITHUB_OUTPUT"
             echo "server_url=https://staging-api.savecraft.gg" >> "$GITHUB_OUTPUT"
-            echo "r2_bucket=savecraft-plugins-staging" >> "$GITHUB_OUTPUT"
+            echo "r2_bucket=savecraft-install-staging" >> "$GITHUB_OUTPUT"
           fi
 
   build:
@@ -64,7 +68,8 @@ jobs:
         env:
           VERSION: ${{ needs.environment.outputs.version }}
           SERVER_URL: ${{ needs.environment.outputs.server_url }}
-        run: just build-daemon-all "$VERSION" "$SERVER_URL"
+          INSTALL_URL: ${{ needs.environment.outputs.install_url }}
+        run: just build-daemon-all "$VERSION" "$SERVER_URL" "$INSTALL_URL"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -131,7 +136,7 @@ jobs:
       - name: Generate manifest
         env:
           VERSION: ${{ needs.environment.outputs.version }}
-          SERVER_URL: ${{ needs.environment.outputs.server_url }}
+          INSTALL_URL: ${{ needs.environment.outputs.install_url }}
         run: |
           # Build platforms object from checksums
           platforms="{}"
@@ -144,8 +149,8 @@ jobs:
             platform="${filename#savecraft-daemon-}"
             platforms=$(echo "$platforms" | jq \
               --arg p "$platform" \
-              --arg url "${SERVER_URL}/daemon/${filename}" \
-              --arg sig "${SERVER_URL}/daemon/${filename}.sig" \
+              --arg url "${INSTALL_URL}/daemon/v${VERSION}/${filename}" \
+              --arg sig "${INSTALL_URL}/daemon/v${VERSION}/${filename}.sig" \
               --arg hash "$hash" \
               '.[$p] = {url: $url, signatureUrl: $sig, sha256: $hash}')
           done < dist/checksums-sha256.txt
@@ -162,10 +167,14 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_BUCKET: ${{ needs.environment.outputs.r2_bucket }}
+          VERSION: ${{ needs.environment.outputs.version }}
         run: |
           for f in dist/savecraft-daemon-*; do
             [ -f "$f" ] || continue
             filename=$(basename "$f")
+            # Versioned (immutable archive)
+            wrangler r2 object put "${R2_BUCKET}/daemon/v${VERSION}/${filename}" --file="$f" --remote
+            # Unversioned (latest alias for install.sh)
             wrangler r2 object put "${R2_BUCKET}/daemon/${filename}" --file="$f" --remote
           done
 
