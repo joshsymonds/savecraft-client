@@ -1,0 +1,37 @@
+name = "savecraft-install"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[build]
+command = "cp ../install.sh src/install.sh"
+
+[[rules]]
+type = "Text"
+globs = ["**/*.sh"]
+fallthrough = false
+
+[vars]
+SERVER_URL = "https://api.savecraft.gg"
+REDIRECT_URL = "https://savecraft.gg"
+
+# ── Production ─────────────────────────────────────────
+[env.production]
+name = "savecraft-install"
+routes = [
+  { pattern = "install.savecraft.gg/*", zone_name = "savecraft.gg" },
+]
+
+[env.production.vars]
+SERVER_URL = "https://api.savecraft.gg"
+REDIRECT_URL = "https://savecraft.gg"
+
+# ── Staging ────────────────────────────────────────────
+[env.staging]
+name = "savecraft-install-staging"
+routes = [
+  { pattern = "install-staging.savecraft.gg/*", zone_name = "savecraft.gg" },
+]
+
+[env.staging.vars]
+SERVER_URL = "https://staging-api.savecraft.gg"
+REDIRECT_URL = "https://staging.savecraft.gg"

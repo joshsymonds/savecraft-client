@@ -1,0 +1,104 @@
+name: Deploy Install
+
+on:
+  push:
+    branches: [main]
+    tags: ["install-v*"]
+    paths:
+      - 'install/**'
+      - '.github/workflows/deploy-install.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  environment:
+    name: Detect environment
+    runs-on: ubuntu-latest
+    outputs:
+      is_production: ${{ steps.detect.outputs.is_production }}
+      wrangler_env: ${{ steps.detect.outputs.wrangler_env }}
+    steps:
+      - name: Detect environment from ref
+        id: detect
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/install-v* ]]; then
+            echo "is_production=true" >> "$GITHUB_OUTPUT"
+            echo "wrangler_env=production" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_production=false" >> "$GITHUB_OUTPUT"
+            echo "wrangler_env=staging" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    name: Deploy (${{ matrix.target }})
+    needs: [environment]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [curl]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: install/${{ matrix.target }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: install/${{ matrix.target }}
+
+      - name: Deploy
+        run: npx wrangler deploy --env ${{ needs.environment.outputs.wrangler_env }}
+        working-directory: install/${{ matrix.target }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  release:
+    name: GitHub Release
+    needs: [environment, deploy]
+    if: needs.environment.outputs.is_production == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find previous install tag
+        id: prev
+        run: |
+          prev_tag=$(git tag -l 'install-v*' --sort=-v:refname | sed -n '2p')
+          echo "tag=${prev_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          PREV_TAG: ${{ steps.prev.outputs.tag }}
+        run: |
+          notes_flag=""
+          if [ -n "$PREV_TAG" ]; then
+            notes_flag="--notes-start-tag $PREV_TAG"
+          fi
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --generate-notes \
+            $notes_flag
+
+      - name: Notify Discord
+        if: success()
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          body=$(gh release view "$TAG" --json body -q .body | head -c 1800)
+          jq -n \
+            --arg tag "$TAG" \
+            --arg body "$body" \
+            --arg url "https://github.com/joshsymonds/savecraft.gg/releases/tag/$TAG" \
+            '{embeds: [{title: ("Install " + $tag + " deployed"), description: $body, url: $url, color: 5793266}]}' \
+            | curl -s -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" -d @-

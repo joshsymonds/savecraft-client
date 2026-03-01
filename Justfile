@@ -132,6 +132,14 @@ fmt-sh:
 fmt-sh-check:
     shfmt -d -i 4 -bn -ci install/install.sh install/test/run-test.sh scripts/generate-plugin-manifest.sh
 
+# Start install Worker dev server
+dev-install:
+    cd install/curl && npx wrangler dev
+
+# Deploy install Worker: just deploy-install staging
+deploy-install env:
+    cd install/curl && npx wrangler deploy --env {{env}}
+
 # Start Web dev server
 dev-web:
     cd web && npm run dev
