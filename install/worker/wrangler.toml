@@ -2,17 +2,13 @@ name = "savecraft-install"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
 
-[build]
-command = "cp ../install.sh src/install.sh"
-
-[[rules]]
-type = "Text"
-globs = ["**/*.sh"]
-fallthrough = false
-
 [vars]
 SERVER_URL = "https://api.savecraft.gg"
 REDIRECT_URL = "https://savecraft.gg"
+
+[[r2_buckets]]
+binding = "INSTALL"
+bucket_name = "savecraft-install"
 
 # ── Production ─────────────────────────────────────────
 [env.production]
@@ -25,6 +21,10 @@ routes = [
 SERVER_URL = "https://api.savecraft.gg"
 REDIRECT_URL = "https://savecraft.gg"
 
+[[env.production.r2_buckets]]
+binding = "INSTALL"
+bucket_name = "savecraft-install"
+
 # ── Staging ────────────────────────────────────────────
 [env.staging]
 name = "savecraft-install-staging"
@@ -35,3 +35,7 @@ routes = [
 [env.staging.vars]
 SERVER_URL = "https://staging-api.savecraft.gg"
 REDIRECT_URL = "https://staging.savecraft.gg"
+
+[[env.staging.r2_buckets]]
+binding = "INSTALL"
+bucket_name = "savecraft-install-staging"

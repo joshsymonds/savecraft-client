@@ -18,6 +18,7 @@ jobs:
     outputs:
       is_production: ${{ steps.detect.outputs.is_production }}
       wrangler_env: ${{ steps.detect.outputs.wrangler_env }}
+      r2_bucket: ${{ steps.detect.outputs.r2_bucket }}
     steps:
       - name: Detect environment from ref
         id: detect
@@ -25,13 +26,15 @@ jobs:
           if [[ "${GITHUB_REF}" == refs/tags/install-v* ]]; then
             echo "is_production=true" >> "$GITHUB_OUTPUT"
             echo "wrangler_env=production" >> "$GITHUB_OUTPUT"
+            echo "r2_bucket=savecraft-install" >> "$GITHUB_OUTPUT"
           else
             echo "is_production=false" >> "$GITHUB_OUTPUT"
             echo "wrangler_env=staging" >> "$GITHUB_OUTPUT"
+            echo "r2_bucket=savecraft-install-staging" >> "$GITHUB_OUTPUT"
           fi
 
-  deploy:
-    name: Deploy (${{ matrix.target }})
+  upload:
+    name: Upload (${{ matrix.target }})
     needs: [environment]
     runs-on: ubuntu-latest
     strategy:
@@ -44,15 +47,40 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: install/${{ matrix.target }}/package-lock.json
+          cache-dependency-path: install/worker/package-lock.json
+
+      - name: Install wrangler
+        run: npm ci
+        working-directory: install/worker
+
+      - name: Upload curl installer
+        if: matrix.target == 'curl'
+        run: npx wrangler r2 object put "${{ needs.environment.outputs.r2_bucket }}/curl/install.sh" --file install/install.sh --content-type "text/x-shellscript" --remote
+        working-directory: install/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  deploy:
+    name: Deploy Worker
+    needs: [environment, upload]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: install/worker/package-lock.json
 
       - name: Install dependencies
         run: npm ci
-        working-directory: install/${{ matrix.target }}
+        working-directory: install/worker
 
       - name: Deploy
         run: npx wrangler deploy --env ${{ needs.environment.outputs.wrangler_env }}
-        working-directory: install/${{ matrix.target }}
+        working-directory: install/worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

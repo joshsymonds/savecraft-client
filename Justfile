@@ -134,11 +134,23 @@ fmt-sh-check:
 
 # Start install Worker dev server
 dev-install:
-    cd install/curl && npx wrangler dev
+    cd install/worker && npx wrangler dev
 
 # Deploy install Worker: just deploy-install staging
 deploy-install env:
-    cd install/curl && npx wrangler deploy --env {{env}}
+    cd install/worker && npx wrangler deploy --env {{env}}
+
+# Upload install artifacts to R2: just upload-install staging
+upload-install env:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ "{{env}}" == "production" ]]; then
+        bucket="savecraft-install"
+    else
+        bucket="savecraft-install-staging"
+    fi
+    cd install/worker
+    npx wrangler r2 object put "${bucket}/curl/install.sh" --file ../install.sh --content-type "text/x-shellscript" --remote
 
 # Start Web dev server
 dev-web:
