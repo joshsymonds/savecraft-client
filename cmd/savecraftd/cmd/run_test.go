@@ -92,6 +92,18 @@ func TestLoadConfig_FailsWithNoServerURL(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_FailsWithNoInstallURL(t *testing.T) {
+	t.Setenv("SAVECRAFT_SERVER_URL", "https://api.savecraft.gg")
+	t.Setenv("SAVECRAFT_AUTH_TOKEN", "test-token")
+	t.Setenv("SAVECRAFT_INSTALL_URL", "")
+	os.Unsetenv("SAVECRAFT_INSTALL_URL")
+
+	_, err := loadConfig("https://api.savecraft.gg", "")
+	if err == nil {
+		t.Fatal("expected error when no install URL available, got nil")
+	}
+}
+
 func TestLoadConfig_InstallURLFallsBackToDefault(t *testing.T) {
 	t.Setenv("SAVECRAFT_SERVER_URL", "https://api.savecraft.gg")
 	t.Setenv("SAVECRAFT_AUTH_TOKEN", "test-token")

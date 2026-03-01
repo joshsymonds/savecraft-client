@@ -292,6 +292,10 @@ func TestIsNewer(t *testing.T) {
 		{"0.9.0", "0.10.0", false},
 		{"1.0", "1.0.0", false},
 		{"1.0.1", "1.0", true},
+		// Dev versions use 0.0.0-dev.N.SHA format; numeric comparison
+		// treats the "-dev" segment as 0, so any release > 0.0.0 wins.
+		{"0.1.0", "0.0.0", true},
+		{"0.0.1", "0.0.0", true},
 	}
 	for _, tt := range tests {
 		got := isNewer(tt.latest, tt.current)

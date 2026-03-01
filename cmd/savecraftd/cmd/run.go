@@ -182,6 +182,9 @@ func loadConfig(serverURLDefault, installURLDefault string) (*appConfig, error) 
 	if installURL == "" {
 		installURL = installURLDefault
 	}
+	if installURL == "" {
+		return nil, fmt.Errorf("SAVECRAFT_INSTALL_URL is required")
+	}
 
 	authToken := os.Getenv("SAVECRAFT_AUTH_TOKEN")
 	if authToken == "" {

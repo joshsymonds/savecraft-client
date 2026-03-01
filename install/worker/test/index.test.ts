@@ -15,8 +15,16 @@ const FAKE_MANIFEST = JSON.stringify({
 	},
 });
 
+async function cleanR2(): Promise<void> {
+	const listed = await env.INSTALL.list();
+	for (const obj of listed.objects) {
+		await env.INSTALL.delete(obj.key);
+	}
+}
+
 describe("install worker", () => {
 	beforeEach(async () => {
+		await cleanR2();
 		await env.INSTALL.put("curl/install.sh", FAKE_SCRIPT);
 	});
 
