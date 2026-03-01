@@ -4,11 +4,14 @@
 	"type": "module",
 	"scripts": {
 		"dev": "wrangler dev",
-		"deploy": "wrangler deploy"
+		"deploy": "wrangler deploy",
+		"test": "vitest run"
 	},
 	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "^0.8.71",
 		"@cloudflare/workers-types": "^4.20250214.0",
 		"typescript": "^5.7.0",
+		"vitest": "~3.0.0",
 		"wrangler": "^4.0.0"
 	}
 }

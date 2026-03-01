@@ -227,8 +227,12 @@ install-fixtures version="0.1.0":
     chmod +x install/test/fixtures/install.sh
     echo "Fixtures ready in install/test/fixtures/"
 
+# Run install Worker tests
+test-install-worker:
+    cd install/worker && npm test
+
 # Run install integration test in Docker
-test-install:
+test-install-docker:
     #!/usr/bin/env bash
     set -euo pipefail
     just install-fixtures
@@ -251,7 +255,7 @@ fmt-go-check:
 lint: lint-go lint-worker lint-web lint-site lint-sh fmt-go-check fmt-worker-check fmt-web-check fmt-site-check fmt-sh-check check-web check-site
 
 # Run all tests
-test: test-go test-worker test-web test-site
+test: test-go test-worker test-web test-site test-install-worker
 
 # Check everything: lint, generate, format, test
 check: proto-lint proto lint test

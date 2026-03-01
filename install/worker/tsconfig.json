@@ -4,11 +4,11 @@
 		"module": "ESNext",
 		"moduleResolution": "bundler",
 		"lib": ["ESNext"],
-		"types": ["@cloudflare/workers-types/2023-07-01"],
+		"types": ["@cloudflare/workers-types/2023-07-01", "@cloudflare/vitest-pool-workers"],
 		"strict": true,
 		"skipLibCheck": true,
 		"isolatedModules": true,
 		"noEmit": true
 	},
-	"include": ["src"]
+	"include": ["src", "test"]
 }
