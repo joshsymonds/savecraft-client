@@ -16,7 +16,6 @@ jobs:
       go: ${{ steps.filter.outputs.go }}
       worker: ${{ steps.filter.outputs.worker }}
       web: ${{ steps.filter.outputs.web }}
-      plugins: ${{ steps.filter.outputs.plugins }}
     steps:
       - uses: actions/checkout@v4
 
@@ -36,10 +35,9 @@ jobs:
               - 'proto/**'
             web:
               - 'web/**'
-            plugins:
-              - 'plugins/*/plugin.toml'
-              - 'plugins/*/*.go'
-              - 'plugins/*/d2s/**'
+            sh:
+              - 'install/**'
+              - 'scripts/**'
 
   go:
     name: Go (lint + test + proto)
@@ -167,147 +165,3 @@ jobs:
         run: just test-web
         working-directory: .
 
-  deploy-worker:
-    name: Deploy Worker (staging)
-    needs: [changes, go, worker, web]
-    if: |
-      always() &&
-      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      needs.changes.outputs.worker == 'true' &&
-      !contains(needs.*.result, 'failure') &&
-      !contains(needs.*.result, 'cancelled')
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: worker
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: worker/package-lock.json
-
-      - run: npm ci
-
-      - name: Apply D1 migrations
-        run: npx wrangler d1 migrations apply savecraft-staging --env staging --remote
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-      - name: Deploy worker
-        run: npx wrangler deploy --env staging
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-  deploy-web:
-    name: Deploy Web (staging)
-    needs: [changes, go, worker, web]
-    if: |
-      always() &&
-      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      needs.changes.outputs.web == 'true' &&
-      !contains(needs.*.result, 'failure') &&
-      !contains(needs.*.result, 'cancelled')
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: web
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - run: npm ci
-
-      - name: Build
-        run: npm run build
-        env:
-          PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.PUBLIC_CLERK_PUBLISHABLE_KEY }}
-
-      - name: Deploy to Pages
-        run: npx wrangler pages deploy .svelte-kit/cloudflare --project-name savecraft-web --branch staging
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-  deploy-plugins:
-    name: Deploy Plugins (staging)
-    needs: [changes, go]
-    if: |
-      always() &&
-      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      needs.changes.outputs.plugins == 'true' &&
-      !contains(needs.*.result, 'failure') &&
-      !contains(needs.*.result, 'cancelled')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.26"
-
-      - uses: taiki-e/install-action@a3324fb0eb94b8230ec968c3389c1b7929fc2f3b # v2
-        with:
-          tool: just
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Install wrangler
-        run: npm install -g wrangler
-
-      - name: Build and upload changed plugins to staging
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          for dir in plugins/*/; do
-            game_id=$(basename "$dir")
-
-            # Skip test-only plugins (no plugin.toml)
-            [ -f "plugins/${game_id}/plugin.toml" ] || continue
-
-            new_version=$(grep '^version' "plugins/${game_id}/plugin.toml" | head -1 | sed 's/.*= *"\(.*\)"/\1/')
-            echo "==> ${game_id}: local version ${new_version}"
-
-            # Compare against staging R2 manifest
-            set +e
-            wrangler r2 object get "savecraft-plugins-staging/plugins/${game_id}/manifest.json" --file /tmp/current_manifest.json --remote 2>/dev/null
-            fetch_rc=$?
-            set -e
-
-            if [ $fetch_rc -eq 0 ] && [ -f /tmp/current_manifest.json ]; then
-              current_version=$(jq -r '.version // empty' /tmp/current_manifest.json)
-              rm -f /tmp/current_manifest.json
-              if [ "$current_version" = "$new_version" ]; then
-                echo "    Version ${new_version} already in staging — skipping"
-                continue
-              fi
-              echo "    Staging version: ${current_version} → upgrading to ${new_version}"
-            else
-              rm -f /tmp/current_manifest.json
-              echo "    No staging manifest — first deploy"
-            fi
-
-            # Build WASM (no signing for staging)
-            just build-plugin "$game_id"
-
-            # Generate manifest
-            go run ./cmd/plugin-manifest/ "plugins/${game_id}"
-
-            # Upload to staging R2
-            wrangler r2 object put "savecraft-plugins-staging/plugins/${game_id}/parser.wasm" --file "plugins/${game_id}/${game_id}.wasm" --remote
-            wrangler r2 object put "savecraft-plugins-staging/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json" --remote
-
-            echo "    Deployed ${game_id} v${new_version} to staging"
-          done

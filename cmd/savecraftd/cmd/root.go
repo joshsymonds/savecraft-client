@@ -9,8 +9,9 @@ import (
 
 // Execute builds the command tree and runs the root command.
 // When invoked with no subcommand, the daemon runs (same as "run").
-func Execute(version string) error {
-	runFn := buildRunFunc()
+// serverURL is the compile-time default server URL (set via ldflags in main).
+func Execute(version, serverURL string) error {
+	runFn := buildRunFunc(serverURL)
 
 	root := &cobra.Command{
 		Use:          "savecraftd",

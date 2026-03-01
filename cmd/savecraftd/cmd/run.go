@@ -24,13 +24,13 @@ import (
 	"github.com/joshsymonds/savecraft.gg/internal/wsconn"
 )
 
-func buildRunFunc() func(cmd *cobra.Command, args []string) error {
+func buildRunFunc(serverURLDefault string) func(cmd *cobra.Command, args []string) error {
 	return func(_ *cobra.Command, _ []string) error {
-		return runDaemon()
+		return runDaemon(serverURLDefault)
 	}
 }
 
-func runDaemon() error {
+func runDaemon(serverURLDefault string) error {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
@@ -39,7 +39,7 @@ func runDaemon() error {
 	// Load env file values first (env vars override).
 	loadEnvFileDefaults()
 
-	cfg, err := loadConfig()
+	cfg, err := loadConfig(serverURLDefault)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
@@ -167,8 +167,11 @@ type appConfig struct {
 	Daemon    daemon.Config
 }
 
-func loadConfig() (*appConfig, error) {
+func loadConfig(serverURLDefault string) (*appConfig, error) {
 	serverURL := os.Getenv("SAVECRAFT_SERVER_URL")
+	if serverURL == "" {
+		serverURL = serverURLDefault
+	}
 	if serverURL == "" {
 		return nil, fmt.Errorf("SAVECRAFT_SERVER_URL is required (set in env or run 'savecraftd pair' first)")
 	}

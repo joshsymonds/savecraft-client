@@ -19,10 +19,17 @@ FAILED=0
 # Helpers
 # ---------------------------------------------------------------------------
 
-info()  { printf '  \033[1;34mTEST\033[0m %s\n' "$*"; }
-pass()  { printf '  \033[1;32mPASS\033[0m %s\n' "$*"; PASSED=$((PASSED + 1)); }
-fail()  { printf '  \033[1;31mFAIL\033[0m %s\n' "$*"; FAILED=$((FAILED + 1)); }
+info() { printf '  \033[1;34mTEST\033[0m %s\n' "$*"; }
+pass() {
+    printf '  \033[1;32mPASS\033[0m %s\n' "$*"
+    PASSED=$((PASSED + 1))
+}
+fail() {
+    printf '  \033[1;31mFAIL\033[0m %s\n' "$*"
+    FAILED=$((FAILED + 1))
+}
 
+# shellcheck disable=SC2329 # invoked via trap
 cleanup() {
     if [[ -f "${HTTP_PID_FILE}" ]]; then
         kill "$(cat "${HTTP_PID_FILE}")" 2>/dev/null || true
@@ -54,6 +61,7 @@ assert_executable() {
 assert_file_contains() {
     local path="$1"
     local pattern="$2"
+    # shellcheck disable=SC2016 # single quotes intentional in default label
     local label="${3:-${path} contains '${pattern}'}"
     if grep -q "${pattern}" "${path}"; then
         pass "${label}"
@@ -68,7 +76,7 @@ assert_file_contains() {
 start_http_server() {
     info "Starting HTTP server on port ${HTTP_PORT} serving ${FIXTURES}/"
     python3 -m http.server "${HTTP_PORT}" --directory "${FIXTURES}" --bind 127.0.0.1 &
-    echo $! > "${HTTP_PID_FILE}"
+    echo $! >"${HTTP_PID_FILE}"
 
     # Wait for the server to be ready
     local retries=20
@@ -91,8 +99,20 @@ run_installer() {
 
     export SAVECRAFT_BASE_URL="http://localhost:${HTTP_PORT}"
 
-    # The installer is available both in fixtures and at the server root
     bash "${FIXTURES}/install.sh" --no-systemd
+}
+
+run_staging_installer() {
+    info "Running install.sh --staging --no-systemd"
+
+    # Clean previous install so assertions reflect this run
+    rm -f "${HOME}/.local/bin/savecraft-daemon"
+    rm -f "${HOME}/.config/savecraft/env"
+
+    # Point staging base URL at the same fixture server (reuses daemon-v0.1.0/ dir)
+    export SAVECRAFT_STAGING_BASE_URL="http://localhost:${HTTP_PORT}/daemon-v0.1.0"
+
+    bash "${FIXTURES}/install.sh" --staging --no-systemd
 }
 
 # ---------------------------------------------------------------------------
@@ -135,6 +155,23 @@ run_assertions() {
 }
 
 # ---------------------------------------------------------------------------
+# Staging assertions
+# ---------------------------------------------------------------------------
+run_staging_assertions() {
+    info "Running staging assertions..."
+
+    # Binary exists and is executable (same as production)
+    assert_file_exists "${HOME}/.local/bin/savecraft-daemon" "staging daemon binary"
+    assert_executable "${HOME}/.local/bin/savecraft-daemon" "staging daemon binary"
+
+    # Env file contains staging server URL
+    assert_file_exists "${HOME}/.config/savecraft/env" "staging env file"
+    assert_file_contains "${HOME}/.config/savecraft/env" \
+        "SAVECRAFT_SERVER_URL=https://staging-api.savecraft.gg" \
+        "staging env file contains staging server URL"
+}
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 print_summary() {
@@ -163,8 +200,15 @@ main() {
     echo ""
 
     start_http_server
+
+    info "=== Production install ==="
     run_installer
     run_assertions
+
+    info "=== Staging install ==="
+    run_staging_installer
+    run_staging_assertions
+
     print_summary
 }
 

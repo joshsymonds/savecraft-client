@@ -7,7 +7,9 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 
 readonly VERSION="dev"
-readonly BASE_URL="${SAVECRAFT_BASE_URL:-https://github.com/joshsymonds/savecraft.gg/releases/download}"
+readonly PRODUCTION_BASE_URL="${SAVECRAFT_BASE_URL:-https://github.com/joshsymonds/savecraft.gg/releases/download}"
+readonly STAGING_BASE_URL="${SAVECRAFT_STAGING_BASE_URL:-https://staging-api.savecraft.gg/daemon}"
+readonly STAGING_SERVER_URL="https://staging-api.savecraft.gg"
 
 readonly BIN_DIR="${HOME}/.local/bin"
 readonly CONFIG_DIR="${HOME}/.config/savecraft"
@@ -34,10 +36,13 @@ trap cleanup EXIT
 # Helpers
 # ---------------------------------------------------------------------------
 
-info()  { printf '  \033[1;34m->\033[0m %s\n' "$*"; }
-ok()    { printf '  \033[1;32m->\033[0m %s\n' "$*"; }
-warn()  { printf '  \033[1;33m->\033[0m %s\n' "$*" >&2; }
-die()   { printf '  \033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+info() { printf '  \033[1;34m->\033[0m %s\n' "$*"; }
+ok() { printf '  \033[1;32m->\033[0m %s\n' "$*"; }
+warn() { printf '  \033[1;33m->\033[0m %s\n' "$*" >&2; }
+die() {
+    printf '  \033[1;31merror:\033[0m %s\n' "$*" >&2
+    exit 1
+}
 
 # ---------------------------------------------------------------------------
 # detect_arch — map uname -m to Go-style arch names
@@ -46,9 +51,9 @@ detect_arch() {
     local machine
     machine="$(uname -m)"
     case "${machine}" in
-        x86_64|amd64)  echo "amd64" ;;
-        aarch64|arm64) echo "arm64" ;;
-        *)             die "Unsupported architecture: ${machine}" ;;
+        x86_64 | amd64) echo "amd64" ;;
+        aarch64 | arm64) echo "arm64" ;;
+        *) die "Unsupported architecture: ${machine}" ;;
     esac
 }
 
@@ -60,7 +65,7 @@ detect_os() {
     kernel="$(uname -s)"
     case "${kernel}" in
         Linux) echo "linux" ;;
-        *)     die "Unsupported operating system: ${kernel}. Only Linux is supported." ;;
+        *) die "Unsupported operating system: ${kernel}. Only Linux is supported." ;;
     esac
 }
 
@@ -89,7 +94,7 @@ verify_signature() {
         echo "-----BEGIN PUBLIC KEY-----"
         echo "${ED25519_PUBKEY_B64}"
         echo "-----END PUBLIC KEY-----"
-    } > "${tmp_pem}"
+    } >"${tmp_pem}"
 
     if openssl pkeyutl -verify \
         -pubin -inkey "${tmp_pem}" \
@@ -148,7 +153,7 @@ detect_games() {
 install_systemd_unit() {
     mkdir -p "${SYSTEMD_DIR}"
 
-    cat > "${SYSTEMD_DIR}/savecraft.service" << 'UNIT'
+    cat >"${SYSTEMD_DIR}/savecraft.service" <<'UNIT'
 [Unit]
 Description=Savecraft Daemon
 After=network-online.target
@@ -201,8 +206,8 @@ create_env_template() {
         if [[ -n "${SAVECRAFT_SERVER_URL:-}" ]]; then
             echo "SAVECRAFT_SERVER_URL=${SAVECRAFT_SERVER_URL}"
         else
-            echo "# Server URL (default: wss://api.savecraft.gg)"
-            echo "# SAVECRAFT_SERVER_URL=wss://api.savecraft.gg"
+            echo "# Server URL (default: https://api.savecraft.gg)"
+            echo "# SAVECRAFT_SERVER_URL=https://api.savecraft.gg"
         fi
         echo ""
         if [[ -n "${SAVECRAFT_AUTH_TOKEN:-}" ]]; then
@@ -214,7 +219,7 @@ create_env_template() {
         echo ""
         echo "# Log level: debug, info, warn, error (default: info)"
         echo "# SAVECRAFT_LOG_LEVEL=info"
-    } > "${CONFIG_DIR}/env"
+    } >"${CONFIG_DIR}/env"
 
     if [[ -n "${SAVECRAFT_AUTH_TOKEN:-}" ]]; then
         ok "Created env file with auth token at ${CONFIG_DIR}/env"
@@ -228,15 +233,18 @@ create_env_template() {
 # ---------------------------------------------------------------------------
 main() {
     local no_systemd=false
+    local staging=false
 
     # Parse arguments
     for arg in "$@"; do
         case "${arg}" in
             --no-systemd) no_systemd=true ;;
-            --help|-h)
-                echo "Usage: install.sh [--no-systemd]"
+            --staging) staging=true ;;
+            --help | -h)
+                echo "Usage: install.sh [--staging] [--no-systemd]"
                 echo ""
                 echo "Options:"
+                echo "  --staging      Install staging daemon (points to staging-api.savecraft.gg)"
                 echo "  --no-systemd   Skip systemd unit installation (for Docker/testing)"
                 exit 0
                 ;;
@@ -245,7 +253,11 @@ main() {
     done
 
     echo ""
-    echo "  Savecraft Daemon Installer v${VERSION}"
+    if [[ "${staging}" == "true" ]]; then
+        echo "  Savecraft Daemon Installer v${VERSION} (STAGING)"
+    else
+        echo "  Savecraft Daemon Installer v${VERSION}"
+    fi
     echo "  ======================================"
     echo ""
 
@@ -260,16 +272,26 @@ main() {
     info "Created directories"
 
     # Download binary + signature
-    local release_base="${BASE_URL}/v${VERSION}"
     local artifact="${BINARY_NAME}-${os}-${arch}"
+    local binary_url sig_url
+
+    if [[ "${staging}" == "true" ]]; then
+        binary_url="${STAGING_BASE_URL}/${artifact}"
+        sig_url="${STAGING_BASE_URL}/${artifact}.sig"
+    else
+        local release_base="${PRODUCTION_BASE_URL}/daemon-v${VERSION}"
+        binary_url="${release_base}/${artifact}"
+        sig_url="${release_base}/${artifact}.sig"
+    fi
+
     TMP_BINARY="$(mktemp)"
     TMP_SIG="$(mktemp)"
 
     info "Downloading ${artifact}..."
-    download "${release_base}/${artifact}" "${TMP_BINARY}"
+    download "${binary_url}" "${TMP_BINARY}"
 
     info "Downloading ${artifact}.sig..."
-    download "${release_base}/${artifact}.sig" "${TMP_SIG}"
+    download "${sig_url}" "${TMP_SIG}"
 
     # Verify signature
     info "Verifying Ed25519 signature..."
@@ -283,6 +305,11 @@ main() {
     cp "${TMP_BINARY}" "${BIN_DIR}/${BINARY_NAME}"
     chmod +x "${BIN_DIR}/${BINARY_NAME}"
     ok "Installed ${BINARY_NAME} to ${BIN_DIR}/${BINARY_NAME}"
+
+    # For staging installs, pre-set the server URL so the env template picks it up
+    if [[ "${staging}" == "true" && -z "${SAVECRAFT_SERVER_URL:-}" ]]; then
+        SAVECRAFT_SERVER_URL="${STAGING_SERVER_URL}"
+    fi
 
     # Pair device or write env file
     local paired=false

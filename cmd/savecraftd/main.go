@@ -8,9 +8,10 @@ import (
 )
 
 var version = "dev"
+var serverURLDefault = "https://api.savecraft.gg"
 
 func main() {
-	if err := cmd.Execute(version); err != nil {
+	if err := cmd.Execute(version, serverURLDefault); err != nil {
 		os.Exit(1)
 	}
 }

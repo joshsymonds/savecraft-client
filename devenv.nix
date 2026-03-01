@@ -36,6 +36,10 @@
     # Build tooling
     pkgs.just           # command runner (Justfile)
 
+    # Shell linting
+    pkgs.shellcheck     # static analysis for bash/sh
+    pkgs.shfmt          # shell formatter
+
     # Temporary: D2SLib reference parser
     pkgs.dotnetCorePackages.sdk_9_0
   ];

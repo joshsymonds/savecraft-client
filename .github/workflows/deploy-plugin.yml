@@ -1,8 +1,13 @@
-name: Release Plugin
+name: Deploy Plugin
 
 on:
   push:
+    branches: [main]
     tags: ["plugin-v*"]
+    paths:
+      - 'plugins/*/plugin.toml'
+      - 'plugins/*/*.go'
+      - 'plugins/*/d2s/**'
   workflow_dispatch:
     inputs:
       plugin:
@@ -15,12 +20,23 @@ permissions:
 
 jobs:
   release:
-    name: Release plugins
+    name: Deploy plugins
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Detect environment
+        id: env
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/plugin-v* ]]; then
+            echo "r2_bucket=savecraft-plugins" >> "$GITHUB_OUTPUT"
+            echo "is_production=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "r2_bucket=savecraft-plugins-staging" >> "$GITHUB_OUTPUT"
+            echo "is_production=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: actions/setup-go@v5
         with:
@@ -46,7 +62,7 @@ jobs:
             # workflow_dispatch: use provided plugin name
             changed="$MANUAL_PLUGIN"
           else
-            # Tag push: check all plugins with a plugin.toml
+            # Check all plugins with a plugin.toml
             changed=""
             for dir in plugins/*/; do
               game_id=$(basename "$dir")
@@ -74,6 +90,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CHANGED_PLUGINS: ${{ steps.changed.outputs.plugins }}
+          R2_BUCKET: ${{ steps.env.outputs.r2_bucket }}
         run: |
           for game_id in $CHANGED_PLUGINS; do
             echo "==> Processing plugin: ${game_id}"
@@ -84,7 +101,7 @@ jobs:
 
             # Fetch current manifest from R2 to compare versions
             set +e
-            wrangler r2 object get "savecraft-plugins/plugins/${game_id}/manifest.json" --file /tmp/current_manifest.json --remote 2>/dev/null
+            wrangler r2 object get "${R2_BUCKET}/plugins/${game_id}/manifest.json" --file /tmp/current_manifest.json --remote 2>/dev/null
             fetch_rc=$?
             set -e
 
@@ -112,9 +129,9 @@ jobs:
             go run ./cmd/plugin-manifest/ "plugins/${game_id}"
 
             # Upload to R2
-            wrangler r2 object put "savecraft-plugins/plugins/${game_id}/parser.wasm" --file "$wasm_file" --remote
-            wrangler r2 object put "savecraft-plugins/plugins/${game_id}/parser.wasm.sig" --file "${wasm_file}.sig" --remote
-            wrangler r2 object put "savecraft-plugins/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json" --remote
+            wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/parser.wasm" --file "$wasm_file" --remote
+            wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/parser.wasm.sig" --file "${wasm_file}.sig" --remote
+            wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json" --remote
 
             echo "    Published ${game_id} v${new_version}"
           done
@@ -124,14 +141,14 @@ jobs:
         run: rm -f /tmp/signing_key.priv
 
       - name: Find previous plugin tag
-        if: steps.changed.outputs.plugins != '' && startsWith(github.ref, 'refs/tags/')
+        if: steps.changed.outputs.plugins != '' && steps.env.outputs.is_production == 'true'
         id: prev
         run: |
           prev_tag=$(git tag -l 'plugin-v*' --sort=-v:refname | sed -n '2p')
           echo "tag=${prev_tag}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
-        if: steps.changed.outputs.plugins != '' && startsWith(github.ref, 'refs/tags/')
+        if: steps.changed.outputs.plugins != '' && steps.env.outputs.is_production == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
@@ -147,7 +164,7 @@ jobs:
             $notes_flag
 
       - name: Notify Discord
-        if: success() && steps.changed.outputs.plugins != ''
+        if: success() && steps.changed.outputs.plugins != '' && steps.env.outputs.is_production == 'true'
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
           CHANGED_PLUGINS: ${{ steps.changed.outputs.plugins }}

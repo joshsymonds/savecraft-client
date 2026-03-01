@@ -551,6 +551,11 @@ linters:
           - godox
           - govet
 
+      # Daemon entrypoint — ldflags injection targets must be package-level vars
+      - path: cmd/savecraftd/main\.go
+        linters:
+          - gochecknoglobals
+
       # Generated protobuf code — do not lint
       - path: internal/proto/.*\.go
         linters:

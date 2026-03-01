@@ -1,15 +1,47 @@
-name: Release Daemon
+name: Deploy Daemon
 
 on:
   push:
+    branches: [main]
     tags: ["daemon-v*"]
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'install/**'
+      - 'go.mod'
+      - 'go.sum'
 
 permissions:
   contents: write
 
 jobs:
+  environment:
+    name: Detect environment
+    runs-on: ubuntu-latest
+    outputs:
+      is_production: ${{ steps.detect.outputs.is_production }}
+      version: ${{ steps.detect.outputs.version }}
+      server_url: ${{ steps.detect.outputs.server_url }}
+      r2_bucket: ${{ steps.detect.outputs.r2_bucket }}
+    steps:
+      - name: Detect environment from ref
+        id: detect
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/daemon-v* ]]; then
+            echo "is_production=true" >> "$GITHUB_OUTPUT"
+            echo "version=${GITHUB_REF_NAME#daemon-v}" >> "$GITHUB_OUTPUT"
+            echo "server_url=https://api.savecraft.gg" >> "$GITHUB_OUTPUT"
+            echo "r2_bucket=savecraft-plugins" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_production=false" >> "$GITHUB_OUTPUT"
+            echo "version=dev" >> "$GITHUB_OUTPUT"
+            echo "server_url=https://staging-api.savecraft.gg" >> "$GITHUB_OUTPUT"
+            echo "r2_bucket=savecraft-plugins-staging" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: Build
+    needs: environment
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,14 +54,17 @@ jobs:
         with:
           tool: just
 
-      - name: Extract version
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#daemon-v}" >> "$GITHUB_OUTPUT"
+      - name: Install shfmt
+        run: go install mvdan.cc/sh/v3/cmd/shfmt@latest
+
+      - name: Lint install script
+        run: just lint-sh && just fmt-sh-check
 
       - name: Build daemon (all platforms)
         env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: just build-daemon-all "$VERSION"
+          VERSION: ${{ needs.environment.outputs.version }}
+          SERVER_URL: ${{ needs.environment.outputs.server_url }}
+        run: just build-daemon-all "$VERSION" "$SERVER_URL"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -82,7 +117,7 @@ jobs:
 
   upload-r2:
     name: Upload to R2
-    needs: sign
+    needs: [environment, sign]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -90,17 +125,13 @@ jobs:
           name: signed-daemon-artifacts
           path: dist
 
-      - name: Extract version
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#daemon-v}" >> "$GITHUB_OUTPUT"
-
       - name: Install wrangler
         run: npm install -g wrangler
 
       - name: Generate manifest
         env:
-          VERSION: ${{ steps.version.outputs.version }}
-          SERVER_URL: "https://api.savecraft.gg"
+          VERSION: ${{ needs.environment.outputs.version }}
+          SERVER_URL: ${{ needs.environment.outputs.server_url }}
         run: |
           # Build platforms object from checksums
           platforms="{}"
@@ -130,23 +161,26 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_BUCKET: ${{ needs.environment.outputs.r2_bucket }}
         run: |
           for f in dist/savecraft-daemon-*; do
             [ -f "$f" ] || continue
             filename=$(basename "$f")
-            wrangler r2 object put "savecraft-plugins/daemon/${filename}" --file="$f"
+            wrangler r2 object put "${R2_BUCKET}/daemon/${filename}" --file="$f" --remote
           done
 
       - name: Upload manifest to R2
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_BUCKET: ${{ needs.environment.outputs.r2_bucket }}
         run: |
-          wrangler r2 object put "savecraft-plugins/daemon/manifest.json" --file="dist/daemon-manifest.json"
+          wrangler r2 object put "${R2_BUCKET}/daemon/manifest.json" --file="dist/daemon-manifest.json" --remote
 
   release:
     name: GitHub Release
-    needs: sign
+    needs: [environment, sign]
+    if: needs.environment.outputs.is_production == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

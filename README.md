@@ -10,8 +10,8 @@
 
 <p align="center">
   <a href="https://github.com/joshsymonds/savecraft.gg/actions/workflows/ci.yml"><img src="https://github.com/joshsymonds/savecraft.gg/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
-  <a href="https://github.com/joshsymonds/savecraft.gg/actions/workflows/release-daemon.yml"><img src="https://github.com/joshsymonds/savecraft.gg/actions/workflows/release-daemon.yml/badge.svg" alt="Daemon Release" /></a>
-  <a href="https://github.com/joshsymonds/savecraft.gg/actions/workflows/release-plugin.yml"><img src="https://github.com/joshsymonds/savecraft.gg/actions/workflows/release-plugin.yml/badge.svg" alt="Plugin Release" /></a>
+  <a href="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-daemon.yml"><img src="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-daemon.yml/badge.svg" alt="Daemon Deploy" /></a>
+  <a href="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-plugin.yml"><img src="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-plugin.yml/badge.svg" alt="Plugin Deploy" /></a>
 </p>
 
 <p align="center">

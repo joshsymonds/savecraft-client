@@ -100,6 +100,18 @@ fmt-web:
 fmt-web-check:
     cd web && npx prettier --check .
 
+# Lint shell scripts (shellcheck)
+lint-sh:
+    shellcheck install/install.sh install/test/run-test.sh scripts/generate-plugin-manifest.sh
+
+# Format shell scripts
+fmt-sh:
+    shfmt -w -i 4 -bn -ci install/install.sh install/test/run-test.sh scripts/generate-plugin-manifest.sh
+
+# Check shell script formatting
+fmt-sh-check:
+    shfmt -d -i 4 -bn -ci install/install.sh install/test/run-test.sh scripts/generate-plugin-manifest.sh
+
 # Start Web dev server
 dev-web:
     cd web && npm run dev
@@ -129,23 +141,23 @@ sign-plugins:
         go run ./cmd/savecraft-sign/ "$wasm"
     done
 
-# Cross-compile daemon binary: just build-daemon linux amd64
-build-daemon os arch version="dev":
+# Cross-compile daemon binary: just build-daemon linux amd64 dev https://api.savecraft.gg
+build-daemon os arch version="dev" server_url="https://api.savecraft.gg":
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p dist
     CGO_ENABLED=0 GOOS={{os}} GOARCH={{arch}} go build \
-        -ldflags "-s -w -X main.version={{version}}" \
+        -ldflags "-s -w -X main.version={{version}} -X main.serverURLDefault={{server_url}}" \
         -o "dist/savecraft-daemon-{{os}}-{{arch}}" \
         ./cmd/savecraftd/
 
 # Build daemon for all release platforms
-build-daemon-all version="dev":
-    just build-daemon linux amd64 {{version}}
-    just build-daemon linux arm64 {{version}}
-    just build-daemon darwin amd64 {{version}}
-    just build-daemon darwin arm64 {{version}}
-    just build-daemon windows amd64 {{version}}
+build-daemon-all version="dev" server_url="https://api.savecraft.gg":
+    just build-daemon linux amd64 {{version}} {{server_url}}
+    just build-daemon linux arm64 {{version}} {{server_url}}
+    just build-daemon darwin amd64 {{version}} {{server_url}}
+    just build-daemon darwin arm64 {{version}} {{server_url}}
+    just build-daemon windows amd64 {{version}} {{server_url}}
 
 # Build and sign test fixtures for the install integration test
 install-fixtures version="0.1.0":
@@ -157,11 +169,11 @@ install-fixtures version="0.1.0":
     go run ./cmd/savecraft-sign/ dist/savecraft-daemon-linux-amd64
     go run ./cmd/savecraft-sign/ dist/savecraft-daemon-linux-arm64
     # Create fixture directory
-    mkdir -p install/test/fixtures/v{{version}}
-    cp dist/savecraft-daemon-linux-amd64     install/test/fixtures/v{{version}}/
-    cp dist/savecraft-daemon-linux-amd64.sig install/test/fixtures/v{{version}}/
-    cp dist/savecraft-daemon-linux-arm64     install/test/fixtures/v{{version}}/
-    cp dist/savecraft-daemon-linux-arm64.sig install/test/fixtures/v{{version}}/
+    mkdir -p install/test/fixtures/daemon-v{{version}}
+    cp dist/savecraft-daemon-linux-amd64     install/test/fixtures/daemon-v{{version}}/
+    cp dist/savecraft-daemon-linux-amd64.sig install/test/fixtures/daemon-v{{version}}/
+    cp dist/savecraft-daemon-linux-arm64     install/test/fixtures/daemon-v{{version}}/
+    cp dist/savecraft-daemon-linux-arm64.sig install/test/fixtures/daemon-v{{version}}/
     # Bake real public key into installer copy
     # DER prefix for Ed25519 public key: 302a300506032b6570032100
     # Use file I/O to avoid bash stripping null bytes from binary key
@@ -196,7 +208,7 @@ fmt-go-check:
     fi
 
 # Lint everything (mirrors CI lint steps, no tests — used by pre-push hook)
-lint-all: lint-go lint-worker lint-web fmt-go-check fmt-worker-check fmt-web-check check-web
+lint-all: lint-go lint-worker lint-web lint-sh fmt-go-check fmt-worker-check fmt-web-check fmt-sh-check check-web
 
 # Run all tests
 test: test-go test-worker test-web
