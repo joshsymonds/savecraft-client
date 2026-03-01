@@ -150,5 +150,5 @@ Proprietary. All rights reserved.
 ---
 
 <p align="center">
-  <sub>savecraft.gg — an <a href="https://autotome.ai">Autotome.ai</a> project</sub>
+  <sub>savecraft.gg — by <a href="https://joshsymonds.com">@joshsymonds</a></sub>
 </p>
