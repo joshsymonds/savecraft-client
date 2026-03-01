@@ -24,7 +24,7 @@ describe("install worker", () => {
 				expect(resp.status).toBe(200);
 
 				const body = await resp.text();
-				expect(body).toContain('SAVECRAFT_SERVER_URL="');
+				expect(body.split('\n')[0]).toBe(`SAVECRAFT_SERVER_URL="${env.SERVER_URL}"`);
 				expect(body).toContain("#!/usr/bin/env bash");
 				expect(resp.headers.get("content-type")).toBe("text/x-shellscript; charset=utf-8");
 				expect(resp.headers.get("content-disposition")).toBe(

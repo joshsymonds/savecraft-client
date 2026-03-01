@@ -7,9 +7,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 
 readonly VERSION="dev"
-readonly PRODUCTION_BASE_URL="${SAVECRAFT_BASE_URL:-https://github.com/joshsymonds/savecraft.gg/releases/download}"
-readonly STAGING_BASE_URL="${SAVECRAFT_STAGING_BASE_URL:-https://staging-api.savecraft.gg/daemon}"
-readonly STAGING_SERVER_URL="https://staging-api.savecraft.gg"
+readonly BASE_URL="${SAVECRAFT_BASE_URL:-https://github.com/joshsymonds/savecraft.gg/releases/download}"
 
 readonly BIN_DIR="${HOME}/.local/bin"
 readonly CONFIG_DIR="${HOME}/.config/savecraft"
@@ -233,18 +231,15 @@ create_env_template() {
 # ---------------------------------------------------------------------------
 main() {
     local no_systemd=false
-    local staging=false
 
     # Parse arguments
     for arg in "$@"; do
         case "${arg}" in
             --no-systemd) no_systemd=true ;;
-            --staging) staging=true ;;
             --help | -h)
-                echo "Usage: install.sh [--staging] [--no-systemd]"
+                echo "Usage: install.sh [--no-systemd]"
                 echo ""
                 echo "Options:"
-                echo "  --staging      Install staging daemon (points to staging-api.savecraft.gg)"
                 echo "  --no-systemd   Skip systemd unit installation (for Docker/testing)"
                 exit 0
                 ;;
@@ -253,11 +248,7 @@ main() {
     done
 
     echo ""
-    if [[ "${staging}" == "true" ]]; then
-        echo "  Savecraft Daemon Installer v${VERSION} (STAGING)"
-    else
-        echo "  Savecraft Daemon Installer v${VERSION}"
-    fi
+    echo "  Savecraft Daemon Installer v${VERSION}"
     echo "  ======================================"
     echo ""
 
@@ -273,16 +264,9 @@ main() {
 
     # Download binary + signature
     local artifact="${BINARY_NAME}-${os}-${arch}"
-    local binary_url sig_url
-
-    if [[ "${staging}" == "true" ]]; then
-        binary_url="${STAGING_BASE_URL}/${artifact}"
-        sig_url="${STAGING_BASE_URL}/${artifact}.sig"
-    else
-        local release_base="${PRODUCTION_BASE_URL}/daemon-v${VERSION}"
-        binary_url="${release_base}/${artifact}"
-        sig_url="${release_base}/${artifact}.sig"
-    fi
+    local release_base="${BASE_URL}/daemon-v${VERSION}"
+    local binary_url="${release_base}/${artifact}"
+    local sig_url="${release_base}/${artifact}.sig"
 
     TMP_BINARY="$(mktemp)"
     TMP_SIG="$(mktemp)"
@@ -305,11 +289,6 @@ main() {
     cp "${TMP_BINARY}" "${BIN_DIR}/${BINARY_NAME}"
     chmod +x "${BIN_DIR}/${BINARY_NAME}"
     ok "Installed ${BINARY_NAME} to ${BIN_DIR}/${BINARY_NAME}"
-
-    # For staging installs, pre-set the server URL so the env template picks it up
-    if [[ "${staging}" == "true" && -z "${SAVECRAFT_SERVER_URL:-}" ]]; then
-        SAVECRAFT_SERVER_URL="${STAGING_SERVER_URL}"
-    fi
 
     # Pair device or write env file
     local paired=false
