@@ -3,13 +3,23 @@
 {
   dotenv.enable = true;
 
-  # Pre-push hook enforces the same lint/format checks that CI runs.
+  # Pre-push hook enforces the same lint/format/test checks that CI runs.
   # Bypass with: git push --no-verify
-  git-hooks.hooks.lint-all = {
+  git-hooks.hooks.lint = {
     enable = true;
-    name = "lint-all";
-    description = "Run all lint and format checks (mirrors CI)";
-    entry = "just lint-all";
+    name = "lint";
+    description = "Run all lint and format checks";
+    entry = "just lint";
+    language = "system";
+    pass_filenames = false;
+    stages = [ "pre-push" ];
+  };
+
+  git-hooks.hooks.test = {
+    enable = true;
+    name = "test";
+    description = "Run all tests";
+    entry = "just test";
     language = "system";
     pass_filenames = false;
     stages = [ "pre-push" ];

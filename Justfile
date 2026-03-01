@@ -227,11 +227,11 @@ fmt-go-check:
         exit 1
     fi
 
-# Lint everything (mirrors CI lint steps, no tests — used by pre-push hook)
-lint-all: lint-go lint-worker lint-web lint-site lint-sh fmt-go-check fmt-worker-check fmt-web-check fmt-site-check fmt-sh-check check-web check-site
+# Lint everything (mirrors CI lint steps, no tests)
+lint: lint-go lint-worker lint-web lint-site lint-sh fmt-go-check fmt-worker-check fmt-web-check fmt-site-check fmt-sh-check check-web check-site
 
 # Run all tests
 test: test-go test-worker test-web test-site
 
 # Check everything: lint, generate, format, test
-check: proto-lint proto lint-all test
+check: proto-lint proto lint test
