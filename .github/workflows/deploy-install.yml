@@ -142,6 +142,21 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      - name: Notify Discord (deploy)
+        if: success()
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_DEPLOY_WEBHOOK }}
+          VERSION: ${{ needs.environment.outputs.version }}
+          IS_PROD: ${{ needs.environment.outputs.is_production }}
+        run: |
+          env_label="staging"
+          if [ "$IS_PROD" = "true" ]; then env_label="production"; fi
+          jq -n \
+            --arg ver "$VERSION" \
+            --arg env "$env_label" \
+            '{embeds: [{title: ("Install v" + $ver + " deployed to " + $env), color: 3447003}]}' \
+            | curl -s -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" -d @-
+
   release:
     name: GitHub Release
     needs: [environment, deploy]
@@ -173,7 +188,7 @@ jobs:
             --generate-notes \
             $notes_flag
 
-      - name: Notify Discord
+      - name: Notify Discord (release)
         if: success()
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}

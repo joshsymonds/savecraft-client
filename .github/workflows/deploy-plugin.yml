@@ -175,6 +175,25 @@ jobs:
         if: always()
         run: rm -f /tmp/signing_key.priv
 
+      - name: Notify Discord (deploy)
+        if: success()
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_DEPLOY_WEBHOOK }}
+          CHANGED_PLUGINS: ${{ needs.test.outputs.plugins }}
+          IS_PROD: ${{ steps.env.outputs.is_production }}
+        run: |
+          env_label="staging"
+          if [ "$IS_PROD" = "true" ]; then env_label="production"; fi
+          for game_id in $CHANGED_PLUGINS; do
+            version=$(grep '^version' "plugins/${game_id}/plugin.toml" | head -1 | sed 's/.*= *"\(.*\)"/\1/')
+            jq -n \
+              --arg gid "$game_id" \
+              --arg ver "$version" \
+              --arg env "$env_label" \
+              '{embeds: [{title: ("Plugin " + $gid + " v" + $ver + " deployed to " + $env), color: 3447003}]}' \
+              | curl -s -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" -d @-
+          done
+
       - name: Find previous plugin tag
         if: steps.env.outputs.is_production == 'true'
         id: prev
@@ -198,7 +217,7 @@ jobs:
             --generate-notes \
             $notes_flag
 
-      - name: Notify Discord
+      - name: Notify Discord (release)
         if: success() && steps.env.outputs.is_production == 'true'
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}

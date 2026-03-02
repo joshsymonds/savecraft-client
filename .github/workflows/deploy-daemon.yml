@@ -245,6 +245,21 @@ jobs:
         run: |
           wrangler r2 object put "${R2_BUCKET}/daemon/manifest.json" --file="dist/daemon-manifest.json" --remote
 
+      - name: Notify Discord (deploy)
+        if: success()
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_DEPLOY_WEBHOOK }}
+          VERSION: ${{ needs.environment.outputs.version }}
+          IS_PROD: ${{ needs.environment.outputs.is_production }}
+        run: |
+          env_label="staging"
+          if [ "$IS_PROD" = "true" ]; then env_label="production"; fi
+          jq -n \
+            --arg ver "$VERSION" \
+            --arg env "$env_label" \
+            '{embeds: [{title: ("Daemon v" + $ver + " deployed to " + $env), color: 3447003}]}' \
+            | curl -s -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" -d @-
+
   release:
     name: GitHub Release
     needs: [environment, sign]
@@ -283,7 +298,7 @@ jobs:
             dist/savecraft-daemon-* \
             dist/checksums-sha256.txt
 
-      - name: Notify Discord
+      - name: Notify Discord (release)
         if: success()
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
