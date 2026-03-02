@@ -27,6 +27,9 @@ node_modules/
 # SvelteKit generated
 .svelte-kit/
 
+# Vite cache (vitest results, dev server cache)
+.vite/
+
 # Storybook
 web/storybook-static/
 web/screenshots/
