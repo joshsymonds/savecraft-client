@@ -243,11 +243,8 @@ install-fixtures version="0.1.0":
 test-install-worker:
     cd install/worker && npm test
 
-# Run install integration test in Docker
+# Run install integration test in Docker (uses pre-built fixtures from git)
 test-install-docker:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    just install-fixtures
     docker build -t savecraft-install-test -f install/test/Dockerfile install/
     docker run --rm savecraft-install-test
 
