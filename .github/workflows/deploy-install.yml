@@ -51,6 +51,9 @@ jobs:
       - name: Test install worker
         run: just test-install-worker
 
+      - name: Test install script (Docker)
+        run: just test-install-docker
+
   environment:
     name: Detect environment
     if: github.event_name == 'push'
