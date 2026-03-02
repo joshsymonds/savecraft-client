@@ -1,6 +1,8 @@
 package pluginmgr
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -105,6 +107,74 @@ func TestCache_Read_MissingVersion(t *testing.T) {
 	_, _, _, err := cache.Read("d2r")
 	if err == nil {
 		t.Fatal("expected error when version.txt missing")
+	}
+}
+
+func TestCache_SHA256_AfterWrite(t *testing.T) {
+	dir := t.TempDir()
+	cache := NewCache(dir)
+
+	wasm := []byte("wasm data")
+	if err := cache.Write("d2r", "1.0.0", wasm, []byte("sig")); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	h := sha256.Sum256(wasm)
+	want := fmt.Sprintf("%x", h)
+	got := cache.SHA256("d2r")
+	if got != want {
+		t.Errorf("SHA256 = %q, want %q", got, want)
+	}
+}
+
+func TestCache_SHA256_Missing(t *testing.T) {
+	dir := t.TempDir()
+	cache := NewCache(dir)
+
+	got := cache.SHA256("nonexistent")
+	if got != "" {
+		t.Errorf("SHA256 = %q, want empty string for missing plugin", got)
+	}
+}
+
+func TestCache_UpdateVersion(t *testing.T) {
+	dir := t.TempDir()
+	cache := NewCache(dir)
+
+	wasm := []byte("wasm data")
+	sig := []byte("sig data")
+	if err := cache.Write("d2r", "1.0.0", wasm, sig); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	newHash := "deadbeef"
+	if err := cache.UpdateVersion("d2r", "2.0.0", newHash); err != nil {
+		t.Fatalf("UpdateVersion: %v", err)
+	}
+
+	// version.txt updated
+	if !cache.HasVersion("d2r", "2.0.0") {
+		t.Error("version should be 2.0.0 after UpdateVersion")
+	}
+	if cache.HasVersion("d2r", "1.0.0") {
+		t.Error("version should no longer be 1.0.0")
+	}
+
+	// sha256.txt updated
+	if got := cache.SHA256("d2r"); got != newHash {
+		t.Errorf("SHA256 = %q, want %q", got, newHash)
+	}
+
+	// wasm and sig unchanged
+	gotWasm, gotSig, _, err := cache.Read("d2r")
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if string(gotWasm) != "wasm data" {
+		t.Errorf("wasm = %q, want %q (should be unchanged)", gotWasm, "wasm data")
+	}
+	if string(gotSig) != "sig data" {
+		t.Errorf("sig = %q, want %q (should be unchanged)", gotSig, "sig data")
 	}
 }
 

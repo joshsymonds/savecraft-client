@@ -64,7 +64,8 @@ func (l *fakeLoader) LoadPlugin(
 
 type countingRegistry struct {
 	fakeRegistry
-	fetchCount int
+	fetchCount    int
+	downloadCount int
 }
 
 func (r *countingRegistry) FetchManifest(
@@ -72,6 +73,13 @@ func (r *countingRegistry) FetchManifest(
 ) (map[string]PluginInfo, error) {
 	r.fetchCount++
 	return r.fakeRegistry.FetchManifest(ctx)
+}
+
+func (r *countingRegistry) Download(
+	ctx context.Context, url string,
+) ([]byte, error) {
+	r.downloadCount++
+	return r.fakeRegistry.Download(ctx, url)
 }
 
 // --- Helpers ---
@@ -765,5 +773,216 @@ func TestCheckForUpdates_StaleVersion(t *testing.T) {
 	}
 	if !cache.HasVersion("d2r", "2.0.0") {
 		t.Error("cache should have version 2.0.0 after update")
+	}
+}
+
+func TestEnsurePlugin_SHA256MatchSkipsDownload(t *testing.T) {
+	pub, priv := generateTestKeys(t)
+	wasm := []byte("same wasm binary")
+	sig, hash := signAndHash(t, priv, wasm)
+
+	cacheDir := t.TempDir()
+	cache := NewCache(cacheDir)
+	// Cache with old version but same wasm content.
+	if err := cache.Write("d2r", "1.0.0", wasm, sig); err != nil {
+		t.Fatalf("cache write: %v", err)
+	}
+
+	reg := &countingRegistry{
+		fakeRegistry: fakeRegistry{
+			manifest: map[string]PluginInfo{
+				"d2r": {
+					GameID:  "d2r",
+					Version: "2.0.0",
+					SHA256:  hash, // Same hash as cached wasm.
+					URL:     pluginURL,
+				},
+			},
+			// No files — download should not be called.
+		},
+	}
+
+	loader := &fakeLoader{}
+	mgr := NewManager(reg, cache, loader, pub, testLogger())
+	if err := mgr.EnsurePlugin(context.Background(), "d2r"); err != nil {
+		t.Fatalf("EnsurePlugin: %v", err)
+	}
+
+	// Should not have downloaded anything.
+	if reg.downloadCount != 0 {
+		t.Errorf("downloadCount = %d, want 0 (SHA256 matched)", reg.downloadCount)
+	}
+
+	// Plugin should have been loaded.
+	loader.mu.Lock()
+	loaded := append([]string{}, loader.loaded...)
+	loader.mu.Unlock()
+	if len(loaded) != 1 || loaded[0] != "d2r" {
+		t.Errorf("loaded = %v, want [d2r]", loaded)
+	}
+
+	// Cache version should be updated.
+	if !cache.HasVersion("d2r", "2.0.0") {
+		t.Error("cache should have version 2.0.0 after SHA256 match")
+	}
+}
+
+func TestEnsurePlugin_SHA256MismatchDownloads(t *testing.T) {
+	pub, priv := generateTestKeys(t)
+	oldWasm := []byte("old wasm binary")
+	oldSig := signing.Sign(priv, oldWasm)
+
+	newWasm := []byte("new wasm binary")
+	newSig, newHash := signAndHash(t, priv, newWasm)
+
+	cacheDir := t.TempDir()
+	cache := NewCache(cacheDir)
+	if err := cache.Write("d2r", "1.0.0", oldWasm, oldSig); err != nil {
+		t.Fatalf("cache write: %v", err)
+	}
+
+	reg := &countingRegistry{
+		fakeRegistry: fakeRegistry{
+			manifest: map[string]PluginInfo{
+				"d2r": {
+					GameID:  "d2r",
+					Version: "2.0.0",
+					SHA256:  newHash, // Different hash.
+					URL:     pluginURL,
+				},
+			},
+			files: map[string][]byte{
+				pluginURL:          newWasm,
+				pluginURL + ".sig": newSig,
+			},
+		},
+	}
+
+	loader := &fakeLoader{}
+	mgr := NewManager(reg, cache, loader, pub, testLogger())
+	if err := mgr.EnsurePlugin(context.Background(), "d2r"); err != nil {
+		t.Fatalf("EnsurePlugin: %v", err)
+	}
+
+	// Should have downloaded (2 calls: wasm + sig).
+	if reg.downloadCount != 2 {
+		t.Errorf("downloadCount = %d, want 2 (SHA256 mismatch)", reg.downloadCount)
+	}
+
+	// Plugin should have been loaded.
+	loader.mu.Lock()
+	loaded := append([]string{}, loader.loaded...)
+	loader.mu.Unlock()
+	if len(loaded) != 1 || loaded[0] != "d2r" {
+		t.Errorf("loaded = %v, want [d2r]", loaded)
+	}
+
+	// Cache should have new version.
+	if !cache.HasVersion("d2r", "2.0.0") {
+		t.Error("cache should have version 2.0.0 after download")
+	}
+}
+
+func TestCheckForUpdates_SHA256MatchSkipsDownload(t *testing.T) {
+	pub, priv := generateTestKeys(t)
+	wasm := []byte("same wasm binary")
+	sig := signing.Sign(priv, wasm)
+	h := sha256.Sum256(wasm)
+	hash := fmt.Sprintf("%x", h)
+
+	cacheDir := t.TempDir()
+	cache := NewCache(cacheDir)
+	if err := cache.Write("d2r", "1.0.0", wasm, sig); err != nil {
+		t.Fatalf("cache write: %v", err)
+	}
+
+	reg := &countingRegistry{
+		fakeRegistry: fakeRegistry{
+			manifest: map[string]PluginInfo{
+				"d2r": {
+					GameID:  "d2r",
+					Version: "2.0.0",
+					SHA256:  hash, // Same hash.
+					URL:     pluginURL,
+				},
+			},
+			// No files — download should not be called.
+		},
+	}
+
+	loader := &fakeLoader{}
+	mgr := NewManager(reg, cache, loader, pub, testLogger())
+	updated, err := mgr.CheckForUpdates(context.Background())
+	if err != nil {
+		t.Fatalf("CheckForUpdates: %v", err)
+	}
+
+	// Should not have downloaded anything.
+	if reg.downloadCount != 0 {
+		t.Errorf("downloadCount = %d, want 0 (SHA256 matched)", reg.downloadCount)
+	}
+
+	// Should not be in updated list (no actual binary change).
+	if len(updated) != 0 {
+		t.Errorf("updated = %v, want empty (binary unchanged)", updated)
+	}
+
+	// Version should be updated in cache.
+	if !cache.HasVersion("d2r", "2.0.0") {
+		t.Error("cache should have version 2.0.0 after SHA256 match")
+	}
+}
+
+func TestCheckForUpdates_SHA256MismatchDownloads(t *testing.T) {
+	pub, priv := generateTestKeys(t)
+	oldWasm := []byte("old wasm binary")
+	oldSig := signing.Sign(priv, oldWasm)
+
+	newWasm := []byte("new wasm binary")
+	newSig, newHash := signAndHash(t, priv, newWasm)
+
+	cacheDir := t.TempDir()
+	cache := NewCache(cacheDir)
+	if err := cache.Write("d2r", "1.0.0", oldWasm, oldSig); err != nil {
+		t.Fatalf("cache write: %v", err)
+	}
+
+	reg := &countingRegistry{
+		fakeRegistry: fakeRegistry{
+			manifest: map[string]PluginInfo{
+				"d2r": {
+					GameID:  "d2r",
+					Version: "2.0.0",
+					SHA256:  newHash, // Different hash.
+					URL:     pluginURL,
+				},
+			},
+			files: map[string][]byte{
+				pluginURL:          newWasm,
+				pluginURL + ".sig": newSig,
+			},
+		},
+	}
+
+	loader := &fakeLoader{}
+	mgr := NewManager(reg, cache, loader, pub, testLogger())
+	updated, err := mgr.CheckForUpdates(context.Background())
+	if err != nil {
+		t.Fatalf("CheckForUpdates: %v", err)
+	}
+
+	// Should have downloaded.
+	if reg.downloadCount != 2 {
+		t.Errorf("downloadCount = %d, want 2 (SHA256 mismatch)", reg.downloadCount)
+	}
+
+	// Should be in updated list.
+	if len(updated) != 1 || updated[0] != "d2r" {
+		t.Errorf("updated = %v, want [d2r]", updated)
+	}
+
+	// Cache should have new version.
+	if !cache.HasVersion("d2r", "2.0.0") {
+		t.Error("cache should have version 2.0.0 after download")
 	}
 }

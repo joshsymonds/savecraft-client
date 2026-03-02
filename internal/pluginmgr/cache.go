@@ -1,6 +1,7 @@
 package pluginmgr
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -80,6 +81,39 @@ func (c *Cache) Write(
 	verPath := filepath.Join(gameDir, "version.txt")
 	if err := os.WriteFile(verPath, []byte(version+"\n"), 0o600); err != nil {
 		return fmt.Errorf("write cached version: %w", err)
+	}
+
+	hash := sha256.Sum256(wasm)
+	hashPath := filepath.Join(gameDir, "sha256.txt")
+	if err := os.WriteFile(hashPath, fmt.Appendf(nil, "%x\n", hash), 0o600); err != nil {
+		return fmt.Errorf("write cached sha256: %w", err)
+	}
+
+	return nil
+}
+
+// SHA256 returns the cached SHA256 hash for a game, or "" if unavailable.
+func (c *Cache) SHA256(gameID string) string {
+	hashPath := filepath.Join(c.dir, gameID, "sha256.txt")
+	data, err := os.ReadFile(filepath.Clean(hashPath))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// UpdateVersion updates version.txt and sha256.txt without touching wasm/sig.
+func (c *Cache) UpdateVersion(gameID, version, sha256Hash string) error {
+	gameDir := filepath.Join(c.dir, gameID)
+
+	verPath := filepath.Join(gameDir, "version.txt")
+	if err := os.WriteFile(verPath, []byte(version+"\n"), 0o600); err != nil {
+		return fmt.Errorf("update cached version: %w", err)
+	}
+
+	hashPath := filepath.Join(gameDir, "sha256.txt")
+	if err := os.WriteFile(hashPath, []byte(sha256Hash+"\n"), 0o600); err != nil {
+		return fmt.Errorf("update cached sha256: %w", err)
 	}
 
 	return nil

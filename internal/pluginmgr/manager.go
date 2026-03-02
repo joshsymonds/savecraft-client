@@ -109,6 +109,25 @@ func (m *Manager) EnsurePlugin(ctx context.Context, gameID string) error {
 		// Cache read failed, fall through to download.
 	}
 
+	// Version differs but binary might be identical — check SHA256.
+	if cachedHash := m.cache.SHA256(gameID); cachedHash != "" && cachedHash == info.SHA256 {
+		if updateErr := m.cache.UpdateVersion(gameID, info.Version, info.SHA256); updateErr != nil {
+			m.logger.WarnContext(ctx, "failed to update cached version",
+				slog.String("game_id", gameID),
+				slog.String("error", updateErr.Error()),
+			)
+		} else {
+			m.logger.InfoContext(ctx, "plugin binary unchanged, skipping download",
+				slog.String("game_id", gameID),
+				slog.String("version", info.Version),
+			)
+			wasm, sig, _, readErr := m.cache.Read(gameID)
+			if readErr == nil {
+				return m.loadPlugin(ctx, gameID, wasm, sig)
+			}
+		}
+	}
+
 	return m.downloadAndLoad(ctx, gameID, info)
 }
 
@@ -137,6 +156,23 @@ func (m *Manager) CheckForUpdates(
 		if readErr != nil {
 			// Not cached at all, skip -- EnsurePlugin handles first download.
 			continue
+		}
+
+		// Binary might be identical despite version change — check SHA256.
+		if cachedHash := m.cache.SHA256(gameID); cachedHash != "" && cachedHash == info.SHA256 {
+			if updateErr := m.cache.UpdateVersion(gameID, info.Version, info.SHA256); updateErr != nil {
+				m.logger.WarnContext(ctx, "failed to update cached version",
+					slog.String("game_id", gameID),
+					slog.String("error", updateErr.Error()),
+				)
+			} else {
+				m.logger.InfoContext(ctx, "plugin binary unchanged, skipping download",
+					slog.String("game_id", gameID),
+					slog.String("from", cachedVersion),
+					slog.String("to", info.Version),
+				)
+				continue
+			}
 		}
 
 		if m.updatePlugin(ctx, gameID, info, cachedVersion) {
