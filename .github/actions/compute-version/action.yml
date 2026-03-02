@@ -1,0 +1,34 @@
+name: Compute Version
+description: >
+  Shared version computation for all deploy workflows.
+  Extracts semver from a git tag (production) or computes a dev version (staging).
+
+inputs:
+  tag_prefix:
+    description: 'Tag prefix to strip (e.g., "daemon-v", "cloud-v", "plugin-d2r-v")'
+    required: true
+
+outputs:
+  version:
+    description: Computed version string
+    value: ${{ steps.compute.outputs.version }}
+  environment:
+    description: Either "production" or "staging"
+    value: ${{ steps.compute.outputs.environment }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compute version from ref
+      id: compute
+      shell: bash
+      run: |
+        prefix="${{ inputs.tag_prefix }}"
+        if [[ "${GITHUB_REF_NAME}" == "${prefix}"* ]]; then
+          echo "version=${GITHUB_REF_NAME#"${prefix}"}" >> "$GITHUB_OUTPUT"
+          echo "environment=production" >> "$GITHUB_OUTPUT"
+        else
+          short_sha="${GITHUB_SHA::7}"
+          echo "version=0.0.0-dev.${GITHUB_RUN_NUMBER}.${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "environment=staging" >> "$GITHUB_OUTPUT"
+        fi

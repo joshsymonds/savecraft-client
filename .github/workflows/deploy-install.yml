@@ -56,23 +56,30 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
-      is_production: ${{ steps.detect.outputs.is_production }}
-      version: ${{ steps.detect.outputs.version }}
-      wrangler_env: ${{ steps.detect.outputs.wrangler_env }}
-      r2_bucket: ${{ steps.detect.outputs.r2_bucket }}
+      is_production: ${{ steps.config.outputs.is_production }}
+      version: ${{ steps.version.outputs.version }}
+      wrangler_env: ${{ steps.config.outputs.wrangler_env }}
+      r2_bucket: ${{ steps.config.outputs.r2_bucket }}
     steps:
-      - name: Detect environment from ref
-        id: detect
+      - uses: actions/checkout@v4
+
+      - name: Compute version
+        id: version
+        uses: ./.github/actions/compute-version
+        with:
+          tag_prefix: "install-v"
+
+      - name: Set install configuration
+        id: config
+        env:
+          DETECTED_ENV: ${{ steps.version.outputs.environment }}
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/install-v* ]]; then
+          if [ "$DETECTED_ENV" = "production" ]; then
             echo "is_production=true" >> "$GITHUB_OUTPUT"
-            echo "version=${GITHUB_REF_NAME#install-v}" >> "$GITHUB_OUTPUT"
             echo "wrangler_env=production" >> "$GITHUB_OUTPUT"
             echo "r2_bucket=savecraft-install" >> "$GITHUB_OUTPUT"
           else
             echo "is_production=false" >> "$GITHUB_OUTPUT"
-            short_sha="${GITHUB_SHA::7}"
-            echo "version=0.0.0-dev.${GITHUB_RUN_NUMBER}.${short_sha}" >> "$GITHUB_OUTPUT"
             echo "wrangler_env=staging" >> "$GITHUB_OUTPUT"
             echo "r2_bucket=savecraft-install-staging" >> "$GITHUB_OUTPUT"
           fi

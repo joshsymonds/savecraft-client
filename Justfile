@@ -73,8 +73,8 @@ build-plugin name:
     cd plugins/{{name}} && just build
 
 # Generate manifest.json for a plugin from its plugin.toml + built wasm
-plugin-manifest name:
-    go run ./cmd/plugin-manifest/ plugins/{{name}}
+plugin-manifest name version="dev":
+    go run ./cmd/plugin-manifest/ --version {{version}} plugins/{{name}}
 
 # Build all plugins
 build-plugins:
@@ -122,15 +122,15 @@ fmt-site-check:
 
 # Lint shell scripts (shellcheck)
 lint-sh:
-    shellcheck install/install.sh install/test/run-test.sh scripts/generate-plugin-manifest.sh
+    shellcheck install/install.sh install/test/run-test.sh
 
 # Format shell scripts
 fmt-sh:
-    shfmt -w -i 4 -bn -ci install/install.sh install/test/run-test.sh scripts/generate-plugin-manifest.sh
+    shfmt -w -i 4 -bn -ci install/install.sh install/test/run-test.sh
 
 # Check shell script formatting
 fmt-sh-check:
-    shfmt -d -i 4 -bn -ci install/install.sh install/test/run-test.sh scripts/generate-plugin-manifest.sh
+    shfmt -d -i 4 -bn -ci install/install.sh install/test/run-test.sh
 
 # Start install Worker dev server
 dev-install:

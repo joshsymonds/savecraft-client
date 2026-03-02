@@ -3,7 +3,7 @@ name: Deploy Plugin
 on:
   push:
     branches: [main]
-    tags: ["plugin-v*"]
+    tags: ["plugin-*-v*"]
     paths:
       - 'plugins/*/plugin.toml'
       - 'plugins/*/*.go'
@@ -89,15 +89,39 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Detect environment
-        id: env
+      - name: Parse tag for game_id
+        id: parse
+        env:
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/plugin-v* ]]; then
-            echo "r2_bucket=savecraft-plugins" >> "$GITHUB_OUTPUT"
-            echo "is_production=true" >> "$GITHUB_OUTPUT"
+          if [[ "$REF_NAME" == plugin-*-v* ]]; then
+            # Extract game_id: plugin-{game_id}-v{version} → game_id
+            temp="${REF_NAME#plugin-}"
+            game_id="${temp%-v*}"
+            echo "game_id=${game_id}" >> "$GITHUB_OUTPUT"
+            echo "tag_prefix=plugin-${game_id}-v" >> "$GITHUB_OUTPUT"
           else
-            echo "r2_bucket=savecraft-plugins-staging" >> "$GITHUB_OUTPUT"
+            echo "game_id=" >> "$GITHUB_OUTPUT"
+            echo "tag_prefix=plugin-v" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute version
+        id: version
+        uses: ./.github/actions/compute-version
+        with:
+          tag_prefix: ${{ steps.parse.outputs.tag_prefix }}
+
+      - name: Set plugin configuration
+        id: config
+        env:
+          DETECTED_ENV: ${{ steps.version.outputs.environment }}
+        run: |
+          if [ "$DETECTED_ENV" = "production" ]; then
+            echo "is_production=true" >> "$GITHUB_OUTPUT"
+            echo "r2_bucket=savecraft-plugins" >> "$GITHUB_OUTPUT"
+          else
             echo "is_production=false" >> "$GITHUB_OUTPUT"
+            echo "r2_bucket=savecraft-plugins-staging" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/setup-go@v5
@@ -124,34 +148,20 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CHANGED_PLUGINS: ${{ needs.test.outputs.plugins }}
-          R2_BUCKET: ${{ steps.env.outputs.r2_bucket }}
+          ALL_PLUGINS: ${{ needs.test.outputs.plugins }}
+          TAG_GAME_ID: ${{ steps.parse.outputs.game_id }}
+          R2_BUCKET: ${{ steps.config.outputs.r2_bucket }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          for game_id in $CHANGED_PLUGINS; do
-            echo "==> Processing plugin: ${game_id}"
+          # Production: deploy only the tagged game. Staging: deploy all.
+          if [ -n "$TAG_GAME_ID" ]; then
+            deploy_plugins="$TAG_GAME_ID"
+          else
+            deploy_plugins="$ALL_PLUGINS"
+          fi
 
-            # Read version from plugin.toml
-            new_version=$(grep '^version' "plugins/${game_id}/plugin.toml" | head -1 | sed 's/.*= *"\(.*\)"/\1/')
-            echo "    Local version: ${new_version}"
-
-            # Fetch current manifest from R2 to compare versions
-            set +e
-            wrangler r2 object get "${R2_BUCKET}/plugins/${game_id}/manifest.json" --file /tmp/current_manifest.json --remote 2>/dev/null
-            fetch_rc=$?
-            set -e
-
-            if [ $fetch_rc -eq 0 ] && [ -f /tmp/current_manifest.json ]; then
-              current_version=$(jq -r '.version // empty' /tmp/current_manifest.json)
-              rm -f /tmp/current_manifest.json
-              if [ "$current_version" = "$new_version" ]; then
-                echo "    Version ${new_version} already published — skipping"
-                continue
-              fi
-              echo "    Current R2 version: ${current_version} → upgrading to ${new_version}"
-            else
-              rm -f /tmp/current_manifest.json
-              echo "    No existing manifest in R2 — first release"
-            fi
+          for game_id in $deploy_plugins; do
+            echo "==> Processing plugin: ${game_id} v${VERSION}"
 
             # Build WASM
             just build-plugin "$game_id"
@@ -160,15 +170,15 @@ jobs:
             wasm_file="plugins/${game_id}/${game_id}.wasm"
             go run ./cmd/savecraft-sign/ "$wasm_file" /tmp/signing_key.priv
 
-            # Generate manifest.json from plugin.toml
-            go run ./cmd/plugin-manifest/ "plugins/${game_id}"
+            # Generate manifest with version from tag/computed
+            go run ./cmd/plugin-manifest/ --version "$VERSION" "plugins/${game_id}"
 
             # Upload to R2
             wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/parser.wasm" --file "$wasm_file" --remote
             wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/parser.wasm.sig" --file "${wasm_file}.sig" --remote
             wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json" --remote
 
-            echo "    Published ${game_id} v${new_version}"
+            echo "    Published ${game_id} v${VERSION}"
           done
 
       - name: Clean up signing key
@@ -180,30 +190,38 @@ jobs:
         continue-on-error: true
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_DEPLOY_WEBHOOK }}
-          CHANGED_PLUGINS: ${{ needs.test.outputs.plugins }}
-          IS_PROD: ${{ steps.env.outputs.is_production }}
+          ALL_PLUGINS: ${{ needs.test.outputs.plugins }}
+          TAG_GAME_ID: ${{ steps.parse.outputs.game_id }}
+          IS_PROD: ${{ steps.config.outputs.is_production }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           env_label="staging"
           if [ "$IS_PROD" = "true" ]; then env_label="production"; fi
-          for game_id in $CHANGED_PLUGINS; do
-            version=$(grep '^version' "plugins/${game_id}/plugin.toml" | head -1 | sed 's/.*= *"\(.*\)"/\1/')
+          if [ -n "$TAG_GAME_ID" ]; then
+            deploy_plugins="$TAG_GAME_ID"
+          else
+            deploy_plugins="$ALL_PLUGINS"
+          fi
+          for game_id in $deploy_plugins; do
             jq -n \
               --arg gid "$game_id" \
-              --arg ver "$version" \
+              --arg ver "$VERSION" \
               --arg env "$env_label" \
               '{embeds: [{title: ("Plugin " + $gid + " v" + $ver + " deployed to " + $env), color: 3447003}]}' \
               | curl -s -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" -d @-
           done
 
       - name: Find previous plugin tag
-        if: steps.env.outputs.is_production == 'true'
+        if: steps.config.outputs.is_production == 'true'
         id: prev
+        env:
+          TAG_GAME_ID: ${{ steps.parse.outputs.game_id }}
         run: |
-          prev_tag=$(git tag -l 'plugin-v*' --sort=-v:refname | sed -n '2p')
+          prev_tag=$(git tag -l "plugin-${TAG_GAME_ID}-v*" --sort=-v:refname | sed -n '2p')
           echo "tag=${prev_tag}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
-        if: steps.env.outputs.is_production == 'true'
+        if: steps.config.outputs.is_production == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
@@ -219,16 +237,14 @@ jobs:
             $notes_flag
 
       - name: Notify Discord (release)
-        if: success() && steps.env.outputs.is_production == 'true'
+        if: success() && steps.config.outputs.is_production == 'true'
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
-          CHANGED_PLUGINS: ${{ needs.test.outputs.plugins }}
+          TAG_GAME_ID: ${{ steps.parse.outputs.game_id }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          for game_id in $CHANGED_PLUGINS; do
-            version=$(grep '^version' "plugins/${game_id}/plugin.toml" | head -1 | sed 's/.*= *"\(.*\)"/\1/')
-            jq -n \
-              --arg gid "$game_id" \
-              --arg ver "$version" \
-              '{embeds: [{title: ("Plugin " + $gid + " v" + $ver + " released"), description: ("The " + $gid + " plugin has been updated to v" + $ver + "."), color: 5793266}]}' \
-              | curl -s -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" -d @-
-          done
+          jq -n \
+            --arg gid "$TAG_GAME_ID" \
+            --arg ver "$VERSION" \
+            '{embeds: [{title: ("Plugin " + $gid + " v" + $ver + " released"), description: ("The " + $gid + " plugin has been updated to v" + $ver + "."), color: 5793266}]}' \
+            | curl -s -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" -d @-
