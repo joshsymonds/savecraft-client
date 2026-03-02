@@ -1,6 +1,7 @@
 package watcher
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -62,6 +63,22 @@ func TestFileCreate_EmitsEvent(t *testing.T) {
 	}
 	if ev.Op != daemon.FileCreate {
 		t.Errorf("op = %d, want FileCreate (%d)", ev.Op, daemon.FileCreate)
+	}
+}
+
+func TestFileCreate_EventContainsData(t *testing.T) {
+	w, dir := newTestWatcher(t)
+	path := filepath.Join(dir, "save.d2s")
+
+	content := []byte("save file contents for data test")
+	os.WriteFile(path, content, 0o644)
+
+	ev := waitForEvent(t, w.Events())
+	if ev.Data == nil {
+		t.Fatal("ev.Data is nil, want file contents")
+	}
+	if !bytes.Equal(ev.Data, content) {
+		t.Errorf("ev.Data = %q, want %q", ev.Data, content)
 	}
 }
 

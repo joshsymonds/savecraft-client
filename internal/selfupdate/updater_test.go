@@ -11,10 +11,29 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/joshsymonds/savecraft.gg/internal/daemon"
 	"github.com/joshsymonds/savecraft.gg/internal/signing"
 )
+
+func TestNew_ClientHasTimeout(t *testing.T) {
+	u := New("http://example.com", nil, t.TempDir())
+	if u.client.Timeout == 0 {
+		t.Error("expected non-zero timeout on default client")
+	}
+	if u.client.Timeout != 120*time.Second {
+		t.Errorf("timeout = %v, want 120s", u.client.Timeout)
+	}
+}
+
+func TestNew_WithHTTPClient(t *testing.T) {
+	custom := &http.Client{Timeout: 5 * time.Second}
+	u := New("http://example.com", nil, t.TempDir(), WithHTTPClient(custom))
+	if u.client != custom {
+		t.Error("WithHTTPClient option not applied")
+	}
+}
 
 func TestCheck_NewerVersionAvailable(t *testing.T) {
 	manifest := manifestResponse{

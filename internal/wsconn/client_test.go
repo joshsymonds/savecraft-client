@@ -63,6 +63,27 @@ func TestConnect_Success(t *testing.T) {
 	_ = connectClient(t, wsURL(srv.URL))
 }
 
+func TestConnect_ConnReadyClosedImmediately(t *testing.T) {
+	srv := echoServer(t)
+	client := connectClient(t, wsURL(srv.URL))
+
+	client.mu.Lock()
+	ready := client.connReady
+	client.mu.Unlock()
+
+	if ready == nil {
+		t.Fatal("connReady should be non-nil after Connect")
+	}
+
+	// connReady should already be closed since conn is live.
+	select {
+	case <-ready:
+		// expected: channel is closed
+	default:
+		t.Fatal("connReady should be closed after successful Connect")
+	}
+}
+
 func TestSendAndReceive(t *testing.T) {
 	srv := echoServer(t)
 	client := connectClient(t, wsURL(srv.URL))

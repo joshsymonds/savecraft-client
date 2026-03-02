@@ -209,7 +209,7 @@ func (w *FSWatcher) fireDebounced(path string) {
 	w.mu.Unlock()
 
 	select {
-	case w.events <- daemon.FileEvent{Path: path, Op: op}:
+	case w.events <- daemon.FileEvent{Path: path, Op: op, Data: data}:
 	case <-w.done:
 	}
 }

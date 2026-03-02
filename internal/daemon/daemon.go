@@ -64,9 +64,12 @@ func (e *PushStatusError) Error() string {
 // --- Events and results ---
 
 // FileEvent represents a filesystem change notification.
+// Data optionally carries the file contents already read by the watcher
+// (for SHA-256 dedup). When non-nil the daemon skips a second ReadFile call.
 type FileEvent struct {
 	Path string
 	Op   FileOp
+	Data []byte
 }
 
 // FileOp describes the type of filesystem operation.
@@ -142,7 +145,7 @@ type PushClient interface {
 	Push(
 		ctx context.Context,
 		gameID string,
-		state *GameState,
+		body []byte,
 		parsedAt time.Time,
 	) (*PushResult, error)
 }
@@ -473,7 +476,7 @@ func (d *Daemon) scanGame(
 
 	for _, fileName := range matchingFiles {
 		fullPath := filepath.Join(cfg.SavePath, fileName)
-		d.parseAndPush(ctx, gameID, fullPath, fileName)
+		d.parseAndPush(ctx, gameID, fullPath, fileName, nil)
 	}
 }
 
@@ -495,26 +498,34 @@ func (d *Daemon) handleFileEvent(ctx context.Context, ev FileEvent) {
 	}
 
 	fileName := filepath.Base(ev.Path)
-	d.parseAndPush(ctx, gameID, ev.Path, fileName)
+	d.parseAndPush(ctx, gameID, ev.Path, fileName, ev.Data)
 }
 
+// parseAndPush reads the save file, runs the plugin, and pushes the result.
+// When preloadedData is non-nil (e.g. from the watcher's SHA-256 read), it is
+// used directly, avoiding a redundant filesystem read.
 func (d *Daemon) parseAndPush(
 	ctx context.Context, gameID, fullPath, fileName string,
+	preloadedData []byte,
 ) {
 	d.sendEvent("parseStarted", map[string]any{
 		"gameId":   gameID,
 		"fileName": fileName,
 	})
 
-	saveBytes, err := d.fs.ReadFile(fullPath)
-	if err != nil {
-		d.sendEvent("parseFailed", map[string]any{
-			"gameId":    gameID,
-			"fileName":  fileName,
-			"errorType": "PARSE_ERROR_TYPE_PARSE_ERROR",
-			"message":   fmt.Sprintf("read file: %v", err),
-		})
-		return
+	saveBytes := preloadedData
+	if saveBytes == nil {
+		var err error
+		saveBytes, err = d.fs.ReadFile(fullPath)
+		if err != nil {
+			d.sendEvent("parseFailed", map[string]any{
+				"gameId":    gameID,
+				"fileName":  fileName,
+				"errorType": "PARSE_ERROR_TYPE_PARSE_ERROR",
+				"message":   fmt.Sprintf("read file: %v", err),
+			})
+			return
+		}
 	}
 
 	onStatus := func(message string) {
@@ -567,7 +578,7 @@ func (d *Daemon) parseAndPush(
 	})
 
 	parsedAt := time.Now().UTC()
-	result, err := d.pushWithRetry(ctx, gameID, state, parsedAt, stateJSON)
+	result, err := d.pushWithRetry(ctx, gameID, state.Summary, parsedAt, stateJSON)
 	if err != nil {
 		// pushWithRetry already emitted pushFailed for retryable errors.
 		// For non-retryable errors, emit pushFailed here.
@@ -602,7 +613,7 @@ func isPushRetryable(err error) bool {
 func (d *Daemon) pushWithRetry(
 	ctx context.Context,
 	gameID string,
-	state *GameState,
+	summary string,
 	parsedAt time.Time,
 	stateJSON []byte,
 ) (*PushResult, error) {
@@ -621,12 +632,12 @@ func (d *Daemon) pushWithRetry(
 			// Re-emit pushStarted on retry.
 			d.sendEvent("pushStarted", map[string]any{
 				"gameId":    gameID,
-				"summary":   state.Summary,
+				"summary":   summary,
 				"sizeBytes": len(stateJSON),
 			})
 		}
 
-		result, pushErr := d.pusher.Push(ctx, gameID, state, parsedAt)
+		result, pushErr := d.pusher.Push(ctx, gameID, stateJSON, parsedAt)
 		if pushErr == nil {
 			return result, nil
 		}

@@ -1,6 +1,8 @@
 package push
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,8 +20,8 @@ func testParsedAt() time.Time {
 	return time.Date(2026, 2, 25, 21, 30, 0, 0, time.UTC)
 }
 
-func testState() *daemon.GameState {
-	return &daemon.GameState{
+func testStateJSON() []byte {
+	state := &daemon.GameState{
 		Identity: daemon.Identity{
 			SaveName: "Hammerdin",
 			GameID:   "d2r",
@@ -29,13 +31,18 @@ func testState() *daemon.GameState {
 			"overview": {Description: "Character overview", Data: map[string]any{"level": float64(89)}},
 		},
 	}
+	data, err := json.Marshal(state)
+	if err != nil {
+		panic(err)
+	}
+	return data
 }
 
 type capturedRequest struct {
 	method  string
 	path    string
 	headers http.Header
-	body    []byte
+	body    []byte // decompressed body (gzip auto-decompressed)
 }
 
 func newTestServer(t *testing.T, status int, response any) (*httptest.Server, *capturedRequest) {
@@ -49,7 +56,20 @@ func newTestServer(t *testing.T, status int, response any) (*httptest.Server, *c
 		captured.method = r.Method
 		captured.path = r.URL.Path
 		captured.headers = r.Header.Clone()
-		captured.body, _ = io.ReadAll(r.Body)
+
+		raw, _ := io.ReadAll(r.Body)
+		// Auto-decompress gzip bodies for test assertions.
+		if r.Header.Get("Content-Encoding") == "gzip" {
+			gz, gzErr := gzip.NewReader(bytes.NewReader(raw))
+			if gzErr == nil {
+				captured.body, _ = io.ReadAll(gz)
+				gz.Close()
+			} else {
+				captured.body = raw
+			}
+		} else {
+			captured.body = raw
+		}
 
 		w.WriteHeader(status)
 		if response != nil {
@@ -76,7 +96,7 @@ func TestPush_Success(t *testing.T) {
 	})
 
 	client := newTestClient(t, srv.URL, "test-token")
-	result, err := client.Push(context.Background(), "d2r", testState(), testParsedAt())
+	result, err := client.Push(context.Background(), "d2r", testStateJSON(), testParsedAt())
 	if err != nil {
 		t.Fatalf("Push: %v", err)
 	}
@@ -100,16 +120,17 @@ func TestPush_RequestHeaders(t *testing.T) {
 	srv, captured := newTestServer(t, http.StatusCreated, daemon.PushResult{})
 
 	client := newTestClient(t, srv.URL, "my-secret-token")
-	_, err := client.Push(context.Background(), "d2r", testState(), testParsedAt())
+	_, err := client.Push(context.Background(), "d2r", testStateJSON(), testParsedAt())
 	if err != nil {
 		t.Fatalf("Push: %v", err)
 	}
 
 	checks := map[string]string{
-		"Authorization": "Bearer my-secret-token",
-		"Content-Type":  "application/json",
-		"X-Game":        "d2r",
-		"X-Parsed-At":   "2026-02-25T21:30:00Z",
+		"Authorization":    "Bearer my-secret-token",
+		"Content-Type":     "application/json",
+		"Content-Encoding": "gzip",
+		"X-Game":           "d2r",
+		"X-Parsed-At":      "2026-02-25T21:30:00Z",
 	}
 	for header, want := range checks {
 		if got := captured.headers.Get(header); got != want {
@@ -122,7 +143,7 @@ func TestPush_RequestBody(t *testing.T) {
 	srv, captured := newTestServer(t, http.StatusCreated, daemon.PushResult{})
 
 	client := newTestClient(t, srv.URL, "token")
-	_, err := client.Push(context.Background(), "d2r", testState(), testParsedAt())
+	_, err := client.Push(context.Background(), "d2r", testStateJSON(), testParsedAt())
 	if err != nil {
 		t.Fatalf("Push: %v", err)
 	}
@@ -152,9 +173,13 @@ func TestPush_GameScopedBody_OmitsSaveName(t *testing.T) {
 			"overview": {Description: "Shared stash overview", Data: map[string]any{"gold": float64(0)}},
 		},
 	}
+	stateJSON, marshalErr := json.Marshal(state)
+	if marshalErr != nil {
+		t.Fatalf("marshal state: %v", marshalErr)
+	}
 
 	client := newTestClient(t, srv.URL, "token")
-	_, err := client.Push(context.Background(), "d2r", state, testParsedAt())
+	_, err := client.Push(context.Background(), "d2r", stateJSON, testParsedAt())
 	if err != nil {
 		t.Fatalf("Push: %v", err)
 	}
@@ -176,11 +201,56 @@ func TestPush_GameScopedBody_OmitsSaveName(t *testing.T) {
 	}
 }
 
+func TestPush_GzipCompression(t *testing.T) {
+	var rawBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+
+		if got := r.Header.Get("Content-Encoding"); got != "gzip" {
+			t.Errorf("Content-Encoding = %q, want gzip", got)
+		}
+
+		// Decompress and verify round-trip.
+		gz, gzErr := gzip.NewReader(bytes.NewReader(rawBody))
+		if gzErr != nil {
+			t.Fatalf("gzip.NewReader: %v", gzErr)
+		}
+		defer gz.Close()
+		decompressed, _ := io.ReadAll(gz)
+
+		var state daemon.GameState
+		if unmarshalErr := json.Unmarshal(decompressed, &state); unmarshalErr != nil {
+			t.Fatalf("unmarshal decompressed: %v", unmarshalErr)
+		}
+		if state.Summary != "Hammerdin, Level 89 Paladin" {
+			t.Errorf("summary = %q", state.Summary)
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(daemon.PushResult{SaveUUID: "gz-test"})
+	}))
+	t.Cleanup(srv.Close)
+
+	client := newTestClient(t, srv.URL, "token")
+	result, err := client.Push(context.Background(), "d2r", testStateJSON(), testParsedAt())
+	if err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+	if result.SaveUUID != "gz-test" {
+		t.Errorf("SaveUUID = %q, want gz-test", result.SaveUUID)
+	}
+
+	// Raw body should be smaller than the input JSON (gzip compressed).
+	if len(rawBody) >= len(testStateJSON()) {
+		t.Errorf("compressed size %d >= original %d", len(rawBody), len(testStateJSON()))
+	}
+}
+
 func TestPush_ServerError(t *testing.T) {
 	srv, _ := newTestServer(t, http.StatusInternalServerError, nil)
 
 	client := newTestClient(t, srv.URL, "token")
-	_, err := client.Push(context.Background(), "d2r", testState(), testParsedAt())
+	_, err := client.Push(context.Background(), "d2r", testStateJSON(), testParsedAt())
 	if err == nil {
 		t.Fatal("expected error for 500 response")
 	}
@@ -190,7 +260,7 @@ func TestPush_Unauthorized(t *testing.T) {
 	srv, _ := newTestServer(t, http.StatusUnauthorized, nil)
 
 	client := newTestClient(t, srv.URL, "bad-token")
-	_, err := client.Push(context.Background(), "d2r", testState(), testParsedAt())
+	_, err := client.Push(context.Background(), "d2r", testStateJSON(), testParsedAt())
 	if err == nil {
 		t.Fatal("expected error for 401 response")
 	}
@@ -207,7 +277,7 @@ func TestPush_ContextCanceled(t *testing.T) {
 	cancel()
 
 	client := newTestClient(t, srv.URL, "token")
-	_, err := client.Push(ctx, "d2r", testState(), testParsedAt())
+	_, err := client.Push(ctx, "d2r", testStateJSON(), testParsedAt())
 	if err == nil {
 		t.Fatal("expected error for canceled context")
 	}
@@ -215,7 +285,7 @@ func TestPush_ContextCanceled(t *testing.T) {
 
 func TestPush_BadURL(t *testing.T) {
 	client := newTestClient(t, "http://localhost:0", "token")
-	_, err := client.Push(context.Background(), "d2r", testState(), testParsedAt())
+	_, err := client.Push(context.Background(), "d2r", testStateJSON(), testParsedAt())
 	if err == nil {
 		t.Fatal("expected error for unreachable server")
 	}
@@ -232,7 +302,7 @@ func TestPush_ServerError_ReturnsPushStatusError(t *testing.T) {
 	srv, _ := newTestServer(t, http.StatusInternalServerError, nil)
 
 	client := newTestClient(t, srv.URL, "token")
-	_, err := client.Push(context.Background(), "d2r", testState(), testParsedAt())
+	_, err := client.Push(context.Background(), "d2r", testStateJSON(), testParsedAt())
 	if err == nil {
 		t.Fatal("expected error for 500 response")
 	}
@@ -250,7 +320,7 @@ func TestPush_ClientError_ReturnsPushStatusError(t *testing.T) {
 	srv, _ := newTestServer(t, http.StatusBadRequest, nil)
 
 	client := newTestClient(t, srv.URL, "token")
-	_, err := client.Push(context.Background(), "d2r", testState(), testParsedAt())
+	_, err := client.Push(context.Background(), "d2r", testStateJSON(), testParsedAt())
 	if err == nil {
 		t.Fatal("expected error for 400 response")
 	}

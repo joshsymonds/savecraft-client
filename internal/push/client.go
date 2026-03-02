@@ -3,6 +3,7 @@ package push
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,9 @@ import (
 
 	"github.com/joshsymonds/savecraft.gg/internal/daemon"
 )
+
+// Ensure Client satisfies the daemon.PushClient interface at compile time.
+var _ daemon.PushClient = (*Client)(nil)
 
 const (
 	maxErrorBody      = 512
@@ -39,26 +43,34 @@ func New(serverURL, authToken string) (*Client, error) {
 	}, nil
 }
 
-// Push sends the parsed GameState to the server via POST /api/v1/push.
+// Push sends pre-serialized game state JSON to the server via POST /api/v1/push.
 func (c *Client) Push(
 	ctx context.Context,
 	gameID string,
-	state *daemon.GameState,
+	body []byte,
 	parsedAt time.Time,
 ) (*daemon.PushResult, error) {
-	body, err := json.Marshal(state)
-	if err != nil {
-		return nil, fmt.Errorf("marshal state: %w", err)
+	var compressed bytes.Buffer
+	gz, gzErr := gzip.NewWriterLevel(&compressed, gzip.BestSpeed)
+	if gzErr != nil {
+		return nil, fmt.Errorf("create gzip writer: %w", gzErr)
+	}
+	if _, writeErr := gz.Write(body); writeErr != nil {
+		return nil, fmt.Errorf("gzip write: %w", writeErr)
+	}
+	if closeErr := gz.Close(); closeErr != nil {
+		return nil, fmt.Errorf("gzip close: %w", closeErr)
 	}
 
 	pushURL := c.baseURL.JoinPath("/api/v1/push")
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, pushURL.String(), bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, pushURL.String(), &compressed)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+c.authToken)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
 	req.Header.Set("X-Game", gameID)
 	req.Header.Set("X-Parsed-At", parsedAt.UTC().Format(time.RFC3339))
 

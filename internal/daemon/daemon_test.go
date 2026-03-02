@@ -19,8 +19,9 @@ import (
 // --- Fakes ---
 
 type fakeFS struct {
-	files map[string][]byte   // full path -> contents
-	dirs  map[string][]string // dir path -> file names
+	files         map[string][]byte   // full path -> contents
+	dirs          map[string][]string // dir path -> file names
+	readFileCount int                 // number of ReadFile calls (for verifying bypass)
 }
 
 func (f *fakeFS) Stat(path string) (fs.FileInfo, error) {
@@ -46,6 +47,7 @@ func (f *fakeFS) ReadDir(path string) ([]fs.DirEntry, error) {
 }
 
 func (f *fakeFS) ReadFile(path string) ([]byte, error) {
+	f.readFileCount++
 	data, ok := f.files[path]
 	if !ok {
 		return nil, os.ErrNotExist
@@ -177,17 +179,17 @@ type fakePushClient struct {
 
 type pushCall struct {
 	GameID string
-	State  *GameState
+	Body   []byte
 }
 
 func (p *fakePushClient) Push(
 	_ context.Context,
 	gameID string,
-	state *GameState,
+	body []byte,
 	_ time.Time,
 ) (*PushResult, error) {
 	p.mu.Lock()
-	p.calls = append(p.calls, pushCall{GameID: gameID, State: state})
+	p.calls = append(p.calls, pushCall{GameID: gameID, Body: body})
 
 	// Check errorSeqs first (per-call sequencing).
 	seq := p.popSeqError(gameID)
@@ -468,7 +470,7 @@ func TestParseAndPush_GameScopedSave(t *testing.T) {
 	}
 
 	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil)
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/SharedStash.d2i", "SharedStash.d2i")
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/SharedStash.d2i", "SharedStash.d2i", nil)
 
 	types := ws.sentEventTypes()
 	if !slices.Contains(types, "pushCompleted") {
@@ -485,15 +487,19 @@ func TestParseAndPush_GameScopedSave(t *testing.T) {
 		t.Error("game-scoped parseCompleted should not have saveName")
 	}
 
-	// Pushed state should have empty SaveName.
+	// Pushed body should have empty SaveName.
 	if len(pusher.calls) != 1 {
 		t.Fatalf("pusher called %d times, want 1", len(pusher.calls))
 	}
-	if pusher.calls[0].State.Identity.SaveName != "" {
-		t.Errorf("pushed saveName = %q, want empty", pusher.calls[0].State.Identity.SaveName)
+	var pushedState GameState
+	if err := json.Unmarshal(pusher.calls[0].Body, &pushedState); err != nil {
+		t.Fatalf("unmarshal pushed body: %v", err)
 	}
-	if pusher.calls[0].State.Identity.GameID != "d2r" {
-		t.Errorf("pushed gameId = %q, want d2r", pusher.calls[0].State.Identity.GameID)
+	if pushedState.Identity.SaveName != "" {
+		t.Errorf("pushed saveName = %q, want empty", pushedState.Identity.SaveName)
+	}
+	if pushedState.Identity.GameID != "d2r" {
+		t.Errorf("pushed gameId = %q, want d2r", pushedState.Identity.GameID)
 	}
 }
 
@@ -541,7 +547,11 @@ func TestScanGame_DetectsGame(t *testing.T) {
 	if len(pusher.calls) != 1 {
 		t.Fatalf("pusher called %d times, want 1", len(pusher.calls))
 	}
-	if pusher.calls[0].State.Summary != "Hammerdin, Level 89 Paladin" {
+	var pushedState GameState
+	if err := json.Unmarshal(pusher.calls[0].Body, &pushedState); err != nil {
+		t.Fatalf("unmarshal pushed body: %v", err)
+	}
+	if pushedState.Summary != "Hammerdin, Level 89 Paladin" {
 		t.Error("pusher got wrong summary")
 	}
 }
@@ -621,6 +631,40 @@ func TestHandleFileEvent_ParseAndPush(t *testing.T) {
 	}
 }
 
+func TestHandleFileEvent_PreloadedDataBypassesReadFile(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := d2rRunner()
+	pusher := &fakePushClient{}
+	fsys := &fakeFS{
+		// No files — ReadFile would fail if called.
+		files: map[string][]byte{},
+	}
+	cfg := d2rConfig()
+
+	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil)
+	d.watchedDirs["/saves/d2r"] = "d2r"
+
+	preloaded := []byte("preloaded save data")
+	d.handleFileEvent(context.Background(), FileEvent{
+		Path: "/saves/d2r/Hammerdin.d2s",
+		Op:   FileModify,
+		Data: preloaded,
+	})
+
+	if fsys.readFileCount != 0 {
+		t.Errorf("ReadFile called %d times, want 0 (preloaded data should bypass)", fsys.readFileCount)
+	}
+	if len(runner.calls) != 1 {
+		t.Fatalf("runner called %d times, want 1", len(runner.calls))
+	}
+	if string(runner.calls[0].SaveBytes) != string(preloaded) {
+		t.Error("runner received wrong bytes, want preloaded data")
+	}
+	if len(pusher.calls) != 1 {
+		t.Fatalf("pusher called %d times, want 1", len(pusher.calls))
+	}
+}
+
 func TestHandleFileEvent_IgnoresNonMatchingExtension(t *testing.T) {
 	ws := newFakeWSClient()
 	cfg := d2rConfig()
@@ -684,7 +728,7 @@ func TestParseAndPush_PluginError(t *testing.T) {
 	cfg := d2rConfig()
 
 	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, &fakePluginManager{}, nil)
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/bad.d2s", "bad.d2s")
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/bad.d2s", "bad.d2s", nil)
 
 	types := ws.sentEventTypes()
 	if !slices.Contains(types, "parseFailed") {
@@ -706,7 +750,7 @@ func TestParseAndPush_FileReadError(t *testing.T) {
 	cfg := d2rConfig()
 
 	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil)
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/missing.d2s", "missing.d2s")
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/missing.d2s", "missing.d2s", nil)
 
 	types := ws.sentEventTypes()
 	if !slices.Contains(types, "parseFailed") {
@@ -729,7 +773,7 @@ func TestParseAndPush_PushError(t *testing.T) {
 	cfg := d2rConfig()
 
 	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil)
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s")
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s", nil)
 
 	types := ws.sentEventTypes()
 	if !slices.Contains(types, "pushFailed") {
@@ -757,7 +801,7 @@ func TestParseAndPush_ForwardsPluginStatus(t *testing.T) {
 	cfg := d2rConfig()
 
 	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, &fakePluginManager{}, nil)
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s")
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s", nil)
 
 	statusCount := 0
 	for _, et := range ws.sentEventTypes() {
@@ -799,7 +843,7 @@ func TestPushWithRetry_TransientThenSuccess(t *testing.T) {
 	cfg.Retry = RetryConfig{MaxRetries: 3, BaseDelay: time.Millisecond, MaxDelay: time.Millisecond}
 
 	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil)
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s")
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s", nil)
 
 	types := ws.sentEventTypes()
 	if !slices.Contains(types, "pushCompleted") {
@@ -850,7 +894,7 @@ func TestPushWithRetry_MaxRetriesExhausted(t *testing.T) {
 	cfg.Retry = RetryConfig{MaxRetries: 2, BaseDelay: time.Millisecond, MaxDelay: time.Millisecond}
 
 	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil)
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s")
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s", nil)
 
 	types := ws.sentEventTypes()
 	if slices.Contains(types, "pushCompleted") {
@@ -904,7 +948,7 @@ func TestPushWithRetry_PermanentFailureNoRetry(t *testing.T) {
 	cfg.Retry = RetryConfig{MaxRetries: 3, BaseDelay: time.Millisecond, MaxDelay: time.Millisecond}
 
 	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil)
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s")
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s", nil)
 
 	// Should only have 1 push call -- no retries for 4xx.
 	pusher.mu.Lock()
@@ -950,7 +994,7 @@ func TestPushWithRetry_ContextCancellation(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		d.parseAndPush(ctx, "d2r", "/saves/d2r/test.d2s", "test.d2s")
+		d.parseAndPush(ctx, "d2r", "/saves/d2r/test.d2s", "test.d2s", nil)
 		close(done)
 	}()
 

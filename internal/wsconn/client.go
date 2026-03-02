@@ -36,8 +36,9 @@ type Client struct {
 	serverURL string
 	token     string
 
-	mu   sync.Mutex
-	conn *websocket.Conn
+	mu        sync.Mutex
+	conn      *websocket.Conn
+	connReady chan struct{}
 
 	messages  chan []byte
 	done      chan struct{}
@@ -77,6 +78,8 @@ func (c *Client) Connect(ctx context.Context) error {
 
 	c.mu.Lock()
 	c.conn = conn
+	c.connReady = make(chan struct{})
+	close(c.connReady)
 	c.mu.Unlock()
 
 	c.wg.Go(c.readLoop)
@@ -138,11 +141,12 @@ func (c *Client) readLoop() {
 
 		c.mu.Lock()
 		conn := c.conn
+		ready := c.connReady
 		c.mu.Unlock()
 
 		if conn == nil {
 			select {
-			case <-time.After(10 * time.Millisecond):
+			case <-ready:
 				continue
 			case <-c.done:
 				return
@@ -172,14 +176,17 @@ func (c *Client) reconnect() {
 		_ = c.conn.Close(websocket.StatusGoingAway, "reconnecting")
 		c.conn = nil
 	}
+	c.connReady = make(chan struct{})
 	c.mu.Unlock()
 
 	delay := c.reconnectBase
 	for {
+		timer := time.NewTimer(delay)
 		select {
 		case <-c.done:
+			timer.Stop()
 			return
-		case <-time.After(delay):
+		case <-timer.C:
 		}
 
 		if c.isClosed() {
@@ -197,6 +204,7 @@ func (c *Client) reconnect() {
 
 		c.mu.Lock()
 		c.conn = conn
+		close(c.connReady)
 		c.mu.Unlock()
 		return
 	}

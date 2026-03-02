@@ -15,10 +15,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joshsymonds/savecraft.gg/internal/daemon"
 	"github.com/joshsymonds/savecraft.gg/internal/signing"
 )
+
+const defaultUpdateTimeout = 120 * time.Second
 
 // ErrNoPlatform indicates the manifest has no update for the requested platform.
 var ErrNoPlatform = errors.New("no update available for platform")
@@ -35,19 +38,31 @@ type HTTPUpdater struct {
 	client     *http.Client
 }
 
+// Option configures an HTTPUpdater.
+type Option func(*HTTPUpdater)
+
+// WithHTTPClient overrides the default HTTP client used for update requests.
+func WithHTTPClient(c *http.Client) Option {
+	return func(u *HTTPUpdater) { u.client = c }
+}
+
 type manifestResponse struct {
 	Version   string                       `json:"version"`
 	Platforms map[string]daemon.UpdateInfo `json:"platforms"`
 }
 
 // New creates an HTTPUpdater that checks installURL for updates.
-func New(installURL string, pubKey ed25519.PublicKey, cacheDir string) *HTTPUpdater {
-	return &HTTPUpdater{
+func New(installURL string, pubKey ed25519.PublicKey, cacheDir string, opts ...Option) *HTTPUpdater {
+	updater := &HTTPUpdater{
 		installURL: installURL,
 		pubKey:     pubKey,
 		cacheDir:   cacheDir,
-		client:     http.DefaultClient,
+		client:     &http.Client{Timeout: defaultUpdateTimeout},
 	}
+	for _, opt := range opts {
+		opt(updater)
+	}
+	return updater
 }
 
 // Check fetches the daemon manifest and returns update info if a newer version is available.
