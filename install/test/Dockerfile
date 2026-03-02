@@ -13,10 +13,9 @@ RUN useradd -m -s /bin/bash deck
 USER deck
 WORKDIR /home/deck
 
-# Build context is install/ — copy the real install.sh from the root,
-# then the test fixtures and runner from test/.
+# Only the real install.sh and the test runner.
+# Fixtures (keypair, dummy binaries, signatures) are generated at runtime.
 COPY --chown=deck:deck install.sh /home/deck/fixtures/install.sh
-COPY --chown=deck:deck test/fixtures/ /home/deck/fixtures/
 COPY --chown=deck:deck test/run-test.sh /home/deck/run-test.sh
 RUN chmod +x /home/deck/run-test.sh
 
