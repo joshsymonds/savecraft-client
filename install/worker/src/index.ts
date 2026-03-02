@@ -53,6 +53,7 @@ async function handleInstallScript(request: Request, env: Env): Promise<Response
 	const vars = [
 		`SAVECRAFT_INSTALL_URL="${env.INSTALL_URL}"`,
 		`SAVECRAFT_SERVER_URL="${env.SERVER_URL}"`,
+		`SAVECRAFT_FRONTEND_URL="${env.REDIRECT_URL}"`,
 		`SAVECRAFT_INSTALLER_VERSION="${installerVersion}"`,
 		`SAVECRAFT_ED25519_PUBKEY="${pubkey}"`,
 	].join('\n');

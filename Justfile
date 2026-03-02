@@ -231,9 +231,6 @@ install-fixtures version="0.1.0":
     cp dist/savecraft-daemon-linux-amd64.sig install/test/fixtures/daemon/
     cp dist/savecraft-daemon-linux-arm64     install/test/fixtures/daemon/
     cp dist/savecraft-daemon-linux-arm64.sig install/test/fixtures/daemon/
-    # Copy install.sh directly (no sed baking — config injected via env vars)
-    cp install/install.sh install/test/fixtures/install.sh
-    chmod +x install/test/fixtures/install.sh
     # Write base64 DER public key for the test harness to export as env var
     tmp_der=$(mktemp)
     printf '\x30\x2a\x30\x05\x06\x03\x2b\x65\x70\x03\x21\x00' > "$tmp_der"
@@ -251,7 +248,7 @@ test-install-docker:
     #!/usr/bin/env bash
     set -euo pipefail
     just install-fixtures
-    docker build -t savecraft-install-test install/test/
+    docker build -t savecraft-install-test -f install/test/Dockerfile install/
     docker run --rm savecraft-install-test
 
 # Check Go formatting (non-destructive)

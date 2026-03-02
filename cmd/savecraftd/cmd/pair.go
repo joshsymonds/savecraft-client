@@ -104,7 +104,7 @@ func promptForCodeFromReader(cmd *cobra.Command, reader io.Reader) (string, erro
 		return "", fmt.Errorf("no input received")
 	}
 
-	code := strings.TrimSpace(scanner.Text())
+	code := strings.ReplaceAll(strings.TrimSpace(scanner.Text()), " ", "")
 	if !codePattern.MatchString(code) {
 		return "", fmt.Errorf("invalid code %q — expected 6 digits", code)
 	}

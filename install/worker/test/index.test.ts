@@ -93,9 +93,18 @@ describe("install worker", () => {
 		const lines = body.split("\n");
 		expect(lines[0]).toBe(`SAVECRAFT_INSTALL_URL="${env.INSTALL_URL}"`);
 		expect(lines[1]).toBe(`SAVECRAFT_SERVER_URL="${env.SERVER_URL}"`);
-		expect(lines[2]).toBe(`SAVECRAFT_INSTALLER_VERSION="1.2.3"`);
-		expect(lines[3]).toBe(`SAVECRAFT_ED25519_PUBKEY="${FAKE_PUBKEY}"`);
+		expect(lines[2]).toBe(`SAVECRAFT_FRONTEND_URL="${env.REDIRECT_URL}"`);
+		expect(lines[3]).toBe(`SAVECRAFT_INSTALLER_VERSION="1.2.3"`);
+		expect(lines[4]).toBe(`SAVECRAFT_ED25519_PUBKEY="${FAKE_PUBKEY}"`);
 		expect(body).toContain("#!/usr/bin/env bash");
+	});
+
+	it("injects SAVECRAFT_FRONTEND_URL from REDIRECT_URL", async () => {
+		const resp = await SELF.fetch("https://install.savecraft.gg/", {
+			headers: { "user-agent": "curl/8.0" },
+		});
+		const body = await resp.text();
+		expect(body).toContain(`SAVECRAFT_FRONTEND_URL="${env.REDIRECT_URL}"`);
 	});
 
 	it("falls back to defaults when metadata files are missing", async () => {
@@ -107,8 +116,8 @@ describe("install worker", () => {
 		});
 		const body = await resp.text();
 		const lines = body.split("\n");
-		expect(lines[2]).toBe('SAVECRAFT_INSTALLER_VERSION="dev"');
-		expect(lines[3]).toBe('SAVECRAFT_ED25519_PUBKEY=""');
+		expect(lines[3]).toBe('SAVECRAFT_INSTALLER_VERSION="dev"');
+		expect(lines[4]).toBe('SAVECRAFT_ED25519_PUBKEY=""');
 		expect(body).toContain("#!/usr/bin/env bash");
 	});
 

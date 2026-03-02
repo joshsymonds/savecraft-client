@@ -24,8 +24,8 @@ TMP_BINARY=""
 TMP_SIG=""
 
 cleanup() {
-    [[ -n "${TMP_BINARY}" ]] && rm -f "${TMP_BINARY}"
-    [[ -n "${TMP_SIG}" ]] && rm -f "${TMP_SIG}"
+    if [[ -n "${TMP_BINARY}" ]]; then rm -f "${TMP_BINARY}"; fi
+    if [[ -n "${TMP_SIG}" ]]; then rm -f "${TMP_SIG}"; fi
 }
 trap cleanup EXIT
 
@@ -120,28 +120,6 @@ download() {
     else
         die "Neither curl nor wget found. Install one and re-run."
     fi
-}
-
-# ---------------------------------------------------------------------------
-# detect_games — look for known Proton prefixes under Steam compatdata
-# ---------------------------------------------------------------------------
-detect_games() {
-    local steam_compat="${HOME}/.local/share/Steam/steamapps/compatdata"
-
-    if [[ ! -d "${steam_compat}" ]]; then
-        info "Steam compatdata directory not found — skipping game detection"
-        return
-    fi
-
-    info "Scanning for supported games..."
-
-    # Diablo II: Resurrected — Steam app ID 2201080
-    local d2r_path="${steam_compat}/2201080"
-    if [[ -d "${d2r_path}" ]]; then
-        ok "Found Diablo II: Resurrected (app 2201080)"
-    fi
-
-    # Add more game checks here as support is added.
 }
 
 # ---------------------------------------------------------------------------
@@ -268,58 +246,110 @@ main() {
     mkdir -p "${BIN_DIR}" "${CONFIG_DIR}" "${CACHE_DIR}"
     info "Created directories"
 
-    # Download binary + signature
+    # Check if we can skip the download (same binary already installed)
     local artifact="${BINARY_NAME}-${os}-${arch}"
     local binary_url="${INSTALL_URL}/daemon/${artifact}"
     local sig_url="${INSTALL_URL}/daemon/${artifact}.sig"
+    local manifest_url="${INSTALL_URL}/daemon/manifest.json"
+    local skip_download=false
 
-    TMP_BINARY="$(mktemp)"
-    TMP_SIG="$(mktemp)"
-
-    info "Downloading ${artifact}..."
-    download "${binary_url}" "${TMP_BINARY}" \
-        || die "Failed to download ${artifact} from ${binary_url}"
-
-    info "Downloading ${artifact}.sig..."
-    download "${sig_url}" "${TMP_SIG}" \
-        || die "Failed to download ${artifact}.sig from ${sig_url}"
-
-    # Verify signature
-    info "Verifying Ed25519 signature..."
-    if verify_signature "${TMP_BINARY}" "${TMP_SIG}"; then
-        ok "Signature verified"
-    else
-        die "Signature verification FAILED — aborting install"
+    if [[ -x "${BIN_DIR}/${BINARY_NAME}" ]] && command -v sha256sum >/dev/null 2>&1; then
+        local tmp_manifest
+        tmp_manifest="$(mktemp)"
+        if download "${manifest_url}" "${tmp_manifest}" 2>/dev/null; then
+            # Extract expected sha256 for this platform (simple grep, no jq needed).
+            # Manifest format: "linux-amd64": { ... "sha256": "hexstring" ... }
+            local expected_hash
+            expected_hash="$(grep -A5 "\"${os}-${arch}\"" "${tmp_manifest}" \
+                | grep '"sha256"' \
+                | head -1 \
+                | sed 's/.*"sha256"[[:space:]]*:[[:space:]]*"\([a-f0-9]*\)".*/\1/')"
+            if [[ -n "${expected_hash}" ]]; then
+                local local_hash
+                local_hash="$(sha256sum "${BIN_DIR}/${BINARY_NAME}" | cut -d' ' -f1)"
+                if [[ "${local_hash}" == "${expected_hash}" ]]; then
+                    skip_download=true
+                fi
+            fi
+        fi
+        rm -f "${tmp_manifest}"
     fi
 
-    # Install binary
-    cp "${TMP_BINARY}" "${BIN_DIR}/${BINARY_NAME}"
-    chmod +x "${BIN_DIR}/${BINARY_NAME}"
-    local daemon_version
-    daemon_version="$("${BIN_DIR}/${BINARY_NAME}" version 2>&1 || true)"
-    ok "Installed ${daemon_version:-${BINARY_NAME}}"
+    if [[ "${skip_download}" == "true" ]]; then
+        local daemon_version
+        daemon_version="$("${BIN_DIR}/${BINARY_NAME}" version 2>&1 || true)"
+        ok "Binary up to date (${daemon_version:-${BINARY_NAME}})"
+    else
+        TMP_BINARY="$(mktemp)"
+        TMP_SIG="$(mktemp)"
+
+        info "Downloading ${artifact}..."
+        download "${binary_url}" "${TMP_BINARY}" \
+            || die "Failed to download ${artifact} from ${binary_url}"
+
+        info "Downloading ${artifact}.sig..."
+        download "${sig_url}" "${TMP_SIG}" \
+            || die "Failed to download ${artifact}.sig from ${sig_url}"
+
+        # Verify signature
+        info "Verifying Ed25519 signature..."
+        if verify_signature "${TMP_BINARY}" "${TMP_SIG}"; then
+            ok "Signature verified"
+        else
+            die "Signature verification FAILED — aborting install"
+        fi
+
+        # Install binary
+        cp "${TMP_BINARY}" "${BIN_DIR}/${BINARY_NAME}"
+        chmod +x "${BIN_DIR}/${BINARY_NAME}"
+        local daemon_version
+        daemon_version="$("${BIN_DIR}/${BINARY_NAME}" version 2>&1 || true)"
+        ok "Installed ${daemon_version:-${BINARY_NAME}}"
+    fi
 
     # Pair device or write env file
     local paired=false
+    local pairing_failed=false
+    local frontend_url="${SAVECRAFT_FRONTEND_URL:-https://savecraft.gg}"
     if [[ -n "${SAVECRAFT_AUTH_TOKEN:-}" ]]; then
         # API key flow (headless/automation) — write env directly
         create_env_template
     elif [[ -n "${SAVECRAFT_SERVER_URL:-}" ]]; then
-        # Interactive pairing flow
+        # Interactive pairing flow — retry up to 3 times on failure
+        local max_attempts=3
+        local attempt=0
         echo ""
         info "Pairing your device..."
-        info "Enter the 6-digit code shown on savecraft.gg"
+        info "Enter the 6-digit code shown on ${frontend_url}"
         echo ""
-        if "${BIN_DIR}/${BINARY_NAME}" pair --server "${SAVECRAFT_SERVER_URL}"; then
-            ok "Device paired successfully"
-            paired=true
-        else
-            warn "Pairing failed — you can pair later with:"
-            warn "  savecraftd pair --server ${SAVECRAFT_SERVER_URL}"
-            create_env_template
+        while [[ ${attempt} -lt ${max_attempts} ]]; do
+            attempt=$((attempt + 1))
+            if "${BIN_DIR}/${BINARY_NAME}" pair --server "${SAVECRAFT_SERVER_URL}"; then
+                ok "Device paired successfully"
+                paired=true
+                break
+            fi
+            if [[ ${attempt} -lt ${max_attempts} ]]; then
+                warn "Try again (attempt ${attempt}/${max_attempts})"
+                echo ""
+            fi
+        done
+        if [[ "${paired}" == "false" ]]; then
+            pairing_failed=true
         fi
     else
         create_env_template
+    fi
+
+    # If pairing was attempted and failed, bail out early.
+    # The binary is already installed — the user just re-runs the installer
+    # with a new pairing code.
+    if [[ "${pairing_failed}" == "true" ]]; then
+        echo ""
+        warn "Pairing failed. Generate a new code on ${frontend_url} and re-run:"
+        warn "  curl -sSL ${INSTALL_URL} | bash"
+        echo ""
+        exit 1
     fi
 
     # Systemd
@@ -328,9 +358,6 @@ main() {
     else
         info "Skipping systemd unit installation (--no-systemd)"
     fi
-
-    # Game detection
-    detect_games
 
     # Summary
     echo ""
@@ -351,13 +378,8 @@ main() {
         fi
     elif [[ "${no_systemd}" == "false" ]]; then
         echo "  Next steps:"
-        echo "    1. Pair your device: savecraftd pair --server <your-server-url>"
-        echo "    2. Start the daemon: systemctl --user start savecraft"
-        echo "    3. Check status:     systemctl --user status savecraft"
-    else
-        echo "  Next steps:"
-        echo "    1. Pair your device: savecraftd pair --server <your-server-url>"
-        echo "    2. Run: ${BIN_DIR}/${BINARY_NAME}"
+        echo "    Start the daemon: systemctl --user start savecraft"
+        echo "    Check status:     systemctl --user status savecraft"
     fi
     echo ""
 }

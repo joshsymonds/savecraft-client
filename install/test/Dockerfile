@@ -13,8 +13,11 @@ RUN useradd -m -s /bin/bash deck
 USER deck
 WORKDIR /home/deck
 
-COPY --chown=deck:deck fixtures/ /home/deck/fixtures/
-COPY --chown=deck:deck run-test.sh /home/deck/run-test.sh
+# Build context is install/ — copy the real install.sh from the root,
+# then the test fixtures and runner from test/.
+COPY --chown=deck:deck install.sh /home/deck/fixtures/install.sh
+COPY --chown=deck:deck test/fixtures/ /home/deck/fixtures/
+COPY --chown=deck:deck test/run-test.sh /home/deck/run-test.sh
 RUN chmod +x /home/deck/run-test.sh
 
 CMD ["/home/deck/run-test.sh"]

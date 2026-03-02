@@ -201,6 +201,40 @@ func TestPromptForCodeFromReader(t *testing.T) {
 			t.Fatal("expected error for empty input, got nil")
 		}
 	})
+
+	t.Run("accepts code with space separator", func(t *testing.T) {
+		t.Parallel()
+
+		pairCmd := buildPairCommand()
+		var out bytes.Buffer
+		pairCmd.SetOut(&out)
+
+		code, err := promptForCodeFromReader(pairCmd, bytes.NewBufferString("298 663\n"))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if code != "298663" {
+			t.Errorf("code = %q, want 298663", code)
+		}
+	})
+
+	t.Run("accepts code with multiple spaces", func(t *testing.T) {
+		t.Parallel()
+
+		pairCmd := buildPairCommand()
+		var out bytes.Buffer
+		pairCmd.SetOut(&out)
+
+		code, err := promptForCodeFromReader(pairCmd, bytes.NewBufferString("2 9 8 6 6 3\n"))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if code != "298663" {
+			t.Errorf("code = %q, want 298663", code)
+		}
+	})
 }
 
 func TestLoadEnvFileDefaultsFromPath_SetsUnsetVars(t *testing.T) {

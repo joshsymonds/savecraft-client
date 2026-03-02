@@ -78,6 +78,46 @@ assert_file_contains() {
     fi
 }
 
+# Run installer, capture output regardless of exit code.
+#   $1  path to install.sh
+#   $@  additional arguments (caller passes --no-systemd if needed)
+#   Sets: CAPTURED_OUTPUT, CAPTURED_EXIT_CODE
+run_installer_capture() {
+    local script="$1"
+    shift
+    set_installer_env
+    CAPTURED_EXIT_CODE=0
+    CAPTURED_OUTPUT="$(bash "${script}" "$@" 2>&1)" || CAPTURED_EXIT_CODE=$?
+}
+
+# Assert that CAPTURED_OUTPUT contains a pattern.
+#   $1  grep -iE pattern
+#   $2  human label
+assert_output_contains() {
+    local pattern="$1"
+    local label="$2"
+    if echo "${CAPTURED_OUTPUT}" | grep -qiE "${pattern}"; then
+        pass "${label}"
+    else
+        fail "${label} — expected '${pattern}' in output, got:"
+        echo "${CAPTURED_OUTPUT}" | tail -5 | sed 's/^/      /'
+    fi
+}
+
+# Write a manifest.json for the daemon fixtures directory.
+#   $1  path to binary to hash
+generate_manifest() {
+    local binary_path="$1"
+    local hash
+    hash="$(sha256sum "${binary_path}" | cut -d' ' -f1)"
+    cat >"${FIXTURES}/daemon/manifest.json" <<EOF
+{
+  "linux-amd64": { "sha256": "${hash}" },
+  "linux-arm64": { "sha256": "${hash}" }
+}
+EOF
+}
+
 # Remove installed files between tests so each starts clean.
 clean_install_dirs() {
     rm -rf "${HOME}/.local/bin/savecraft-daemon"
@@ -246,6 +286,119 @@ test_missing_pubkey() {
 }
 
 # ---------------------------------------------------------------------------
+# Test: bad signature — valid-but-wrong pubkey → verification fails
+# ---------------------------------------------------------------------------
+test_bad_signature() {
+    info "=== Test: bad signature ==="
+    clean_install_dirs
+
+    info "Running install.sh --no-systemd (expect failure: wrong pubkey)"
+    set_installer_env
+    # A valid Ed25519 public key that doesn't match the signing key.
+    # Generated from: openssl genpkey -algorithm Ed25519 | openssl pkey -pubout -outform DER | base64
+    export SAVECRAFT_ED25519_PUBKEY="MCowBQYDK2VwAyEAGb1gauf3MIWivXGClBQyTnOmXMkGuBM4MKc+bVfxYgo="
+
+    local output exit_code
+    exit_code=0
+    output="$(bash "${FIXTURES}/install.sh" --no-systemd 2>&1)" || exit_code=$?
+
+    if [[ "${exit_code}" -eq 0 ]]; then
+        fail "bad signature: installer succeeded but should have failed"
+    elif echo "${output}" | grep -qiE "signature verification failed"; then
+        pass "bad signature detected"
+    else
+        fail "bad signature — expected 'Signature verification FAILED' in output, got:"
+        echo "${output}" | tail -5 | sed 's/^/      /'
+    fi
+
+    # Restore correct pubkey
+    export SAVECRAFT_ED25519_PUBKEY="${TEST_PUBKEY}"
+}
+
+# ---------------------------------------------------------------------------
+# Test: SHA256 dedup — same binary → skip re-download
+# ---------------------------------------------------------------------------
+test_sha256_dedup_skip() {
+    info "=== Test: SHA256 dedup skip ==="
+    clean_install_dirs
+
+    # First install — normal download
+    export SAVECRAFT_AUTH_TOKEN="test-token-for-ci"
+    run_installer_ok "${FIXTURES}/install.sh"
+
+    # Generate manifest matching the installed binary
+    generate_manifest "${HOME}/.local/bin/savecraft-daemon"
+
+    # Second install — should detect matching hash and skip download
+    run_installer_capture "${FIXTURES}/install.sh" --no-systemd
+    assert_output_contains "up to date" "SHA256 dedup skips re-download"
+
+    rm -f "${FIXTURES}/daemon/manifest.json"
+    unset SAVECRAFT_AUTH_TOKEN
+}
+
+# ---------------------------------------------------------------------------
+# Test: SHA256 dedup mismatch — different hash → re-download
+# ---------------------------------------------------------------------------
+test_sha256_dedup_mismatch() {
+    info "=== Test: SHA256 dedup mismatch ==="
+    clean_install_dirs
+
+    # First install
+    export SAVECRAFT_AUTH_TOKEN="test-token-for-ci"
+    run_installer_ok "${FIXTURES}/install.sh"
+
+    # Write manifest with a bogus hash
+    cat >"${FIXTURES}/daemon/manifest.json" <<'EOF'
+{
+  "linux-amd64": { "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+  "linux-arm64": { "sha256": "0000000000000000000000000000000000000000000000000000000000000000" }
+}
+EOF
+
+    # Second install — hash mismatch, should re-download
+    run_installer_capture "${FIXTURES}/install.sh" --no-systemd
+    assert_output_contains "downloading|installed" "SHA256 mismatch triggers re-download"
+
+    rm -f "${FIXTURES}/daemon/manifest.json"
+    unset SAVECRAFT_AUTH_TOKEN
+}
+
+# ---------------------------------------------------------------------------
+# Test: --help flag — exits 0, prints usage
+# ---------------------------------------------------------------------------
+test_help_flag() {
+    info "=== Test: --help flag ==="
+    clean_install_dirs
+
+    run_installer_capture "${FIXTURES}/install.sh" --help
+
+    if [[ "${CAPTURED_EXIT_CODE}" -eq 0 ]]; then
+        pass "--help exits 0"
+    else
+        fail "--help exited ${CAPTURED_EXIT_CODE} (expected 0)"
+    fi
+    assert_output_contains "usage" "--help prints usage"
+}
+
+# ---------------------------------------------------------------------------
+# Test: unknown argument — exits non-zero, prints error
+# ---------------------------------------------------------------------------
+test_unknown_argument() {
+    info "=== Test: unknown argument ==="
+    clean_install_dirs
+
+    run_installer_capture "${FIXTURES}/install.sh" --bogus
+
+    if [[ "${CAPTURED_EXIT_CODE}" -ne 0 ]]; then
+        pass "--bogus exits non-zero"
+    else
+        fail "--bogus exited 0 (expected non-zero)"
+    fi
+    assert_output_contains "unknown argument" "--bogus prints error message"
+}
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 print_summary() {
@@ -277,6 +430,11 @@ main() {
     test_happy_path
     test_download_failure
     test_missing_pubkey
+    test_bad_signature
+    test_sha256_dedup_skip
+    test_sha256_dedup_mismatch
+    test_help_flag
+    test_unknown_argument
     print_summary
 }
 
