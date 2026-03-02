@@ -216,34 +216,11 @@ build-daemon-all version="dev" server_url="https://api.savecraft.gg" install_url
     just build-daemon darwin arm64 {{version}} {{server_url}} {{install_url}}
     just build-daemon windows amd64 {{version}} {{server_url}} {{install_url}}
 
-# Build and sign test fixtures for the install integration test
-install-fixtures version="0.1.0":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    just build-daemon linux amd64 {{version}}
-    just build-daemon linux arm64 {{version}}
-    # Sign both binaries
-    go run ./cmd/savecraft-sign/ dist/savecraft-daemon-linux-amd64
-    go run ./cmd/savecraft-sign/ dist/savecraft-daemon-linux-arm64
-    # Create fixture directory (matches R2 layout: daemon/{artifact})
-    mkdir -p install/test/fixtures/daemon
-    cp dist/savecraft-daemon-linux-amd64     install/test/fixtures/daemon/
-    cp dist/savecraft-daemon-linux-amd64.sig install/test/fixtures/daemon/
-    cp dist/savecraft-daemon-linux-arm64     install/test/fixtures/daemon/
-    cp dist/savecraft-daemon-linux-arm64.sig install/test/fixtures/daemon/
-    # Write base64 DER public key for the test harness to export as env var
-    tmp_der=$(mktemp)
-    printf '\x30\x2a\x30\x05\x06\x03\x2b\x65\x70\x03\x21\x00' > "$tmp_der"
-    cat internal/signing/signing_key.pub >> "$tmp_der"
-    base64 -w0 < "$tmp_der" > install/test/fixtures/pubkey.b64
-    rm -f "$tmp_der"
-    echo "Fixtures ready in install/test/fixtures/"
-
 # Run install Worker tests
 test-install-worker:
     cd install/worker && npm test
 
-# Run install integration test in Docker (uses pre-built fixtures from git)
+# Run install integration test in Docker
 test-install-docker:
     docker build -t savecraft-install-test -f install/test/Dockerfile install/
     docker run --rm savecraft-install-test
