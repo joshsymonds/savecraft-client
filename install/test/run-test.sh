@@ -29,7 +29,7 @@ fail() {
     FAILED=$((FAILED + 1))
 }
 
-# shellcheck disable=SC2329 # invoked via trap
+# shellcheck disable=SC2317,SC2329 # invoked via trap
 cleanup() {
     if [[ -f "${HTTP_PID_FILE}" ]]; then
         kill "$(cat "${HTTP_PID_FILE}")" 2>/dev/null || true
