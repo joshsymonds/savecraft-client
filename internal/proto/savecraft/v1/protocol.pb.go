@@ -83,6 +83,7 @@ const (
 	GameStatusEnum_GAME_STATUS_ENUM_WATCHING    GameStatusEnum = 2
 	GameStatusEnum_GAME_STATUS_ENUM_ERROR       GameStatusEnum = 3
 	GameStatusEnum_GAME_STATUS_ENUM_NOT_FOUND   GameStatusEnum = 4
+	GameStatusEnum_GAME_STATUS_ENUM_ACTIVATING  GameStatusEnum = 5
 )
 
 // Enum value maps for GameStatusEnum.
@@ -93,6 +94,7 @@ var (
 		2: "GAME_STATUS_ENUM_WATCHING",
 		3: "GAME_STATUS_ENUM_ERROR",
 		4: "GAME_STATUS_ENUM_NOT_FOUND",
+		5: "GAME_STATUS_ENUM_ACTIVATING",
 	}
 	GameStatusEnum_value = map[string]int32{
 		"GAME_STATUS_ENUM_UNSPECIFIED": 0,
@@ -100,6 +102,7 @@ var (
 		"GAME_STATUS_ENUM_WATCHING":    2,
 		"GAME_STATUS_ENUM_ERROR":       3,
 		"GAME_STATUS_ENUM_NOT_FOUND":   4,
+		"GAME_STATUS_ENUM_ACTIVATING":  5,
 	}
 )
 
@@ -2711,13 +2714,14 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\x1cPARSE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$PARSE_ERROR_TYPE_UNSUPPORTED_VERSION\x10\x01\x12!\n" +
 	"\x1dPARSE_ERROR_TYPE_CORRUPT_FILE\x10\x02\x12 \n" +
-	"\x1cPARSE_ERROR_TYPE_PARSE_ERROR\x10\x03*\xac\x01\n" +
+	"\x1cPARSE_ERROR_TYPE_PARSE_ERROR\x10\x03*\xcd\x01\n" +
 	"\x0eGameStatusEnum\x12 \n" +
 	"\x1cGAME_STATUS_ENUM_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19GAME_STATUS_ENUM_DETECTED\x10\x01\x12\x1d\n" +
 	"\x19GAME_STATUS_ENUM_WATCHING\x10\x02\x12\x1a\n" +
 	"\x16GAME_STATUS_ENUM_ERROR\x10\x03\x12\x1e\n" +
-	"\x1aGAME_STATUS_ENUM_NOT_FOUND\x10\x04B4Z2github.com/joshsymonds/savecraft.gg/internal/protob\x06proto3"
+	"\x1aGAME_STATUS_ENUM_NOT_FOUND\x10\x04\x12\x1f\n" +
+	"\x1bGAME_STATUS_ENUM_ACTIVATING\x10\x05B4Z2github.com/joshsymonds/savecraft.gg/internal/protob\x06proto3"
 
 var (
 	file_savecraft_v1_protocol_proto_rawDescOnce sync.Once
