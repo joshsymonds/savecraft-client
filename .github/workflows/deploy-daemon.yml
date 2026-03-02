@@ -19,6 +19,7 @@ on:
       - 'go.mod'
       - 'go.sum'
       - '.github/workflows/deploy-daemon.yml'
+  workflow_dispatch:
 
 permissions:
   contents: write
