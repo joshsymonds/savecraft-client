@@ -299,9 +299,11 @@ main() {
             die "Signature verification FAILED — aborting install"
         fi
 
-        # Install binary
-        cp "${TMP_BINARY}" "${BIN_DIR}/${BINARY_NAME}"
-        chmod +x "${BIN_DIR}/${BINARY_NAME}"
+        # Install binary (mv is atomic and works even if the target is a running
+        # executable — the old inode stays alive for the running process).
+        chmod +x "${TMP_BINARY}"
+        mv -f "${TMP_BINARY}" "${BIN_DIR}/${BINARY_NAME}"
+        TMP_BINARY="" # already moved; prevent cleanup trap from deleting it
         local daemon_version
         daemon_version="$("${BIN_DIR}/${BINARY_NAME}" version 2>&1 || true)"
         ok "Installed ${daemon_version:-${BINARY_NAME}}"
