@@ -6,17 +6,58 @@ on:
     tags: ["install-v*"]
     paths:
       - 'install/**'
+      - 'scripts/**'
+      - '.github/workflows/deploy-install.yml'
+  pull_request:
+    paths:
+      - 'install/**'
+      - 'scripts/**'
       - '.github/workflows/deploy-install.yml'
 
 permissions:
   contents: write
 
 jobs:
+  test:
+    name: Install (lint + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Install shfmt
+        run: go install mvdan.cc/sh/v3/cmd/shfmt@latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: install/worker/package-lock.json
+
+      - name: Install worker dependencies
+        run: npm ci
+        working-directory: install/worker
+
+      - uses: taiki-e/install-action@a3324fb0eb94b8230ec968c3389c1b7929fc2f3b # v2
+        with:
+          tool: just
+
+      - name: Lint shell scripts
+        run: just lint-sh && just fmt-sh-check
+
+      - name: Test install worker
+        run: just test-install-worker
+
   environment:
     name: Detect environment
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
       is_production: ${{ steps.detect.outputs.is_production }}
+      version: ${{ steps.detect.outputs.version }}
       wrangler_env: ${{ steps.detect.outputs.wrangler_env }}
       r2_bucket: ${{ steps.detect.outputs.r2_bucket }}
     steps:
@@ -25,17 +66,20 @@ jobs:
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/install-v* ]]; then
             echo "is_production=true" >> "$GITHUB_OUTPUT"
+            echo "version=${GITHUB_REF_NAME#install-v}" >> "$GITHUB_OUTPUT"
             echo "wrangler_env=production" >> "$GITHUB_OUTPUT"
             echo "r2_bucket=savecraft-install" >> "$GITHUB_OUTPUT"
           else
             echo "is_production=false" >> "$GITHUB_OUTPUT"
+            short_sha="${GITHUB_SHA::7}"
+            echo "version=0.0.0-dev.${GITHUB_RUN_NUMBER}.${short_sha}" >> "$GITHUB_OUTPUT"
             echo "wrangler_env=staging" >> "$GITHUB_OUTPUT"
             echo "r2_bucket=savecraft-install-staging" >> "$GITHUB_OUTPUT"
           fi
 
   upload:
     name: Upload (${{ matrix.target }})
-    needs: [environment]
+    needs: [environment, test]
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -60,6 +104,19 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Upload curl metadata
+        if: matrix.target == 'curl'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_BUCKET: ${{ needs.environment.outputs.r2_bucket }}
+          VERSION: ${{ needs.environment.outputs.version }}
+        run: |
+          echo "{\"version\":\"${VERSION}\"}" > /tmp/metadata.json
+          npx wrangler r2 object put "${R2_BUCKET}/curl/metadata.json" --file /tmp/metadata.json --content-type "application/json" --remote
+          rm -f /tmp/metadata.json
+        working-directory: install/worker
 
   deploy:
     name: Deploy Worker

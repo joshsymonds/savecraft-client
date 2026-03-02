@@ -6,8 +6,11 @@ set -euo pipefail
 # Designed for Linux desktops and Steam Deck (SteamOS).
 # ---------------------------------------------------------------------------
 
-readonly VERSION="dev"
+# All configuration is injected by the install worker at serve time.
+# For local/manual use, set these env vars before running the script.
+readonly INSTALLER_VERSION="${SAVECRAFT_INSTALLER_VERSION:?SAVECRAFT_INSTALLER_VERSION must be set}"
 readonly INSTALL_URL="${SAVECRAFT_INSTALL_URL:?SAVECRAFT_INSTALL_URL must be set}"
+readonly ED25519_PUBKEY_B64="${SAVECRAFT_ED25519_PUBKEY:?SAVECRAFT_ED25519_PUBKEY must be set}"
 
 readonly BIN_DIR="${HOME}/.local/bin"
 readonly CONFIG_DIR="${HOME}/.config/savecraft"
@@ -15,10 +18,6 @@ readonly CACHE_DIR="${HOME}/.cache/savecraft"
 readonly SYSTEMD_DIR="${HOME}/.config/systemd/user"
 
 readonly BINARY_NAME="savecraft-daemon"
-
-# Ed25519 public key used to verify release signatures.
-# Replace this placeholder with the real base64-encoded public key before shipping.
-readonly ED25519_PUBKEY_B64="REPLACE_WITH_BASE64_PUBKEY"
 
 # Temp files for download — module-level so the EXIT trap can clean them up.
 TMP_BINARY=""
@@ -255,7 +254,7 @@ main() {
     done
 
     echo ""
-    echo "  Savecraft Daemon Installer v${VERSION}"
+    echo "  Savecraft Daemon Installer v${INSTALLER_VERSION}"
     echo "  ======================================"
     echo ""
 
@@ -278,10 +277,12 @@ main() {
     TMP_SIG="$(mktemp)"
 
     info "Downloading ${artifact}..."
-    download "${binary_url}" "${TMP_BINARY}"
+    download "${binary_url}" "${TMP_BINARY}" \
+        || die "Failed to download ${artifact} from ${binary_url}"
 
     info "Downloading ${artifact}.sig..."
-    download "${sig_url}" "${TMP_SIG}"
+    download "${sig_url}" "${TMP_SIG}" \
+        || die "Failed to download ${artifact}.sig from ${sig_url}"
 
     # Verify signature
     info "Verifying Ed25519 signature..."
@@ -294,7 +295,9 @@ main() {
     # Install binary
     cp "${TMP_BINARY}" "${BIN_DIR}/${BINARY_NAME}"
     chmod +x "${BIN_DIR}/${BINARY_NAME}"
-    ok "Installed ${BINARY_NAME} to ${BIN_DIR}/${BINARY_NAME}"
+    local daemon_version
+    daemon_version="$("${BIN_DIR}/${BINARY_NAME}" version 2>&1 || true)"
+    ok "Installed ${daemon_version:-${BINARY_NAME}}"
 
     # Pair device or write env file
     local paired=false

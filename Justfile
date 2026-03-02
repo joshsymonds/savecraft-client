@@ -231,17 +231,15 @@ install-fixtures version="0.1.0":
     cp dist/savecraft-daemon-linux-amd64.sig install/test/fixtures/daemon/
     cp dist/savecraft-daemon-linux-arm64     install/test/fixtures/daemon/
     cp dist/savecraft-daemon-linux-arm64.sig install/test/fixtures/daemon/
-    # Bake real public key into installer copy
-    # DER prefix for Ed25519 public key: 302a300506032b6570032100
-    # Use file I/O to avoid bash stripping null bytes from binary key
+    # Copy install.sh directly (no sed baking — config injected via env vars)
+    cp install/install.sh install/test/fixtures/install.sh
+    chmod +x install/test/fixtures/install.sh
+    # Write base64 DER public key for the test harness to export as env var
     tmp_der=$(mktemp)
     printf '\x30\x2a\x30\x05\x06\x03\x2b\x65\x70\x03\x21\x00' > "$tmp_der"
     cat internal/signing/signing_key.pub >> "$tmp_der"
-    b64_key=$(base64 -w0 < "$tmp_der")
+    base64 -w0 < "$tmp_der" > install/test/fixtures/pubkey.b64
     rm -f "$tmp_der"
-    sed "s|REPLACE_WITH_BASE64_PUBKEY|${b64_key}|" install/install.sh \
-        > install/test/fixtures/install.sh
-    chmod +x install/test/fixtures/install.sh
     echo "Fixtures ready in install/test/fixtures/"
 
 # Run install Worker tests

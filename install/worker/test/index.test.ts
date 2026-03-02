@@ -4,8 +4,10 @@ import { describe, it, expect, beforeEach } from "vitest";
 const FAKE_SCRIPT = '#!/usr/bin/env bash\nset -euo pipefail\necho "hello"';
 const FAKE_BINARY = new Uint8Array([0x7f, 0x45, 0x4c, 0x46]); // ELF header stub
 const FAKE_SIG = new Uint8Array([0xde, 0xad, 0xbe, 0xef]);
+const FAKE_PUBKEY = "MCowBQYDK2VwAyEATestKeyHere=";
 const FAKE_MANIFEST = JSON.stringify({
 	version: "0.1.0",
+	ed25519PublicKey: FAKE_PUBKEY,
 	platforms: {
 		"linux-amd64": {
 			url: "https://install.savecraft.gg/daemon/savecraft-daemon-linux-amd64",
@@ -14,6 +16,7 @@ const FAKE_MANIFEST = JSON.stringify({
 		},
 	},
 });
+const FAKE_INSTALLER_METADATA = JSON.stringify({ version: "1.2.3" });
 
 async function cleanR2(): Promise<void> {
 	const listed = await env.INSTALL.list();
@@ -26,6 +29,8 @@ describe("install worker", () => {
 	beforeEach(async () => {
 		await cleanR2();
 		await env.INSTALL.put("curl/install.sh", FAKE_SCRIPT);
+		await env.INSTALL.put("daemon/manifest.json", FAKE_MANIFEST);
+		await env.INSTALL.put("curl/metadata.json", FAKE_INSTALLER_METADATA);
 	});
 
 	describe("install script (CLI user-agents)", () => {
@@ -80,7 +85,7 @@ describe("install worker", () => {
 		expect(resp.status).toBe(302);
 	});
 
-	it("injects SAVECRAFT_INSTALL_URL and SAVECRAFT_SERVER_URL into the script", async () => {
+	it("prepends all four env vars into the script", async () => {
 		const resp = await SELF.fetch("https://install.savecraft.gg/", {
 			headers: { "user-agent": "curl/8.0" },
 		});
@@ -88,6 +93,22 @@ describe("install worker", () => {
 		const lines = body.split("\n");
 		expect(lines[0]).toBe(`SAVECRAFT_INSTALL_URL="${env.INSTALL_URL}"`);
 		expect(lines[1]).toBe(`SAVECRAFT_SERVER_URL="${env.SERVER_URL}"`);
+		expect(lines[2]).toBe(`SAVECRAFT_INSTALLER_VERSION="1.2.3"`);
+		expect(lines[3]).toBe(`SAVECRAFT_ED25519_PUBKEY="${FAKE_PUBKEY}"`);
+		expect(body).toContain("#!/usr/bin/env bash");
+	});
+
+	it("falls back to defaults when metadata files are missing", async () => {
+		await env.INSTALL.delete("daemon/manifest.json");
+		await env.INSTALL.delete("curl/metadata.json");
+
+		const resp = await SELF.fetch("https://install.savecraft.gg/", {
+			headers: { "user-agent": "curl/8.0" },
+		});
+		const body = await resp.text();
+		const lines = body.split("\n");
+		expect(lines[2]).toBe('SAVECRAFT_INSTALLER_VERSION="dev"');
+		expect(lines[3]).toBe('SAVECRAFT_ED25519_PUBKEY=""');
 		expect(body).toContain("#!/usr/bin/env bash");
 	});
 
@@ -103,7 +124,6 @@ describe("install worker", () => {
 		beforeEach(async () => {
 			await env.INSTALL.put("daemon/savecraft-daemon-linux-amd64", FAKE_BINARY);
 			await env.INSTALL.put("daemon/savecraft-daemon-linux-amd64.sig", FAKE_SIG);
-			await env.INSTALL.put("daemon/manifest.json", FAKE_MANIFEST);
 		});
 
 		it("serves a binary from R2", async () => {
@@ -149,6 +169,7 @@ describe("install worker", () => {
 
 			const data = await resp.json();
 			expect(data).toHaveProperty("version", "0.1.0");
+			expect(data).toHaveProperty("ed25519PublicKey", FAKE_PUBKEY);
 			expect(data).toHaveProperty("platforms.linux-amd64.sha256", "abc123");
 		});
 

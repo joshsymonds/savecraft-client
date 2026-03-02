@@ -8,6 +8,13 @@ on:
       - 'plugins/*/plugin.toml'
       - 'plugins/*/*.go'
       - 'plugins/*/d2s/**'
+      - '.github/workflows/deploy-plugin.yml'
+  pull_request:
+    paths:
+      - 'plugins/*/plugin.toml'
+      - 'plugins/*/*.go'
+      - 'plugins/*/d2s/**'
+      - '.github/workflows/deploy-plugin.yml'
   workflow_dispatch:
     inputs:
       plugin:
@@ -19,8 +26,63 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Deploy plugins
+  test:
+    name: Build plugins
+    runs-on: ubuntu-latest
+    outputs:
+      plugins: ${{ steps.changed.outputs.plugins }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - uses: taiki-e/install-action@a3324fb0eb94b8230ec968c3389c1b7929fc2f3b # v2
+        with:
+          tool: just
+
+      - name: Detect plugins to build
+        id: changed
+        env:
+          MANUAL_PLUGIN: ${{ inputs.plugin }}
+        run: |
+          if [ -n "$MANUAL_PLUGIN" ]; then
+            # workflow_dispatch: use provided plugin name
+            changed="$MANUAL_PLUGIN"
+          else
+            # Check all plugins with a plugin.toml
+            changed=""
+            for dir in plugins/*/; do
+              game_id=$(basename "$dir")
+              [ -f "plugins/${game_id}/plugin.toml" ] || continue
+              changed="${changed} ${game_id}"
+            done
+            changed=$(echo "$changed" | xargs)
+          fi
+          echo "plugins=${changed}" >> "$GITHUB_OUTPUT"
+          if [ -z "$changed" ]; then
+            echo "No plugins to check"
+          else
+            echo "Plugins to check: ${changed}"
+          fi
+
+      - name: Build plugins
+        if: steps.changed.outputs.plugins != ''
+        env:
+          CHANGED_PLUGINS: ${{ steps.changed.outputs.plugins }}
+        run: |
+          for game_id in $CHANGED_PLUGINS; do
+            echo "==> Building plugin: ${game_id}"
+            just build-plugin "$game_id"
+          done
+
+  deploy:
+    name: Sign and upload
+    needs: test
+    if: github.event_name != 'pull_request' && needs.test.outputs.plugins != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,43 +115,16 @@ jobs:
       - name: Install wrangler
         run: npm install -g wrangler
 
-      - name: Detect plugins to release
-        id: changed
-        env:
-          MANUAL_PLUGIN: ${{ inputs.plugin }}
-        run: |
-          if [ -n "$MANUAL_PLUGIN" ]; then
-            # workflow_dispatch: use provided plugin name
-            changed="$MANUAL_PLUGIN"
-          else
-            # Check all plugins with a plugin.toml
-            changed=""
-            for dir in plugins/*/; do
-              game_id=$(basename "$dir")
-              [ -f "plugins/${game_id}/plugin.toml" ] || continue
-              changed="${changed} ${game_id}"
-            done
-            changed=$(echo "$changed" | xargs)
-          fi
-          echo "plugins=${changed}" >> "$GITHUB_OUTPUT"
-          if [ -z "$changed" ]; then
-            echo "No plugins to check"
-          else
-            echo "Plugins to check: ${changed}"
-          fi
-
       - name: Decode signing key
-        if: steps.changed.outputs.plugins != ''
         run: echo "$SIGNING_KEY" | base64 -d > /tmp/signing_key.priv
         env:
           SIGNING_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
 
       - name: Build, sign, and upload plugins
-        if: steps.changed.outputs.plugins != ''
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CHANGED_PLUGINS: ${{ steps.changed.outputs.plugins }}
+          CHANGED_PLUGINS: ${{ needs.test.outputs.plugins }}
           R2_BUCKET: ${{ steps.env.outputs.r2_bucket }}
         run: |
           for game_id in $CHANGED_PLUGINS; do
@@ -141,14 +176,14 @@ jobs:
         run: rm -f /tmp/signing_key.priv
 
       - name: Find previous plugin tag
-        if: steps.changed.outputs.plugins != '' && steps.env.outputs.is_production == 'true'
+        if: steps.env.outputs.is_production == 'true'
         id: prev
         run: |
           prev_tag=$(git tag -l 'plugin-v*' --sort=-v:refname | sed -n '2p')
           echo "tag=${prev_tag}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
-        if: steps.changed.outputs.plugins != '' && steps.env.outputs.is_production == 'true'
+        if: steps.env.outputs.is_production == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
@@ -164,10 +199,10 @@ jobs:
             $notes_flag
 
       - name: Notify Discord
-        if: success() && steps.changed.outputs.plugins != '' && steps.env.outputs.is_production == 'true'
+        if: success() && steps.env.outputs.is_production == 'true'
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
-          CHANGED_PLUGINS: ${{ steps.changed.outputs.plugins }}
+          CHANGED_PLUGINS: ${{ needs.test.outputs.plugins }}
         run: |
           for game_id in $CHANGED_PLUGINS; do
             version=$(grep '^version' "plugins/${game_id}/plugin.toml" | head -1 | sed 's/.*= *"\(.*\)"/\1/')
