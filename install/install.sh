@@ -211,6 +211,36 @@ create_env_template() {
 }
 
 # ---------------------------------------------------------------------------
+# run_pairing — interactive pairing with retry loop
+#   $1  server URL
+#   $2  extra flags for pair command (e.g. "--force"), or ""
+#   Sets paired=true on success, pairing_failed=true on exhaustion.
+# ---------------------------------------------------------------------------
+run_pairing() {
+    local server_url="$1"
+    local extra_flags="$2"
+    local max_attempts=3
+    local attempt=0
+    echo ""
+    info "Enter the 6-digit code shown on ${frontend_url}"
+    echo ""
+    while [[ ${attempt} -lt ${max_attempts} ]]; do
+        attempt=$((attempt + 1))
+        # shellcheck disable=SC2086
+        if "${BIN_DIR}/${BINARY_NAME}" pair --server "${server_url}" ${extra_flags}; then
+            ok "Device paired successfully"
+            paired=true
+            return
+        fi
+        if [[ ${attempt} -lt ${max_attempts} ]]; then
+            warn "Try again (attempt ${attempt}/${max_attempts})"
+            echo ""
+        fi
+    done
+    pairing_failed=true
+}
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 main() {
@@ -316,29 +346,24 @@ main() {
     if [[ -n "${SAVECRAFT_AUTH_TOKEN:-}" ]]; then
         # API key flow (headless/automation) — write env directly
         create_env_template
-    elif [[ -n "${SAVECRAFT_SERVER_URL:-}" ]]; then
-        # Interactive pairing flow — retry up to 3 times on failure
-        local max_attempts=3
-        local attempt=0
-        echo ""
-        info "Pairing your device..."
-        info "Enter the 6-digit code shown on ${frontend_url}"
-        echo ""
-        while [[ ${attempt} -lt ${max_attempts} ]]; do
-            attempt=$((attempt + 1))
-            if "${BIN_DIR}/${BINARY_NAME}" pair --server "${SAVECRAFT_SERVER_URL}"; then
-                ok "Device paired successfully"
-                paired=true
-                break
-            fi
-            if [[ ${attempt} -lt ${max_attempts} ]]; then
-                warn "Try again (attempt ${attempt}/${max_attempts})"
-                echo ""
-            fi
-        done
-        if [[ "${paired}" == "false" ]]; then
-            pairing_failed=true
+    elif [[ -f "${CONFIG_DIR}/env" ]] && grep -q '^SAVECRAFT_AUTH_TOKEN=' "${CONFIG_DIR}/env"; then
+        # Token exists in env file — verify it's still valid
+        local verify_server="${SAVECRAFT_SERVER_URL:-$(grep '^SAVECRAFT_SERVER_URL=' "${CONFIG_DIR}/env" 2>/dev/null | cut -d= -f2-)}"
+        if [[ -n "${verify_server}" ]] \
+            && "${BIN_DIR}/${BINARY_NAME}" verify --server "${verify_server}" 2>/dev/null; then
+            ok "Device already paired (token verified)"
+            paired=true
+        elif [[ -n "${SAVECRAFT_SERVER_URL:-}" ]]; then
+            # Token invalid — re-pair with --force
+            warn "Existing token is invalid — re-pairing..."
+            run_pairing "${SAVECRAFT_SERVER_URL}" "--force"
+        else
+            warn "Existing token could not be verified (no server URL available)"
         fi
+    elif [[ -n "${SAVECRAFT_SERVER_URL:-}" ]]; then
+        # First-time interactive pairing flow
+        info "Pairing your device..."
+        run_pairing "${SAVECRAFT_SERVER_URL}" ""
     else
         create_env_template
     fi

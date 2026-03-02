@@ -28,6 +28,7 @@ func Execute(version, serverURL, installURL string) error {
 
 	root.AddCommand(runCmd)
 	root.AddCommand(buildPairCommand())
+	root.AddCommand(buildVerifyCommand())
 	root.AddCommand(buildVersionCommand(version))
 
 	if err := root.Execute(); err != nil {
