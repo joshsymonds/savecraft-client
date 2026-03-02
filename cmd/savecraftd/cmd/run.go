@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -61,7 +62,22 @@ func runDaemon(serverURLDefault, installURLDefault string) error {
 	defer subsystems.close(ctx, logger)
 
 	dmn := daemon.New(cfg.Daemon, subsystems.fsys, subsystems.watcher, subsystems.runner,
-		subsystems.pusher, subsystems.ws, subsystems.plugins, subsystems.updater)
+		subsystems.pusher, subsystems.ws, subsystems.plugins, subsystems.updater, logger)
+
+	statusSrv := &http.Server{
+		Addr:    "localhost:9182",
+		Handler: daemon.StatusHandler(dmn),
+	}
+	go func() {
+		if err := statusSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("status server failed", slog.String("error", err.Error()))
+		}
+	}()
+	defer func() {
+		if shutdownErr := statusSrv.Shutdown(ctx); shutdownErr != nil {
+			logger.Error("status server shutdown failed", slog.String("error", shutdownErr.Error()))
+		}
+	}()
 
 	logger.Info("starting daemon",
 		slog.String("server", cfg.ServerURL),
@@ -147,7 +163,7 @@ func createSubsystems(ctx context.Context, cfg *appConfig, logger *slog.Logger) 
 	}
 
 	wsURL := cfg.ServerURL + "/ws/daemon"
-	ws := wsconn.New(wsURL, cfg.AuthToken)
+	ws := wsconn.New(wsURL, cfg.AuthToken, wsconn.WithLogger(logger))
 
 	return &subsystems{
 		fsys:    fsys,

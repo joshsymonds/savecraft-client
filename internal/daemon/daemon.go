@@ -6,11 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
@@ -156,6 +159,7 @@ type WSClient interface {
 	Send(msg []byte) error
 	Messages() <-chan []byte
 	Close() error
+	Connected() bool
 }
 
 // FS abstracts filesystem operations for testability.
@@ -206,16 +210,24 @@ type Daemon struct {
 	ws      WSClient
 	plugins PluginManager
 	updater Updater
+	log     *slog.Logger
 
 	// exitFunc is called after a successful self-update to terminate
 	// the process. Defaults to os.Exit; overridden in tests.
 	exitFunc func(int)
 
+	// mu protects watchedDirs and cfg.Games from concurrent access
+	// (event loop goroutine vs. diagnostic HTTP handler).
+	mu sync.RWMutex
+
 	// Maps watched directory -> game ID.
 	watchedDirs map[string]string
+
+	startTime time.Time
 }
 
 // New creates a Daemon with the given dependencies.
+// A nil logger is replaced with a no-op logger.
 func New(
 	cfg Config,
 	fsys FS,
@@ -225,7 +237,11 @@ func New(
 	ws WSClient,
 	plugins PluginManager,
 	updater Updater,
+	log *slog.Logger,
 ) *Daemon {
+	if log == nil {
+		log = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
 	return &Daemon{
 		cfg:         cfg,
 		fs:          fsys,
@@ -235,6 +251,7 @@ func New(
 		ws:          ws,
 		plugins:     plugins,
 		updater:     updater,
+		log:         log,
 		exitFunc:    os.Exit,
 		watchedDirs: make(map[string]string),
 	}
@@ -243,16 +260,25 @@ func New(
 // Run connects to the server and enters the main event loop.
 // It blocks until ctx is canceled.
 func (d *Daemon) Run(ctx context.Context) (runErr error) {
+	d.startTime = time.Now()
+	d.log.InfoContext(ctx, "daemon starting",
+		slog.String("device_id", d.cfg.DeviceID),
+		slog.String("version", d.cfg.Version),
+		slog.Int("game_count", len(d.cfg.Games)),
+	)
+
 	if err := d.ws.Connect(ctx); err != nil {
+		d.log.ErrorContext(ctx, "websocket connect failed", slog.String("error", err.Error()))
 		return fmt.Errorf("ws connect: %w", err)
 	}
+	d.log.InfoContext(ctx, "websocket connected", slog.String("server_url", d.cfg.ServerURL))
 	defer func() {
 		if closeErr := d.ws.Close(); closeErr != nil && runErr == nil {
 			runErr = fmt.Errorf("ws close: %w", closeErr)
 		}
 	}()
 
-	d.sendEvent("daemonOnline", map[string]any{
+	d.sendEvent(ctx, "daemonOnline", map[string]any{
 		"deviceId": d.cfg.DeviceID,
 		"version":  d.cfg.Version,
 		"platform": runtime.GOOS + "-" + runtime.GOARCH,
@@ -262,8 +288,13 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 
 	for gameID, gameCfg := range d.cfg.Games {
 		if !gameCfg.Enabled {
+			d.log.DebugContext(ctx, "skipping disabled game", slog.String("game_id", gameID))
 			continue
 		}
+		d.log.InfoContext(ctx, "initializing game",
+			slog.String("game_id", gameID),
+			slog.String("save_path", gameCfg.SavePath),
+		)
 		if !d.ensurePluginReady(ctx, gameID) {
 			continue
 		}
@@ -289,7 +320,8 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 	for {
 		select {
 		case <-ctx.Done():
-			d.sendEvent("daemonOffline", map[string]any{
+			d.log.InfoContext(ctx, "daemon shutting down")
+			d.sendEvent(ctx, "daemonOffline", map[string]any{
 				"deviceId": d.cfg.DeviceID,
 			})
 			return nil
@@ -316,6 +348,7 @@ func (d *Daemon) checkSelfUpdate(ctx context.Context) {
 	if info == nil {
 		return
 	}
+	d.log.InfoContext(ctx, "daemon update available", slog.String("new_version", info.Version))
 	d.applyDaemonUpdate(ctx, info)
 }
 
@@ -323,17 +356,17 @@ func (d *Daemon) applyDaemonUpdate(ctx context.Context, info *UpdateInfo) {
 	if d.updater == nil {
 		return
 	}
-	d.sendEvent("daemonUpdateStarted", map[string]any{
+	d.sendEvent(ctx, "daemonUpdateStarted", map[string]any{
 		"version": info.Version,
 	})
 	if err := d.updater.Apply(ctx, info, d.cfg.BinaryPath); err != nil {
-		d.sendEvent("daemonUpdateFailed", map[string]any{
+		d.sendEvent(ctx, "daemonUpdateFailed", map[string]any{
 			"version": info.Version,
 			"message": err.Error(),
 		})
 		return
 	}
-	d.sendEvent("daemonOffline", map[string]any{
+	d.sendEvent(ctx, "daemonOffline", map[string]any{
 		"deviceId": d.cfg.DeviceID,
 	})
 	d.exitFunc(0)
@@ -342,13 +375,14 @@ func (d *Daemon) applyDaemonUpdate(ctx context.Context, info *UpdateInfo) {
 func (d *Daemon) checkPluginUpdates(ctx context.Context) {
 	updated, err := d.plugins.CheckForUpdates(ctx)
 	if err != nil {
-		d.sendEvent("pluginUpdateCheckFailed", map[string]any{
+		d.sendEvent(ctx, "pluginUpdateCheckFailed", map[string]any{
 			"message": err.Error(),
 		})
 		return
 	}
 	for _, gameID := range updated {
-		d.sendEvent("pluginUpdated", map[string]any{
+		d.log.InfoContext(ctx, "plugin updated", slog.String("game_id", gameID))
+		d.sendEvent(ctx, "pluginUpdated", map[string]any{
 			"gameId": gameID,
 		})
 	}
@@ -362,8 +396,15 @@ func (d *Daemon) ensurePluginReady(
 	if d.plugins == nil {
 		return true
 	}
+	d.log.DebugContext(ctx, "ensuring plugin ready", slog.String("game_id", gameID))
 	if ensureErr := d.plugins.EnsurePlugin(ctx, gameID); ensureErr != nil {
-		d.sendEvent("pluginDownloadFailed", map[string]any{
+		d.log.ErrorContext(
+			ctx,
+			"plugin download failed",
+			slog.String("game_id", gameID),
+			slog.String("error", ensureErr.Error()),
+		)
+		d.sendEvent(ctx, "pluginDownloadFailed", map[string]any{
 			"gameId":  gameID,
 			"message": ensureErr.Error(),
 		})
@@ -379,6 +420,7 @@ func (d *Daemon) discoverGames(ctx context.Context) {
 
 	manifests, err := d.plugins.Manifests(ctx)
 	if err != nil {
+		d.log.WarnContext(ctx, "failed to fetch plugin manifests", slog.String("error", err.Error()))
 		return
 	}
 
@@ -401,6 +443,12 @@ func (d *Daemon) discoverGames(ctx context.Context) {
 		}
 
 		matching := d.filterByExtension(entries, info.FileExtensions)
+		d.log.InfoContext(ctx, "game discovered",
+			slog.String("game_id", gameID),
+			slog.String("name", info.Name),
+			slog.String("path", path),
+			slog.Int("file_count", len(matching)),
+		)
 		discovered = append(discovered, DiscoveredGame{
 			GameID:    gameID,
 			Name:      info.Name,
@@ -409,7 +457,7 @@ func (d *Daemon) discoverGames(ctx context.Context) {
 		})
 	}
 
-	d.sendEvent("gamesDiscovered", map[string]any{
+	d.sendEvent(ctx, "gamesDiscovered", map[string]any{
 		"games": discovered,
 	})
 }
@@ -417,14 +465,21 @@ func (d *Daemon) discoverGames(ctx context.Context) {
 func (d *Daemon) scanGame(
 	ctx context.Context, gameID string, cfg GameConfig,
 ) {
-	d.sendEvent("scanStarted", map[string]any{
+	d.log.InfoContext(ctx, "scanning game directory", slog.String("game_id", gameID), slog.String("path", cfg.SavePath))
+	d.sendEvent(ctx, "scanStarted", map[string]any{
 		"gameId": gameID,
 		"path":   cfg.SavePath,
 	})
 
 	info, err := d.fs.Stat(cfg.SavePath)
 	if err != nil || !info.IsDir() {
-		d.sendEvent("gameNotFound", map[string]any{
+		d.log.WarnContext(
+			ctx,
+			"game directory not found",
+			slog.String("game_id", gameID),
+			slog.String("path", cfg.SavePath),
+		)
+		d.sendEvent(ctx, "gameNotFound", map[string]any{
 			"gameId":       gameID,
 			"pathsChecked": []string{cfg.SavePath},
 		})
@@ -433,7 +488,7 @@ func (d *Daemon) scanGame(
 
 	entries, err := d.fs.ReadDir(cfg.SavePath)
 	if err != nil {
-		d.sendEvent("gameNotFound", map[string]any{
+		d.sendEvent(ctx, "gameNotFound", map[string]any{
 			"gameId":       gameID,
 			"pathsChecked": []string{cfg.SavePath},
 		})
@@ -441,8 +496,13 @@ func (d *Daemon) scanGame(
 	}
 
 	matchingFiles := d.filterByExtension(entries, cfg.FileExtensions)
+	d.log.InfoContext(ctx, "save files found",
+		slog.String("game_id", gameID),
+		slog.Int("count", len(matchingFiles)),
+		slog.String("path", cfg.SavePath),
+	)
 
-	d.sendEvent("scanCompleted", map[string]any{
+	d.sendEvent(ctx, "scanCompleted", map[string]any{
 		"gameId":     gameID,
 		"path":       cfg.SavePath,
 		"filesFound": len(matchingFiles),
@@ -450,14 +510,14 @@ func (d *Daemon) scanGame(
 	})
 
 	if len(matchingFiles) == 0 {
-		d.sendEvent("gameNotFound", map[string]any{
+		d.sendEvent(ctx, "gameNotFound", map[string]any{
 			"gameId":       gameID,
 			"pathsChecked": []string{cfg.SavePath},
 		})
 		return
 	}
 
-	d.sendEvent("gameDetected", map[string]any{
+	d.sendEvent(ctx, "gameDetected", map[string]any{
 		"gameId":    gameID,
 		"path":      cfg.SavePath,
 		"saveCount": len(matchingFiles),
@@ -466,9 +526,18 @@ func (d *Daemon) scanGame(
 	if watchErr := d.watcher.Add(cfg.SavePath); watchErr != nil {
 		return
 	}
+	d.mu.Lock()
 	d.watchedDirs[cfg.SavePath] = gameID
+	d.mu.Unlock()
 
-	d.sendEvent("watching", map[string]any{
+	d.log.InfoContext(
+		ctx,
+		"watching game",
+		slog.String("game_id", gameID),
+		slog.String("path", cfg.SavePath),
+		slog.Int("file_count", len(matchingFiles)),
+	)
+	d.sendEvent(ctx, "watching", map[string]any{
 		"gameId":         gameID,
 		"path":           cfg.SavePath,
 		"filesMonitored": len(matchingFiles),
@@ -486,12 +555,23 @@ func (d *Daemon) handleFileEvent(ctx context.Context, ev FileEvent) {
 	}
 
 	dir := filepath.Dir(ev.Path)
+	d.mu.RLock()
 	gameID, ok := d.watchedDirs[dir]
+	d.mu.RUnlock()
 	if !ok {
 		return
 	}
+	d.log.DebugContext(
+		ctx,
+		"file event",
+		slog.String("game_id", gameID),
+		slog.String("path", ev.Path),
+		slog.Int("op", int(ev.Op)),
+	)
 
+	d.mu.RLock()
 	gameCfg := d.cfg.Games[gameID]
+	d.mu.RUnlock()
 	ext := filepath.Ext(ev.Path)
 	if !matchesExtension(ext, gameCfg.FileExtensions) {
 		return
@@ -508,7 +588,8 @@ func (d *Daemon) parseAndPush(
 	ctx context.Context, gameID, fullPath, fileName string,
 	preloadedData []byte,
 ) {
-	d.sendEvent("parseStarted", map[string]any{
+	d.log.DebugContext(ctx, "parsing save file", slog.String("game_id", gameID), slog.String("file_name", fileName))
+	d.sendEvent(ctx, "parseStarted", map[string]any{
 		"gameId":   gameID,
 		"fileName": fileName,
 	})
@@ -518,7 +599,14 @@ func (d *Daemon) parseAndPush(
 		var err error
 		saveBytes, err = d.fs.ReadFile(fullPath)
 		if err != nil {
-			d.sendEvent("parseFailed", map[string]any{
+			d.log.ErrorContext(
+				ctx,
+				"failed to read save file",
+				slog.String("game_id", gameID),
+				slog.String("file_name", fileName),
+				slog.String("error", err.Error()),
+			)
+			d.sendEvent(ctx, "parseFailed", map[string]any{
 				"gameId":    gameID,
 				"fileName":  fileName,
 				"errorType": "PARSE_ERROR_TYPE_PARSE_ERROR",
@@ -529,7 +617,7 @@ func (d *Daemon) parseAndPush(
 	}
 
 	onStatus := func(message string) {
-		d.sendEvent("pluginStatus", map[string]any{
+		d.sendEvent(ctx, "pluginStatus", map[string]any{
 			"gameId":   gameID,
 			"fileName": fileName,
 			"message":  message,
@@ -542,7 +630,15 @@ func (d *Daemon) parseAndPush(
 		if pluginErr, ok := errors.AsType[*PluginError](err); ok {
 			errorType = pluginErr.Type
 		}
-		d.sendEvent("parseFailed", map[string]any{
+		d.log.ErrorContext(
+			ctx,
+			"plugin parse failed",
+			slog.String("game_id", gameID),
+			slog.String("file_name", fileName),
+			slog.String("error_type", errorType),
+			slog.String("error", err.Error()),
+		)
+		d.sendEvent(ctx, "parseFailed", map[string]any{
 			"gameId":    gameID,
 			"fileName":  fileName,
 			"errorType": errorType,
@@ -553,7 +649,13 @@ func (d *Daemon) parseAndPush(
 
 	stateJSON, marshalErr := json.Marshal(state)
 	if marshalErr != nil {
-		d.sendEvent("parseFailed", map[string]any{
+		d.log.ErrorContext(
+			ctx,
+			"failed to marshal state",
+			slog.String("game_id", gameID),
+			slog.String("error", marshalErr.Error()),
+		)
+		d.sendEvent(ctx, "parseFailed", map[string]any{
 			"gameId":    gameID,
 			"fileName":  fileName,
 			"errorType": "PARSE_ERROR_TYPE_PARSE_ERROR",
@@ -562,7 +664,15 @@ func (d *Daemon) parseAndPush(
 		return
 	}
 
-	d.sendEvent("parseCompleted", map[string]any{
+	d.log.InfoContext(
+		ctx,
+		"parse completed",
+		slog.String("game_id", gameID),
+		slog.String("file_name", fileName),
+		slog.String("summary", state.Summary),
+		slog.Int("size_bytes", len(stateJSON)),
+	)
+	d.sendEvent(ctx, "parseCompleted", map[string]any{
 		"gameId":        gameID,
 		"fileName":      fileName,
 		"identity":      state.Identity,
@@ -571,7 +681,13 @@ func (d *Daemon) parseAndPush(
 		"sizeBytes":     len(stateJSON),
 	})
 
-	d.sendEvent("pushStarted", map[string]any{
+	d.pushState(ctx, gameID, state, stateJSON)
+}
+
+func (d *Daemon) pushState(
+	ctx context.Context, gameID string, state *GameState, stateJSON []byte,
+) {
+	d.sendEvent(ctx, "pushStarted", map[string]any{
 		"gameId":    gameID,
 		"summary":   state.Summary,
 		"sizeBytes": len(stateJSON),
@@ -583,7 +699,13 @@ func (d *Daemon) parseAndPush(
 		// pushWithRetry already emitted pushFailed for retryable errors.
 		// For non-retryable errors, emit pushFailed here.
 		if !isPushRetryable(err) {
-			d.sendEvent("pushFailed", map[string]any{
+			d.log.ErrorContext(
+				ctx,
+				"push failed permanently",
+				slog.String("game_id", gameID),
+				slog.String("error", err.Error()),
+			)
+			d.sendEvent(ctx, "pushFailed", map[string]any{
 				"gameId":    gameID,
 				"message":   err.Error(),
 				"willRetry": false,
@@ -592,7 +714,8 @@ func (d *Daemon) parseAndPush(
 		return
 	}
 
-	d.sendEvent("pushCompleted", map[string]any{
+	d.log.InfoContext(ctx, "push completed", slog.String("game_id", gameID), slog.String("save_uuid", result.SaveUUID))
+	d.sendEvent(ctx, "pushCompleted", map[string]any{
 		"gameId":            gameID,
 		"saveUuid":          result.SaveUUID,
 		"summary":           state.Summary,
@@ -624,19 +747,34 @@ func (d *Daemon) pushWithRetry(
 		if attempt > 0 {
 			shift := uint(min(attempt-1, maxBitShift)) //nolint:gosec // attempt is always small
 			delay := min(d.cfg.Retry.BaseDelay<<shift, d.cfg.Retry.MaxDelay)
+			d.log.WarnContext(
+				ctx,
+				"push failed, retrying",
+				slog.String("game_id", gameID),
+				slog.Int("attempt", attempt),
+				slog.Duration("delay", delay),
+				slog.String("error", lastErr.Error()),
+			)
 			select {
 			case <-ctx.Done():
 				return nil, fmt.Errorf("push retry interrupted: %w", ctx.Err())
 			case <-time.After(delay):
 			}
 			// Re-emit pushStarted on retry.
-			d.sendEvent("pushStarted", map[string]any{
+			d.sendEvent(ctx, "pushStarted", map[string]any{
 				"gameId":    gameID,
 				"summary":   summary,
 				"sizeBytes": len(stateJSON),
 			})
 		}
 
+		d.log.DebugContext(
+			ctx,
+			"pushing save data",
+			slog.String("game_id", gameID),
+			slog.Int("attempt", attempt),
+			slog.Int("size_bytes", len(stateJSON)),
+		)
 		result, pushErr := d.pusher.Push(ctx, gameID, stateJSON, parsedAt)
 		if pushErr == nil {
 			return result, nil
@@ -648,7 +786,7 @@ func (d *Daemon) pushWithRetry(
 		}
 
 		willRetry := attempt < maxAttempts-1
-		d.sendEvent("pushFailed", map[string]any{
+		d.sendEvent(ctx, "pushFailed", map[string]any{
 			"gameId":    gameID,
 			"message":   pushErr.Error(),
 			"willRetry": willRetry,
@@ -660,8 +798,10 @@ func (d *Daemon) pushWithRetry(
 func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
 	cmdType, payload, parseErr := parseMessage(data)
 	if parseErr != nil {
+		d.log.WarnContext(ctx, "failed to parse command", slog.String("error", parseErr.Error()))
 		return
 	}
+	d.log.DebugContext(ctx, "received command", slog.String("type", cmdType))
 
 	switch cmdType {
 	case "configUpdate":
@@ -671,9 +811,13 @@ func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
 			GameID string `json:"gameId"`
 		}
 		if err := json.Unmarshal(payload, &cmd); err != nil {
+			d.log.WarnContext(ctx, "failed to unmarshal rescanGame", slog.String("error", err.Error()))
 			return
 		}
-		if gameCfg, ok := d.cfg.Games[cmd.GameID]; ok {
+		d.mu.RLock()
+		gameCfg, ok := d.cfg.Games[cmd.GameID]
+		d.mu.RUnlock()
+		if ok {
 			d.scanGame(ctx, cmd.GameID, gameCfg)
 		}
 	case "testPath":
@@ -682,14 +826,16 @@ func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
 			Path   string `json:"path"`
 		}
 		if err := json.Unmarshal(payload, &cmd); err != nil {
+			d.log.WarnContext(ctx, "failed to unmarshal testPath", slog.String("error", err.Error()))
 			return
 		}
-		d.handleTestPath(cmd.GameID, cmd.Path)
+		d.handleTestPath(ctx, cmd.GameID, cmd.Path)
 	case "discoverGames":
 		d.discoverGames(ctx)
 	case "daemonUpdateAvailable":
 		var info UpdateInfo
 		if err := json.Unmarshal(payload, &info); err != nil {
+			d.log.WarnContext(ctx, "failed to unmarshal daemonUpdateAvailable", slog.String("error", err.Error()))
 			return
 		}
 		d.applyDaemonUpdate(ctx, &info)
@@ -707,10 +853,13 @@ func (d *Daemon) handleConfigUpdate(
 		} `json:"games"`
 	}
 	if err := json.Unmarshal(payload, &update); err != nil {
+		d.log.WarnContext(ctx, "failed to unmarshal configUpdate", slog.String("error", err.Error()))
 		return
 	}
 
-	d.removeStaleGames(update.Games)
+	d.log.InfoContext(ctx, "config update received", slog.Int("game_count", len(update.Games)))
+
+	d.removeStaleGames(ctx, update.Games)
 
 	for gameID, newGame := range update.Games {
 		gameCfg := GameConfig{
@@ -719,24 +868,45 @@ func (d *Daemon) handleConfigUpdate(
 			FileExtensions: newGame.FileExtensions,
 		}
 
+		d.mu.Lock()
 		oldCfg, existed := d.cfg.Games[gameID]
 		d.cfg.Games[gameID] = gameCfg
+		d.mu.Unlock()
 
 		switch {
 		case !newGame.Enabled:
+			d.log.InfoContext(ctx, "game disabled", slog.String("game_id", gameID))
 			if existed {
-				d.unwatchGame(oldCfg.SavePath)
+				d.unwatchGame(ctx, oldCfg.SavePath)
 			}
 		case !existed || !oldCfg.Enabled:
+			d.log.InfoContext(
+				ctx,
+				"new game configured",
+				slog.String("game_id", gameID),
+				slog.String("save_path", newGame.SavePath),
+				slog.Bool("enabled", newGame.Enabled),
+			)
 			if !d.ensurePluginReady(ctx, gameID) {
+				d.mu.Lock()
 				delete(d.cfg.Games, gameID)
+				d.mu.Unlock()
 				continue
 			}
 			d.scanGame(ctx, gameID, gameCfg)
 		case oldCfg.SavePath != newGame.SavePath:
-			d.unwatchGame(oldCfg.SavePath)
+			d.log.InfoContext(
+				ctx,
+				"game path changed",
+				slog.String("game_id", gameID),
+				slog.String("old_path", oldCfg.SavePath),
+				slog.String("new_path", newGame.SavePath),
+			)
+			d.unwatchGame(ctx, oldCfg.SavePath)
 			if !d.ensurePluginReady(ctx, gameID) {
+				d.mu.Lock()
 				delete(d.cfg.Games, gameID)
+				d.mu.Unlock()
 				continue
 			}
 			d.scanGame(ctx, gameID, gameCfg)
@@ -744,7 +914,7 @@ func (d *Daemon) handleConfigUpdate(
 	}
 }
 
-func (d *Daemon) removeStaleGames(newGames map[string]struct {
+func (d *Daemon) removeStaleGames(ctx context.Context, newGames map[string]struct {
 	SavePath       string   `json:"savePath"`
 	Enabled        bool     `json:"enabled"`
 	FileExtensions []string `json:"fileExtensions"`
@@ -755,29 +925,53 @@ func (d *Daemon) removeStaleGames(newGames map[string]struct {
 		newGameIDs[gameID] = true
 	}
 
+	d.mu.Lock()
+	var stale []struct {
+		gameID   string
+		savePath string
+	}
 	for gameID, oldCfg := range d.cfg.Games {
 		if !newGameIDs[gameID] {
-			d.unwatchGame(oldCfg.SavePath)
-			delete(d.cfg.Games, gameID)
+			stale = append(stale, struct {
+				gameID   string
+				savePath string
+			}{gameID, oldCfg.SavePath})
 		}
 	}
+	for _, s := range stale {
+		delete(d.cfg.Games, s.gameID)
+	}
+	d.mu.Unlock()
+
+	for _, s := range stale {
+		d.unwatchGame(ctx, s.savePath)
+	}
 }
 
-func (d *Daemon) unwatchGame(savePath string) {
-	if _, ok := d.watchedDirs[savePath]; !ok {
+func (d *Daemon) unwatchGame(ctx context.Context, savePath string) {
+	d.mu.Lock()
+	_, ok := d.watchedDirs[savePath]
+	if !ok {
+		d.mu.Unlock()
 		return
 	}
-	if removeErr := d.watcher.Remove(savePath); removeErr != nil {
-		// Path may already be gone; clean up internal state regardless.
-		_ = removeErr
-	}
 	delete(d.watchedDirs, savePath)
+	d.mu.Unlock()
+
+	if removeErr := d.watcher.Remove(savePath); removeErr != nil {
+		d.log.DebugContext(
+			ctx,
+			"watcher remove failed",
+			slog.String("save_path", savePath),
+			slog.String("error", removeErr.Error()),
+		)
+	}
 }
 
-func (d *Daemon) handleTestPath(gameID, path string) {
+func (d *Daemon) handleTestPath(ctx context.Context, gameID, path string) {
 	info, err := d.fs.Stat(path)
 	if err != nil || !info.IsDir() {
-		d.sendEvent("testPathResult", map[string]any{
+		d.sendEvent(ctx, "testPathResult", map[string]any{
 			"gameId":     gameID,
 			"path":       path,
 			"valid":      false,
@@ -788,7 +982,7 @@ func (d *Daemon) handleTestPath(gameID, path string) {
 
 	entries, err := d.fs.ReadDir(path)
 	if err != nil {
-		d.sendEvent("testPathResult", map[string]any{
+		d.sendEvent(ctx, "testPathResult", map[string]any{
 			"gameId":     gameID,
 			"path":       path,
 			"valid":      false,
@@ -797,10 +991,12 @@ func (d *Daemon) handleTestPath(gameID, path string) {
 		return
 	}
 
+	d.mu.RLock()
 	gameCfg := d.cfg.Games[gameID]
+	d.mu.RUnlock()
 	fileNames := d.filterByExtension(entries, gameCfg.FileExtensions)
 
-	d.sendEvent("testPathResult", map[string]any{
+	d.sendEvent(ctx, "testPathResult", map[string]any{
 		"gameId":     gameID,
 		"path":       path,
 		"valid":      len(fileNames) > 0,
@@ -834,13 +1030,26 @@ func matchesExtension(ext string, extensions []string) bool {
 	return false
 }
 
-func (d *Daemon) sendEvent(eventType string, payload any) {
+func (d *Daemon) sendEvent(ctx context.Context, eventType string, payload any) {
+	d.log.DebugContext(ctx, "sending ws event", slog.String("event_type", eventType))
 	msg := map[string]any{eventType: payload}
 	data, err := json.Marshal(msg)
 	if err != nil {
+		d.log.ErrorContext(
+			ctx,
+			"failed to marshal event",
+			slog.String("event_type", eventType),
+			slog.String("error", err.Error()),
+		)
 		return
 	}
 	if sendErr := d.ws.Send(data); sendErr != nil {
+		d.log.WarnContext(
+			ctx,
+			"failed to send event",
+			slog.String("event_type", eventType),
+			slog.String("error", sendErr.Error()),
+		)
 		return
 	}
 }

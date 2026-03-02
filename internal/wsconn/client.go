@@ -4,6 +4,8 @@ package wsconn
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -30,11 +32,19 @@ func WithReconnect(base, maximum time.Duration) Option {
 	}
 }
 
+// WithLogger sets a structured logger for connection lifecycle events.
+func WithLogger(log *slog.Logger) Option {
+	return func(c *Client) {
+		c.log = log
+	}
+}
+
 // Client maintains a persistent WebSocket connection with automatic reconnection.
 // It satisfies the daemon.WSClient interface.
 type Client struct {
 	serverURL string
 	token     string
+	log       *slog.Logger
 
 	mu        sync.Mutex
 	conn      *websocket.Conn
@@ -56,6 +66,7 @@ func New(serverURL, token string, opts ...Option) *Client {
 	client := &Client{
 		serverURL:     serverURL,
 		token:         token,
+		log:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 		messages:      make(chan []byte, 64),
 		done:          make(chan struct{}),
 		reconnectBase: defaultReconnectBase,
@@ -67,6 +78,13 @@ func New(serverURL, token string, opts ...Option) *Client {
 		opt(client)
 	}
 	return client
+}
+
+// Connected reports whether the WebSocket connection is currently established.
+func (c *Client) Connected() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.conn != nil
 }
 
 // Connect establishes the initial WebSocket connection and starts the read loop.
@@ -82,6 +100,7 @@ func (c *Client) Connect(ctx context.Context) error {
 	close(c.connReady)
 	c.mu.Unlock()
 
+	c.log.InfoContext(ctx, "websocket connected", slog.String("url", c.serverURL))
 	c.wg.Go(c.readLoop)
 
 	return nil
@@ -94,6 +113,7 @@ func (c *Client) Send(msg []byte) error {
 	c.mu.Unlock()
 
 	if conn == nil {
+		c.log.Debug("ws send dropped, not connected")
 		return nil
 	}
 
@@ -111,6 +131,7 @@ func (c *Client) Messages() <-chan []byte { return c.messages }
 
 // Close shuts down the client, closing the connection and stopping the read loop.
 func (c *Client) Close() error {
+	c.log.Debug("websocket closing")
 	var closeErr error
 	c.closeOnce.Do(func() {
 		close(c.done)
@@ -173,14 +194,18 @@ func (c *Client) readLoop() {
 func (c *Client) reconnect() {
 	c.mu.Lock()
 	if c.conn != nil {
-		_ = c.conn.Close(websocket.StatusGoingAway, "reconnecting")
+		if closeErr := c.conn.Close(websocket.StatusGoingAway, "reconnecting"); closeErr != nil {
+			c.log.Debug("close before reconnect failed", slog.String("error", closeErr.Error()))
+		}
 		c.conn = nil
 	}
 	c.connReady = make(chan struct{})
 	c.mu.Unlock()
 
 	delay := c.reconnectBase
+	attempts := 0
 	for {
+		c.log.Warn("websocket disconnected, reconnecting", slog.Duration("delay", delay))
 		timer := time.NewTimer(delay)
 		select {
 		case <-c.done:
@@ -193,11 +218,13 @@ func (c *Client) reconnect() {
 			return
 		}
 
+		attempts++
 		ctx, cancel := context.WithTimeout(context.Background(), c.dialTimeout)
 		conn, err := c.dialWS(ctx)
 		cancel()
 
 		if err != nil {
+			c.log.Warn("reconnect failed", slog.Duration("delay", delay), slog.String("error", err.Error()))
 			delay = min(delay*backoffMultiplier, c.reconnectMax)
 			continue
 		}
@@ -206,6 +233,7 @@ func (c *Client) reconnect() {
 		c.conn = conn
 		close(c.connReady)
 		c.mu.Unlock()
+		c.log.Info("websocket reconnected", slog.Int("attempts", attempts))
 		return
 	}
 }
@@ -217,7 +245,9 @@ func (c *Client) dialWS(ctx context.Context) (*websocket.Conn, error) {
 		},
 	})
 	if resp != nil && resp.Body != nil {
-		_ = resp.Body.Close()
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			c.log.DebugContext(ctx, "close response body failed", slog.String("error", closeErr.Error()))
+		}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("dial %s: %w", c.serverURL, err)
@@ -229,7 +259,9 @@ func (c *Client) cleanupConn() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.conn != nil {
-		_ = c.conn.Close(websocket.StatusNormalClosure, "shutdown")
+		if closeErr := c.conn.Close(websocket.StatusNormalClosure, "shutdown"); closeErr != nil {
+			c.log.Debug("close on shutdown failed", slog.String("error", closeErr.Error()))
+		}
 		c.conn = nil
 	}
 }
