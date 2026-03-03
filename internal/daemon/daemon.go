@@ -318,7 +318,7 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 		case <-selfUpdateCh:
 			d.checkSelfUpdate(ctx)
 		case <-heartbeatTicker.C:
-			d.sendEvent(ctx, "daemonHeartbeat", nil)
+			d.sendEvent(ctx, "daemonHeartbeat", map[string]any{})
 		case <-d.ws.Reconnected():
 			d.log.InfoContext(ctx, "websocket reconnected, re-announcing")
 			d.announceOnline(ctx)

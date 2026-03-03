@@ -2076,41 +2076,36 @@ func TestCheckSelfUpdate_NilUpdater(_ *testing.T) {
 	d.checkSelfUpdate(context.Background())
 }
 
-func TestRun_SendsHeartbeat(t *testing.T) {
+func TestSendEvent_HeartbeatWireFormat(t *testing.T) {
+	// Verify daemonHeartbeat serializes as {"daemonHeartbeat":{}} (not null).
+	// The hub's Message.fromJSON uses isSet() which returns false for null,
+	// so the empty object is critical for the heartbeat to be recognized.
 	ws := newFakeWSClient()
-	cfg := Config{
-		DeviceID: "deck",
-		Version:  "0.1.0",
-		Games:    map[string]GameConfig{},
-	}
-
 	d := New(
-		cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{},
-		&fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger(),
+		Config{DeviceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}},
+		&fakeFS{}, newFakeWatcher(), &fakeRunner{},
+		&fakePushClient{}, ws, nil, nil, testLogger(),
 	)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- d.Run(ctx) }()
+	d.sendEvent(context.Background(), "daemonHeartbeat", map[string]any{})
 
-	// Wait for heartbeat — the ticker fires at heartbeatInterval (30s),
-	// but we can't wait that long in a test. Instead, verify the heartbeat
-	// case compiles and the event type is correct by checking announceOnline
-	// and then canceling immediately. The heartbeat ticker is tested implicitly
-	// by the select loop structure.
-	//
-	// For a real heartbeat timing test, we'd need a fake clock. For now,
-	// verify that the daemon sends daemonOnline on startup (which uses
-	// the same announceOnline path as reconnect).
-	waitFor(t, func() bool {
-		return slices.Contains(ws.sentEventTypes(), "daemonOnline")
-	})
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	if len(ws.sent) != 1 {
+		t.Fatalf("sent %d messages, want 1", len(ws.sent))
+	}
 
-	cancel()
-	<-done
-
-	if !slices.Contains(ws.sentEventTypes(), "daemonOnline") {
-		t.Error("missing daemonOnline event")
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(ws.sent[0], &raw); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	hb, ok := raw["daemonHeartbeat"]
+	if !ok {
+		t.Fatal("missing daemonHeartbeat key")
+	}
+	// Must be {} not null — null causes isSet() to return false on the hub
+	if string(hb) != "{}" {
+		t.Errorf("daemonHeartbeat payload = %s, want {}", string(hb))
 	}
 }
 
@@ -2177,15 +2172,18 @@ func TestRun_ReconnectReannounces(t *testing.T) {
 		t.Errorf("reconnect daemonOnline deviceId = %v, want deck", onlineEvent["deviceId"])
 	}
 
-	// Verify gamesDiscovered was re-sent (part of announceOnline).
-	discoverCount := 0
-	for _, et := range ws.sentEventTypes() {
-		if et == "gamesDiscovered" {
-			discoverCount++
+	// Verify full announceOnline sequence was re-sent: gamesDiscovered, watching, pushCompleted.
+	eventTypes := ws.sentEventTypes()
+	for _, required := range []string{"gamesDiscovered", "watching", "pushCompleted"} {
+		count := 0
+		for _, et := range eventTypes {
+			if et == required {
+				count++
+			}
 		}
-	}
-	if discoverCount < 2 {
-		t.Errorf("gamesDiscovered sent %d times, want >= 2 (initial + reconnect)", discoverCount)
+		if count < 2 {
+			t.Errorf("%s sent %d times, want >= 2 (initial + reconnect)", required, count)
+		}
 	}
 
 	cancel()
