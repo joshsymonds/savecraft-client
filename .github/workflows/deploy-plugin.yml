@@ -7,11 +7,15 @@ on:
     paths:
       - 'plugins/*/plugin.toml'
       - 'plugins/**/*.go'
+      - 'reference/src/**'
+      - 'reference/wrangler.toml'
       - '.github/workflows/deploy-plugin.yml'
   pull_request:
     paths:
       - 'plugins/*/plugin.toml'
       - 'plugins/**/*.go'
+      - 'reference/src/**'
+      - 'reference/wrangler.toml'
       - '.github/workflows/deploy-plugin.yml'
   workflow_dispatch:
     inputs:
@@ -150,12 +154,19 @@ jobs:
           TAG_GAME_ID: ${{ steps.parse.outputs.game_id }}
           R2_BUCKET: ${{ steps.config.outputs.r2_bucket }}
           VERSION: ${{ steps.version.outputs.version }}
+          IS_PRODUCTION: ${{ steps.config.outputs.is_production }}
         run: |
           # Production: deploy only the tagged game. Staging: deploy all.
           if [ -n "$TAG_GAME_ID" ]; then
             deploy_plugins="$TAG_GAME_ID"
           else
             deploy_plugins="$ALL_PLUGINS"
+          fi
+
+          if [ "$IS_PRODUCTION" = "true" ]; then
+            dispatch_ns="savecraft-reference-plugins"
+          else
+            dispatch_ns="savecraft-reference-plugins-staging"
           fi
 
           for game_id in $deploy_plugins; do
@@ -183,6 +194,11 @@ jobs:
             if [ -f "$ref_file" ]; then
               wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/reference.wasm" --file "$ref_file" --remote
               wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/reference.wasm.sig" --file "${ref_file}.sig" --remote
+
+              # Deploy reference Worker to WfP dispatch namespace
+              cp "$ref_file" reference/reference.wasm
+              cd reference && npm ci && npx wrangler deploy --dispatch-namespace "$dispatch_ns" && cd ..
+              echo "    Deployed ${game_id}-reference to ${dispatch_ns}"
             fi
             wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json" --remote
 
