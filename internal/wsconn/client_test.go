@@ -189,6 +189,54 @@ func TestReconnect_AfterServerClose(t *testing.T) {
 	}
 }
 
+func TestReconnected_SignalsAfterReconnect(t *testing.T) {
+	conns := make(chan *websocket.Conn, 5)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+		if err != nil {
+			return
+		}
+		conns <- conn
+		for {
+			_, _, readErr := conn.Read(r.Context())
+			if readErr != nil {
+				return
+			}
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	client := connectClient(t, wsURL(srv.URL),
+		WithReconnect(10*time.Millisecond, 50*time.Millisecond),
+	)
+
+	// Reconnected channel should not signal on initial connect.
+	select {
+	case <-client.Reconnected():
+		t.Fatal("Reconnected() should not signal on initial connect")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	// Kill first connection to trigger reconnect.
+	conn1 := <-conns
+	conn1.Close(websocket.StatusGoingAway, "test disconnect")
+
+	// Wait for reconnect signal.
+	select {
+	case <-client.Reconnected():
+		// expected
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for Reconnected() signal")
+	}
+
+	// Wait for second server-side accept to confirm reconnect completed.
+	select {
+	case <-conns:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for second connection")
+	}
+}
+
 func TestClose_Idempotent(t *testing.T) {
 	srv := echoServer(t)
 

@@ -46,9 +46,10 @@ type Client struct {
 	token     string
 	log       *slog.Logger
 
-	mu        sync.Mutex
-	conn      *websocket.Conn
-	connReady chan struct{}
+	mu          sync.Mutex
+	conn        *websocket.Conn
+	connReady   chan struct{}
+	reconnected chan struct{}
 
 	messages  chan []byte
 	done      chan struct{}
@@ -68,6 +69,7 @@ func New(serverURL, token string, opts ...Option) *Client {
 		token:         token,
 		log:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 		messages:      make(chan []byte, 64),
+		reconnected:   make(chan struct{}, 1),
 		done:          make(chan struct{}),
 		reconnectBase: defaultReconnectBase,
 		reconnectMax:  defaultReconnectMax,
@@ -128,6 +130,11 @@ func (c *Client) Send(msg []byte) error {
 
 // Messages returns the channel of incoming messages from the server.
 func (c *Client) Messages() <-chan []byte { return c.messages }
+
+// Reconnected returns a channel that signals after each successful reconnection.
+// The channel is buffered (size 1) so a signal is never lost, but only the most
+// recent reconnect is retained if the consumer is slow.
+func (c *Client) Reconnected() <-chan struct{} { return c.reconnected }
 
 // Close shuts down the client, closing the connection and stopping the read loop.
 func (c *Client) Close() error {
@@ -234,6 +241,14 @@ func (c *Client) reconnect() {
 		close(c.connReady)
 		c.mu.Unlock()
 		c.log.Info("websocket reconnected", slog.Int("attempts", attempts))
+
+		// Drain-then-send so the signal is never lost but never blocks.
+		select {
+		case <-c.reconnected:
+		default:
+		}
+		c.reconnected <- struct{}{}
+
 		return
 	}
 }

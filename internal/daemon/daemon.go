@@ -21,6 +21,7 @@ import (
 
 const pluginUpdateInterval = 24 * time.Hour
 const selfUpdateInterval = 6 * time.Hour
+const heartbeatInterval = 30 * time.Second
 
 // --- Domain types ---
 
@@ -158,6 +159,7 @@ type WSClient interface {
 	Connect(ctx context.Context) error
 	Send(msg []byte) error
 	Messages() <-chan []byte
+	Reconnected() <-chan struct{}
 	Close() error
 	Connected() bool
 }
@@ -278,6 +280,55 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 		}
 	}()
 
+	d.announceOnline(ctx)
+
+	var updateTicker *time.Ticker
+	var updateCh <-chan time.Time
+	if d.plugins != nil {
+		updateTicker = time.NewTicker(pluginUpdateInterval)
+		updateCh = updateTicker.C
+		defer updateTicker.Stop()
+	}
+
+	var selfUpdateTicker *time.Ticker
+	var selfUpdateCh <-chan time.Time
+	if d.updater != nil {
+		selfUpdateTicker = time.NewTicker(selfUpdateInterval)
+		selfUpdateCh = selfUpdateTicker.C
+		defer selfUpdateTicker.Stop()
+	}
+
+	heartbeatTicker := time.NewTicker(heartbeatInterval)
+	defer heartbeatTicker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			d.log.InfoContext(ctx, "daemon shutting down")
+			d.sendEvent(ctx, "daemonOffline", map[string]any{
+				"deviceId": d.cfg.DeviceID,
+			})
+			return nil
+		case ev := <-d.watcher.Events():
+			d.handleFileEvent(ctx, ev)
+		case msg := <-d.ws.Messages():
+			d.handleCommand(ctx, msg)
+		case <-updateCh:
+			d.checkPluginUpdates(ctx)
+		case <-selfUpdateCh:
+			d.checkSelfUpdate(ctx)
+		case <-heartbeatTicker.C:
+			d.sendEvent(ctx, "daemonHeartbeat", nil)
+		case <-d.ws.Reconnected():
+			d.log.InfoContext(ctx, "websocket reconnected, re-announcing")
+			d.announceOnline(ctx)
+		}
+	}
+}
+
+// announceOnline sends the daemonOnline event and full game state.
+// Called on initial connect and after each reconnect.
+func (d *Daemon) announceOnline(ctx context.Context) {
 	d.sendEvent(ctx, "daemonOnline", map[string]any{
 		"deviceId": d.cfg.DeviceID,
 		"version":  d.cfg.Version,
@@ -299,41 +350,6 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 			continue
 		}
 		d.scanGame(ctx, gameID, gameCfg)
-	}
-
-	var updateTicker *time.Ticker
-	var updateCh <-chan time.Time
-	if d.plugins != nil {
-		updateTicker = time.NewTicker(pluginUpdateInterval)
-		updateCh = updateTicker.C
-		defer updateTicker.Stop()
-	}
-
-	var selfUpdateTicker *time.Ticker
-	var selfUpdateCh <-chan time.Time
-	if d.updater != nil {
-		selfUpdateTicker = time.NewTicker(selfUpdateInterval)
-		selfUpdateCh = selfUpdateTicker.C
-		defer selfUpdateTicker.Stop()
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			d.log.InfoContext(ctx, "daemon shutting down")
-			d.sendEvent(ctx, "daemonOffline", map[string]any{
-				"deviceId": d.cfg.DeviceID,
-			})
-			return nil
-		case ev := <-d.watcher.Events():
-			d.handleFileEvent(ctx, ev)
-		case msg := <-d.ws.Messages():
-			d.handleCommand(ctx, msg)
-		case <-updateCh:
-			d.checkPluginUpdates(ctx)
-		case <-selfUpdateCh:
-			d.checkSelfUpdate(ctx)
-		}
 	}
 }
 
