@@ -2084,7 +2084,10 @@ func TestRun_SendsHeartbeat(t *testing.T) {
 		Games:    map[string]GameConfig{},
 	}
 
-	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(
+		cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{},
+		&fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger(),
+	)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
