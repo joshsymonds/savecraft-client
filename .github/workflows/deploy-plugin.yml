@@ -6,14 +6,12 @@ on:
     tags: ["plugin-*-v*"]
     paths:
       - 'plugins/*/plugin.toml'
-      - 'plugins/*/*.go'
-      - 'plugins/*/d2s/**'
+      - 'plugins/**/*.go'
       - '.github/workflows/deploy-plugin.yml'
   pull_request:
     paths:
       - 'plugins/*/plugin.toml'
-      - 'plugins/*/*.go'
-      - 'plugins/*/d2s/**'
+      - 'plugins/**/*.go'
       - '.github/workflows/deploy-plugin.yml'
   workflow_dispatch:
     inputs:
@@ -163,19 +161,29 @@ jobs:
           for game_id in $deploy_plugins; do
             echo "==> Processing plugin: ${game_id} v${VERSION}"
 
-            # Build WASM
+            # Build WASM (produces parser.wasm, and reference.wasm if plugin has one)
             just build-plugin "$game_id"
 
-            # Sign WASM
-            wasm_file="plugins/${game_id}/${game_id}.wasm"
-            go run ./cmd/savecraft-sign/ "$wasm_file" /tmp/signing_key.priv
+            # Sign parser
+            parser_file="plugins/${game_id}/parser.wasm"
+            go run ./cmd/savecraft-sign/ "$parser_file" /tmp/signing_key.priv
+
+            # Sign reference if it exists
+            ref_file="plugins/${game_id}/reference.wasm"
+            if [ -f "$ref_file" ]; then
+              go run ./cmd/savecraft-sign/ "$ref_file" /tmp/signing_key.priv
+            fi
 
             # Generate manifest with version from tag/computed
             go run ./cmd/plugin-manifest/ --version "$VERSION" "plugins/${game_id}"
 
             # Upload to R2
-            wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/parser.wasm" --file "$wasm_file" --remote
-            wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/parser.wasm.sig" --file "${wasm_file}.sig" --remote
+            wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/parser.wasm" --file "$parser_file" --remote
+            wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/parser.wasm.sig" --file "${parser_file}.sig" --remote
+            if [ -f "$ref_file" ]; then
+              wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/reference.wasm" --file "$ref_file" --remote
+              wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/reference.wasm.sig" --file "${ref_file}.sig" --remote
+            fi
             wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json" --remote
 
             echo "    Published ${game_id} v${VERSION}"

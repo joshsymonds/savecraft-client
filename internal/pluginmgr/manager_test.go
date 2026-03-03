@@ -197,7 +197,7 @@ func TestEnsurePlugin_CacheHit(t *testing.T) {
 func TestEnsurePlugin_LocalOverride(t *testing.T) {
 	localDir := t.TempDir()
 	wasm := []byte("local wasm")
-	wasmPath := filepath.Join(localDir, "d2r.wasm")
+	wasmPath := filepath.Join(localDir, "parser.wasm")
 	if err := os.WriteFile(wasmPath, wasm, 0o600); err != nil {
 		t.Fatalf("write local wasm: %v", err)
 	}
@@ -395,8 +395,8 @@ func TestEnsurePlugin_LocalOverrideWithSig(t *testing.T) {
 	wasm := []byte("local wasm with sig")
 	sig := signing.Sign(priv, wasm)
 
-	wasmPath := filepath.Join(localDir, "d2r.wasm")
-	sigPath := filepath.Join(localDir, "d2r.wasm.sig")
+	wasmPath := filepath.Join(localDir, "parser.wasm")
+	sigPath := filepath.Join(localDir, "parser.wasm.sig")
 	if err := os.WriteFile(wasmPath, wasm, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -428,8 +428,8 @@ func TestEnsurePlugin_LocalOverrideBadSig(t *testing.T) {
 	wasm := []byte("local wasm bad sig")
 	badSig := make([]byte, ed25519.SignatureSize)
 
-	wasmPath := filepath.Join(localDir, "d2r.wasm")
-	sigPath := filepath.Join(localDir, "d2r.wasm.sig")
+	wasmPath := filepath.Join(localDir, "parser.wasm")
+	sigPath := filepath.Join(localDir, "parser.wasm.sig")
 	if err := os.WriteFile(wasmPath, wasm, 0o600); err != nil {
 		t.Fatal(err)
 	}

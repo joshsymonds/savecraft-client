@@ -43,6 +43,9 @@
     pkgs.nodePackages.npm
     pkgs.nodePackages.wrangler
 
+    # WASM tooling
+    pkgs.wabt           # wasm-objdump, wasm2wat, wat2wasm
+
     # Build tooling
     pkgs.just           # command runner (Justfile)
 

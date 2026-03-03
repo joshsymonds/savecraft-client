@@ -166,6 +166,17 @@ github = "joshsymonds"
 windows = "%USERPROFILE%/Saved Games/Diablo II Resurrected"
 linux = "~/.local/share/Diablo II Resurrected"
 darwin = "~/Library/Application Support/Diablo II Resurrected"
+
+# Optional: reference modules for server-side computation
+[reference.modules.drop_calc]
+name = "Drop Calculator"
+description = "Compute drop probabilities for any item from any farmable source."
+
+[reference.modules.drop_calc.attribution]
+author = "Josh Symonds"
+data_sources = [
+  { name = "TreasureClassEx.txt", origin = "Diablo II game data tables" },
+]
 ```
 
 **Field reference:**
@@ -184,8 +195,57 @@ darwin = "~/Library/Application Support/Diablo II Resurrected"
 | `author.name` | yes | Plugin author's display name |
 | `author.github` | yes | GitHub username |
 | `default_paths` | yes | Per-OS default save directory (env vars and `~` expanded by daemon) |
+| `reference.modules.*` | no | Reference modules for server-side computation (name, description, attribution) |
 
 The daemon resolves environment variables and `~` in default paths at startup. If a declared path exists, it auto-configures. The user can override paths via the web settings UI; overrides are stored per-device in D1.
+
+## Reference Modules (Server-Side WASM)
+
+Plugins can optionally ship a second WASM binary (`reference.wasm`) for server-side computation — drop calculators, breakpoint tables, item databases. These run in the cloud, not the daemon.
+
+### Architecture: Workers for Platforms
+
+Each reference plugin deploys as its own Cloudflare Worker via Workers for Platforms (WfP). The main Savecraft Worker dispatches to reference Workers through a `DispatchNamespace` binding:
+
+```
+MCP client → main Worker → env.REFERENCE_PLUGINS.get("d2r-reference").fetch(request)
+                          → D2R reference Worker (static WASM import + WASI shim)
+                          → reference.wasm executes query via stdin/stdout
+                          ← ndjson result
+```
+
+**Why WfP, not inline execution?** `WebAssembly.compile()` is blocked by workerd's V8 security policy everywhere — production, dev, and tests. WfP solves this by pre-compiling WASM at deploy time via static `import` statements. Each reference Worker is a pure computation sandbox with zero bindings (no KV, no R2, no D1).
+
+### Reference Worker Structure
+
+Each reference Worker is a standalone package in its plugin directory:
+
+```
+plugins/d2r/worker/
+├── src/
+│   ├── index.ts          # Static WASM import + WASI shim execution
+│   ├── wasi-shim.ts      # Minimal WASI Preview 1 adapter (~235 LOC)
+│   └── wasm.d.ts         # Type declaration for .wasm imports
+├── test/
+│   └── reference.test.ts # Standalone tests via vitest-pool-workers
+├── wrangler.toml         # Zero bindings — pure computation sandbox
+├── vitest.config.ts
+└── package.json
+```
+
+The Worker accepts POST requests, passes the body as stdin to the WASM module, and returns stdout as the response. The WASI shim provides only `fd_read` (stdin) and `fd_write` (stdout/stderr) — no filesystem, no network, no environment access.
+
+### Reference Contract
+
+Same ndjson contract as parsers, but with JSON query input instead of binary save data:
+
+- **Input:** JSON query string on stdin
+- **Output:** ndjson on stdout (`{"type": "result", ...}` or `{"type": "error", ...}`)
+- **Schema discovery:** Empty query `{}` returns the module's parameter schema
+
+### Dispatch Namespace Setup
+
+The main Worker has a `REFERENCE_PLUGINS` dispatch namespace binding configured in `wrangler.toml`. Reference Workers are deployed to the namespace with names following the pattern `{game_id}-reference` (e.g., `d2r-reference`).
 
 ## Plugin Manifest (`manifest.json`)
 
@@ -206,9 +266,13 @@ Plugins are hosted alongside their manifests in R2:
 plugins/{game_id}/manifest.json
 plugins/{game_id}/parser.wasm
 plugins/{game_id}/parser.wasm.sig
+plugins/{game_id}/reference.wasm        # optional, if plugin has reference modules
+plugins/{game_id}/reference.wasm.sig
 ```
 
-**Polling:** Daemon checks `GET /api/v1/plugins/manifest` on startup and every 24 hours. Response is a JSON object mapping game IDs to plugin metadata (version, sha256, url, plus all `plugin.toml` fields). Daemon compares local versions, downloads updates as needed.
+**Dual targets:** Plugins can optionally ship two WASM binaries from shared source. `parser.wasm` runs in the daemon (save file parsing). `reference.wasm` runs in the Worker (server-side reference data computation like drop rates). Both use the same ndjson stdin/stdout contract and Ed25519 signing.
+
+**Polling:** Daemon checks `GET /api/v1/plugins/manifest` on startup and every 24 hours. Response is a JSON object mapping game IDs to plugin metadata (version, sha256, url, plus all `plugin.toml` fields). If the plugin has a reference module, the manifest includes a `reference` field with its own sha256, url, and module list. Daemon compares local versions, downloads updates as needed.
 
 **Signing:** Every `.wasm` binary is signed with an Ed25519 private key held by Savecraft (`SIGNING_PRIVATE_KEY` in GitHub Actions secrets, base64-encoded raw 32-byte key). A `.sig` file ships alongside each `.wasm`. The daemon has the public key baked in (`internal/signing/signing_key.pub`) and verifies signatures before loading. Unsigned or tampered modules are refused.
 

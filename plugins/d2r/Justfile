@@ -1,5 +1,11 @@
-build:
-    GOOS=wasip1 GOARCH=wasm go build -o d2r.wasm .
+build: build-parser build-reference
+
+build-parser:
+    GOOS=wasip1 GOARCH=wasm go build -o parser.wasm ./parser
+
+build-reference:
+    GOOS=wasip1 GOARCH=wasm go build -o reference.wasm ./reference
+    cp reference.wasm worker/reference.wasm
 
 test:
     go test -v ./d2s/
@@ -20,7 +26,43 @@ build-casc-extract:
     make -j"$(nproc)"
     echo "Built: tools/casc-extract/build/casc-extract"
 
-# Extract a file from D2R CASC: just casc-extract "data/global/excel/Skills.txt"
+# Extract all game data TSVs needed by datagen from D2R CASC archives.
+# Requires: just build-casc-extract, D2R Data directory at reference/d2r-casc
+extract-gamedata:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    extractor="tools/casc-extract/build/casc-extract"
+    casc="../../reference/d2r-casc"
+    dest="../../reference/d2r-rotw-excel"
+    if [ ! -f "$extractor" ]; then
+        echo "casc-extract not built. Run: just build-casc-extract" >&2
+        exit 1
+    fi
+    if [ ! -d "$casc" ]; then
+        echo "CASC data not found at $casc. Copy your D2R Data directory there." >&2
+        exit 1
+    fi
+    mkdir -p "$dest"
+    files=(
+        "data/global/excel/TreasureClassEx.txt"
+        "data/global/excel/ItemRatio.txt"
+        "data/global/excel/Armor.txt"
+        "data/global/excel/Weapons.txt"
+        "data/global/excel/Misc.txt"
+        "data/global/excel/ItemTypes.txt"
+        "data/global/excel/MonStats.txt"
+        "data/global/excel/Levels.txt"
+        "data/global/excel/Skills.txt"
+        "data/global/excel/ItemStatCost.txt"
+    )
+    for f in "${files[@]}"; do
+        basename=$(basename "$f" | tr '[:upper:]' '[:lower:]')
+        echo "Extracting $basename..."
+        "$extractor" "$casc" "$f" "$dest/$basename"
+    done
+    echo "Done. Game data extracted to $dest"
+
+# Extract a single file from D2R CASC: just casc-extract "data/global/excel/Skills.txt"
 casc-extract file:
     #!/usr/bin/env bash
     set -euo pipefail

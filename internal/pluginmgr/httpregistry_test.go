@@ -16,7 +16,7 @@ func TestHTTPRegistry_FetchManifest(t *testing.T) {
 				"name": "Diablo II: Resurrected",
 				"version": "1.0.0",
 				"sha256": "abc123",
-				"url": "https://example.com/d2r.wasm",
+				"url": "https://example.com/plugins/d2r/parser.wasm",
 				"default_paths": {
 					"windows": "%USERPROFILE%/Saved Games/Diablo II Resurrected",
 					"linux": "~/Games/d2r/saves"

@@ -9,6 +9,7 @@
 | R2 (`savecraft-saves`) | User save snapshots | 10M reads, 1M writes/month |
 | R2 (`savecraft-plugins`) | Plugin binaries and manifests | (shared free tier) |
 | D1 | User accounts, device configs, device events, save UUID mapping, note content, FTS5 search index, plugin registry metadata | 5M rows read, 100K writes/day |
+| Workers for Platforms | Dispatch namespace for reference plugin Workers (drop calculators, etc.) | $25/month flat (included in Workers Paid plan) |
 
 **Cost projections:**
 - 1K paying users ($5K/month revenue): infrastructure <$100/month
@@ -36,6 +37,7 @@ Neither R2 bucket has public access. The Worker (with R2 bindings) is the only r
 ### WASM Plugin Security
 
 - **Daemon-side (parser):** wazero sandbox — plugins can only read stdin and write stdout/stderr. No filesystem, no network, no env vars.
+- **Server-side (reference):** Workers for Platforms sandbox — each reference Worker has zero bindings (no KV, no R2, no D1). WASI shim provides only stdin/stdout. Pure computation.
 - Ed25519 signature verification before loading any plugin.
 - Community submits source → maintainer reviews → CI builds → release pipeline signs.
 
@@ -225,6 +227,18 @@ Triggered by `daemon-v*` tags. Four parallel-then-sequential jobs:
 Triggered by per-game tags (`plugin-{game_id}-v*`) or `workflow_dispatch` (manual, specify game_id). For each plugin: build parser WASM → sign with Ed25519 → generate manifest → upload to R2. Creates a GitHub Release and notifies Discord.
 
 **Plugin versioning:** Version comes from git tags via the shared composite action. `plugin.toml` contains metadata (name, description, file extensions, etc.) but not version. The `cmd/plugin-manifest` tool accepts `--version` as a CLI argument to stamp the manifest.
+
+### Reference Worker Deploy Pipeline
+
+Reference plugin Workers are deployed to Workers for Platforms dispatch namespaces. Each game's reference Worker is a standalone package (e.g., `plugins/d2r/worker/`) with its own `wrangler.toml`.
+
+**Dispatch namespaces:**
+- Production: `savecraft-reference-plugins`
+- Staging: `savecraft-reference-plugins-staging`
+
+**Deployment:** Reference Workers deploy via `wrangler deploy` with the `--dispatch-namespace` flag. The Worker name follows the pattern `{game_id}-reference` (e.g., `d2r-reference`). The main Worker dispatches to these via `env.REFERENCE_PLUGINS.get("d2r-reference")`.
+
+**CI integration:** Reference Worker deploys are triggered alongside plugin deploys by `plugin-{game_id}-v*` tags. The deploy pipeline builds `reference.wasm`, copies it into the worker package, and runs `wrangler deploy --dispatch-namespace savecraft-reference-plugins`.
 
 ### Signing Key
 

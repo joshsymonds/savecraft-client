@@ -43,6 +43,10 @@ test-go-race:
 test-worker:
     cd worker && npm test
 
+# Run reference Worker tests
+test-reference-worker:
+    cd plugins/d2r/worker && npm test
+
 # Start Worker dev server (Miniflare)
 dev-worker:
     cd worker && npx wrangler dev
@@ -241,7 +245,7 @@ fmt-go-check:
 lint: lint-go lint-worker lint-web lint-site lint-sh fmt-go-check fmt-worker-check fmt-web-check fmt-site-check fmt-sh-check check-web check-site
 
 # Run all tests
-test: test-go test-worker test-web test-site test-install-worker test-install-docker
+test: test-go test-worker test-reference-worker test-web test-site test-install-worker test-install-docker
 
 # Check everything: lint, generate, format, test
 check: proto-lint proto lint test

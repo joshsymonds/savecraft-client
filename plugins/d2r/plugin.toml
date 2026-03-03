@@ -18,3 +18,14 @@ github = "joshsymonds"
 windows = "%USERPROFILE%/Saved Games/Diablo II Resurrected"
 linux = "~/.steam/steam/steamapps/compatdata/2536520/pfx/drive_c/users/steamuser/Saved Games/Diablo II Resurrected"
 darwin = "~/Library/Application Support/Diablo II Resurrected"
+
+[reference.modules.drop_calc]
+name = "Drop Calculator"
+description = "Compute drop probabilities for any item from any farmable source, accounting for Magic Find, player count, and treasure class mechanics."
+
+[reference.modules.drop_calc.attribution]
+author = "Josh Symonds"
+data_sources = [
+  { name = "TreasureClassEx.txt", origin = "Diablo II game data tables" },
+  { name = "ItemRatio.txt", origin = "Diablo II game data tables" },
+]
