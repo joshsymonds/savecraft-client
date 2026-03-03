@@ -45,7 +45,7 @@ test-worker:
 
 # Run reference Worker tests
 test-reference-worker:
-    cd plugins/d2r/worker && npm test
+    cd reference && npm test
 
 # Start Worker dev server (Miniflare)
 dev-worker:

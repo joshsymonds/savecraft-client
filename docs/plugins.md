@@ -218,10 +218,10 @@ MCP client → main Worker → env.REFERENCE_PLUGINS.get("d2r-reference").fetch(
 
 ### Reference Worker Structure
 
-Each reference Worker is a standalone package in its plugin directory:
+The shared reference Worker (`reference/`) is a game-agnostic WASI shim that executes any plugin's `reference.wasm`:
 
 ```
-plugins/d2r/worker/
+reference/
 ├── src/
 │   ├── index.ts          # Static WASM import + WASI shim execution
 │   ├── wasi-shim.ts      # Minimal WASI Preview 1 adapter (~235 LOC)
@@ -233,7 +233,7 @@ plugins/d2r/worker/
 └── package.json
 ```
 
-The Worker accepts POST requests, passes the body as stdin to the WASM module, and returns stdout as the response. The WASI shim provides only `fd_read` (stdin) and `fd_write` (stdout/stderr) — no filesystem, no network, no environment access.
+The Worker accepts POST requests, passes the body as stdin to the WASM module, and returns stdout as the response. The WASI shim provides only `fd_read` (stdin) and `fd_write` (stdout/stderr) — no filesystem, no network, no environment access. CI copies each game's `reference.wasm` into this directory and deploys as `{game_id}-reference` to the WfP dispatch namespace.
 
 ### Reference Contract
 

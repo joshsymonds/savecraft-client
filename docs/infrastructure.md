@@ -230,7 +230,7 @@ Triggered by per-game tags (`plugin-{game_id}-v*`) or `workflow_dispatch` (manua
 
 ### Reference Worker Deploy Pipeline
 
-Reference plugin Workers are deployed to Workers for Platforms dispatch namespaces. Each game's reference Worker is a standalone package (e.g., `plugins/d2r/worker/`) with its own `wrangler.toml`.
+Reference plugin Workers are deployed to Workers for Platforms dispatch namespaces. The shared WASI shim (`reference/`) is deployed once per game with the game's `reference.wasm` baked in.
 
 **Dispatch namespaces:**
 - Production: `savecraft-reference-plugins`
@@ -238,7 +238,7 @@ Reference plugin Workers are deployed to Workers for Platforms dispatch namespac
 
 **Deployment:** Reference Workers deploy via `wrangler deploy` with the `--dispatch-namespace` flag. The Worker name follows the pattern `{game_id}-reference` (e.g., `d2r-reference`). The main Worker dispatches to these via `env.REFERENCE_PLUGINS.get("d2r-reference")`.
 
-**CI integration:** Reference Worker deploys are triggered alongside plugin deploys by `plugin-{game_id}-v*` tags. The deploy pipeline builds `reference.wasm`, copies it into the worker package, and runs `wrangler deploy --dispatch-namespace savecraft-reference-plugins`.
+**CI integration:** Reference Worker deploys are triggered alongside plugin deploys by `plugin-{game_id}-v*` tags. The deploy pipeline builds `reference.wasm`, copies it into the shared `reference/` directory, and runs `wrangler deploy --dispatch-namespace savecraft-reference-plugins`.
 
 ### Signing Key
 

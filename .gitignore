@@ -60,7 +60,7 @@ internal/signing/signing_key.priv
 dist/
 site/build/
 
-# References
-/reference/
+# Local reference material (cloned repos, data dumps)
+/.reference/
 
 /savecraft-verify
