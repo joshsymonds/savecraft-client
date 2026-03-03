@@ -15,6 +15,7 @@ message Message {
     // Daemon lifecycle (1-9)
     DaemonOnline daemon_online = 1;
     DaemonOffline daemon_offline = 2;
+    DaemonHeartbeat daemon_heartbeat = 3;
 
     // Game discovery (10-19)
     ScanStarted scan_started = 10;
@@ -73,6 +74,9 @@ message DaemonOffline {
   string device_id = 1;
   google.protobuf.Timestamp timestamp = 2;
 }
+
+// Periodic keepalive from daemon. Hub updates lastSeen but does not relay to UI.
+message DaemonHeartbeat {}
 
 // --- Game discovery ---
 
