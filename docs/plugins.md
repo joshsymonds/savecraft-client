@@ -1,0 +1,215 @@
+# WASM Plugin System
+
+## Why WASM
+
+- **Cross-platform:** One .wasm binary works on Windows x86, Linux x86, Linux ARM (Steam Deck). No per-platform compilation for plugins.
+- **Sandboxed:** Plugins cannot access filesystem, network, or environment. They process bytes the daemon feeds them via stdin and emit JSON to stdout. Structurally impossible to exfiltrate data.
+- **Community-friendly:** Contributors write parsers in Go (or Rust/Zig), compile to WASM. Same toolchain as the daemon for Go plugins.
+- **Language-agnostic build:** Each plugin provides a `Justfile` with a `just build` target that produces a `.wasm` file in the plugin directory. The top-level `just build-plugin <name>` delegates to the plugin's own build. The daemon doesn't care what language the plugin is written in — only that it speaks WASI Preview 1 with the ndjson contract.
+
+## Runtime: wazero
+
+Pure-Go WASM runtime. No CGO, no libc, no external dependencies. Supports WASI Preview 1 (the stable, widely-implemented version). wazero compiles WASM to native machine code at load time for near-native performance.
+
+WASI Preview 2 (Component Model) is not used — wazero doesn't support it yet, and Preview 1 is sufficient for the stdin/stdout contract.
+
+## Plugin Contract: ndjson on stdout via WASI
+
+Plugins are compiled as WASI executables. The daemon feeds raw save file bytes on stdin. The plugin writes newline-delimited JSON (ndjson) to stdout. No manual memory management, no malloc/free exports, no pointer arithmetic.
+
+**Input:** Raw save file bytes on stdin.
+
+**Output:** Newline-delimited JSON on stdout. Every line is a JSON object with a `type` field:
+
+- `"status"` — Progress update. Optional. Plugin authors emit these for long-running or multi-step parses. The daemon forwards them to the UI via WebSocket.
+- `"result"` — Final GameState output. **Required on exit code 0.** Must be the last line.
+- `"error"` — Structured error. **Required on exit code 1.** Must be the last line.
+
+**stderr** is for unstructured debug logging. The daemon captures it for diagnostics but does not parse it.
+
+**Status line:**
+```json
+{"type": "status", "message": "Found 3 save files in directory"}
+{"type": "status", "message": "Decoding inventory (247 items)"}
+```
+
+**Result line (success, exit code 0):**
+```json
+{"type": "result", "identity": {...}, "summary": "...", "sections": {...}}
+```
+
+**Error line (failure, exit code 1):**
+```json
+{"type": "error", "error_type": "corrupt_file", "message": "Human-readable description", "byte_offset": 1234}
+```
+
+Valid `error_type` values: `unsupported_version`, `corrupt_file`, `parse_error`.
+
+**Plugin Go source example (D2R):**
+
+```go
+// plugins/d2r/main.go
+package main
+
+import (
+    "encoding/json"
+    "io"
+    "os"
+)
+
+var enc = json.NewEncoder(os.Stdout)
+
+func main() {
+    data, err := io.ReadAll(os.Stdin)
+    if err != nil {
+        writeError("parse_error", "failed to read stdin: "+err.Error())
+        os.Exit(1)
+    }
+
+    enc.Encode(map[string]string{"type": "status", "message": "Read " + fmt.Sprintf("%d", len(data)) + " bytes"})
+
+    state, err := ParseD2S(data)
+    if err != nil {
+        writeError("corrupt_file", err.Error())
+        os.Exit(1)
+    }
+
+    enc.Encode(map[string]any{
+        "type":     "result",
+        "identity": state.Identity,
+        "summary":  state.Summary,
+        "sections": state.Sections,
+    })
+}
+
+func writeError(errType, message string) {
+    enc.Encode(map[string]string{
+        "type":       "error",
+        "error_type": errType,
+        "message":    message,
+    })
+}
+```
+
+Simple plugins that don't need progress updates just emit a single result line. The status lines are optional.
+
+**Reference plugin (echo):** `plugins/echo/` is a minimal plugin that reads stdin and reflects its content back as a GameState. It validates the ndjson contract and wazero integration end-to-end without any game-specific logic. Tests use it to verify the runner, status forwarding, and error paths.
+
+**Daemon-side execution with wazero:**
+
+```go
+// Pseudocode for plugin execution
+ctx := context.Background()
+r := wazero.NewRuntime(ctx)
+wasi_snapshot_preview1.MustInstantiate(ctx, r)
+
+// stdout is a pipe — daemon reads ndjson lines as they arrive
+stdoutR, stdoutW := io.Pipe()
+var stderr bytes.Buffer
+
+config := wazero.NewModuleConfig().
+    WithStdin(bytes.NewReader(saveFileBytes)).
+    WithStdout(stdoutW).
+    WithStderr(&stderr)
+
+// Read stdout lines in a goroutine
+go func() {
+    scanner := bufio.NewScanner(stdoutR)
+    for scanner.Scan() {
+        line := scanner.Bytes()
+        msg := parsePluginLine(line)
+        switch msg.Type {
+        case "status":
+            // Forward to WebSocket as PluginStatus event
+            ws.Send(PluginStatus{GameID: gameID, FileName: fileName, Message: msg.Message})
+        case "result":
+            // Store as the final GameState
+            gameState = msg.GameState
+        case "error":
+            // Store as the parse error
+            parseErr = msg.Error
+        }
+    }
+}()
+
+mod, err := r.InstantiateWithConfig(ctx, pluginWasm, config)
+stdoutW.Close()
+// Check exit code, use gameState or parseErr
+```
+
+**Size limit:** The daemon enforces a 2MB hard cap on the result line. If a plugin emits a result larger than 2MB, the daemon treats it as a parse error and logs a warning. Typical game state JSON is 10-500KB.
+
+## Plugin Metadata (`plugin.toml`)
+
+Each production plugin has a `plugin.toml` in its directory — the single source of truth for plugin metadata. Test plugins (echo, error, noop, crash) are dev-only and have no `plugin.toml`.
+
+```toml
+game_id = "d2r"
+name = "Diablo II: Resurrected"
+description = "Parses .d2s character save files from Reign of the Warlock (v105)"
+version = "0.0.1"
+channel = "beta"                          # "beta" or "stable"
+coverage = "partial"                      # "partial" or "full"
+file_extensions = [".d2s"]
+homepage = "https://savecraft.gg/plugins/d2r"
+
+limitations = [
+  "Shared stash (.d2i) not yet supported",
+  "Only Reign of the Warlock (v105) saves — classic LoD not supported",
+]
+
+[author]
+name = "Josh Symonds"
+github = "joshsymonds"
+
+[default_paths]
+windows = "%USERPROFILE%/Saved Games/Diablo II Resurrected"
+linux = "~/.local/share/Diablo II Resurrected"
+darwin = "~/Library/Application Support/Diablo II Resurrected"
+```
+
+**Field reference:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `game_id` | yes | Unique identifier, matches plugin directory name |
+| `name` | yes | Human-readable game title |
+| `description` | yes | What the plugin parses |
+| `version` | yes | Semver. Bump to trigger a plugin release |
+| `channel` | yes | `"beta"` or `"stable"` — daemon can filter by channel |
+| `coverage` | yes | `"partial"` (known limitations) or `"full"` |
+| `file_extensions` | yes | Save file extensions this plugin handles |
+| `homepage` | no | URL for plugin documentation |
+| `limitations` | no | Known gaps, shown in UI and MCP responses |
+| `author.name` | yes | Plugin author's display name |
+| `author.github` | yes | GitHub username |
+| `default_paths` | yes | Per-OS default save directory (env vars and `~` expanded by daemon) |
+
+The daemon resolves environment variables and `~` in default paths at startup. If a declared path exists, it auto-configures. The user can override paths via the web settings UI; overrides are stored per-device in D1.
+
+## Plugin Manifest (`manifest.json`)
+
+`manifest.json` is a **generated** artifact — never hand-edited. The `cmd/plugin-manifest/` Go tool reads `plugin.toml`, computes the sha256 of the built `.wasm` binaries, and writes `manifest.json` with all fields plus `sha256` and `url`. This manifest is uploaded to R2 alongside the signed WASM binaries.
+
+```
+just plugin-manifest d2r          # generate plugins/d2r/manifest.json
+just build-plugin d2r             # build the .wasm first
+```
+
+The manifest endpoint `GET /api/v1/plugins/manifest` returns all fields from R2 — version, sha256, name, description, channel, coverage, file_extensions, default_paths, limitations, author, homepage — plus a resolved download URL. The worker passes through whatever the manifest contains with no filtering.
+
+## Plugin Distribution
+
+Plugins are hosted alongside their manifests in R2:
+
+```
+plugins/{game_id}/manifest.json
+plugins/{game_id}/parser.wasm
+plugins/{game_id}/parser.wasm.sig
+```
+
+**Polling:** Daemon checks `GET /api/v1/plugins/manifest` on startup and every 24 hours. Response is a JSON object mapping game IDs to plugin metadata (version, sha256, url, plus all `plugin.toml` fields). Daemon compares local versions, downloads updates as needed.
+
+**Signing:** Every `.wasm` binary is signed with an Ed25519 private key held by Savecraft (`SIGNING_PRIVATE_KEY` in GitHub Actions secrets, base64-encoded raw 32-byte key). A `.sig` file ships alongside each `.wasm`. The daemon has the public key baked in (`internal/signing/signing_key.pub`) and verifies signatures before loading. Unsigned or tampered modules are refused.
+
+**Trust model:** Community contributors submit PRs with parser source code to the `plugins/` directory in the monorepo. Maintainer reviews source code and merges. Release pipeline builds the WASM, signs the binary, and uploads to R2. Same model as Linux package signing.

@@ -1,0 +1,231 @@
+# Infrastructure
+
+## Cloudflare Stack
+
+| Service | Purpose | Free Tier |
+|---------|---------|-----------|
+| Workers | MCP server, push API, auth endpoints | 100K requests/day |
+| Durable Objects | Per-user WebSocket hub for daemon ↔ web UI real-time communication | Requires Workers Paid ($5/mo); $0.15/M requests, $12.50/M GB-s duration |
+| R2 (`savecraft-saves`) | User save snapshots | 10M reads, 1M writes/month |
+| R2 (`savecraft-plugins`) | Plugin binaries and manifests | (shared free tier) |
+| D1 | User accounts, device configs, device events, save UUID mapping, note content, FTS5 search index, plugin registry metadata | 5M rows read, 100K writes/day |
+
+**Cost projections:**
+- 1K paying users ($5K/month revenue): infrastructure <$100/month
+- 10K users: $200-500/month
+
+### Why Cloudflare R2 over S3
+
+- Zero egress fees (S3 egress adds up at scale, and MCP reads = egress)
+- S3-compatible API (Go code unchanged if migrating later)
+- Free tier has absurd headroom for early stage
+- Workers in front for compute, same platform
+
+## Security Model
+
+### Principle: R2 is Private, Server Mediates All Access
+
+Neither R2 bucket has public access. The Worker (with R2 bindings) is the only reader/writer. Save access is scoped to the authenticated user's `users/{user_uuid}/` prefix. Plugin access is unauthenticated but read-only via the manifest API endpoint.
+
+### Daemon → Cloud Push
+
+- Daemon authenticates with bearer token tied to user account.
+- Server validates: well-formed JSON, under 5MB, expected top-level structure.
+- Write scoped to user's prefix only.
+
+### WASM Plugin Security
+
+- **Daemon-side (parser):** wazero sandbox — plugins can only read stdin and write stdout/stderr. No filesystem, no network, no env vars.
+- Ed25519 signature verification before loading any plugin.
+- Community submits source → maintainer reviews → CI builds → release pipeline signs.
+
+### MCP Server Hardening
+
+- Rate limiting per user.
+- Input validation on tool parameters (save_id and section validated against known values).
+- No user-supplied query language — tools are fixed-function.
+- OAuth token validation via KV lookup (no external call per request). Tokens are opaque, issued by our AS.
+
+### Privacy Advantage
+
+Save data flows through cloud and back via MCP. The AI never sees the user's local filesystem:
+- Cannot request arbitrary files.
+- Cannot discover what else is on the machine.
+- Cannot see save directory paths.
+- Only sees structured JSON that Savecraft chooses to serve.
+
+Better privacy posture than a local MCP server with filesystem access.
+
+### Daemon Sandboxing
+
+The daemon runs with the minimum permissions necessary on each platform. Users can verify the sandbox configuration themselves.
+
+**Linux / Steam Deck (systemd):**
+
+The systemd user unit declares kernel-enforced restrictions:
+
+```ini
+[Unit]
+Description=Savecraft Daemon
+After=network-online.target
+
+[Service]
+ExecStart=%h/.local/bin/savecraft-daemon
+Restart=on-failure
+RestartSec=5
+
+# Filesystem: read-only access to home, writable only for daemon's own config/cache
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.config/savecraft %h/.cache/savecraft
+
+# No privilege escalation
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+# Network: outbound only (no listening sockets)
+RestrictAddressFamilies=AF_INET AF_INET6
+
+[Install]
+WantedBy=default.target
+```
+
+These are not promises — they're kernel-level enforcement. Even if the daemon binary were compromised, it cannot write to save files, cannot access files outside its declared paths, cannot escalate privileges. The user can inspect the unit file: `cat ~/.config/systemd/user/savecraft.service`.
+
+The install script prints the sandbox summary after installation:
+
+```
+✓ Installed savecraft daemon
+✓ Sandbox enabled:
+    Read-only:  your game saves
+    Write:      ~/.config/savecraft only
+    Network:    outbound only (api.savecraft.gg)
+
+  Inspect: cat ~/.config/systemd/user/savecraft.service
+```
+
+## Installation: Linux / Steam Deck
+
+**Curl installer:**
+
+```bash
+curl -sSL https://install.savecraft.gg | bash
+```
+
+The install script:
+1. Detects architecture (amd64/arm64)
+2. Downloads signed daemon binary to `~/.local/bin/savecraft-daemon`
+3. Verifies Ed25519 signature against baked-in public key
+4. Installs systemd user unit to `~/.config/systemd/user/savecraft.service`
+5. Enables and starts the service (`systemctl --user enable --now savecraft`)
+6. Auto-detects game save directories by scanning known Steam/Proton paths
+7. Prints sandbox summary and opens `savecraft.gg/setup` for account linking
+
+**No root required.** Everything installs in `~/.local/bin/` and `~/.config/`. The daemon runs as a systemd user service under the current user. `inotify` (used by fsnotify) only needs read permission on watched directories.
+
+**Steam Deck specifics:** SteamOS is immutable — the root filesystem is read-only and resets on OS updates. But `~/.local/bin/` and `~/.config/` persist on the user partition. Systemd user services survive updates. Users need to switch to Desktop Mode to run the curl command via Konsole.
+
+**Auto-detection on Deck:** If `~/.local/share/Steam/steamapps/compatdata/` exists, the install script scans for known game save paths within the Proton prefix tree and pre-configures any games it finds.
+
+## Development Tooling
+
+### Protobuf + buf
+
+The WebSocket protocol is defined in `proto/protocol.proto`. `buf generate` produces Go types (`internal/proto/`) and TypeScript types (`worker/src/proto/`) from the same source. No mirrored types, no drift.
+
+GameState types (what plugins emit, what R2 stores, what MCP serves) are **not** in protobuf. Section data is arbitrary JSON per game — protobuf's `Struct` type is an awkward fit. GameState types are hand-written Go structs in `internal/daemon/` and TypeScript interfaces in `worker/src/types/`. The envelope is small and stable enough (4 fields) that the duplication is acceptable.
+
+### just
+
+`just` is the command runner. All build/test/lint/generate targets are in the `Justfile`. `just --list` shows available targets. `just check` runs everything.
+
+### Testing Strategy
+
+**Unit tests (fast, run on every change):**
+- Go: all external dependencies behind interfaces. Hand-written fakes for filesystem, WASM runtime, WebSocket client, HTTP push client. No mock libraries.
+- Worker: Vitest + Miniflare for local D1, R2, Durable Objects, WebSocket.
+- Svelte: component tests with mock WebSocket and API responses.
+
+**Integration tests (Docker Compose, CI + on-demand):**
+- Daemon binary + Miniflare Worker + real WebSocket connections + real file events.
+- End-to-end: write a save file → daemon detects → parses → pushes → MCP tool returns data.
+
+### Development Environment
+
+nix devenv + direnv. `devenv.nix` provides Go, Node, Wrangler, buf, just, and all development tools. `direnv allow` activates the environment automatically on `cd`.
+
+## CI & Deployment Pipeline
+
+CI and deployment are separate concerns. Push to `main` runs tests and deploys to **staging only**. Production deploys require explicit tags. All workflows live in `.github/workflows/`.
+
+### CI (`ci.yml`)
+
+Runs on every push to `main` and every PR. Uses `dorny/paths-filter` to skip jobs when irrelevant files change:
+
+| Job | Triggers on | Action on main push |
+|-----|-------------|---------------------|
+| `go` | `internal/**`, `cmd/**`, `plugins/**`, `proto/**`, `go.mod`, `go.sum` | Lint, test, proto check |
+| `worker` | `worker/**`, `proto/**` | Lint, test, **deploy to staging** |
+| `web` | `web/**` | Lint, typecheck, test, **deploy to staging** |
+| `plugins` | `plugins/*/plugin.toml`, `plugins/*/*.go`, `plugins/*/d2s/**` | Build, **upload to staging R2** |
+
+A web-only PR skips Go and Worker checks entirely. Deploy jobs run only on `main` push and only if the relevant paths changed.
+
+**Staging environments:**
+- Worker: `staging-api.savecraft.gg` (D1: `savecraft-staging`, R2: `savecraft-saves-staging`)
+- Web: `staging.savecraft.gg` (Cloudflare Pages `staging` branch)
+- Plugins: `savecraft-plugins-staging` R2 bucket (unsigned, for testing)
+
+### Unified Versioning
+
+All four deploy workflows share a single version computation via `.github/actions/compute-version/action.yml`. The composite action takes a `tag_prefix` input and outputs `version` and `environment`:
+
+- **Production:** When the git ref matches `{tag_prefix}*`, it extracts the semver from the tag.
+- **Staging:** Otherwise, it computes `0.0.0-dev.{GITHUB_RUN_NUMBER}.{SHORT_SHA}`.
+
+Versions are user-visible everywhere: daemon CLI (`--version`), install banner, MCP `serverInfo.version`, and `X-Savecraft-Version` response header on all API responses.
+
+### Production Releases
+
+Production deploys use tag-prefix namespaces. Each component has its own tag format, release workflow, GitHub Release with auto-generated changelog, and Discord notification.
+
+| Component | Tag format | Workflow | Artifacts |
+|-----------|-----------|----------|-----------|
+| Daemon | `daemon-v*` | `deploy-daemon.yml` | Binaries + install.sh + checksums |
+| Worker + Web | `cloud-v*` | `deploy-cloud.yml` | Changelog only (no binary artifacts) |
+| Plugins | `plugin-{game_id}-v*` | `deploy-plugin.yml` | Changelog only (plugins uploaded to R2) |
+
+**To release:**
+```bash
+# Deploy daemon v1.2.3
+git tag daemon-v1.2.3 && git push --tags
+
+# Deploy worker + web to production
+git tag cloud-v1.0.0 && git push --tags
+
+# Release a specific plugin to production
+git tag plugin-d2r-v0.0.3 && git push --tags
+```
+
+**Changelog scoping:** All release workflows use `gh release create --generate-notes --notes-start-tag <previous-tag-of-same-prefix>`. This ensures changelogs only include commits since the last release of that component.
+
+**`cloud-v*` re-runs tests** before deploying to production. `daemon-v*` and `plugin-*-v*` do not re-run tests.
+
+### Daemon Deploy Pipeline (`deploy-daemon.yml`)
+
+Triggered by `daemon-v*` tags. Four parallel-then-sequential jobs:
+
+1. **Build:** Cross-compile for 5 platforms (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64)
+2. **Sign:** Ed25519 signature on each binary, SHA256 checksums
+3. **Upload to R2:** Binaries + signatures + daemon manifest to `savecraft-install/daemon/`
+4. **GitHub Release:** Create release with all artifacts, notify Discord
+
+### Plugin Deploy Pipeline (`deploy-plugin.yml`)
+
+Triggered by per-game tags (`plugin-{game_id}-v*`) or `workflow_dispatch` (manual, specify game_id). For each plugin: build parser WASM → sign with Ed25519 → generate manifest → upload to R2. Creates a GitHub Release and notifies Discord.
+
+**Plugin versioning:** Version comes from git tags via the shared composite action. `plugin.toml` contains metadata (name, description, file extensions, etc.) but not version. The `cmd/plugin-manifest` tool accepts `--version` as a CLI argument to stamp the manifest.
+
+### Signing Key
+
+Ed25519 keypair generated by `just keygen` (`cmd/savecraft-keygen/`). The public key (`internal/signing/signing_key.pub`) is checked into the repo and baked into daemon binaries and `install.sh`. The private key is base64-encoded and stored as `SIGNING_PRIVATE_KEY` in GitHub Actions secrets. Staging plugin deploys skip signing.

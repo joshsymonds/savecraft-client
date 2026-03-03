@@ -133,7 +133,7 @@ just proto           # Regenerate Go + TypeScript from protobuf
 just dev-worker      # Start Worker dev server (Miniflare)
 ```
 
-See [`docs/savecraft-architecture.md`](docs/savecraft-architecture.md) for the full architecture document.
+See [`docs/overview.md`](docs/overview.md) for the system architecture, or browse `docs/` for component-specific documentation.
 
 ## Security
 
