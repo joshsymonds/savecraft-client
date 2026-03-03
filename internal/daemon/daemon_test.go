@@ -280,10 +280,10 @@ func (ws *fakeWSClient) Send(msg []byte) error {
 	return nil
 }
 
-func (ws *fakeWSClient) Messages() <-chan []byte    { return ws.messages }
+func (ws *fakeWSClient) Messages() <-chan []byte      { return ws.messages }
 func (ws *fakeWSClient) Reconnected() <-chan struct{} { return ws.reconnected }
-func (ws *fakeWSClient) Close() error               { return nil }
-func (ws *fakeWSClient) Connected() bool            { return ws.connected }
+func (ws *fakeWSClient) Close() error                 { return nil }
+func (ws *fakeWSClient) Connected() bool              { return ws.connected }
 
 func (ws *fakeWSClient) sentEventTypes() []string {
 	ws.mu.Lock()
