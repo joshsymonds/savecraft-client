@@ -39,6 +39,17 @@ type Identity struct {
 	Extra    map[string]any `json:"extra,omitempty"`
 }
 
+// toWire returns Identity as a map matching proto SaveIdentity JSON field names.
+// The proto uses "name" (not "saveName"), so we can't marshal Identity directly
+// into WebSocket events that the hub parses via Message.fromJSON().
+func (id Identity) toWire() map[string]any {
+	m := map[string]any{"name": id.SaveName}
+	if len(id.Extra) > 0 {
+		m["extra"] = id.Extra
+	}
+	return m
+}
+
 // Section is a named block of game state data.
 type Section struct {
 	Description string `json:"description"`
@@ -691,7 +702,7 @@ func (d *Daemon) parseAndPush(
 	d.sendEvent(ctx, "parseCompleted", map[string]any{
 		"gameId":        gameID,
 		"fileName":      fileName,
-		"identity":      state.Identity,
+		"identity":      state.Identity.toWire(),
 		"summary":       state.Summary,
 		"sectionsCount": len(state.Sections),
 		"sizeBytes":     len(stateJSON),
@@ -736,7 +747,7 @@ func (d *Daemon) pushState(
 		"saveUuid":          result.SaveUUID,
 		"summary":           state.Summary,
 		"snapshotSizeBytes": len(stateJSON),
-		"identity":          state.Identity,
+		"identity":          state.Identity.toWire(),
 	})
 }
 
