@@ -562,6 +562,13 @@ func parseExtendedBits(br *bitReader, item *Item, version uint32, realm byte) er
 		item.Quantity = uint(qty)
 	}
 
+	// v105: extra bit before socket count.
+	if version >= versionD2Rv105 {
+		if _, err = br.ReadBits(1); err != nil {
+			return err
+		}
+	}
+
 	// Total sockets
 	if item.Socketed {
 		ns, err := br.ReadBits(4)
@@ -576,13 +583,6 @@ func parseExtendedBits(br *bitReader, item *Item, version uint32, realm byte) er
 	if item.Quality == QualitySet {
 		plistFlag, err = br.ReadBits(5)
 		if err != nil {
-			return err
-		}
-	}
-
-	// v105: extra bit after set list value, before magic properties.
-	if version >= versionD2Rv105 {
-		if _, err = br.ReadBits(1); err != nil {
 			return err
 		}
 	}
