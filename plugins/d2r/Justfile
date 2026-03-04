@@ -54,6 +54,8 @@ extract-gamedata:
         "data/global/excel/Levels.txt"
         "data/global/excel/Skills.txt"
         "data/global/excel/ItemStatCost.txt"
+        "data/global/excel/UniqueItems.txt"
+        "data/global/excel/SetItems.txt"
     )
     for f in "${files[@]}"; do
         basename=$(basename "$f" | tr '[:upper:]' '[:lower:]')
