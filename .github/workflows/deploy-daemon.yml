@@ -82,6 +82,7 @@ jobs:
       r2_bucket: ${{ steps.config.outputs.r2_bucket }}
       app_name: ${{ steps.config.outputs.app_name }}
       status_port: ${{ steps.config.outputs.status_port }}
+      frontend_url: ${{ steps.config.outputs.frontend_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -103,6 +104,7 @@ jobs:
             echo "r2_bucket=savecraft-install" >> "$GITHUB_OUTPUT"
             echo "app_name=savecraft" >> "$GITHUB_OUTPUT"
             echo "status_port=9182" >> "$GITHUB_OUTPUT"
+            echo "frontend_url=https://savecraft.gg" >> "$GITHUB_OUTPUT"
           else
             echo "is_production=false" >> "$GITHUB_OUTPUT"
             echo "install_url=https://install-staging.savecraft.gg" >> "$GITHUB_OUTPUT"
@@ -110,6 +112,7 @@ jobs:
             echo "r2_bucket=savecraft-install-staging" >> "$GITHUB_OUTPUT"
             echo "app_name=savecraft-staging" >> "$GITHUB_OUTPUT"
             echo "status_port=9183" >> "$GITHUB_OUTPUT"
+            echo "frontend_url=https://staging.savecraft.gg" >> "$GITHUB_OUTPUT"
           fi
 
   build:
@@ -134,7 +137,8 @@ jobs:
           INSTALL_URL: ${{ needs.environment.outputs.install_url }}
           APP_NAME: ${{ needs.environment.outputs.app_name }}
           STATUS_PORT: ${{ needs.environment.outputs.status_port }}
-        run: just build-daemon-all "$VERSION" "$SERVER_URL" "$INSTALL_URL" "$APP_NAME" "$STATUS_PORT"
+          FRONTEND_URL: ${{ needs.environment.outputs.frontend_url }}
+        run: just build-daemon-all "$VERSION" "$SERVER_URL" "$INSTALL_URL" "$APP_NAME" "$STATUS_PORT" "$FRONTEND_URL"
 
       - uses: actions/upload-artifact@v4
         with:

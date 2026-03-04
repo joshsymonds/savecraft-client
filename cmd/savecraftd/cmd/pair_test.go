@@ -32,7 +32,7 @@ func TestRunPairWithPath(t *testing.T) {
 		dir := t.TempDir()
 		envPath := filepath.Join(dir, "env")
 
-		pairCmd := buildPairCommand("savecraft")
+		pairCmd := buildPairCommand("savecraft", "https://savecraft.gg")
 		pairCmd.SetArgs([]string{"--server", srv.URL})
 		pairCmd.SetIn(bytes.NewBufferString("123456\n"))
 
@@ -42,7 +42,7 @@ func TestRunPairWithPath(t *testing.T) {
 
 		// Override RunE to use test env path.
 		pairCmd.RunE = func(cmd *cobra.Command, _ []string) error {
-			return runPairWithPath(cmd, srv.URL, false, envPath)
+			return runPairWithPath(cmd, srv.URL, false, envPath, "savecraftd")
 		}
 
 		err := pairCmd.Execute()
@@ -76,7 +76,7 @@ func TestRunPairWithPath(t *testing.T) {
 			t.Fatalf("write: %v", err)
 		}
 
-		pairCmd := buildPairCommand("savecraft")
+		pairCmd := buildPairCommand("savecraft", "https://savecraft.gg")
 		pairCmd.SetArgs([]string{"--server", "https://example.com"})
 		pairCmd.SetIn(bytes.NewBufferString("123456\n"))
 
@@ -85,7 +85,7 @@ func TestRunPairWithPath(t *testing.T) {
 		pairCmd.SetErr(&out)
 
 		pairCmd.RunE = func(cmd *cobra.Command, _ []string) error {
-			return runPairWithPath(cmd, "https://example.com", false, envPath)
+			return runPairWithPath(cmd, "https://example.com", false, envPath, "savecraftd")
 		}
 
 		err := pairCmd.Execute()
@@ -115,7 +115,7 @@ func TestRunPairWithPath(t *testing.T) {
 			t.Fatalf("write: %v", err)
 		}
 
-		pairCmd := buildPairCommand("savecraft")
+		pairCmd := buildPairCommand("savecraft", "https://savecraft.gg")
 		pairCmd.SetArgs([]string{"--server", srv.URL, "--force"})
 		pairCmd.SetIn(bytes.NewBufferString("123456\n"))
 
@@ -124,7 +124,7 @@ func TestRunPairWithPath(t *testing.T) {
 		pairCmd.SetErr(&out)
 
 		pairCmd.RunE = func(cmd *cobra.Command, _ []string) error {
-			return runPairWithPath(cmd, srv.URL, true, envPath)
+			return runPairWithPath(cmd, srv.URL, true, envPath, "savecraftd")
 		}
 
 		err := pairCmd.Execute()
@@ -149,7 +149,7 @@ func TestPromptForCodeFromReader(t *testing.T) {
 	t.Run("reads valid 6-digit code", func(t *testing.T) {
 		t.Parallel()
 
-		pairCmd := buildPairCommand("savecraft")
+		pairCmd := buildPairCommand("savecraft", "https://savecraft.gg")
 		var out bytes.Buffer
 		pairCmd.SetOut(&out)
 
@@ -166,7 +166,7 @@ func TestPromptForCodeFromReader(t *testing.T) {
 	t.Run("rejects non-numeric input", func(t *testing.T) {
 		t.Parallel()
 
-		pairCmd := buildPairCommand("savecraft")
+		pairCmd := buildPairCommand("savecraft", "https://savecraft.gg")
 		var out bytes.Buffer
 		pairCmd.SetOut(&out)
 
@@ -179,7 +179,7 @@ func TestPromptForCodeFromReader(t *testing.T) {
 	t.Run("rejects too-short code", func(t *testing.T) {
 		t.Parallel()
 
-		pairCmd := buildPairCommand("savecraft")
+		pairCmd := buildPairCommand("savecraft", "https://savecraft.gg")
 		var out bytes.Buffer
 		pairCmd.SetOut(&out)
 
@@ -192,7 +192,7 @@ func TestPromptForCodeFromReader(t *testing.T) {
 	t.Run("rejects empty input", func(t *testing.T) {
 		t.Parallel()
 
-		pairCmd := buildPairCommand("savecraft")
+		pairCmd := buildPairCommand("savecraft", "https://savecraft.gg")
 		var out bytes.Buffer
 		pairCmd.SetOut(&out)
 
@@ -205,7 +205,7 @@ func TestPromptForCodeFromReader(t *testing.T) {
 	t.Run("accepts code with space separator", func(t *testing.T) {
 		t.Parallel()
 
-		pairCmd := buildPairCommand("savecraft")
+		pairCmd := buildPairCommand("savecraft", "https://savecraft.gg")
 		var out bytes.Buffer
 		pairCmd.SetOut(&out)
 
@@ -222,7 +222,7 @@ func TestPromptForCodeFromReader(t *testing.T) {
 	t.Run("accepts code with multiple spaces", func(t *testing.T) {
 		t.Parallel()
 
-		pairCmd := buildPairCommand("savecraft")
+		pairCmd := buildPairCommand("savecraft", "https://savecraft.gg")
 		var out bytes.Buffer
 		pairCmd.SetOut(&out)
 

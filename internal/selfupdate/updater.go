@@ -139,8 +139,8 @@ func (u *HTTPUpdater) Apply(ctx context.Context, info *daemon.UpdateInfo, binary
 		return fmt.Errorf("create cache dir: %w", err)
 	}
 
-	tempBinaryPath := filepath.Join(u.cacheDir, "savecraft-daemon.new")
-	tempSigPath := filepath.Join(u.cacheDir, "savecraft-daemon.new.sig")
+	tempBinaryPath := filepath.Join(u.cacheDir, "daemon-update.tmp")
+	tempSigPath := filepath.Join(u.cacheDir, "daemon-update.tmp.sig")
 
 	defer cleanupTempFiles(tempBinaryPath, tempSigPath)
 

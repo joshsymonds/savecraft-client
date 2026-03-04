@@ -9,8 +9,8 @@ import (
 
 // Execute builds the command tree and runs the root command.
 // When invoked with no subcommand, the daemon runs (same as "run").
-// serverURL, installURL, appName, and statusPort are compile-time defaults (set via ldflags in main).
-func Execute(version, serverURL, installURL, appName, statusPort string) error {
+// All string params are compile-time defaults (set via ldflags in main).
+func Execute(version, serverURL, installURL, appName, statusPort, frontendURL string) error {
 	runFn := buildRunFunc(serverURL, installURL, appName, statusPort)
 
 	root := &cobra.Command{
@@ -27,7 +27,7 @@ func Execute(version, serverURL, installURL, appName, statusPort string) error {
 	}
 
 	root.AddCommand(runCmd)
-	root.AddCommand(buildPairCommand(appName))
+	root.AddCommand(buildPairCommand(appName, frontendURL))
 	root.AddCommand(buildVerifyCommand(appName))
 	root.AddCommand(buildVersionCommand(version))
 

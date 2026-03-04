@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/joshsymonds/savecraft.gg/internal/appname"
 )
 
 // Cache manages local plugin storage on disk.
@@ -136,35 +138,26 @@ func DefaultCacheDir(appName string) string {
 	}
 }
 
-// titleName returns appName with the first letter capitalized,
-// matching platform conventions for macOS and Windows directory names.
-func titleName(appName string) string {
-	if appName == "" {
-		return appName
-	}
-	return strings.ToUpper(appName[:1]) + appName[1:]
-}
-
 func darwinCacheDir(appName string) string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return filepath.Join(".", appName, "plugins")
 	}
 	return filepath.Join(
-		home, "Library", "Application Support", titleName(appName), "plugins",
+		home, "Library", "Application Support", appname.TitleName(appName), "plugins",
 	)
 }
 
 func windowsCacheDir(appName string) string {
 	if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
-		return filepath.Join(localAppData, titleName(appName), "plugins")
+		return filepath.Join(localAppData, appname.TitleName(appName), "plugins")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return filepath.Join(".", appName, "plugins")
 	}
 	return filepath.Join(
-		home, "AppData", "Local", titleName(appName), "plugins",
+		home, "AppData", "Local", appname.TitleName(appName), "plugins",
 	)
 }
 

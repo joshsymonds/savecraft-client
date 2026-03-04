@@ -5,6 +5,8 @@ package envfile
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/joshsymonds/savecraft.gg/internal/appname"
 )
 
 // ConfigDir returns the macOS configuration directory for the given app.
@@ -15,5 +17,5 @@ func ConfigDir(appName string) string {
 		return filepath.Join(".", appName)
 	}
 
-	return filepath.Join(home, "Library", "Application Support", titleName(appName))
+	return filepath.Join(home, "Library", "Application Support", appname.TitleName(appName))
 }

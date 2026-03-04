@@ -10,25 +10,28 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/joshsymonds/savecraft.gg/internal/appname"
 	"github.com/joshsymonds/savecraft.gg/internal/envfile"
 	"github.com/joshsymonds/savecraft.gg/internal/pairclient"
 )
 
-func buildPairCommand(appName string) *cobra.Command {
+func buildPairCommand(appName, frontendURL string) *cobra.Command {
 	var force bool
 
 	var serverURL string
 
+	binName := appname.BinaryName(appName)
+
 	pair := &cobra.Command{
 		Use:   "pair",
 		Short: "Pair this device with your Savecraft account",
-		Long: `Pair this device by entering a 6-digit code from savecraft.gg/devices.
+		Long: fmt.Sprintf(`Pair this device by entering a 6-digit code from %s/devices.
 
 The code is exchanged for an API token which is written to the daemon's
-configuration file. Run 'savecraftd' (or restart the service) afterward
-to start syncing saves.`,
+configuration file. Run '%s' (or restart the service) afterward
+to start syncing saves.`, frontendURL, binName),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runPairWithPath(cmd, serverURL, force, envfile.EnvFilePath(appName))
+			return runPairWithPath(cmd, serverURL, force, envfile.EnvFilePath(appName), binName)
 		},
 	}
 
@@ -42,7 +45,7 @@ to start syncing saves.`,
 	return pair
 }
 
-func runPairWithPath(cmd *cobra.Command, serverURL string, force bool, envPath string) error {
+func runPairWithPath(cmd *cobra.Command, serverURL string, force bool, envPath, binaryName string) error {
 	// Check for existing credentials.
 	existing, err := envfile.Read(envPath)
 	if err != nil {
@@ -85,7 +88,7 @@ func runPairWithPath(cmd *cobra.Command, serverURL string, force bool, envPath s
 	cmd.Printf("Config written to %s\n", envPath)
 	cmd.Println("")
 	cmd.Println("Start the daemon with:")
-	cmd.Println("  savecraftd")
+	cmd.Printf("  %s\n", binaryName)
 
 	return nil
 }

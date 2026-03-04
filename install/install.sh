@@ -132,7 +132,7 @@ install_systemd_unit() {
 
     cat >"${SYSTEMD_DIR}/${SERVICE_NAME}" <<UNIT
 [Unit]
-Description=Savecraft Daemon
+Description=${APP_NAME} daemon
 After=network-online.target
 
 [Service]

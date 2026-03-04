@@ -67,8 +67,7 @@ func Write(path string, vars map[string]string) error {
 
 	var builder strings.Builder
 
-	builder.WriteString("# Savecraft daemon configuration\n")
-	builder.WriteString("# Written by savecraftd pair\n\n")
+	builder.WriteString("# Daemon configuration\n\n")
 
 	for _, key := range keys {
 		builder.WriteString(key)
@@ -88,13 +87,4 @@ func Write(path string, vars map[string]string) error {
 // The appName determines the config directory (e.g. "savecraft" or "savecraft-staging").
 func EnvFilePath(appName string) string {
 	return filepath.Join(ConfigDir(appName), "env")
-}
-
-// titleName returns appName with the first letter capitalized,
-// matching platform conventions for macOS and Windows directory names.
-func titleName(appName string) string {
-	if appName == "" {
-		return appName
-	}
-	return strings.ToUpper(appName[:1]) + appName[1:]
 }
