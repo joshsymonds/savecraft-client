@@ -134,15 +134,15 @@ func (GameStatusEnum) EnumDescriptor() ([]byte, []int) {
 }
 
 // Message is the top-level WebSocket envelope.
-// All messages on the daemon↔server↔UI channel use this wrapper.
+// All messages on the source↔server↔UI channel use this wrapper.
 // The oneof field numbers are grouped by category with gaps for future additions.
 type Message struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Payload:
 	//
-	//	*Message_DaemonOnline
-	//	*Message_DaemonOffline
-	//	*Message_DaemonHeartbeat
+	//	*Message_SourceOnline
+	//	*Message_SourceOffline
+	//	*Message_SourceHeartbeat
 	//	*Message_ScanStarted
 	//	*Message_ScanCompleted
 	//	*Message_GameDetected
@@ -157,14 +157,14 @@ type Message struct {
 	//	*Message_PushCompleted
 	//	*Message_PushFailed
 	//	*Message_PluginUpdated
-	//	*Message_DaemonUpdateAvailable
-	//	*Message_DaemonUpdateStarted
-	//	*Message_DaemonUpdateFailed
+	//	*Message_SourceUpdateAvailable
+	//	*Message_SourceUpdateStarted
+	//	*Message_SourceUpdateFailed
 	//	*Message_ConfigUpdate
 	//	*Message_RescanGame
 	//	*Message_PluginAvailable
 	//	*Message_DiscoverGames
-	//	*Message_DeviceState
+	//	*Message_SourceState
 	//	*Message_TestPath
 	//	*Message_TestPathResult
 	Payload       isMessage_Payload `protobuf_oneof:"payload"`
@@ -209,28 +209,28 @@ func (x *Message) GetPayload() isMessage_Payload {
 	return nil
 }
 
-func (x *Message) GetDaemonOnline() *DaemonOnline {
+func (x *Message) GetSourceOnline() *SourceOnline {
 	if x != nil {
-		if x, ok := x.Payload.(*Message_DaemonOnline); ok {
-			return x.DaemonOnline
+		if x, ok := x.Payload.(*Message_SourceOnline); ok {
+			return x.SourceOnline
 		}
 	}
 	return nil
 }
 
-func (x *Message) GetDaemonOffline() *DaemonOffline {
+func (x *Message) GetSourceOffline() *SourceOffline {
 	if x != nil {
-		if x, ok := x.Payload.(*Message_DaemonOffline); ok {
-			return x.DaemonOffline
+		if x, ok := x.Payload.(*Message_SourceOffline); ok {
+			return x.SourceOffline
 		}
 	}
 	return nil
 }
 
-func (x *Message) GetDaemonHeartbeat() *DaemonHeartbeat {
+func (x *Message) GetSourceHeartbeat() *SourceHeartbeat {
 	if x != nil {
-		if x, ok := x.Payload.(*Message_DaemonHeartbeat); ok {
-			return x.DaemonHeartbeat
+		if x, ok := x.Payload.(*Message_SourceHeartbeat); ok {
+			return x.SourceHeartbeat
 		}
 	}
 	return nil
@@ -362,28 +362,28 @@ func (x *Message) GetPluginUpdated() *PluginUpdated {
 	return nil
 }
 
-func (x *Message) GetDaemonUpdateAvailable() *DaemonUpdateAvailable {
+func (x *Message) GetSourceUpdateAvailable() *SourceUpdateAvailable {
 	if x != nil {
-		if x, ok := x.Payload.(*Message_DaemonUpdateAvailable); ok {
-			return x.DaemonUpdateAvailable
+		if x, ok := x.Payload.(*Message_SourceUpdateAvailable); ok {
+			return x.SourceUpdateAvailable
 		}
 	}
 	return nil
 }
 
-func (x *Message) GetDaemonUpdateStarted() *DaemonUpdateStarted {
+func (x *Message) GetSourceUpdateStarted() *SourceUpdateStarted {
 	if x != nil {
-		if x, ok := x.Payload.(*Message_DaemonUpdateStarted); ok {
-			return x.DaemonUpdateStarted
+		if x, ok := x.Payload.(*Message_SourceUpdateStarted); ok {
+			return x.SourceUpdateStarted
 		}
 	}
 	return nil
 }
 
-func (x *Message) GetDaemonUpdateFailed() *DaemonUpdateFailed {
+func (x *Message) GetSourceUpdateFailed() *SourceUpdateFailed {
 	if x != nil {
-		if x, ok := x.Payload.(*Message_DaemonUpdateFailed); ok {
-			return x.DaemonUpdateFailed
+		if x, ok := x.Payload.(*Message_SourceUpdateFailed); ok {
+			return x.SourceUpdateFailed
 		}
 	}
 	return nil
@@ -425,10 +425,10 @@ func (x *Message) GetDiscoverGames() *DiscoverGames {
 	return nil
 }
 
-func (x *Message) GetDeviceState() *DeviceState {
+func (x *Message) GetSourceState() *SourceState {
 	if x != nil {
-		if x, ok := x.Payload.(*Message_DeviceState); ok {
-			return x.DeviceState
+		if x, ok := x.Payload.(*Message_SourceState); ok {
+			return x.SourceState
 		}
 	}
 	return nil
@@ -456,17 +456,17 @@ type isMessage_Payload interface {
 	isMessage_Payload()
 }
 
-type Message_DaemonOnline struct {
-	// Daemon lifecycle (1-9)
-	DaemonOnline *DaemonOnline `protobuf:"bytes,1,opt,name=daemon_online,json=daemonOnline,proto3,oneof"`
+type Message_SourceOnline struct {
+	// Source lifecycle (1-9)
+	SourceOnline *SourceOnline `protobuf:"bytes,1,opt,name=source_online,json=sourceOnline,proto3,oneof"`
 }
 
-type Message_DaemonOffline struct {
-	DaemonOffline *DaemonOffline `protobuf:"bytes,2,opt,name=daemon_offline,json=daemonOffline,proto3,oneof"`
+type Message_SourceOffline struct {
+	SourceOffline *SourceOffline `protobuf:"bytes,2,opt,name=source_offline,json=sourceOffline,proto3,oneof"`
 }
 
-type Message_DaemonHeartbeat struct {
-	DaemonHeartbeat *DaemonHeartbeat `protobuf:"bytes,3,opt,name=daemon_heartbeat,json=daemonHeartbeat,proto3,oneof"`
+type Message_SourceHeartbeat struct {
+	SourceHeartbeat *SourceHeartbeat `protobuf:"bytes,3,opt,name=source_heartbeat,json=sourceHeartbeat,proto3,oneof"`
 }
 
 type Message_ScanStarted struct {
@@ -529,21 +529,21 @@ type Message_PluginUpdated struct {
 	PluginUpdated *PluginUpdated `protobuf:"bytes,40,opt,name=plugin_updated,json=pluginUpdated,proto3,oneof"`
 }
 
-type Message_DaemonUpdateAvailable struct {
-	// Daemon management (41-43)
-	DaemonUpdateAvailable *DaemonUpdateAvailable `protobuf:"bytes,41,opt,name=daemon_update_available,json=daemonUpdateAvailable,proto3,oneof"`
+type Message_SourceUpdateAvailable struct {
+	// Source update management (41-43)
+	SourceUpdateAvailable *SourceUpdateAvailable `protobuf:"bytes,41,opt,name=source_update_available,json=sourceUpdateAvailable,proto3,oneof"`
 }
 
-type Message_DaemonUpdateStarted struct {
-	DaemonUpdateStarted *DaemonUpdateStarted `protobuf:"bytes,42,opt,name=daemon_update_started,json=daemonUpdateStarted,proto3,oneof"`
+type Message_SourceUpdateStarted struct {
+	SourceUpdateStarted *SourceUpdateStarted `protobuf:"bytes,42,opt,name=source_update_started,json=sourceUpdateStarted,proto3,oneof"`
 }
 
-type Message_DaemonUpdateFailed struct {
-	DaemonUpdateFailed *DaemonUpdateFailed `protobuf:"bytes,43,opt,name=daemon_update_failed,json=daemonUpdateFailed,proto3,oneof"`
+type Message_SourceUpdateFailed struct {
+	SourceUpdateFailed *SourceUpdateFailed `protobuf:"bytes,43,opt,name=source_update_failed,json=sourceUpdateFailed,proto3,oneof"`
 }
 
 type Message_ConfigUpdate struct {
-	// Commands: server → daemon (50-59)
+	// Commands: server → source (50-59)
 	ConfigUpdate *ConfigUpdate `protobuf:"bytes,50,opt,name=config_update,json=configUpdate,proto3,oneof"`
 }
 
@@ -559,13 +559,13 @@ type Message_DiscoverGames struct {
 	DiscoverGames *DiscoverGames `protobuf:"bytes,53,opt,name=discover_games,json=discoverGames,proto3,oneof"`
 }
 
-type Message_DeviceState struct {
+type Message_SourceState struct {
 	// State: server → UI (60-69)
-	DeviceState *DeviceState `protobuf:"bytes,60,opt,name=device_state,json=deviceState,proto3,oneof"`
+	SourceState *SourceState `protobuf:"bytes,60,opt,name=source_state,json=sourceState,proto3,oneof"`
 }
 
 type Message_TestPath struct {
-	// User actions: UI → server → daemon (70-79)
+	// User actions: UI → server → source (70-79)
 	TestPath *TestPath `protobuf:"bytes,70,opt,name=test_path,json=testPath,proto3,oneof"`
 }
 
@@ -573,11 +573,11 @@ type Message_TestPathResult struct {
 	TestPathResult *TestPathResult `protobuf:"bytes,71,opt,name=test_path_result,json=testPathResult,proto3,oneof"`
 }
 
-func (*Message_DaemonOnline) isMessage_Payload() {}
+func (*Message_SourceOnline) isMessage_Payload() {}
 
-func (*Message_DaemonOffline) isMessage_Payload() {}
+func (*Message_SourceOffline) isMessage_Payload() {}
 
-func (*Message_DaemonHeartbeat) isMessage_Payload() {}
+func (*Message_SourceHeartbeat) isMessage_Payload() {}
 
 func (*Message_ScanStarted) isMessage_Payload() {}
 
@@ -607,11 +607,11 @@ func (*Message_PushFailed) isMessage_Payload() {}
 
 func (*Message_PluginUpdated) isMessage_Payload() {}
 
-func (*Message_DaemonUpdateAvailable) isMessage_Payload() {}
+func (*Message_SourceUpdateAvailable) isMessage_Payload() {}
 
-func (*Message_DaemonUpdateStarted) isMessage_Payload() {}
+func (*Message_SourceUpdateStarted) isMessage_Payload() {}
 
-func (*Message_DaemonUpdateFailed) isMessage_Payload() {}
+func (*Message_SourceUpdateFailed) isMessage_Payload() {}
 
 func (*Message_ConfigUpdate) isMessage_Payload() {}
 
@@ -621,16 +621,16 @@ func (*Message_PluginAvailable) isMessage_Payload() {}
 
 func (*Message_DiscoverGames) isMessage_Payload() {}
 
-func (*Message_DeviceState) isMessage_Payload() {}
+func (*Message_SourceState) isMessage_Payload() {}
 
 func (*Message_TestPath) isMessage_Payload() {}
 
 func (*Message_TestPathResult) isMessage_Payload() {}
 
-// Daemon process started and connected to the server.
-type DaemonOnline struct {
+// Source connected to the server (daemon started, mod loaded, etc.).
+type SourceOnline struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	DeviceId      string                 `protobuf:"bytes,1,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"`
+	SourceId      string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
 	Version       string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
 	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	Platform      string                 `protobuf:"bytes,4,opt,name=platform,proto3" json:"platform,omitempty"`
@@ -638,20 +638,20 @@ type DaemonOnline struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DaemonOnline) Reset() {
-	*x = DaemonOnline{}
+func (x *SourceOnline) Reset() {
+	*x = SourceOnline{}
 	mi := &file_savecraft_v1_protocol_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DaemonOnline) String() string {
+func (x *SourceOnline) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DaemonOnline) ProtoMessage() {}
+func (*SourceOnline) ProtoMessage() {}
 
-func (x *DaemonOnline) ProtoReflect() protoreflect.Message {
+func (x *SourceOnline) ProtoReflect() protoreflect.Message {
 	mi := &file_savecraft_v1_protocol_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -663,62 +663,62 @@ func (x *DaemonOnline) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DaemonOnline.ProtoReflect.Descriptor instead.
-func (*DaemonOnline) Descriptor() ([]byte, []int) {
+// Deprecated: Use SourceOnline.ProtoReflect.Descriptor instead.
+func (*SourceOnline) Descriptor() ([]byte, []int) {
 	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *DaemonOnline) GetDeviceId() string {
+func (x *SourceOnline) GetSourceId() string {
 	if x != nil {
-		return x.DeviceId
+		return x.SourceId
 	}
 	return ""
 }
 
-func (x *DaemonOnline) GetVersion() string {
+func (x *SourceOnline) GetVersion() string {
 	if x != nil {
 		return x.Version
 	}
 	return ""
 }
 
-func (x *DaemonOnline) GetTimestamp() *timestamppb.Timestamp {
+func (x *SourceOnline) GetTimestamp() *timestamppb.Timestamp {
 	if x != nil {
 		return x.Timestamp
 	}
 	return nil
 }
 
-func (x *DaemonOnline) GetPlatform() string {
+func (x *SourceOnline) GetPlatform() string {
 	if x != nil {
 		return x.Platform
 	}
 	return ""
 }
 
-// Daemon shutting down gracefully (SIGTERM).
-type DaemonOffline struct {
+// Source disconnecting gracefully.
+type SourceOffline struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	DeviceId      string                 `protobuf:"bytes,1,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"`
+	SourceId      string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
 	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DaemonOffline) Reset() {
-	*x = DaemonOffline{}
+func (x *SourceOffline) Reset() {
+	*x = SourceOffline{}
 	mi := &file_savecraft_v1_protocol_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DaemonOffline) String() string {
+func (x *SourceOffline) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DaemonOffline) ProtoMessage() {}
+func (*SourceOffline) ProtoMessage() {}
 
-func (x *DaemonOffline) ProtoReflect() protoreflect.Message {
+func (x *SourceOffline) ProtoReflect() protoreflect.Message {
 	mi := &file_savecraft_v1_protocol_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -730,46 +730,46 @@ func (x *DaemonOffline) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DaemonOffline.ProtoReflect.Descriptor instead.
-func (*DaemonOffline) Descriptor() ([]byte, []int) {
+// Deprecated: Use SourceOffline.ProtoReflect.Descriptor instead.
+func (*SourceOffline) Descriptor() ([]byte, []int) {
 	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *DaemonOffline) GetDeviceId() string {
+func (x *SourceOffline) GetSourceId() string {
 	if x != nil {
-		return x.DeviceId
+		return x.SourceId
 	}
 	return ""
 }
 
-func (x *DaemonOffline) GetTimestamp() *timestamppb.Timestamp {
+func (x *SourceOffline) GetTimestamp() *timestamppb.Timestamp {
 	if x != nil {
 		return x.Timestamp
 	}
 	return nil
 }
 
-// Periodic keepalive from daemon. Hub updates lastSeen but does not relay to UI.
-type DaemonHeartbeat struct {
+// Periodic keepalive from source. Hub updates lastSeen but does not relay to UI.
+type SourceHeartbeat struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DaemonHeartbeat) Reset() {
-	*x = DaemonHeartbeat{}
+func (x *SourceHeartbeat) Reset() {
+	*x = SourceHeartbeat{}
 	mi := &file_savecraft_v1_protocol_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DaemonHeartbeat) String() string {
+func (x *SourceHeartbeat) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DaemonHeartbeat) ProtoMessage() {}
+func (*SourceHeartbeat) ProtoMessage() {}
 
-func (x *DaemonHeartbeat) ProtoReflect() protoreflect.Message {
+func (x *SourceHeartbeat) ProtoReflect() protoreflect.Message {
 	mi := &file_savecraft_v1_protocol_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -781,12 +781,12 @@ func (x *DaemonHeartbeat) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DaemonHeartbeat.ProtoReflect.Descriptor instead.
-func (*DaemonHeartbeat) Descriptor() ([]byte, []int) {
+// Deprecated: Use SourceHeartbeat.ProtoReflect.Descriptor instead.
+func (*SourceHeartbeat) Descriptor() ([]byte, []int) {
 	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{3}
 }
 
-// Daemon is scanning a directory for save files.
+// Source is scanning a directory for save files.
 type ScanStarted struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	GameId        string                 `protobuf:"bytes,1,opt,name=game_id,json=gameId,proto3" json:"game_id,omitempty"`
@@ -1022,7 +1022,7 @@ func (x *GameNotFound) GetPathsChecked() []string {
 	return nil
 }
 
-// Daemon is actively watching a directory for changes.
+// Source is actively watching a directory for changes.
 type Watching struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	GameId         string                 `protobuf:"bytes,1,opt,name=game_id,json=gameId,proto3" json:"game_id,omitempty"`
@@ -1083,7 +1083,7 @@ func (x *Watching) GetFilesMonitored() int32 {
 	return 0
 }
 
-// Results of daemon auto-discovery of save directories.
+// Results of source auto-discovery of save directories.
 type GamesDiscovered struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Games         []*DiscoveredGame      `protobuf:"bytes,1,rep,name=games,proto3" json:"games,omitempty"`
@@ -1196,7 +1196,7 @@ func (x *DiscoveredGame) GetFileCount() int32 {
 	return 0
 }
 
-// Daemon detected a file change and is feeding it to the WASM plugin.
+// Source detected a file change and is feeding it to the WASM plugin.
 type ParseStarted struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	GameId        string                 `protobuf:"bytes,1,opt,name=game_id,json=gameId,proto3" json:"game_id,omitempty"`
@@ -1465,7 +1465,7 @@ func (x *ParseFailed) GetMessage() string {
 	return ""
 }
 
-// Daemon is uploading parsed game state to the server via HTTP POST.
+// Source is uploading parsed game state to the server via HTTP POST.
 type PushStarted struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	GameId        string                 `protobuf:"bytes,1,opt,name=game_id,json=gameId,proto3" json:"game_id,omitempty"`
@@ -1611,7 +1611,7 @@ func (x *PushCompleted) GetIdentity() *SaveIdentity {
 	return nil
 }
 
-// Upload failed. will_retry indicates if the daemon will retry automatically.
+// Upload failed. will_retry indicates if the source will retry automatically.
 type PushFailed struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	GameId        string                 `protobuf:"bytes,1,opt,name=game_id,json=gameId,proto3" json:"game_id,omitempty"`
@@ -1672,7 +1672,7 @@ func (x *PushFailed) GetWillRetry() bool {
 	return false
 }
 
-// Daemon successfully updated a plugin to a new version.
+// Source successfully updated a plugin to a new version.
 type PluginUpdated struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	GameId        string                 `protobuf:"bytes,1,opt,name=game_id,json=gameId,proto3" json:"game_id,omitempty"`
@@ -1830,7 +1830,7 @@ func (x *GameConfig) GetFileExtensions() []string {
 	return nil
 }
 
-// Request the daemon to rescan a game's save directory.
+// Request the source to rescan a game's save directory.
 type RescanGame struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	GameId        string                 `protobuf:"bytes,1,opt,name=game_id,json=gameId,proto3" json:"game_id,omitempty"`
@@ -1875,7 +1875,7 @@ func (x *RescanGame) GetGameId() string {
 	return ""
 }
 
-// Notify daemon that a plugin update is available for download.
+// Notify source that a plugin update is available for download.
 type PluginAvailable struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	GameId        string                 `protobuf:"bytes,1,opt,name=game_id,json=gameId,proto3" json:"game_id,omitempty"`
@@ -1936,7 +1936,7 @@ func (x *PluginAvailable) GetUrl() string {
 	return ""
 }
 
-// Request the daemon to re-run save directory discovery.
+// Request the source to re-run save directory discovery.
 type DiscoverGames struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -1973,29 +1973,29 @@ func (*DiscoverGames) Descriptor() ([]byte, []int) {
 	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{23}
 }
 
-// Full device state snapshot. Sent to UI on WebSocket connect for cold start.
+// Full source state snapshot. Sent to UI on WebSocket connect for cold start.
 // Constructed from D1 persisted events so the page isn't blank.
-type DeviceState struct {
+type SourceState struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Devices       []*DeviceInfo          `protobuf:"bytes,1,rep,name=devices,proto3" json:"devices,omitempty"`
+	Sources       []*SourceInfo          `protobuf:"bytes,1,rep,name=sources,proto3" json:"sources,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DeviceState) Reset() {
-	*x = DeviceState{}
+func (x *SourceState) Reset() {
+	*x = SourceState{}
 	mi := &file_savecraft_v1_protocol_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DeviceState) String() string {
+func (x *SourceState) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DeviceState) ProtoMessage() {}
+func (*SourceState) ProtoMessage() {}
 
-func (x *DeviceState) ProtoReflect() protoreflect.Message {
+func (x *SourceState) ProtoReflect() protoreflect.Message {
 	mi := &file_savecraft_v1_protocol_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -2007,21 +2007,21 @@ func (x *DeviceState) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DeviceState.ProtoReflect.Descriptor instead.
-func (*DeviceState) Descriptor() ([]byte, []int) {
+// Deprecated: Use SourceState.ProtoReflect.Descriptor instead.
+func (*SourceState) Descriptor() ([]byte, []int) {
 	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{24}
 }
 
-func (x *DeviceState) GetDevices() []*DeviceInfo {
+func (x *SourceState) GetSources() []*SourceInfo {
 	if x != nil {
-		return x.Devices
+		return x.Sources
 	}
 	return nil
 }
 
-type DeviceInfo struct {
+type SourceInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	DeviceId      string                 `protobuf:"bytes,1,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"`
+	SourceId      string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
 	Online        bool                   `protobuf:"varint,2,opt,name=online,proto3" json:"online,omitempty"`
 	LastSeen      *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=last_seen,json=lastSeen,proto3" json:"last_seen,omitempty"`
 	Games         []*GameInfo            `protobuf:"bytes,4,rep,name=games,proto3" json:"games,omitempty"`
@@ -2029,20 +2029,20 @@ type DeviceInfo struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DeviceInfo) Reset() {
-	*x = DeviceInfo{}
+func (x *SourceInfo) Reset() {
+	*x = SourceInfo{}
 	mi := &file_savecraft_v1_protocol_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DeviceInfo) String() string {
+func (x *SourceInfo) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DeviceInfo) ProtoMessage() {}
+func (*SourceInfo) ProtoMessage() {}
 
-func (x *DeviceInfo) ProtoReflect() protoreflect.Message {
+func (x *SourceInfo) ProtoReflect() protoreflect.Message {
 	mi := &file_savecraft_v1_protocol_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -2054,33 +2054,33 @@ func (x *DeviceInfo) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DeviceInfo.ProtoReflect.Descriptor instead.
-func (*DeviceInfo) Descriptor() ([]byte, []int) {
+// Deprecated: Use SourceInfo.ProtoReflect.Descriptor instead.
+func (*SourceInfo) Descriptor() ([]byte, []int) {
 	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{25}
 }
 
-func (x *DeviceInfo) GetDeviceId() string {
+func (x *SourceInfo) GetSourceId() string {
 	if x != nil {
-		return x.DeviceId
+		return x.SourceId
 	}
 	return ""
 }
 
-func (x *DeviceInfo) GetOnline() bool {
+func (x *SourceInfo) GetOnline() bool {
 	if x != nil {
 		return x.Online
 	}
 	return false
 }
 
-func (x *DeviceInfo) GetLastSeen() *timestamppb.Timestamp {
+func (x *SourceInfo) GetLastSeen() *timestamppb.Timestamp {
 	if x != nil {
 		return x.LastSeen
 	}
 	return nil
 }
 
-func (x *DeviceInfo) GetGames() []*GameInfo {
+func (x *SourceInfo) GetGames() []*GameInfo {
 	if x != nil {
 		return x.Games
 	}
@@ -2361,8 +2361,8 @@ func (x *TestPathResult) GetFileNames() []string {
 	return nil
 }
 
-// Server notifies daemon that a newer binary is available.
-type DaemonUpdateAvailable struct {
+// Server notifies source that a newer binary is available.
+type SourceUpdateAvailable struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Version       string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
 	Url           string                 `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
@@ -2372,20 +2372,20 @@ type DaemonUpdateAvailable struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DaemonUpdateAvailable) Reset() {
-	*x = DaemonUpdateAvailable{}
+func (x *SourceUpdateAvailable) Reset() {
+	*x = SourceUpdateAvailable{}
 	mi := &file_savecraft_v1_protocol_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DaemonUpdateAvailable) String() string {
+func (x *SourceUpdateAvailable) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DaemonUpdateAvailable) ProtoMessage() {}
+func (*SourceUpdateAvailable) ProtoMessage() {}
 
-func (x *DaemonUpdateAvailable) ProtoReflect() protoreflect.Message {
+func (x *SourceUpdateAvailable) ProtoReflect() protoreflect.Message {
 	mi := &file_savecraft_v1_protocol_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -2397,61 +2397,61 @@ func (x *DaemonUpdateAvailable) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DaemonUpdateAvailable.ProtoReflect.Descriptor instead.
-func (*DaemonUpdateAvailable) Descriptor() ([]byte, []int) {
+// Deprecated: Use SourceUpdateAvailable.ProtoReflect.Descriptor instead.
+func (*SourceUpdateAvailable) Descriptor() ([]byte, []int) {
 	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{30}
 }
 
-func (x *DaemonUpdateAvailable) GetVersion() string {
+func (x *SourceUpdateAvailable) GetVersion() string {
 	if x != nil {
 		return x.Version
 	}
 	return ""
 }
 
-func (x *DaemonUpdateAvailable) GetUrl() string {
+func (x *SourceUpdateAvailable) GetUrl() string {
 	if x != nil {
 		return x.Url
 	}
 	return ""
 }
 
-func (x *DaemonUpdateAvailable) GetSignatureUrl() string {
+func (x *SourceUpdateAvailable) GetSignatureUrl() string {
 	if x != nil {
 		return x.SignatureUrl
 	}
 	return ""
 }
 
-func (x *DaemonUpdateAvailable) GetSha256() string {
+func (x *SourceUpdateAvailable) GetSha256() string {
 	if x != nil {
 		return x.Sha256
 	}
 	return ""
 }
 
-// Daemon acknowledges it is downloading and applying the update.
-type DaemonUpdateStarted struct {
+// Source acknowledges it is downloading and applying the update.
+type SourceUpdateStarted struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Version       string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DaemonUpdateStarted) Reset() {
-	*x = DaemonUpdateStarted{}
+func (x *SourceUpdateStarted) Reset() {
+	*x = SourceUpdateStarted{}
 	mi := &file_savecraft_v1_protocol_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DaemonUpdateStarted) String() string {
+func (x *SourceUpdateStarted) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DaemonUpdateStarted) ProtoMessage() {}
+func (*SourceUpdateStarted) ProtoMessage() {}
 
-func (x *DaemonUpdateStarted) ProtoReflect() protoreflect.Message {
+func (x *SourceUpdateStarted) ProtoReflect() protoreflect.Message {
 	mi := &file_savecraft_v1_protocol_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -2463,20 +2463,20 @@ func (x *DaemonUpdateStarted) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DaemonUpdateStarted.ProtoReflect.Descriptor instead.
-func (*DaemonUpdateStarted) Descriptor() ([]byte, []int) {
+// Deprecated: Use SourceUpdateStarted.ProtoReflect.Descriptor instead.
+func (*SourceUpdateStarted) Descriptor() ([]byte, []int) {
 	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{31}
 }
 
-func (x *DaemonUpdateStarted) GetVersion() string {
+func (x *SourceUpdateStarted) GetVersion() string {
 	if x != nil {
 		return x.Version
 	}
 	return ""
 }
 
-// Daemon failed to apply the update.
-type DaemonUpdateFailed struct {
+// Source failed to apply the update.
+type SourceUpdateFailed struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Version       string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
 	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
@@ -2484,20 +2484,20 @@ type DaemonUpdateFailed struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DaemonUpdateFailed) Reset() {
-	*x = DaemonUpdateFailed{}
+func (x *SourceUpdateFailed) Reset() {
+	*x = SourceUpdateFailed{}
 	mi := &file_savecraft_v1_protocol_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DaemonUpdateFailed) String() string {
+func (x *SourceUpdateFailed) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DaemonUpdateFailed) ProtoMessage() {}
+func (*SourceUpdateFailed) ProtoMessage() {}
 
-func (x *DaemonUpdateFailed) ProtoReflect() protoreflect.Message {
+func (x *SourceUpdateFailed) ProtoReflect() protoreflect.Message {
 	mi := &file_savecraft_v1_protocol_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -2509,19 +2509,19 @@ func (x *DaemonUpdateFailed) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DaemonUpdateFailed.ProtoReflect.Descriptor instead.
-func (*DaemonUpdateFailed) Descriptor() ([]byte, []int) {
+// Deprecated: Use SourceUpdateFailed.ProtoReflect.Descriptor instead.
+func (*SourceUpdateFailed) Descriptor() ([]byte, []int) {
 	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{32}
 }
 
-func (x *DaemonUpdateFailed) GetVersion() string {
+func (x *SourceUpdateFailed) GetVersion() string {
 	if x != nil {
 		return x.Version
 	}
 	return ""
 }
 
-func (x *DaemonUpdateFailed) GetMessage() string {
+func (x *SourceUpdateFailed) GetMessage() string {
 	if x != nil {
 		return x.Message
 	}
@@ -2590,9 +2590,9 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\n" +
 	"\x1bsavecraft/v1/protocol.proto\x12\fsavecraft.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xf1\x0e\n" +
 	"\aMessage\x12A\n" +
-	"\rdaemon_online\x18\x01 \x01(\v2\x1a.savecraft.v1.DaemonOnlineH\x00R\fdaemonOnline\x12D\n" +
-	"\x0edaemon_offline\x18\x02 \x01(\v2\x1b.savecraft.v1.DaemonOfflineH\x00R\rdaemonOffline\x12J\n" +
-	"\x10daemon_heartbeat\x18\x03 \x01(\v2\x1d.savecraft.v1.DaemonHeartbeatH\x00R\x0fdaemonHeartbeat\x12>\n" +
+	"\rsource_online\x18\x01 \x01(\v2\x1a.savecraft.v1.SourceOnlineH\x00R\fsourceOnline\x12D\n" +
+	"\x0esource_offline\x18\x02 \x01(\v2\x1b.savecraft.v1.SourceOfflineH\x00R\rsourceOffline\x12J\n" +
+	"\x10source_heartbeat\x18\x03 \x01(\v2\x1d.savecraft.v1.SourceHeartbeatH\x00R\x0fsourceHeartbeat\x12>\n" +
 	"\fscan_started\x18\n" +
 	" \x01(\v2\x19.savecraft.v1.ScanStartedH\x00R\vscanStarted\x12D\n" +
 	"\x0escan_completed\x18\v \x01(\v2\x1b.savecraft.v1.ScanCompletedH\x00R\rscanCompleted\x12A\n" +
@@ -2609,27 +2609,27 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\vpush_failed\x18  \x01(\v2\x18.savecraft.v1.PushFailedH\x00R\n" +
 	"pushFailed\x12D\n" +
 	"\x0eplugin_updated\x18( \x01(\v2\x1b.savecraft.v1.PluginUpdatedH\x00R\rpluginUpdated\x12]\n" +
-	"\x17daemon_update_available\x18) \x01(\v2#.savecraft.v1.DaemonUpdateAvailableH\x00R\x15daemonUpdateAvailable\x12W\n" +
-	"\x15daemon_update_started\x18* \x01(\v2!.savecraft.v1.DaemonUpdateStartedH\x00R\x13daemonUpdateStarted\x12T\n" +
-	"\x14daemon_update_failed\x18+ \x01(\v2 .savecraft.v1.DaemonUpdateFailedH\x00R\x12daemonUpdateFailed\x12A\n" +
+	"\x17source_update_available\x18) \x01(\v2#.savecraft.v1.SourceUpdateAvailableH\x00R\x15sourceUpdateAvailable\x12W\n" +
+	"\x15source_update_started\x18* \x01(\v2!.savecraft.v1.SourceUpdateStartedH\x00R\x13sourceUpdateStarted\x12T\n" +
+	"\x14source_update_failed\x18+ \x01(\v2 .savecraft.v1.SourceUpdateFailedH\x00R\x12sourceUpdateFailed\x12A\n" +
 	"\rconfig_update\x182 \x01(\v2\x1a.savecraft.v1.ConfigUpdateH\x00R\fconfigUpdate\x12;\n" +
 	"\vrescan_game\x183 \x01(\v2\x18.savecraft.v1.RescanGameH\x00R\n" +
 	"rescanGame\x12J\n" +
 	"\x10plugin_available\x184 \x01(\v2\x1d.savecraft.v1.PluginAvailableH\x00R\x0fpluginAvailable\x12D\n" +
 	"\x0ediscover_games\x185 \x01(\v2\x1b.savecraft.v1.DiscoverGamesH\x00R\rdiscoverGames\x12>\n" +
-	"\fdevice_state\x18< \x01(\v2\x19.savecraft.v1.DeviceStateH\x00R\vdeviceState\x125\n" +
+	"\fsource_state\x18< \x01(\v2\x19.savecraft.v1.SourceStateH\x00R\vsourceState\x125\n" +
 	"\ttest_path\x18F \x01(\v2\x16.savecraft.v1.TestPathH\x00R\btestPath\x12H\n" +
 	"\x10test_path_result\x18G \x01(\v2\x1c.savecraft.v1.TestPathResultH\x00R\x0etestPathResultB\t\n" +
 	"\apayload\"\x9b\x01\n" +
-	"\fDaemonOnline\x12\x1b\n" +
-	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12\x18\n" +
+	"\fSourceOnline\x12\x1b\n" +
+	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x128\n" +
 	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x1a\n" +
 	"\bplatform\x18\x04 \x01(\tR\bplatform\"f\n" +
-	"\rDaemonOffline\x12\x1b\n" +
-	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x128\n" +
+	"\rSourceOffline\x12\x1b\n" +
+	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x128\n" +
 	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\x11\n" +
-	"\x0fDaemonHeartbeat\":\n" +
+	"\x0fSourceHeartbeat\":\n" +
 	"\vScanStarted\x12\x17\n" +
 	"\agame_id\x18\x01 \x01(\tR\x06gameId\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\"|\n" +
@@ -2722,11 +2722,11 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12\x10\n" +
 	"\x03url\x18\x03 \x01(\tR\x03url\"\x0f\n" +
 	"\rDiscoverGames\"A\n" +
-	"\vDeviceState\x122\n" +
-	"\adevices\x18\x01 \x03(\v2\x18.savecraft.v1.DeviceInfoR\adevices\"\xa8\x01\n" +
+	"\vSourceState\x122\n" +
+	"\asources\x18\x01 \x03(\v2\x18.savecraft.v1.SourceInfoR\asources\"\xa8\x01\n" +
 	"\n" +
-	"DeviceInfo\x12\x1b\n" +
-	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12\x16\n" +
+	"SourceInfo\x12\x1b\n" +
+	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\x16\n" +
 	"\x06online\x18\x02 \x01(\bR\x06online\x127\n" +
 	"\tlast_seen\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\blastSeen\x12,\n" +
 	"\x05games\x18\x04 \x03(\v2\x16.savecraft.v1.GameInfoR\x05games\"\xe5\x01\n" +
@@ -2752,14 +2752,14 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"filesFound\x12\x1d\n" +
 	"\n" +
 	"file_names\x18\x05 \x03(\tR\tfileNames\"\x80\x01\n" +
-	"\x15DaemonUpdateAvailable\x12\x18\n" +
+	"\x15SourceUpdateAvailable\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12\x10\n" +
 	"\x03url\x18\x02 \x01(\tR\x03url\x12#\n" +
 	"\rsignature_url\x18\x03 \x01(\tR\fsignatureUrl\x12\x16\n" +
 	"\x06sha256\x18\x04 \x01(\tR\x06sha256\"/\n" +
-	"\x13DaemonUpdateStarted\x12\x18\n" +
+	"\x13SourceUpdateStarted\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\"H\n" +
-	"\x12DaemonUpdateFailed\x12\x18\n" +
+	"\x12SourceUpdateFailed\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\"Q\n" +
 	"\fSaveIdentity\x12\x12\n" +
@@ -2796,9 +2796,9 @@ var file_savecraft_v1_protocol_proto_goTypes = []any{
 	(ParseErrorType)(0),           // 0: savecraft.v1.ParseErrorType
 	(GameStatusEnum)(0),           // 1: savecraft.v1.GameStatusEnum
 	(*Message)(nil),               // 2: savecraft.v1.Message
-	(*DaemonOnline)(nil),          // 3: savecraft.v1.DaemonOnline
-	(*DaemonOffline)(nil),         // 4: savecraft.v1.DaemonOffline
-	(*DaemonHeartbeat)(nil),       // 5: savecraft.v1.DaemonHeartbeat
+	(*SourceOnline)(nil),          // 3: savecraft.v1.SourceOnline
+	(*SourceOffline)(nil),         // 4: savecraft.v1.SourceOffline
+	(*SourceHeartbeat)(nil),       // 5: savecraft.v1.SourceHeartbeat
 	(*ScanStarted)(nil),           // 6: savecraft.v1.ScanStarted
 	(*ScanCompleted)(nil),         // 7: savecraft.v1.ScanCompleted
 	(*GameDetected)(nil),          // 8: savecraft.v1.GameDetected
@@ -2819,24 +2819,24 @@ var file_savecraft_v1_protocol_proto_goTypes = []any{
 	(*RescanGame)(nil),            // 23: savecraft.v1.RescanGame
 	(*PluginAvailable)(nil),       // 24: savecraft.v1.PluginAvailable
 	(*DiscoverGames)(nil),         // 25: savecraft.v1.DiscoverGames
-	(*DeviceState)(nil),           // 26: savecraft.v1.DeviceState
-	(*DeviceInfo)(nil),            // 27: savecraft.v1.DeviceInfo
+	(*SourceState)(nil),           // 26: savecraft.v1.SourceState
+	(*SourceInfo)(nil),            // 27: savecraft.v1.SourceInfo
 	(*GameInfo)(nil),              // 28: savecraft.v1.GameInfo
 	(*SaveInfo)(nil),              // 29: savecraft.v1.SaveInfo
 	(*TestPath)(nil),              // 30: savecraft.v1.TestPath
 	(*TestPathResult)(nil),        // 31: savecraft.v1.TestPathResult
-	(*DaemonUpdateAvailable)(nil), // 32: savecraft.v1.DaemonUpdateAvailable
-	(*DaemonUpdateStarted)(nil),   // 33: savecraft.v1.DaemonUpdateStarted
-	(*DaemonUpdateFailed)(nil),    // 34: savecraft.v1.DaemonUpdateFailed
+	(*SourceUpdateAvailable)(nil), // 32: savecraft.v1.SourceUpdateAvailable
+	(*SourceUpdateStarted)(nil),   // 33: savecraft.v1.SourceUpdateStarted
+	(*SourceUpdateFailed)(nil),    // 34: savecraft.v1.SourceUpdateFailed
 	(*SaveIdentity)(nil),          // 35: savecraft.v1.SaveIdentity
 	nil,                           // 36: savecraft.v1.ConfigUpdate.GamesEntry
 	(*timestamppb.Timestamp)(nil), // 37: google.protobuf.Timestamp
 	(*structpb.Struct)(nil),       // 38: google.protobuf.Struct
 }
 var file_savecraft_v1_protocol_proto_depIdxs = []int32{
-	3,  // 0: savecraft.v1.Message.daemon_online:type_name -> savecraft.v1.DaemonOnline
-	4,  // 1: savecraft.v1.Message.daemon_offline:type_name -> savecraft.v1.DaemonOffline
-	5,  // 2: savecraft.v1.Message.daemon_heartbeat:type_name -> savecraft.v1.DaemonHeartbeat
+	3,  // 0: savecraft.v1.Message.source_online:type_name -> savecraft.v1.SourceOnline
+	4,  // 1: savecraft.v1.Message.source_offline:type_name -> savecraft.v1.SourceOffline
+	5,  // 2: savecraft.v1.Message.source_heartbeat:type_name -> savecraft.v1.SourceHeartbeat
 	6,  // 3: savecraft.v1.Message.scan_started:type_name -> savecraft.v1.ScanStarted
 	7,  // 4: savecraft.v1.Message.scan_completed:type_name -> savecraft.v1.ScanCompleted
 	8,  // 5: savecraft.v1.Message.game_detected:type_name -> savecraft.v1.GameDetected
@@ -2851,26 +2851,26 @@ var file_savecraft_v1_protocol_proto_depIdxs = []int32{
 	18, // 14: savecraft.v1.Message.push_completed:type_name -> savecraft.v1.PushCompleted
 	19, // 15: savecraft.v1.Message.push_failed:type_name -> savecraft.v1.PushFailed
 	20, // 16: savecraft.v1.Message.plugin_updated:type_name -> savecraft.v1.PluginUpdated
-	32, // 17: savecraft.v1.Message.daemon_update_available:type_name -> savecraft.v1.DaemonUpdateAvailable
-	33, // 18: savecraft.v1.Message.daemon_update_started:type_name -> savecraft.v1.DaemonUpdateStarted
-	34, // 19: savecraft.v1.Message.daemon_update_failed:type_name -> savecraft.v1.DaemonUpdateFailed
+	32, // 17: savecraft.v1.Message.source_update_available:type_name -> savecraft.v1.SourceUpdateAvailable
+	33, // 18: savecraft.v1.Message.source_update_started:type_name -> savecraft.v1.SourceUpdateStarted
+	34, // 19: savecraft.v1.Message.source_update_failed:type_name -> savecraft.v1.SourceUpdateFailed
 	21, // 20: savecraft.v1.Message.config_update:type_name -> savecraft.v1.ConfigUpdate
 	23, // 21: savecraft.v1.Message.rescan_game:type_name -> savecraft.v1.RescanGame
 	24, // 22: savecraft.v1.Message.plugin_available:type_name -> savecraft.v1.PluginAvailable
 	25, // 23: savecraft.v1.Message.discover_games:type_name -> savecraft.v1.DiscoverGames
-	26, // 24: savecraft.v1.Message.device_state:type_name -> savecraft.v1.DeviceState
+	26, // 24: savecraft.v1.Message.source_state:type_name -> savecraft.v1.SourceState
 	30, // 25: savecraft.v1.Message.test_path:type_name -> savecraft.v1.TestPath
 	31, // 26: savecraft.v1.Message.test_path_result:type_name -> savecraft.v1.TestPathResult
-	37, // 27: savecraft.v1.DaemonOnline.timestamp:type_name -> google.protobuf.Timestamp
-	37, // 28: savecraft.v1.DaemonOffline.timestamp:type_name -> google.protobuf.Timestamp
+	37, // 27: savecraft.v1.SourceOnline.timestamp:type_name -> google.protobuf.Timestamp
+	37, // 28: savecraft.v1.SourceOffline.timestamp:type_name -> google.protobuf.Timestamp
 	12, // 29: savecraft.v1.GamesDiscovered.games:type_name -> savecraft.v1.DiscoveredGame
 	35, // 30: savecraft.v1.ParseCompleted.identity:type_name -> savecraft.v1.SaveIdentity
 	0,  // 31: savecraft.v1.ParseFailed.error_type:type_name -> savecraft.v1.ParseErrorType
 	35, // 32: savecraft.v1.PushCompleted.identity:type_name -> savecraft.v1.SaveIdentity
 	36, // 33: savecraft.v1.ConfigUpdate.games:type_name -> savecraft.v1.ConfigUpdate.GamesEntry
-	27, // 34: savecraft.v1.DeviceState.devices:type_name -> savecraft.v1.DeviceInfo
-	37, // 35: savecraft.v1.DeviceInfo.last_seen:type_name -> google.protobuf.Timestamp
-	28, // 36: savecraft.v1.DeviceInfo.games:type_name -> savecraft.v1.GameInfo
+	27, // 34: savecraft.v1.SourceState.sources:type_name -> savecraft.v1.SourceInfo
+	37, // 35: savecraft.v1.SourceInfo.last_seen:type_name -> google.protobuf.Timestamp
+	28, // 36: savecraft.v1.SourceInfo.games:type_name -> savecraft.v1.GameInfo
 	1,  // 37: savecraft.v1.GameInfo.status:type_name -> savecraft.v1.GameStatusEnum
 	29, // 38: savecraft.v1.GameInfo.saves:type_name -> savecraft.v1.SaveInfo
 	37, // 39: savecraft.v1.GameInfo.last_activity:type_name -> google.protobuf.Timestamp
@@ -2891,9 +2891,9 @@ func file_savecraft_v1_protocol_proto_init() {
 		return
 	}
 	file_savecraft_v1_protocol_proto_msgTypes[0].OneofWrappers = []any{
-		(*Message_DaemonOnline)(nil),
-		(*Message_DaemonOffline)(nil),
-		(*Message_DaemonHeartbeat)(nil),
+		(*Message_SourceOnline)(nil),
+		(*Message_SourceOffline)(nil),
+		(*Message_SourceHeartbeat)(nil),
 		(*Message_ScanStarted)(nil),
 		(*Message_ScanCompleted)(nil),
 		(*Message_GameDetected)(nil),
@@ -2908,14 +2908,14 @@ func file_savecraft_v1_protocol_proto_init() {
 		(*Message_PushCompleted)(nil),
 		(*Message_PushFailed)(nil),
 		(*Message_PluginUpdated)(nil),
-		(*Message_DaemonUpdateAvailable)(nil),
-		(*Message_DaemonUpdateStarted)(nil),
-		(*Message_DaemonUpdateFailed)(nil),
+		(*Message_SourceUpdateAvailable)(nil),
+		(*Message_SourceUpdateStarted)(nil),
+		(*Message_SourceUpdateFailed)(nil),
 		(*Message_ConfigUpdate)(nil),
 		(*Message_RescanGame)(nil),
 		(*Message_PluginAvailable)(nil),
 		(*Message_DiscoverGames)(nil),
-		(*Message_DeviceState)(nil),
+		(*Message_SourceState)(nil),
 		(*Message_TestPath)(nil),
 		(*Message_TestPathResult)(nil),
 	}
