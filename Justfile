@@ -255,7 +255,8 @@ build-tray-all app_name="savecraft":
 build-msi version="1.0.0" app_name="savecraft":
     wix build \
         -d Version={{version}} \
-        -d BinaryPath=dist/{{app_name}}-daemon-windows-amd64.exe \
+        -d DaemonPath=dist/{{app_name}}-daemon-windows-amd64.exe \
+        -d TrayPath=dist/{{app_name}}-tray-windows-amd64.exe \
         -o dist/{{app_name}}.msi \
         install/windows/savecraft.wxs
 
