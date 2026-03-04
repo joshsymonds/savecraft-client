@@ -16,10 +16,7 @@ readonly APP_NAME="${SAVECRAFT_APP_NAME:-savecraft}"
 readonly BIN_DIR="${HOME}/.local/bin"
 readonly CONFIG_DIR="${HOME}/.config/${APP_NAME}"
 readonly CACHE_DIR="${HOME}/.cache/${APP_NAME}"
-readonly SYSTEMD_DIR="${HOME}/.config/systemd/user"
-
 readonly BINARY_NAME="${APP_NAME}-daemon"
-readonly SERVICE_NAME="${APP_NAME}.service"
 
 # Temp files for download — module-level so the EXIT trap can clean them up.
 TMP_BINARY=""
@@ -125,41 +122,20 @@ download() {
 }
 
 # ---------------------------------------------------------------------------
-# install_systemd_unit — write unit file + enable (+ start if configured)
+# install_service — register and start the daemon as an OS service
+# Delegates to the daemon binary, which writes the platform-native
+# service config (systemd unit with security hardening, etc.).
 # ---------------------------------------------------------------------------
-install_systemd_unit() {
-    mkdir -p "${SYSTEMD_DIR}"
+install_service() {
+    info "Registering daemon as OS service..."
+    "${BIN_DIR}/${BINARY_NAME}" install \
+        || die "Failed to register daemon as OS service"
+    ok "Daemon registered as OS service"
 
-    cat >"${SYSTEMD_DIR}/${SERVICE_NAME}" <<UNIT
-[Unit]
-Description=${APP_NAME} daemon
-After=network-online.target
-
-[Service]
-ExecStart=%h/.local/bin/${BINARY_NAME}
-Restart=always
-RestartSec=5
-EnvironmentFile=-%h/.config/${APP_NAME}/env
-
-ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=%h/.config/${APP_NAME} %h/.cache/${APP_NAME} %h/.local/bin
-
-NoNewPrivileges=yes
-PrivateTmp=yes
-
-RestrictAddressFamilies=AF_INET AF_INET6
-
-[Install]
-WantedBy=default.target
-UNIT
-
-    info "Installed systemd user unit to ${SYSTEMD_DIR}/${SERVICE_NAME}"
-
-    systemctl --user daemon-reload
-
-    systemctl --user enable --now "${SERVICE_NAME}"
-    ok "Enabled and started ${SERVICE_NAME}"
+    info "Starting daemon..."
+    "${BIN_DIR}/${BINARY_NAME}" start \
+        || die "Failed to start daemon"
+    ok "Daemon started"
 }
 
 # ---------------------------------------------------------------------------
@@ -229,17 +205,17 @@ wait_for_link() {
 # main
 # ---------------------------------------------------------------------------
 main() {
-    local no_systemd=false
+    local no_service=false
 
     # Parse arguments
     for arg in "$@"; do
         case "${arg}" in
-            --no-systemd) no_systemd=true ;;
+            --no-service | --no-systemd) no_service=true ;;
             --help | -h)
-                echo "Usage: install.sh [--no-systemd]"
+                echo "Usage: install.sh [--no-service]"
                 echo ""
                 echo "Options:"
-                echo "  --no-systemd   Skip systemd unit installation (for Docker/testing)"
+                echo "  --no-service   Skip OS service registration (for Docker/testing)"
                 exit 0
                 ;;
             *) die "Unknown argument: ${arg}" ;;
@@ -327,11 +303,11 @@ main() {
     # Write env file — daemon self-registers on first boot
     create_env_template
 
-    # Systemd
-    if [[ "${no_systemd}" == "false" ]]; then
-        install_systemd_unit
+    # Service registration
+    if [[ "${no_service}" == "false" ]]; then
+        install_service
     else
-        info "Skipping systemd unit installation (--no-systemd)"
+        info "Skipping OS service registration (--no-service)"
     fi
 
     # Summary
@@ -341,13 +317,10 @@ main() {
     echo "  Binary:   ${BIN_DIR}/${BINARY_NAME}"
     echo "  Config:   ${CONFIG_DIR}/env"
     echo "  Cache:    ${CACHE_DIR}/"
-    if [[ "${no_systemd}" == "false" ]]; then
-        echo "  Service:  ${SYSTEMD_DIR}/${SERVICE_NAME}"
-    fi
     echo ""
 
     # Wait for the daemon to register and retrieve the link URL.
-    if [[ "${no_systemd}" == "false" ]]; then
+    if [[ "${no_service}" == "false" ]]; then
         local status_port="${SAVECRAFT_STATUS_PORT:-9182}"
         local link_url=""
         link_url="$(wait_for_link "http://localhost:${status_port}")"
@@ -363,7 +336,7 @@ main() {
             echo "  Next steps:"
             echo "    Link your device at ${frontend_url}/setup"
         fi
-        echo "  Check daemon status: systemctl --user status ${APP_NAME}"
+        echo "  Check daemon status: ${BIN_DIR}/${BINARY_NAME} verify"
     fi
     echo ""
 }
