@@ -172,6 +172,7 @@ linters:
         - (*io.ReadCloser).Close
         - (*net/http.Response).Body.Close
         - (net/http.ResponseWriter).Write
+        - (*encoding/json.Encoder).Encode
         - (*os.File).Sync
         - (*bufio.Writer).Flush
         - fmt.Fprint
@@ -492,7 +493,7 @@ linters:
           - musttag
 
       # Daemon HTTP clients use configured server URLs, not user-tainted input
-      - path: 'internal/(pluginmgr|push|selfupdate|regclient)/.*\.go'
+      - path: 'internal/(localapi|pluginmgr|push|selfupdate|regclient)/.*\.go'
         text: 'G(107|704)'
         linters:
           - gosec
@@ -515,8 +516,10 @@ linters:
           - gosec
 
       # CLI entrypoints: fmt.Print, file I/O from args, arg count checks, cleanup close are idiomatic
+      # contextcheck: shutdown defer handlers correctly use context.Background() since parent ctx is canceled
       - path: 'cmd/.*\.go'
         linters:
+          - contextcheck
           - errcheck
           - forbidigo
           - gosec

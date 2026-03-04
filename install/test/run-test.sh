@@ -78,7 +78,7 @@ assert_file_contains() {
 
 # Run installer, capture output regardless of exit code.
 #   $1  path to install.sh
-#   $@  additional arguments (caller passes --no-systemd if needed)
+#   $@  additional arguments (caller passes --no-service if needed)
 #   Sets: CAPTURED_OUTPUT, CAPTURED_EXIT_CODE
 run_installer_capture() {
     local script="$1"
@@ -119,6 +119,7 @@ EOF
 # Remove installed files between tests so each starts clean.
 clean_install_dirs() {
     rm -rf "${HOME}/.local/bin/savecraft-daemon"
+    rm -rf "${HOME}/.local/bin/savecraft-tray"
     rm -rf "${HOME}/.config/savecraft"
     rm -rf "${HOME}/.cache/savecraft"
     rm -rf "${HOME}/.config/systemd"
@@ -136,9 +137,9 @@ set_installer_env() {
 #   $1  path to install.sh
 run_installer_ok() {
     local script="$1"
-    info "Running ${script##*/} --no-systemd (expect success)"
+    info "Running ${script##*/} --no-service (expect success)"
     set_installer_env
-    bash "${script}" --no-systemd
+    bash "${script}" --no-service
 }
 
 # Run installer, expecting failure with a specific pattern in output.
@@ -149,12 +150,12 @@ run_installer_expect_failure() {
     local script="$1"
     local pattern="$2"
     local label="$3"
-    info "Running ${script##*/} --no-systemd (expect failure: ${label})"
+    info "Running ${script##*/} --no-service (expect failure: ${label})"
     set_installer_env
 
     local output exit_code
     exit_code=0
-    output="$(bash "${script}" --no-systemd 2>&1)" || exit_code=$?
+    output="$(bash "${script}" --no-service 2>&1)" || exit_code=$?
 
     if [[ "${exit_code}" -eq 0 ]]; then
         fail "${label}: installer succeeded but should have failed"
@@ -183,25 +184,37 @@ generate_fixtures() {
     openssl genpkey -algorithm Ed25519 -out "${key_dir}/private.pem" 2>/dev/null
     openssl pkey -in "${key_dir}/private.pem" -pubout -out "${key_dir}/public.pem" 2>/dev/null
 
-    # Create dummy daemon binary (shell script that handles 'version')
+    # Create dummy daemon and tray binaries (shell scripts)
     mkdir -p "${FIXTURES}/daemon"
     for arch in amd64 arm64; do
-        local artifact="savecraft-daemon-linux-${arch}"
-        cat >"${FIXTURES}/daemon/${artifact}" <<'SCRIPT'
+        local daemon_artifact="savecraft-daemon-linux-${arch}"
+        cat >"${FIXTURES}/daemon/${daemon_artifact}" <<'SCRIPT'
 #!/bin/bash
 case "$1" in
     version) echo "savecraft-daemon 0.0.0-test" ;;
     *) echo "unknown command: $1" >&2; exit 1 ;;
 esac
 SCRIPT
-        chmod +x "${FIXTURES}/daemon/${artifact}"
+        chmod +x "${FIXTURES}/daemon/${daemon_artifact}"
 
-        # Sign binary with ephemeral key
         openssl pkeyutl -sign \
             -inkey "${key_dir}/private.pem" \
             -rawin \
-            -in "${FIXTURES}/daemon/${artifact}" \
-            -out "${FIXTURES}/daemon/${artifact}.sig"
+            -in "${FIXTURES}/daemon/${daemon_artifact}" \
+            -out "${FIXTURES}/daemon/${daemon_artifact}.sig"
+
+        local tray_artifact="savecraft-tray-linux-${arch}"
+        cat >"${FIXTURES}/daemon/${tray_artifact}" <<'SCRIPT'
+#!/bin/bash
+echo "savecraft-tray 0.0.0-test"
+SCRIPT
+        chmod +x "${FIXTURES}/daemon/${tray_artifact}"
+
+        openssl pkeyutl -sign \
+            -inkey "${key_dir}/private.pem" \
+            -rawin \
+            -in "${FIXTURES}/daemon/${tray_artifact}" \
+            -out "${FIXTURES}/daemon/${tray_artifact}.sig"
     done
 
     # Extract base64 DER public key for the test harness
@@ -225,6 +238,10 @@ SCRIPT
 #   daemon/savecraft-daemon-linux-amd64.sig  (signature)
 #   daemon/savecraft-daemon-linux-arm64      (binary)
 #   daemon/savecraft-daemon-linux-arm64.sig  (signature)
+#   daemon/savecraft-tray-linux-amd64        (binary)
+#   daemon/savecraft-tray-linux-amd64.sig    (signature)
+#   daemon/savecraft-tray-linux-arm64        (binary)
+#   daemon/savecraft-tray-linux-arm64.sig    (signature)
 # ---------------------------------------------------------------------------
 start_http_server() {
     info "Starting HTTP server on port ${HTTP_PORT} serving ${FIXTURES}/"
@@ -253,15 +270,19 @@ test_happy_path() {
 
     run_installer_ok "${FIXTURES}/install.sh"
 
-    # Binary exists and is executable
+    # Daemon binary exists and is executable
     assert_file_exists "${HOME}/.local/bin/savecraft-daemon" "daemon binary"
     assert_executable "${HOME}/.local/bin/savecraft-daemon" "daemon binary"
 
-    # --no-systemd means no unit file written
+    # Tray binary exists and is executable
+    assert_file_exists "${HOME}/.local/bin/savecraft-tray" "tray binary"
+    assert_executable "${HOME}/.local/bin/savecraft-tray" "tray binary"
+
+    # --no-service means no unit file written
     if [[ -f "${HOME}/.config/systemd/user/savecraft.service" ]]; then
-        fail "systemd unit should not exist with --no-systemd"
+        fail "systemd unit should not exist with --no-service"
     else
-        pass "systemd unit correctly absent with --no-systemd"
+        pass "systemd unit correctly absent with --no-service"
     fi
 
     # Env file exists and contains expected values
@@ -301,14 +322,14 @@ test_missing_pubkey() {
     info "=== Test: missing public key ==="
     clean_install_dirs
 
-    info "Running install.sh --no-systemd (expect failure: missing pubkey detected)"
+    info "Running install.sh --no-service (expect failure: missing pubkey detected)"
     set_installer_env
     # Unset pubkey AFTER set_installer_env to simulate missing configuration
     unset SAVECRAFT_ED25519_PUBKEY
 
     local output exit_code
     exit_code=0
-    output="$(bash "${FIXTURES}/install.sh" --no-systemd 2>&1)" || exit_code=$?
+    output="$(bash "${FIXTURES}/install.sh" --no-service 2>&1)" || exit_code=$?
 
     if [[ "${exit_code}" -eq 0 ]]; then
         fail "missing pubkey detected: installer succeeded but should have failed"
@@ -333,7 +354,7 @@ test_bad_signature() {
     info "=== Test: bad signature ==="
     clean_install_dirs
 
-    info "Running install.sh --no-systemd (expect failure: wrong pubkey)"
+    info "Running install.sh --no-service (expect failure: wrong pubkey)"
     set_installer_env
     # A valid Ed25519 public key that doesn't match the signing key.
     # Generated from: openssl genpkey -algorithm Ed25519 | openssl pkey -pubout -outform DER | base64
@@ -341,7 +362,7 @@ test_bad_signature() {
 
     local output exit_code
     exit_code=0
-    output="$(bash "${FIXTURES}/install.sh" --no-systemd 2>&1)" || exit_code=$?
+    output="$(bash "${FIXTURES}/install.sh" --no-service 2>&1)" || exit_code=$?
 
     if [[ "${exit_code}" -eq 0 ]]; then
         fail "bad signature: installer succeeded but should have failed"
@@ -370,7 +391,7 @@ test_sha256_dedup_skip() {
     generate_manifest "${HOME}/.local/bin/savecraft-daemon"
 
     # Second install — should detect matching hash and skip download
-    run_installer_capture "${FIXTURES}/install.sh" --no-systemd
+    run_installer_capture "${FIXTURES}/install.sh" --no-service
     assert_output_contains "up to date" "SHA256 dedup skips re-download"
 
     rm -f "${FIXTURES}/daemon/manifest.json"
@@ -395,7 +416,7 @@ test_sha256_dedup_mismatch() {
 EOF
 
     # Second install — hash mismatch, should re-download
-    run_installer_capture "${FIXTURES}/install.sh" --no-systemd
+    run_installer_capture "${FIXTURES}/install.sh" --no-service
     assert_output_contains "downloading|installed" "SHA256 mismatch triggers re-download"
 
     rm -f "${FIXTURES}/daemon/manifest.json"

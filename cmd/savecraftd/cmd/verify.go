@@ -20,7 +20,7 @@ func buildVerifyCommand(appName string) *cobra.Command {
 		Long: `Check whether the daemon's auth token is accepted by the server.
 
 Exits 0 if the token is valid, non-zero otherwise. Used by the installer
-to decide whether to skip or re-run the pairing flow.`,
+to decide whether to skip or re-run the device linking flow.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runVerifyWithPath(cmd, serverURL, envfile.EnvFilePath(appName))
 		},

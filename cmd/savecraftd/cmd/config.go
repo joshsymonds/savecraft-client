@@ -178,16 +178,16 @@ func daemonConfigDefaults(deviceID, version string) daemon.Config {
 
 // autoRegister checks if the daemon has credentials. If not, it calls the
 // device registration endpoint, persists the credentials to the env file,
-// and updates the config in place. Returns the registration result (with
-// link code) if registration happened, or nil if credentials already exist.
-func autoRegister(ctx context.Context, cfg *appConfig, envPath string) (*regclient.RegisterResult, error) {
+// and updates the config in place. Returns (result, true, nil) if registration
+// happened, or (nil, false, nil) if credentials already exist.
+func autoRegister(ctx context.Context, cfg *appConfig, envPath string) (*regclient.RegisterResult, bool, error) {
 	if cfg.AuthToken != "" {
-		return nil, nil //nolint:nilnil // nil result means "already registered, nothing to do."
+		return nil, false, nil
 	}
 
 	result, err := regclient.Register(ctx, cfg.ServerURL, cfg.Daemon.DeviceID)
 	if err != nil {
-		return nil, fmt.Errorf("device registration: %w", err)
+		return nil, false, fmt.Errorf("device registration: %w", err)
 	}
 
 	// Persist credentials.
@@ -196,7 +196,7 @@ func autoRegister(ctx context.Context, cfg *appConfig, envPath string) (*regclie
 		"SAVECRAFT_DEVICE_UUID": result.DeviceUUID,
 		"SAVECRAFT_SERVER_URL":  cfg.ServerURL,
 	}); writeErr != nil {
-		return nil, fmt.Errorf("persist credentials: %w", writeErr)
+		return nil, false, fmt.Errorf("persist credentials: %w", writeErr)
 	}
 
 	// Update config in place.
@@ -204,7 +204,7 @@ func autoRegister(ctx context.Context, cfg *appConfig, envPath string) (*regclie
 	cfg.Daemon.AuthToken = result.Token
 	cfg.Daemon.DeviceUUID = result.DeviceUUID
 
-	return result, nil
+	return result, true, nil
 }
 
 // loadEnvFileDefaults reads the env file and sets environment variables

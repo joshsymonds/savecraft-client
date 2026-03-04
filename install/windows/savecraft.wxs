@@ -2,7 +2,10 @@
 <!--
   Savecraft MSI installer definition (WiX v4).
 
-  Build: wix build -d Version=1.0.0 -d BinaryPath=../../dist/savecraft-daemon-windows-amd64.exe -o savecraft.msi savecraft.wxs
+  Build: wix build -d Version=1.0.0 \
+           -d DaemonPath=../../dist/savecraft-daemon-windows-amd64.exe \
+           -d TrayPath=../../dist/savecraft-tray-windows-amd64.exe \
+           -o savecraft.msi savecraft.wxs
 
   No custom actions — installs files only. Pairing happens in the tray app post-install.
 -->
@@ -21,7 +24,9 @@
 
     <Feature Id="Main" Title="Savecraft" Level="1">
       <ComponentRef Id="DaemonExe" />
-      <ComponentRef Id="StartupRegistryKey" />
+      <ComponentRef Id="TrayExe" />
+      <ComponentRef Id="DaemonStartupKey" />
+      <ComponentRef Id="TrayStartupKey" />
     </Feature>
   </Package>
 
@@ -32,25 +37,41 @@
     </StandardDirectory>
   </Fragment>
 
-  <!-- Main binary -->
+  <!-- Daemon binary -->
   <Fragment>
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
       <Component Id="DaemonExe">
-        <File Id="savecraftd.exe" Source="$(var.BinaryPath)" Name="savecraftd.exe" KeyPath="yes" />
+        <File Id="savecraftd.exe" Source="$(var.DaemonPath)" Name="savecraftd.exe" KeyPath="yes" />
         <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
+      </Component>
+      <Component Id="TrayExe">
+        <File Id="savecraft_tray.exe" Source="$(var.TrayPath)" Name="savecraft-tray.exe" KeyPath="yes" />
       </Component>
     </ComponentGroup>
   </Fragment>
 
-  <!-- Start on login via HKCU Run key (no admin needed for the key itself) -->
+  <!-- Start daemon on login via HKCU Run key -->
   <Fragment>
-    <Component Id="StartupRegistryKey" Directory="INSTALLFOLDER">
+    <Component Id="DaemonStartupKey" Directory="INSTALLFOLDER">
       <RegistryValue
         Root="HKCU"
         Key="Software\Microsoft\Windows\CurrentVersion\Run"
-        Name="Savecraft"
+        Name="Savecraft Daemon"
         Type="string"
         Value="[INSTALLFOLDER]savecraftd.exe"
+        KeyPath="yes" />
+    </Component>
+  </Fragment>
+
+  <!-- Start tray on login via HKCU Run key -->
+  <Fragment>
+    <Component Id="TrayStartupKey" Directory="INSTALLFOLDER">
+      <RegistryValue
+        Root="HKCU"
+        Key="Software\Microsoft\Windows\CurrentVersion\Run"
+        Name="Savecraft Tray"
+        Type="string"
+        Value="[INSTALLFOLDER]savecraft-tray.exe"
         KeyPath="yes" />
     </Component>
   </Fragment>
