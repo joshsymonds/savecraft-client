@@ -43,9 +43,9 @@ test-go-race:
 test-worker:
     cd worker && npm test
 
-# Run reference Worker tests
+# Run reference Worker infrastructure tests (copies D2R wasm, then tests WASI shim)
 test-reference-worker:
-    cd reference && npm test
+    cd reference && just test
 
 # Start Worker dev server (Miniflare)
 dev-worker:
