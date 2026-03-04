@@ -815,6 +815,136 @@ func TestProgressSectionPerfection(t *testing.T) {
 	}
 }
 
+func TestPerfectionSection(t *testing.T) {
+	data, err := os.ReadFile("../testdata/TestSave")
+	if err != nil {
+		t.Fatalf("reading test fixture: %v", err)
+	}
+
+	save, err := parseSave(data)
+	if err != nil {
+		t.Fatalf("parseSave: %v", err)
+	}
+
+	sections := buildSections(save)
+	perfSection, ok := sections["perfection"].(map[string]any)
+	if !ok {
+		t.Fatal("perfection section missing")
+	}
+	perfData := perfSection["data"].(map[string]any)
+
+	// Overall percentage should be very low for early game
+	pct := perfData["percentage"].(float64)
+	if pct < 0 || pct > 10 {
+		t.Errorf("perfection percentage = %.1f, want 0-10 for early game", pct)
+	}
+
+	// Categories array
+	categories := perfData["categories"].([]map[string]any)
+	if len(categories) != 11 {
+		t.Errorf("perfection categories = %d, want 11", len(categories))
+	}
+
+	// All categories should have name and weight
+	for _, cat := range categories {
+		if _, ok := cat["name"].(string); !ok {
+			t.Errorf("category missing name: %v", cat)
+		}
+		if _, ok := cat["weight"].(int); !ok {
+			t.Errorf("category %v missing weight", cat["name"])
+		}
+	}
+
+	// Obelisks: 0 in early game
+	var obelisks map[string]any
+	for _, cat := range categories {
+		if cat["name"] == "Obelisks" {
+			obelisks = cat
+			break
+		}
+	}
+	if obelisks == nil {
+		t.Fatal("Obelisks category not found")
+	}
+	if obelisks["current"].(int) != 0 {
+		t.Errorf("obelisks current = %v, want 0", obelisks["current"])
+	}
+
+	// Gold Clock: false in early game
+	var goldClock map[string]any
+	for _, cat := range categories {
+		if cat["name"] == "Gold Clock" {
+			goldClock = cat
+			break
+		}
+	}
+	if goldClock == nil {
+		t.Fatal("Gold Clock category not found")
+	}
+	if goldClock["complete"].(bool) != false {
+		t.Errorf("gold clock complete = %v, want false", goldClock["complete"])
+	}
+}
+
+func TestPerfectionSectionPerfection(t *testing.T) {
+	data, err := os.ReadFile("../testdata/PerfectionSave")
+	if err != nil {
+		t.Fatalf("reading test fixture: %v", err)
+	}
+
+	save, err := parseSave(data)
+	if err != nil {
+		t.Fatalf("parseSave: %v", err)
+	}
+
+	sections := buildSections(save)
+	perfData := sections["perfection"].(map[string]any)["data"].(map[string]any)
+
+	// Overall percentage should be very high for perfection save
+	pct := perfData["percentage"].(float64)
+	if pct < 90 {
+		t.Errorf("perfection percentage = %.1f, want >= 90", pct)
+	}
+
+	categories := perfData["categories"].([]map[string]any)
+
+	// Check key perfection categories
+	catMap := map[string]map[string]any{}
+	for _, cat := range categories {
+		catMap[cat["name"].(string)] = cat
+	}
+
+	// Obelisks: 4/4
+	if catMap["Obelisks"]["current"].(int) != 4 {
+		t.Errorf("obelisks current = %v, want 4", catMap["Obelisks"]["current"])
+	}
+
+	// Gold Clock: true
+	if catMap["Gold Clock"]["complete"].(bool) != true {
+		t.Errorf("gold clock complete = %v, want true", catMap["Gold Clock"]["complete"])
+	}
+
+	// Monster Slayer: true
+	if catMap["Monster Slayer Hero"]["complete"].(bool) != true {
+		t.Errorf("monster slayer complete = %v, want true", catMap["Monster Slayer Hero"]["complete"])
+	}
+
+	// Stardrops: true (7/7)
+	if catMap["Stardrops"]["complete"].(bool) != true {
+		t.Errorf("stardrops complete = %v, want true", catMap["Stardrops"]["complete"])
+	}
+
+	// Golden Walnuts: 130/130
+	if catMap["Golden Walnuts"]["current"].(int) != 130 {
+		t.Errorf("golden walnuts current = %v, want 130", catMap["Golden Walnuts"]["current"])
+	}
+
+	// Farmer Level: 25/25 (all skills maxed)
+	if catMap["Farmer Level"]["current"].(int) != 25 {
+		t.Errorf("farmer level current = %v, want 25", catMap["Farmer Level"]["current"])
+	}
+}
+
 func TestFarmTypeName(t *testing.T) {
 	tests := []struct {
 		id   int

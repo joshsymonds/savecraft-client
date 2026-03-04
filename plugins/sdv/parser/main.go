@@ -184,6 +184,12 @@ type GameLocation struct {
 	Type          string        `xml:"http://www.w3.org/2001/XMLSchema-instance type,attr"`
 	AreasComplete BoolList      `xml:"areasComplete"`
 	Bundles       []BundleState `xml:"bundles>item"`
+	Buildings     []Building    `xml:"buildings>Building"`
+}
+
+// Building represents a farm building.
+type Building struct {
+	Type string `xml:"buildingType"`
 }
 
 // BoolList parses <element><boolean>...</boolean></element> lists.
@@ -331,6 +337,10 @@ func buildSections(save *SaveGame) map[string]any {
 		"progress": map[string]any{
 			"description": "Stardrops, golden walnuts, quests, special orders, and monster slayer goals",
 			"data":        buildProgressSection(save),
+		},
+		"perfection": map[string]any{
+			"description": "Perfection percentage breakdown by category with points earned",
+			"data":        buildPerfectionSection(save),
 		},
 	}
 }
@@ -939,6 +949,181 @@ func buildProgressSection(save *SaveGame) map[string]any {
 			"goals": goals,
 		},
 	}
+}
+
+// gameTotals returns version-aware totals for shipping, cooking, crafting, fishing.
+func gameTotals(version string) (shipping, cooking, crafting, fishing int) {
+	if strings.HasPrefix(version, "1.6") {
+		return 156, 84, 148, 73
+	}
+	return 145, 74, 129, 67
+}
+
+func buildPerfectionSection(save *SaveGame) map[string]any {
+	p := save.Player
+	shippingTotal, cookingTotal, craftingTotal, fishingTotal := gameTotals(save.GameVersion)
+
+	// Shipping
+	shippingCount := len(p.BasicShipped)
+
+	// Cooking: count distinct cooked recipes
+	cookedIDs := map[int]bool{}
+	for _, rc := range p.RecipesCooked {
+		id := resolveItemID(rc.KeyInt, rc.KeyStr)
+		if rc.Value > 0 {
+			cookedIDs[id] = true
+		}
+	}
+	cookingCount := len(cookedIDs)
+
+	// Crafting
+	craftingCount := 0
+	for _, cr := range p.CraftingRecipes {
+		if cr.Value > 0 {
+			craftingCount++
+		}
+	}
+
+	// Fishing
+	fishingCount := len(p.FishCaught)
+
+	// Great Friends: datable NPCs maxed at 2000 pts, others at 2500
+	friendsMaxed := 0
+	friendsTotal := 0
+	for _, item := range p.FriendshipData {
+		if ignoredNPCs[item.Key] {
+			continue
+		}
+		friendsTotal++
+		threshold := 2500
+		if datableNPCs[item.Key] {
+			threshold = 2000
+		}
+		if item.Friendship.Points >= threshold {
+			friendsMaxed++
+		}
+	}
+
+	// Skills: farmer level = floor(sum_of_levels / 2), max 25
+	skillSum := 0
+	for _, xp := range p.ExperiencePoints.Values {
+		skillSum += skillLevel(xp)
+	}
+	farmerLevel := skillSum / 2
+
+	// Stardrops
+	mailSet := map[string]bool{}
+	for _, m := range p.MailReceived.Values {
+		mailSet[m] = true
+	}
+	stardropCount := 0
+	for _, sd := range stardropFlags {
+		if mailSet[sd.flag] {
+			stardropCount++
+		}
+	}
+	allStardrops := stardropCount >= len(stardropFlags)
+
+	// Monster Slayer: all goals complete
+	monsterKillMap := map[string]int{}
+	for _, mk := range p.Stats.SpecificMonstersKilled {
+		monsterKillMap[mk.Key] = mk.Value
+	}
+	allGoalsComplete := true
+	for _, goal := range monsterGoals {
+		killed := 0
+		for _, m := range goal.Monsters {
+			killed += monsterKillMap[m]
+		}
+		if killed < goal.Target {
+			allGoalsComplete = false
+			break
+		}
+	}
+
+	// Golden Walnuts
+	walnutCount := save.GoldenWalnutsFound
+
+	// Farm buildings: obelisks and gold clock
+	obeliskSet := map[string]bool{
+		"Earth Obelisk": true, "Water Obelisk": true,
+		"Desert Obelisk": true, "Island Obelisk": true,
+	}
+	obeliskCount := 0
+	hasGoldClock := false
+	for i := range save.Locations {
+		if save.Locations[i].Type == "Farm" {
+			for _, b := range save.Locations[i].Buildings {
+				if obeliskSet[b.Type] {
+					obeliskCount++
+				}
+				if b.Type == "Gold Clock" {
+					hasGoldClock = true
+				}
+			}
+			break
+		}
+	}
+
+	// Compute category percentages and earned points
+	pctShipping := clampRatio(shippingCount, shippingTotal)
+	pctCooking := clampRatio(cookingCount, cookingTotal)
+	pctCrafting := clampRatio(craftingCount, craftingTotal)
+	pctFishing := clampRatio(fishingCount, fishingTotal)
+	pctFriends := clampRatio(friendsMaxed, friendsTotal)
+	pctSkills := clampRatio(farmerLevel, 25)
+	pctWalnuts := clampRatio(walnutCount, 130)
+
+	goldClockPts := 0.0
+	if hasGoldClock {
+		goldClockPts = 10
+	}
+	monsterPts := 0.0
+	if allGoalsComplete {
+		monsterPts = 10
+	}
+	stardropPts := 0.0
+	if allStardrops {
+		stardropPts = 10
+	}
+
+	overall := float64(obeliskCount) + goldClockPts + monsterPts + stardropPts +
+		15*pctShipping + 11*pctFriends + 10*pctCooking + 10*pctCrafting + 10*pctFishing +
+		5*pctWalnuts + 5*pctSkills
+
+	// Round to 1 decimal place
+	overall = float64(int(overall*10+0.5)) / 10
+
+	categories := []map[string]any{
+		{"name": "Shipping", "weight": 15, "current": shippingCount, "target": shippingTotal, "earned": 15 * pctShipping},
+		{"name": "Obelisks", "weight": 4, "current": obeliskCount, "target": 4, "earned": float64(obeliskCount)},
+		{"name": "Gold Clock", "weight": 10, "complete": hasGoldClock, "earned": goldClockPts},
+		{"name": "Monster Slayer Hero", "weight": 10, "complete": allGoalsComplete, "earned": monsterPts},
+		{"name": "Great Friends", "weight": 11, "current": friendsMaxed, "target": friendsTotal, "earned": 11 * pctFriends},
+		{"name": "Farmer Level", "weight": 5, "current": farmerLevel, "target": 25, "earned": 5 * pctSkills},
+		{"name": "Stardrops", "weight": 10, "complete": allStardrops, "earned": stardropPts},
+		{"name": "Cooking", "weight": 10, "current": cookingCount, "target": cookingTotal, "earned": 10 * pctCooking},
+		{"name": "Crafting", "weight": 10, "current": craftingCount, "target": craftingTotal, "earned": 10 * pctCrafting},
+		{"name": "Fishing", "weight": 10, "current": fishingCount, "target": fishingTotal, "earned": 10 * pctFishing},
+		{"name": "Golden Walnuts", "weight": 5, "current": walnutCount, "target": 130, "earned": 5 * pctWalnuts},
+	}
+
+	return map[string]any{
+		"percentage": overall,
+		"categories": categories,
+	}
+}
+
+// clampRatio returns min(current/total, 1.0), handling zero total.
+func clampRatio(current, total int) float64 {
+	if total <= 0 {
+		return 0
+	}
+	r := float64(current) / float64(total)
+	if r > 1 {
+		return 1
+	}
+	return r
 }
 
 func buildCharacterSection(save *SaveGame) map[string]any {
