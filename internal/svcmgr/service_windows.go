@@ -16,7 +16,7 @@ const runKeyPath = `Software\Microsoft\Windows\CurrentVersion\Run`
 
 //nolint:unparam // commandRunner parameter required by cross-platform interface
 func install(cfg Config, exePath string, _ commandRunner) error {
-	key, err := registry.OpenKey(registry.CURRENT_USER, runKeyPath, registry.SET_VALUE)
+	key, _, err := registry.CreateKey(registry.CURRENT_USER, runKeyPath, registry.SET_VALUE)
 	if err != nil {
 		return fmt.Errorf("open registry Run key: %w", err)
 	}
@@ -34,6 +34,10 @@ func install(cfg Config, exePath string, _ commandRunner) error {
 //nolint:unparam // commandRunner parameter required by cross-platform interface
 func uninstall(cfg Config, _ commandRunner) error {
 	key, err := registry.OpenKey(registry.CURRENT_USER, runKeyPath, registry.SET_VALUE)
+	if errors.Is(err, registry.ErrNotExist) {
+		return nil // Key doesn't exist, nothing to uninstall.
+	}
+
 	if err != nil {
 		return fmt.Errorf("open registry Run key: %w", err)
 	}

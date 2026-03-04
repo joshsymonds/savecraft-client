@@ -18,7 +18,7 @@ func cleanupRegistryValue(t *testing.T) {
 
 	key, err := registry.OpenKey(registry.CURRENT_USER, runKeyPath, registry.SET_VALUE)
 	if err != nil {
-		return
+		return // Key doesn't exist, nothing to clean up.
 	}
 	defer key.Close()
 
@@ -68,10 +68,11 @@ func TestUninstall_RemovesRegistryValue(t *testing.T) {
 		AppName:     "savecraft-test",
 	}
 
-	// Pre-create the value.
-	key, err := registry.OpenKey(registry.CURRENT_USER, runKeyPath, registry.SET_VALUE)
+	// Pre-create the value (CreateKey ensures the key exists on GHA runners
+	// where HKCU\...\Run may not be populated).
+	key, _, err := registry.CreateKey(registry.CURRENT_USER, runKeyPath, registry.SET_VALUE)
 	if err != nil {
-		t.Fatalf("open registry key: %v", err)
+		t.Fatalf("create registry key: %v", err)
 	}
 
 	if setErr := key.SetStringValue(testDisplayName, "test-value"); setErr != nil {
