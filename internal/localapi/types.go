@@ -29,6 +29,17 @@ type LinkResponse struct {
 	State     State  `json:"state,omitempty"`
 }
 
+// LogsResponse is the JSON body returned by GET /logs.
+type LogsResponse struct {
+	Entries []LogEntry `json:"entries"`
+}
+
+// OKResponse is the JSON body returned by POST /shutdown and POST /restart.
+type OKResponse struct {
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
+}
+
 // BuildLinkURL constructs the frontend link URL from the base URL and code.
 func BuildLinkURL(frontendURL, linkCode string) string {
 	return strings.TrimRight(frontendURL, "/") + "/link/" + linkCode

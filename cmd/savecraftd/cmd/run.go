@@ -24,18 +24,24 @@ func buildRunFunc(
 }
 
 func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL string) error {
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}))
+	ringBuf := localapi.NewRingBuffer(
+		localapi.DefaultBufferSize,
+		slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}),
+	)
+	logger := slog.New(ringBuf)
 	slog.SetDefault(logger)
 
-	prog := svcmgr.New(svcmgr.Config{
+	var prog *svcmgr.Program
+	prog = svcmgr.New(svcmgr.Config{
 		Name:        appName + "-daemon",
 		DisplayName: "Savecraft Daemon",
 		Description: "Syncs game saves to the cloud via Savecraft",
 		AppName:     appName,
 	}, func(ctx context.Context) error {
-		return runDaemonLoop(ctx, logger, serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL)
+		return runDaemonLoop(
+			ctx, logger, ringBuf, prog.Stop,
+			serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL,
+		)
 	})
 
 	if err := svcmgr.Run(prog); err != nil {
@@ -48,6 +54,8 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, 
 func runDaemonLoop(
 	ctx context.Context,
 	logger *slog.Logger,
+	ringBuf *localapi.RingBuffer,
+	shutdownFn func(),
 	serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL string,
 ) error {
 	loadEnvFileDefaults(appName)
@@ -60,6 +68,8 @@ func runDaemonLoop(
 	}
 
 	api := localapi.NewServer("localhost:"+statusPort, logger)
+	api.SetRingBuffer(ringBuf)
+	api.SetShutdownFunc(shutdownFn)
 	api.Start()
 	defer func() {
 		shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)

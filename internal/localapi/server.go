@@ -11,8 +11,7 @@ import (
 )
 
 // Server is the daemon's local HTTP API server.
-// It serves boot status and link info on localhost, and accepts
-// additional handlers (e.g. /status) via Handle.
+// It serves boot status, link info, logs, and control endpoints on localhost.
 type Server struct {
 	mu        sync.RWMutex
 	state     State
@@ -20,6 +19,10 @@ type Server struct {
 	linkURL   string
 	expiresAt string
 	errMsg    string
+
+	ringBuf    *RingBuffer
+	shutdownFn func()
+	restartFn  func() error
 
 	mux    *http.ServeMux
 	srv    *http.Server
@@ -40,6 +43,9 @@ func NewServer(addr string, logger *slog.Logger) *Server {
 	}
 	server.mux.HandleFunc("/boot", server.handleBoot)
 	server.mux.HandleFunc("/link", server.handleLink)
+	server.mux.HandleFunc("/logs", server.handleLogs)
+	server.mux.HandleFunc("/shutdown", server.handleShutdown)
+	server.mux.HandleFunc("/restart", server.handleRestart)
 	server.srv = &http.Server{
 		Addr:              addr,
 		Handler:           server.mux,
@@ -127,6 +133,21 @@ func (s *Server) handleBoot(w http.ResponseWriter, _ *http.Request) {
 	s.writeJSON(w, http.StatusOK, resp)
 }
 
+// SetRingBuffer sets the ring buffer used by GET /logs.
+func (s *Server) SetRingBuffer(rb *RingBuffer) {
+	s.ringBuf = rb
+}
+
+// SetShutdownFunc sets the callback invoked by POST /shutdown.
+func (s *Server) SetShutdownFunc(fn func()) {
+	s.shutdownFn = fn
+}
+
+// SetRestartFunc sets the callback invoked by POST /restart.
+func (s *Server) SetRestartFunc(fn func() error) {
+	s.restartFn = fn
+}
+
 func (s *Server) handleLink(w http.ResponseWriter, _ *http.Request) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -151,4 +172,62 @@ func (s *Server) handleLink(w http.ResponseWriter, _ *http.Request) {
 		Error: "device not yet registered",
 		State: s.state,
 	})
+}
+
+func (s *Server) handleLogs(w http.ResponseWriter, _ *http.Request) {
+	if s.ringBuf == nil {
+		s.writeJSON(w, http.StatusServiceUnavailable, OKResponse{Error: "log buffer not available"})
+
+		return
+	}
+
+	entries := s.ringBuf.Entries()
+	if entries == nil {
+		entries = []LogEntry{}
+	}
+
+	s.writeJSON(w, http.StatusOK, LogsResponse{Entries: entries})
+}
+
+func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		s.writeJSON(w, http.StatusMethodNotAllowed, OKResponse{Error: "use POST"})
+
+		return
+	}
+
+	if s.shutdownFn == nil {
+		s.writeJSON(w, http.StatusServiceUnavailable, OKResponse{Error: "shutdown not available"})
+
+		return
+	}
+
+	s.writeJSON(w, http.StatusOK, OKResponse{OK: true})
+
+	// Call shutdown after writing the response so the client gets a clean 200.
+	go s.shutdownFn()
+}
+
+func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		s.writeJSON(w, http.StatusMethodNotAllowed, OKResponse{Error: "use POST"})
+
+		return
+	}
+
+	if s.restartFn == nil {
+		s.writeJSON(w, http.StatusServiceUnavailable, OKResponse{Error: "restart not available"})
+
+		return
+	}
+
+	if err := s.restartFn(); err != nil {
+		s.writeJSON(w, http.StatusInternalServerError, OKResponse{Error: err.Error()})
+
+		return
+	}
+
+	s.writeJSON(w, http.StatusOK, OKResponse{OK: true})
 }

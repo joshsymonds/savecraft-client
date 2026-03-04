@@ -2,10 +2,13 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/joshsymonds/savecraft.gg/internal/localapi"
 	"github.com/joshsymonds/savecraft.gg/internal/svcmgr"
 )
 
@@ -39,7 +42,7 @@ func Execute(version, serverURL, installURL, appName, statusPort, frontendURL st
 	root.AddCommand(buildServiceCommand("install", "Install the daemon as an OS service", svcCfg))
 	root.AddCommand(buildServiceCommand("uninstall", "Remove the daemon OS service", svcCfg))
 	root.AddCommand(buildServiceCommand("start", "Start the daemon OS service", svcCfg))
-	root.AddCommand(buildServiceCommand("stop", "Stop the daemon OS service", svcCfg))
+	root.AddCommand(buildStopCommand(statusPort))
 	root.AddCommand(buildVerifyCommand(appName))
 	root.AddCommand(buildVersionCommand(version))
 
@@ -51,7 +54,7 @@ func Execute(version, serverURL, installURL, appName, statusPort, frontendURL st
 }
 
 // buildServiceCommand creates a cobra command that invokes svcmgr.Control
-// for the given action (install, uninstall, start, stop).
+// for the given action (install, uninstall, start).
 func buildServiceCommand(action, short string, cfg svcmgr.Config) *cobra.Command {
 	return &cobra.Command{
 		Use:   action,
@@ -62,6 +65,29 @@ func buildServiceCommand(action, short string, cfg svcmgr.Config) *cobra.Command
 			}
 
 			fmt.Printf("Service %s: success\n", action)
+
+			return nil
+		},
+	}
+}
+
+// buildStopCommand creates a cobra command that stops the daemon via the
+// local API /shutdown endpoint (cross-platform, no platform-specific stop).
+func buildStopCommand(statusPort string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "stop",
+		Short: "Stop the running daemon via local API",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			client := localapi.NewClient("http://localhost:" + statusPort)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			if err := client.Shutdown(ctx); err != nil {
+				return fmt.Errorf("stop daemon: %w", err)
+			}
+
+			fmt.Println("Daemon stopped")
 
 			return nil
 		},
