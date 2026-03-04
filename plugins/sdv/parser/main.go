@@ -181,15 +181,55 @@ type StringList struct {
 
 // GameLocation is a location in the game world. xsi:type distinguishes subtypes.
 type GameLocation struct {
-	Type          string        `xml:"http://www.w3.org/2001/XMLSchema-instance type,attr"`
-	AreasComplete BoolList      `xml:"areasComplete"`
-	Bundles       []BundleState `xml:"bundles>item"`
-	Buildings     []Building    `xml:"buildings>Building"`
+	Type            string               `xml:"http://www.w3.org/2001/XMLSchema-instance type,attr"`
+	AreasComplete   BoolList             `xml:"areasComplete"`
+	Bundles         []BundleState        `xml:"bundles>item"`
+	Buildings       []Building           `xml:"buildings>Building"`
+	TerrainFeatures []TerrainFeatureItem `xml:"terrainFeatures>item"`
+	Objects         []FarmObjectItem     `xml:"objects>item"`
 }
 
 // Building represents a farm building.
 type Building struct {
-	Type string `xml:"buildingType"`
+	Type      string `xml:"buildingType"`
+	TileX     int    `xml:"tileX"`
+	TileY     int    `xml:"tileY"`
+	TilesWide int    `xml:"tilesWide"`
+	TilesHigh int    `xml:"tilesHigh"`
+}
+
+// TerrainFeatureItem is a positioned terrain feature in a location.
+type TerrainFeatureItem struct {
+	X       int            `xml:"key>Vector2>X"`
+	Y       int            `xml:"key>Vector2>Y"`
+	Feature TerrainFeature `xml:"value>TerrainFeature"`
+}
+
+// TerrainFeature is a tile-based feature like tilled soil, trees, or grass.
+type TerrainFeature struct {
+	Type string `xml:"http://www.w3.org/2001/XMLSchema-instance type,attr"`
+	Crop Crop   `xml:"crop"`
+}
+
+// Crop holds data for a planted crop on a HoeDirt tile.
+type Crop struct {
+	IndexOfHarvest int  `xml:"indexOfHarvest"`
+	CurrentPhase   int  `xml:"currentPhase"`
+	Dead           bool `xml:"dead"`
+	FullGrown      bool `xml:"fullGrown"`
+}
+
+// FarmObjectItem is a positioned object in a location.
+type FarmObjectItem struct {
+	X      int        `xml:"key>Vector2>X"`
+	Y      int        `xml:"key>Vector2>Y"`
+	Object FarmObject `xml:"value>Object"`
+}
+
+// FarmObject is an placed object (sprinkler, machine, chest, etc.).
+type FarmObject struct {
+	Name         string `xml:"name"`
+	BigCraftable bool   `xml:"bigCraftable"`
 }
 
 // BoolList parses <element><boolean>...</boolean></element> lists.
@@ -341,6 +381,10 @@ func buildSections(save *SaveGame) map[string]any {
 		"perfection": map[string]any{
 			"description": "Perfection percentage breakdown by category with points earned",
 			"data":        buildPerfectionSection(save),
+		},
+		"farm": map[string]any{
+			"description": "Farm buildings, crops, sprinkler zones, scarecrows, and machines",
+			"data":        buildFarmSection(save),
 		},
 	}
 }
@@ -1124,6 +1168,247 @@ func clampRatio(current, total int) float64 {
 		return 1
 	}
 	return r
+}
+
+// sprinklerNames is the set of object names that are sprinklers.
+var sprinklerNames = map[string]bool{
+	"Sprinkler": true, "Quality Sprinkler": true, "Iridium Sprinkler": true,
+}
+
+// sprinklerRadius returns the watering radius for a sprinkler type.
+func sprinklerRadius(name string) int {
+	switch name {
+	case "Sprinkler":
+		return 1
+	case "Quality Sprinkler":
+		return 1
+	case "Iridium Sprinkler":
+		return 2
+	default:
+		return 0
+	}
+}
+
+// scarecrowNames is the set of object names that provide crop protection.
+var scarecrowNames = map[string]bool{
+	"Scarecrow": true, "Deluxe Scarecrow": true, "Rarecrow": true,
+}
+
+// machineNames is the set of craftable machines placed on the farm.
+var machineNames = map[string]bool{
+	"Keg": true, "Preserves Jar": true, "Furnace": true, "Recycling Machine": true,
+	"Seed Maker": true, "Crystalarium": true, "Mayonnaise Machine": true,
+	"Cheese Press": true, "Oil Maker": true, "Loom": true, "Cask": true,
+	"Bee House": true, "Lightning Rod": true, "Tapper": true, "Heavy Tapper": true,
+	"Worm Bin": true, "Bone Mill": true, "Charcoal Kiln": true,
+	"Slime Egg-Press": true, "Mushroom Box": true, "Dehydrator": true,
+	"Fish Smoker": true, "Bait Maker": true,
+}
+
+func buildFarmSection(save *SaveGame) map[string]any {
+	// Find Farm location
+	var farm *GameLocation
+	for i := range save.Locations {
+		if save.Locations[i].Type == "Farm" {
+			farm = &save.Locations[i]
+			break
+		}
+	}
+	if farm == nil {
+		return map[string]any{}
+	}
+
+	buildings := parseFarmBuildings(farm)
+	crops, tilledTiles := parseFarmCrops(farm)
+	sprinklers, scarecrows, machines := parseFarmObjects(farm)
+	zones := buildSprinklerZones(sprinklers, farm)
+
+	totalCrops := 0
+	for _, c := range crops {
+		totalCrops += c["count"].(int)
+	}
+
+	return map[string]any{
+		"farmType":       farmTypeName(save.WhichFarm),
+		"buildings":      buildings,
+		"crops":          crops,
+		"tilledTiles":    tilledTiles,
+		"sprinklerZones": zones,
+		"scarecrows":     scarecrows,
+		"machines":       machines,
+		"summary": map[string]any{
+			"totalBuildings":  len(buildings),
+			"totalCrops":      totalCrops,
+			"totalTilledTiles": tilledTiles,
+			"totalSprinklers": len(sprinklers),
+			"totalScarecrows": len(scarecrows),
+		},
+	}
+}
+
+func parseFarmBuildings(farm *GameLocation) []map[string]any {
+	buildings := make([]map[string]any, 0, len(farm.Buildings))
+	for _, b := range farm.Buildings {
+		buildings = append(buildings, map[string]any{
+			"type":     b.Type,
+			"position": map[string]any{"x": b.TileX, "y": b.TileY},
+			"size":     map[string]any{"width": b.TilesWide, "height": b.TilesHigh},
+		})
+	}
+	return buildings
+}
+
+func parseFarmCrops(farm *GameLocation) ([]map[string]any, int) {
+	cropCounts := map[string]int{}
+	tilledTiles := 0
+	for _, tf := range farm.TerrainFeatures {
+		if tf.Feature.Type != "HoeDirt" {
+			continue
+		}
+		tilledTiles++
+		if tf.Feature.Crop.IndexOfHarvest > 0 && !tf.Feature.Crop.Dead {
+			name := itemName(tf.Feature.Crop.IndexOfHarvest)
+			cropCounts[name]++
+		}
+	}
+
+	crops := make([]map[string]any, 0, len(cropCounts))
+	for name, count := range cropCounts {
+		crops = append(crops, map[string]any{"name": name, "count": count})
+	}
+	// Sort by count descending for deterministic output
+	for i := 0; i < len(crops); i++ {
+		for j := i + 1; j < len(crops); j++ {
+			if crops[j]["count"].(int) > crops[i]["count"].(int) {
+				crops[i], crops[j] = crops[j], crops[i]
+			}
+		}
+	}
+	return crops, tilledTiles
+}
+
+type sprinklerInfo struct {
+	name string
+	x, y int
+}
+
+func parseFarmObjects(farm *GameLocation) ([]sprinklerInfo, []map[string]any, []map[string]any) {
+	var sprinklers []sprinklerInfo
+	scarecrows := make([]map[string]any, 0)
+	machineCounts := map[string]int{}
+
+	for _, obj := range farm.Objects {
+		name := obj.Object.Name
+		switch {
+		case sprinklerNames[name]:
+			sprinklers = append(sprinklers, sprinklerInfo{name: name, x: obj.X, y: obj.Y})
+		case scarecrowNames[name]:
+			scarecrows = append(scarecrows, map[string]any{
+				"type":     name,
+				"position": map[string]any{"x": obj.X, "y": obj.Y},
+			})
+		case machineNames[name]:
+			machineCounts[name]++
+		}
+	}
+
+	machines := make([]map[string]any, 0, len(machineCounts))
+	for name, count := range machineCounts {
+		machines = append(machines, map[string]any{"name": name, "count": count})
+	}
+	return sprinklers, scarecrows, machines
+}
+
+func buildSprinklerZones(sprinklers []sprinklerInfo, farm *GameLocation) []map[string]any {
+	if len(sprinklers) == 0 {
+		return make([]map[string]any, 0)
+	}
+
+	// Build crop map: position -> crop name
+	type cropTile struct {
+		x, y int
+		name string
+	}
+	var cropTiles []cropTile
+	for _, tf := range farm.TerrainFeatures {
+		if tf.Feature.Type != "HoeDirt" || tf.Feature.Crop.IndexOfHarvest <= 0 || tf.Feature.Crop.Dead {
+			continue
+		}
+		cropTiles = append(cropTiles, cropTile{
+			x: tf.X, y: tf.Y,
+			name: itemName(tf.Feature.Crop.IndexOfHarvest),
+		})
+	}
+
+	// Assign each crop to nearest sprinkler
+	type zoneData struct {
+		sprinkler sprinklerInfo
+		crops     map[string]int
+	}
+	zones := make([]zoneData, len(sprinklers))
+	for i, s := range sprinklers {
+		zones[i] = zoneData{sprinkler: s, crops: map[string]int{}}
+	}
+
+	for _, ct := range cropTiles {
+		bestIdx := 0
+		bestDist := distSq(ct.x, ct.y, sprinklers[0].x, sprinklers[0].y)
+		for i := 1; i < len(sprinklers); i++ {
+			d := distSq(ct.x, ct.y, sprinklers[i].x, sprinklers[i].y)
+			if d < bestDist {
+				bestDist = d
+				bestIdx = i
+			}
+		}
+		zones[bestIdx].crops[ct.name]++
+	}
+
+	// Sort by total crops descending, cap at 100
+	for i := 0; i < len(zones); i++ {
+		for j := i + 1; j < len(zones); j++ {
+			if zoneCropTotal(zones[j]) > zoneCropTotal(zones[i]) {
+				zones[i], zones[j] = zones[j], zones[i]
+			}
+		}
+	}
+	cap := 100
+	if len(zones) < cap {
+		cap = len(zones)
+	}
+
+	result := make([]map[string]any, 0, cap)
+	for i := 0; i < cap; i++ {
+		z := zones[i]
+		cropList := make([]map[string]any, 0, len(z.crops))
+		for name, count := range z.crops {
+			cropList = append(cropList, map[string]any{"name": name, "count": count})
+		}
+		result = append(result, map[string]any{
+			"sprinkler": z.sprinkler.name,
+			"position":  map[string]any{"x": z.sprinkler.x, "y": z.sprinkler.y},
+			"radius":    sprinklerRadius(z.sprinkler.name),
+			"crops":     cropList,
+			"totalCrops": zoneCropTotal(zones[i]),
+		})
+	}
+	return result
+}
+
+func distSq(x1, y1, x2, y2 int) int {
+	dx := x1 - x2
+	dy := y1 - y2
+	return dx*dx + dy*dy
+}
+
+func zoneCropTotal(z struct {
+	sprinkler sprinklerInfo
+	crops     map[string]int
+}) int {
+	total := 0
+	for _, c := range z.crops {
+		total += c
+	}
+	return total
 }
 
 func buildCharacterSection(save *SaveGame) map[string]any {

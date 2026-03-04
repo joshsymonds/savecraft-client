@@ -945,6 +945,123 @@ func TestPerfectionSectionPerfection(t *testing.T) {
 	}
 }
 
+func TestFarmSection(t *testing.T) {
+	data, err := os.ReadFile("../testdata/TestSave")
+	if err != nil {
+		t.Fatalf("reading test fixture: %v", err)
+	}
+
+	save, err := parseSave(data)
+	if err != nil {
+		t.Fatalf("parseSave: %v", err)
+	}
+
+	sections := buildSections(save)
+	farmSection, ok := sections["farm"].(map[string]any)
+	if !ok {
+		t.Fatal("farm section missing")
+	}
+	farmData := farmSection["data"].(map[string]any)
+
+	// Farm type
+	if farmData["farmType"] != "Hill-top" {
+		t.Errorf("farmType = %v, want %q", farmData["farmType"], "Hill-top")
+	}
+
+	// Buildings: Farmhouse, Greenhouse, Shipping Bin, Pet Bowl
+	buildings := farmData["buildings"].([]map[string]any)
+	if len(buildings) != 4 {
+		t.Errorf("buildings count = %d, want 4", len(buildings))
+	}
+	var farmhouse map[string]any
+	for _, b := range buildings {
+		if b["type"] == "Farmhouse" {
+			farmhouse = b
+			break
+		}
+	}
+	if farmhouse == nil {
+		t.Fatal("Farmhouse not found in buildings")
+	}
+	pos := farmhouse["position"].(map[string]any)
+	if pos["x"] != 59 || pos["y"] != 12 {
+		t.Errorf("Farmhouse position = (%v, %v), want (59, 12)", pos["x"], pos["y"])
+	}
+
+	// Crops: 16 parsnip tiles on farm
+	crops := farmData["crops"].([]map[string]any)
+	if len(crops) != 1 {
+		t.Errorf("crop types = %d, want 1", len(crops))
+	}
+	if len(crops) > 0 {
+		if crops[0]["name"] != "Parsnip" {
+			t.Errorf("crop name = %v, want %q", crops[0]["name"], "Parsnip")
+		}
+		if crops[0]["count"] != 16 {
+			t.Errorf("parsnip count = %v, want 16", crops[0]["count"])
+		}
+	}
+
+	// Tilled tiles
+	if farmData["tilledTiles"] != 16 {
+		t.Errorf("tilledTiles = %v, want 16", farmData["tilledTiles"])
+	}
+
+	// No sprinklers or sprinkler zones in early game
+	sprinklerZones := farmData["sprinklerZones"].([]map[string]any)
+	if len(sprinklerZones) != 0 {
+		t.Errorf("sprinklerZones = %d, want 0", len(sprinklerZones))
+	}
+
+	// Summary stats
+	summary := farmData["summary"].(map[string]any)
+	if summary["totalBuildings"] != 4 {
+		t.Errorf("totalBuildings = %v, want 4", summary["totalBuildings"])
+	}
+	if summary["totalCrops"] != 16 {
+		t.Errorf("totalCrops = %v, want 16", summary["totalCrops"])
+	}
+}
+
+func TestFarmSectionPerfection(t *testing.T) {
+	data, err := os.ReadFile("../testdata/PerfectionSave")
+	if err != nil {
+		t.Fatalf("reading test fixture: %v", err)
+	}
+
+	save, err := parseSave(data)
+	if err != nil {
+		t.Fatalf("parseSave: %v", err)
+	}
+
+	sections := buildSections(save)
+	farmData := sections["farm"].(map[string]any)["data"].(map[string]any)
+
+	// Buildings: should include obelisks and gold clock
+	buildings := farmData["buildings"].([]map[string]any)
+	if len(buildings) < 7 {
+		t.Errorf("buildings count = %d, want >= 7", len(buildings))
+	}
+
+	// Find Gold Clock building
+	var goldClock map[string]any
+	for _, b := range buildings {
+		if b["type"] == "Gold Clock" {
+			goldClock = b
+			break
+		}
+	}
+	if goldClock == nil {
+		t.Fatal("Gold Clock not found in buildings")
+	}
+
+	// Summary stats should exist
+	summary := farmData["summary"].(map[string]any)
+	if summary["totalBuildings"].(int) < 7 {
+		t.Errorf("totalBuildings = %d, want >= 7", summary["totalBuildings"].(int))
+	}
+}
+
 func TestFarmTypeName(t *testing.T) {
 	tests := []struct {
 		id   int
