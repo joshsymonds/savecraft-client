@@ -433,6 +433,124 @@ func TestUpgradeLevelName(t *testing.T) {
 	}
 }
 
+func TestBundlesSection(t *testing.T) {
+	data, err := os.ReadFile("../testdata/TestSave")
+	if err != nil {
+		t.Fatalf("reading test fixture: %v", err)
+	}
+
+	save, err := parseSave(data)
+	if err != nil {
+		t.Fatalf("parseSave: %v", err)
+	}
+
+	sections := buildSections(save)
+	bundleSection, ok := sections["bundles"].(map[string]any)
+	if !ok {
+		t.Fatal("bundles section missing")
+	}
+	bundleData := bundleSection["data"].(map[string]any)
+
+	// Route should be "Community Center" (not Joja)
+	if bundleData["route"] != "Community Center" {
+		t.Errorf("route = %v, want %q", bundleData["route"], "Community Center")
+	}
+
+	// Should not be complete (early game)
+	if bundleData["complete"] != false {
+		t.Errorf("complete = %v, want false", bundleData["complete"])
+	}
+
+	// Rooms
+	rooms, ok := bundleData["rooms"].([]map[string]any)
+	if !ok {
+		t.Fatalf("rooms type = %T, want []map[string]any", bundleData["rooms"])
+	}
+	if len(rooms) < 6 {
+		t.Fatalf("rooms count = %d, want >= 6", len(rooms))
+	}
+
+	// Find Pantry
+	var pantry map[string]any
+	for _, r := range rooms {
+		if r["name"] == "Pantry" {
+			pantry = r
+			break
+		}
+	}
+	if pantry == nil {
+		t.Fatal("Pantry not found in rooms")
+	}
+	if pantry["complete"] != false {
+		t.Errorf("Pantry complete = %v, want false", pantry["complete"])
+	}
+
+	// Pantry should have bundles
+	bundles, ok := pantry["bundles"].([]map[string]any)
+	if !ok {
+		t.Fatalf("bundles type = %T, want []map[string]any", pantry["bundles"])
+	}
+	if len(bundles) < 1 {
+		t.Fatal("Pantry has no bundles")
+	}
+
+	// Spring Crops bundle should have items
+	var springCrops map[string]any
+	for _, b := range bundles {
+		if b["name"] == "Spring Crops" {
+			springCrops = b
+			break
+		}
+	}
+	if springCrops == nil {
+		t.Fatal("Spring Crops bundle not found")
+	}
+
+	// Items should have names (not raw IDs)
+	items, ok := springCrops["items"].([]map[string]any)
+	if !ok {
+		t.Fatalf("items type = %T, want []map[string]any", springCrops["items"])
+	}
+	if len(items) != 4 {
+		t.Fatalf("Spring Crops items = %d, want 4", len(items))
+	}
+	// First item should be Parsnip
+	if items[0]["name"] != "Parsnip" {
+		t.Errorf("first item name = %v, want %q", items[0]["name"], "Parsnip")
+	}
+	if items[0]["completed"] != false {
+		t.Errorf("first item completed = %v, want false", items[0]["completed"])
+	}
+}
+
+func TestBundlesSectionPerfection(t *testing.T) {
+	data, err := os.ReadFile("../testdata/PerfectionSave")
+	if err != nil {
+		t.Fatalf("reading test fixture: %v", err)
+	}
+
+	save, err := parseSave(data)
+	if err != nil {
+		t.Fatalf("parseSave: %v", err)
+	}
+
+	sections := buildSections(save)
+	bundleData := sections["bundles"].(map[string]any)["data"].(map[string]any)
+
+	// Should be complete
+	if bundleData["complete"] != true {
+		t.Errorf("complete = %v, want true", bundleData["complete"])
+	}
+
+	// All rooms should be complete
+	rooms := bundleData["rooms"].([]map[string]any)
+	for _, r := range rooms {
+		if r["complete"] != true {
+			t.Errorf("room %v complete = %v, want true", r["name"], r["complete"])
+		}
+	}
+}
+
 func TestFarmTypeName(t *testing.T) {
 	tests := []struct {
 		id   int

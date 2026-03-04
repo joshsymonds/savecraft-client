@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
+	"strings"
 )
 
 func main() {
@@ -49,11 +51,13 @@ func main() {
 
 // SaveGame is the root XML element of a Stardew Valley save file.
 type SaveGame struct {
-	XMLName       xml.Name `xml:"SaveGame"`
-	Player        Player   `xml:"player"`
-	CurrentSeason string   `xml:"currentSeason"`
-	WhichFarm     int      `xml:"whichFarm"`
-	GameVersion   string   `xml:"gameVersion"`
+	XMLName       xml.Name         `xml:"SaveGame"`
+	Player        Player           `xml:"player"`
+	CurrentSeason string           `xml:"currentSeason"`
+	WhichFarm     int              `xml:"whichFarm"`
+	GameVersion   string           `xml:"gameVersion"`
+	BundleData    []StringKV       `xml:"bundleData>item"`
+	Locations     []GameLocation   `xml:"locations>GameLocation"`
 }
 
 // Player holds the farmer's data from the <player> element.
@@ -78,6 +82,7 @@ type Player struct {
 	Spouse             string           `xml:"spouse"`
 	DaysMarried        int              `xml:"daysMarried"`
 	Children           []Child          `xml:"children>NPC"`
+	MailReceived       StringList       `xml:"mailReceived"`
 }
 
 // IntList parses <element><int>...</int></element> lists.
@@ -127,6 +132,35 @@ type Item struct {
 	Quality      int    `xml:"quality"`
 	UpgradeLevel int    `xml:"upgradeLevel"`
 	Category     int    `xml:"category"`
+}
+
+// StringKV is a key-value pair where both are strings (used in bundleData).
+type StringKV struct {
+	Key   string `xml:"key>string"`
+	Value string `xml:"value>string"`
+}
+
+// StringList parses <element><string>...</string></element> lists.
+type StringList struct {
+	Values []string `xml:"string"`
+}
+
+// GameLocation is a location in the game world. xsi:type distinguishes subtypes.
+type GameLocation struct {
+	Type          string        `xml:"http://www.w3.org/2001/XMLSchema-instance type,attr"`
+	AreasComplete BoolList      `xml:"areasComplete"`
+	Bundles       []BundleState `xml:"bundles>item"`
+}
+
+// BoolList parses <element><boolean>...</boolean></element> lists.
+type BoolList struct {
+	Values []bool `xml:"boolean"`
+}
+
+// BundleState holds completion state for a single bundle.
+type BundleState struct {
+	Key       int      `xml:"key>int"`
+	Completed BoolList `xml:"value>ArrayOfBoolean"`
 }
 
 func parseSave(data []byte) (*SaveGame, error) {
@@ -251,6 +285,10 @@ func buildSections(save *SaveGame) map[string]any {
 		"inventory": map[string]any{
 			"description": "Backpack contents, tools with upgrade levels, and weapons",
 			"data":        buildInventorySection(save),
+		},
+		"bundles": map[string]any{
+			"description": "Community center bundles or Joja route, per-room and per-bundle completion",
+			"data":        buildBundlesSection(save),
 		},
 	}
 }
@@ -415,6 +453,265 @@ func buildInventorySection(save *SaveGame) map[string]any {
 		"weapons": weapons,
 		"items":   items,
 	}
+}
+
+// roomOrder defines the canonical room ordering for the community center.
+var roomOrder = []string{"Pantry", "Crafts Room", "Fish Tank", "Boiler Room", "Vault", "Bulletin Board", "Abandoned Joja Mart"}
+
+// roomIndex maps room names to their areasComplete index.
+var roomIndex = map[string]int{
+	"Pantry": 0, "Crafts Room": 1, "Fish Tank": 2,
+	"Boiler Room": 3, "Vault": 4, "Bulletin Board": 5,
+}
+
+func buildBundlesSection(save *SaveGame) map[string]any {
+	// Detect Joja route
+	isJoja := false
+	for _, m := range save.Player.MailReceived.Values {
+		if m == "JojaMember" {
+			isJoja = true
+			break
+		}
+	}
+
+	route := "Community Center"
+	if isJoja {
+		route = "Joja"
+	}
+
+	// Find CommunityCenter location
+	var cc *GameLocation
+	for i := range save.Locations {
+		if save.Locations[i].Type == "CommunityCenter" {
+			cc = &save.Locations[i]
+			break
+		}
+	}
+
+	// Build completion state: bundleID -> []bool (which item slots are filled)
+	bundleComplete := map[int][]bool{}
+	if cc != nil {
+		for _, bs := range cc.Bundles {
+			bundleComplete[bs.Key] = bs.Completed.Values
+		}
+	}
+
+	// Parse bundleData definitions, grouped by room
+	type bundleItem struct {
+		name      string
+		quantity  int
+		quality   int
+		slotIndex int
+	}
+	type bundleDef struct {
+		name     string
+		id       int
+		required int
+		items    []bundleItem
+	}
+	roomBundles := map[string][]bundleDef{}
+
+	for _, kv := range save.BundleData {
+		keyParts := strings.SplitN(kv.Key, "/", 2)
+		if len(keyParts) != 2 {
+			continue
+		}
+		room := keyParts[0]
+		bundleID, _ := strconv.Atoi(keyParts[1])
+
+		valParts := strings.Split(kv.Value, "/")
+		if len(valParts) < 3 {
+			continue
+		}
+		bundleName := valParts[0]
+		itemsStr := valParts[2]
+		requiredStr := ""
+		if len(valParts) > 4 {
+			requiredStr = valParts[4]
+		}
+
+		// Parse item triplets: itemID quantity quality
+		triplets := strings.Fields(itemsStr)
+		var items []bundleItem
+		for i := 0; i+2 < len(triplets); i += 3 {
+			itemID, _ := strconv.Atoi(triplets[i])
+			qty, _ := strconv.Atoi(triplets[i+1])
+			qual, _ := strconv.Atoi(triplets[i+2])
+
+			var name string
+			if itemID == -1 {
+				name = formatGold(qty)
+			} else if n, ok := bundleItemNames[itemID]; ok {
+				name = n
+			} else {
+				name = fmt.Sprintf("Item #%d", itemID)
+			}
+
+			items = append(items, bundleItem{
+				name:      name,
+				quantity:  qty,
+				quality:   qual,
+				slotIndex: i / 3,
+			})
+		}
+
+		required := len(items)
+		if requiredStr != "" {
+			if r, err := strconv.Atoi(requiredStr); err == nil {
+				required = r
+			}
+		}
+
+		roomBundles[room] = append(roomBundles[room], bundleDef{
+			name:     bundleName,
+			id:       bundleID,
+			required: required,
+			items:    items,
+		})
+	}
+
+	// Build rooms output
+	allRoomsComplete := true
+	rooms := make([]map[string]any, 0)
+	for _, roomName := range roomOrder {
+		bundles, ok := roomBundles[roomName]
+		if !ok {
+			continue
+		}
+
+		roomComplete := false
+		if idx, ok := roomIndex[roomName]; ok && cc != nil {
+			if idx < len(cc.AreasComplete.Values) {
+				roomComplete = cc.AreasComplete.Values[idx]
+			}
+		} else {
+			// Rooms not in areasComplete (e.g. Abandoned Joja Mart):
+			// derive completion from whether all bundles are complete.
+			roomComplete = true
+			for _, b := range bundles {
+				completedSlots := bundleComplete[b.id]
+				count := 0
+				for _, item := range b.items {
+					if item.slotIndex < len(completedSlots) && completedSlots[item.slotIndex] {
+						count++
+					}
+				}
+				if count < b.required {
+					roomComplete = false
+					break
+				}
+			}
+		}
+		if !roomComplete {
+			allRoomsComplete = false
+		}
+
+		bundleOut := make([]map[string]any, 0, len(bundles))
+		for _, b := range bundles {
+			completedSlots := bundleComplete[b.id]
+			completedCount := 0
+			itemsOut := make([]map[string]any, 0, len(b.items))
+
+			for _, item := range b.items {
+				completed := false
+				if item.slotIndex < len(completedSlots) {
+					completed = completedSlots[item.slotIndex]
+				}
+				if completed {
+					completedCount++
+				}
+
+				entry := map[string]any{
+					"name":      item.name,
+					"completed": completed,
+				}
+				if item.quantity > 1 {
+					entry["quantity"] = item.quantity
+				}
+				if q := qualityName(item.quality); q != "Normal" {
+					entry["quality"] = q
+				}
+				itemsOut = append(itemsOut, entry)
+			}
+
+			bundleOut = append(bundleOut, map[string]any{
+				"name":      b.name,
+				"completed": completedCount >= b.required,
+				"have":      completedCount,
+				"need":      b.required,
+				"items":     itemsOut,
+			})
+		}
+
+		rooms = append(rooms, map[string]any{
+			"name":     roomName,
+			"complete": roomComplete,
+			"bundles":  bundleOut,
+		})
+	}
+
+	return map[string]any{
+		"route":    route,
+		"complete": allRoomsComplete,
+		"rooms":    rooms,
+	}
+}
+
+// formatGold formats a gold amount with comma separators.
+func formatGold(n int) string {
+	s := strconv.Itoa(n)
+	if len(s) <= 3 {
+		return s + "g"
+	}
+	// Insert commas from right
+	var result []byte
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			result = append(result, ',')
+		}
+		result = append(result, byte(c))
+	}
+	return string(result) + "g"
+}
+
+// bundleItemNames maps item IDs to human-readable names for community center bundles.
+var bundleItemNames = map[int]string{
+	16: "Wild Horseradish", 18: "Daffodil", 20: "Leek", 22: "Dandelion",
+	24: "Parsnip", 62: "Aquamarine", 74: "Prismatic Shard", 78: "Cave Carrot",
+	80: "Quartz", 82: "Fire Quartz", 84: "Frozen Tear", 86: "Earth Crystal",
+	88: "Coconut", 90: "Cactus Fruit",
+	128: "Pufferfish", 130: "Tuna", 131: "Sardine", 132: "Bream",
+	136: "Largemouth Bass", 140: "Walleye", 142: "Carp", 143: "Catfish",
+	145: "Sunfish", 148: "Eel", 150: "Red Snapper", 156: "Ghostfish",
+	164: "Sandfish", 174: "Large Egg (White)", 178: "Hay",
+	182: "Large Egg (Brown)", 186: "Large Milk",
+	188: "Green Bean", 190: "Cauliflower", 192: "Potato", 194: "Fried Egg",
+	228: "Maki Roll", 254: "Melon", 256: "Tomato", 257: "Morel",
+	258: "Blueberry", 259: "Fiddlehead Fern", 260: "Hot Pepper",
+	262: "Wheat", 266: "Red Cabbage", 270: "Corn", 272: "Eggplant",
+	276: "Pumpkin", 280: "Yam",
+	334: "Copper Bar", 335: "Iron Bar", 336: "Gold Bar",
+	340: "Honey", 344: "Jelly", 348: "Wine",
+	372: "Clam", 376: "Poppy", 388: "Wood", 390: "Stone",
+	392: "Nautilus Shell", 396: "Spice Berry", 397: "Sea Urchin",
+	398: "Grape", 402: "Sweet Pea",
+	404: "Common Mushroom", 406: "Wild Plum", 408: "Hazelnut", 410: "Blackberry",
+	412: "Winter Root", 414: "Crystal Fruit", 416: "Snow Yam", 418: "Crocus",
+	420: "Red Mushroom", 421: "Sunflower", 422: "Purple Mushroom",
+	424: "Cheese", 426: "Goat Cheese", 428: "Cloth", 430: "Truffle",
+	432: "Truffle Oil", 438: "L. Goat Milk", 440: "Wool", 442: "Duck Egg",
+	444: "Duck Feather", 445: "Caviar", 446: "Rabbit's Foot",
+	454: "Ancient Fruit", 536: "Frozen Geode",
+	613: "Apple", 634: "Apricot", 635: "Orange", 636: "Peach",
+	637: "Pomegranate", 638: "Cherry",
+	698: "Sturgeon", 699: "Tiger Trout", 700: "Bullhead", 701: "Tilapia",
+	702: "Chub", 706: "Shad", 709: "Hardwood",
+	715: "Lobster", 716: "Crayfish", 717: "Crab", 718: "Cockle",
+	719: "Mussel", 720: "Shrimp", 721: "Snail", 722: "Periwinkle",
+	723: "Oyster", 724: "Maple Syrup", 725: "Oak Resin", 726: "Pine Tar",
+	734: "Woodskip", 766: "Slime", 767: "Bat Wing",
+	768: "Solar Essence", 769: "Void Essence",
+	795: "Void Salmon", 807: "Dinosaur Mayonnaise",
 }
 
 func buildCharacterSection(save *SaveGame) map[string]any {
