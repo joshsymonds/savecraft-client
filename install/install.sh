@@ -158,13 +158,8 @@ UNIT
 
     systemctl --user daemon-reload
 
-    if [[ -f "${CONFIG_DIR}/env" ]] && grep -q '^SAVECRAFT_AUTH_TOKEN=' "${CONFIG_DIR}/env"; then
-        systemctl --user enable --now "${SERVICE_NAME}"
-        ok "Enabled and started ${SERVICE_NAME}"
-    else
-        systemctl --user enable "${SERVICE_NAME}"
-        warn "Enabled ${SERVICE_NAME} but NOT starting — set SAVECRAFT_AUTH_TOKEN in ${CONFIG_DIR}/env first"
-    fi
+    systemctl --user enable --now "${SERVICE_NAME}"
+    ok "Enabled and started ${SERVICE_NAME}"
 }
 
 # ---------------------------------------------------------------------------
@@ -178,6 +173,8 @@ create_env_template() {
 
     {
         echo "# Savecraft Daemon configuration"
+        echo "# The daemon registers automatically on first start and writes"
+        echo "# SAVECRAFT_AUTH_TOKEN and SAVECRAFT_DEVICE_UUID to this file."
         echo ""
         # Write actual values from env vars if provided, otherwise commented template
         if [[ -n "${SAVECRAFT_SERVER_URL:-}" ]]; then
@@ -194,52 +191,11 @@ create_env_template() {
             echo "# SAVECRAFT_INSTALL_URL=https://install.savecraft.gg"
         fi
         echo ""
-        if [[ -n "${SAVECRAFT_AUTH_TOKEN:-}" ]]; then
-            echo "SAVECRAFT_AUTH_TOKEN=${SAVECRAFT_AUTH_TOKEN}"
-        else
-            echo "# Authentication token from your savecraft.gg account"
-            echo "# SAVECRAFT_AUTH_TOKEN="
-        fi
-        echo ""
         echo "# Log level: debug, info, warn, error (default: info)"
         echo "# SAVECRAFT_LOG_LEVEL=info"
     } >"${CONFIG_DIR}/env"
 
-    if [[ -n "${SAVECRAFT_AUTH_TOKEN:-}" ]]; then
-        ok "Created env file with auth token at ${CONFIG_DIR}/env"
-    else
-        info "Created env template at ${CONFIG_DIR}/env"
-    fi
-}
-
-# ---------------------------------------------------------------------------
-# run_pairing — interactive pairing with retry loop
-#   $1  server URL
-#   $2  extra flags for pair command (e.g. "--force"), or ""
-#   Sets paired=true on success, pairing_failed=true on exhaustion.
-# ---------------------------------------------------------------------------
-run_pairing() {
-    local server_url="$1"
-    local extra_flags="$2"
-    local max_attempts=3
-    local attempt=0
-    echo ""
-    info "Enter the 6-digit code shown on ${frontend_url}"
-    echo ""
-    while [[ ${attempt} -lt ${max_attempts} ]]; do
-        attempt=$((attempt + 1))
-        # shellcheck disable=SC2086
-        if "${BIN_DIR}/${BINARY_NAME}" pair --server "${server_url}" ${extra_flags}; then
-            ok "Device paired successfully"
-            paired=true
-            return
-        fi
-        if [[ ${attempt} -lt ${max_attempts} ]]; then
-            warn "Try again (attempt ${attempt}/${max_attempts})"
-            echo ""
-        fi
-    done
-    pairing_failed=true
+    info "Created env template at ${CONFIG_DIR}/env"
 }
 
 # ---------------------------------------------------------------------------
@@ -341,45 +297,8 @@ main() {
         ok "Installed ${daemon_version:-${BINARY_NAME}}"
     fi
 
-    # Pair device or write env file
-    local paired=false
-    local pairing_failed=false
-    local frontend_url="${SAVECRAFT_FRONTEND_URL:-https://savecraft.gg}"
-    if [[ -n "${SAVECRAFT_AUTH_TOKEN:-}" ]]; then
-        # API key flow (headless/automation) — write env directly
-        create_env_template
-    elif [[ -f "${CONFIG_DIR}/env" ]] && grep -q '^SAVECRAFT_AUTH_TOKEN=' "${CONFIG_DIR}/env"; then
-        # Token exists in env file — verify it's still valid
-        local verify_server="${SAVECRAFT_SERVER_URL:-$(grep '^SAVECRAFT_SERVER_URL=' "${CONFIG_DIR}/env" 2>/dev/null | cut -d= -f2-)}"
-        if [[ -n "${verify_server}" ]] \
-            && "${BIN_DIR}/${BINARY_NAME}" verify --server "${verify_server}" 2>/dev/null; then
-            ok "Device already paired (token verified)"
-            paired=true
-        elif [[ -n "${SAVECRAFT_SERVER_URL:-}" ]]; then
-            # Token invalid — re-pair with --force
-            warn "Existing token is invalid — re-pairing..."
-            run_pairing "${SAVECRAFT_SERVER_URL}" "--force"
-        else
-            warn "Existing token could not be verified (no server URL available)"
-        fi
-    elif [[ -n "${SAVECRAFT_SERVER_URL:-}" ]]; then
-        # First-time interactive pairing flow
-        info "Pairing your device..."
-        run_pairing "${SAVECRAFT_SERVER_URL}" ""
-    else
-        create_env_template
-    fi
-
-    # If pairing was attempted and failed, bail out early.
-    # The binary is already installed — the user just re-runs the installer
-    # with a new pairing code.
-    if [[ "${pairing_failed}" == "true" ]]; then
-        echo ""
-        warn "Pairing failed. Generate a new code on ${frontend_url} and re-run:"
-        warn "  curl -sSL ${INSTALL_URL} | bash"
-        echo ""
-        exit 1
-    fi
+    # Write env file — daemon self-registers on first boot
+    create_env_template
 
     # Systemd
     if [[ "${no_systemd}" == "false" ]]; then
@@ -400,15 +319,11 @@ main() {
     fi
     echo ""
 
-    if [[ "${paired}" == "true" ]]; then
-        echo "  Device is paired and ready."
-        if [[ "${no_systemd}" == "false" ]]; then
-            echo "  Check daemon status: systemctl --user status ${APP_NAME}"
-        fi
-    elif [[ "${no_systemd}" == "false" ]]; then
-        echo "  Next steps:"
-        echo "    Start the daemon: systemctl --user start ${APP_NAME}"
-        echo "    Check status:     systemctl --user status ${APP_NAME}"
+    local frontend_url="${SAVECRAFT_FRONTEND_URL:-https://savecraft.gg}"
+    echo "  Next steps:"
+    echo "    Link your device at ${frontend_url}/setup"
+    if [[ "${no_systemd}" == "false" ]]; then
+        echo "    Check daemon status: systemctl --user status ${APP_NAME}"
     fi
     echo ""
 }
