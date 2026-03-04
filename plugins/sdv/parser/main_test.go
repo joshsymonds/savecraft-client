@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -61,11 +62,14 @@ func TestParseTestSave(t *testing.T) {
 		t.Errorf("farming XP = %d, want %d", save.Player.ExperiencePoints.Values[0], 120)
 	}
 
-	// Summary
+	// Summary (includes perfection %)
 	summary := buildSummary(save)
-	expected := "Test, Year 1 Spring 6, Test Farm (Hill-top)"
-	if summary != expected {
-		t.Errorf("summary = %q, want %q", summary, expected)
+	// Early game: low perfection, expect format with "% Perfection" suffix
+	if !strings.Contains(summary, "Test, Year 1 Spring 6, Test Farm (Hill-top)") {
+		t.Errorf("summary missing base info: %q", summary)
+	}
+	if !strings.Contains(summary, "% Perfection") {
+		t.Errorf("summary missing perfection %%: %q", summary)
 	}
 
 	// Sections produce valid JSON

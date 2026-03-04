@@ -257,13 +257,16 @@ func buildSummary(save *SaveGame) string {
 		season = "spring"
 	}
 	season = capitalizeFirst(season)
-	return fmt.Sprintf("%s, Year %d %s %d, %s Farm (%s)",
+	perfData := buildPerfectionSection(save)
+	pct := int(perfData["percentage"].(float64))
+	return fmt.Sprintf("%s, Year %d %s %d, %s Farm (%s), %d%% Perfection",
 		save.Player.Name,
 		save.Player.Year,
 		season,
 		save.Player.DayOfMonth,
 		save.Player.FarmName,
 		farmTypeName(save.WhichFarm),
+		pct,
 	)
 }
 
