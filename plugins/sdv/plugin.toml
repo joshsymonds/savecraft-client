@@ -1,0 +1,32 @@
+game_id = "sdv"
+name = "Stardew Valley"
+description = "Parses Stardew Valley 1.6 save files into structured game state"
+channel = "beta"
+coverage = "partial"
+file_extensions = []
+homepage = "https://savecraft.gg/plugins/sdv"
+
+limitations = [
+  "Only Stardew Valley 1.6+ saves supported",
+  "Directory-based save discovery requires daemon enhancement (pending)",
+]
+
+[author]
+name = "Josh Symonds"
+github = "joshsymonds"
+
+[default_paths]
+windows = "%APPDATA%/StardewValley/Saves"
+linux = "~/.config/StardewValley/Saves"
+darwin = "~/.config/StardewValley/Saves"
+
+[reference.modules.gift_preferences]
+name = "Gift Preferences"
+description = "Look up NPC gift preferences by villager name or item name. Includes universal and personal taste data from Stardew Valley 1.6."
+
+[reference.modules.gift_preferences.attribution]
+author = "Josh Symonds"
+data_sources = [
+  { name = "NPCGiftTastes", origin = "Stardew Valley 1.6 game data via wiki" },
+  { name = "Objects", origin = "Stardew Valley game data via aftonsteps/stardewdata (MIT)" },
+]

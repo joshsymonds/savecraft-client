@@ -1,0 +1,10 @@
+build: build-parser build-reference
+
+build-parser:
+    GOOS=wasip1 GOARCH=wasm go build -o parser.wasm ./parser
+
+build-reference:
+    GOOS=wasip1 GOARCH=wasm go build -o reference.wasm ./reference
+
+test:
+    go test -v ./parser/ ./reference/
