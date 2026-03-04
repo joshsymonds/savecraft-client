@@ -172,6 +172,7 @@ linters:
         - (*io.ReadCloser).Close
         - (*net/http.Response).Body.Close
         - (net/http.ResponseWriter).Write
+        - (*encoding/json.Encoder).Encode
         - (*os.File).Sync
         - (*bufio.Writer).Flush
         - fmt.Fprint
@@ -492,7 +493,7 @@ linters:
           - musttag
 
       # Daemon HTTP clients use configured server URLs, not user-tainted input
-      - path: 'internal/(pluginmgr|push|selfupdate|regclient)/.*\.go'
+      - path: 'internal/(localapi|pluginmgr|push|selfupdate|regclient)/.*\.go'
         text: 'G(107|704)'
         linters:
           - gosec

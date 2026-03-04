@@ -15,6 +15,7 @@ import (
 
 	"github.com/joshsymonds/savecraft.gg/internal/daemon"
 	"github.com/joshsymonds/savecraft.gg/internal/envfile"
+	"github.com/joshsymonds/savecraft.gg/internal/localapi"
 )
 
 func buildRunFunc(
@@ -33,20 +34,20 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, 
 
 	loadEnvFileDefaults(appName)
 
-	// Start the status server early so /boot and /link are available
+	// Start the local API server early so /boot and /link are available
 	// before registration completes. The daemon /status route is added later.
 	statusPort := statusPortDefault
 	if envPort := os.Getenv("SAVECRAFT_STATUS_PORT"); envPort != "" {
 		statusPort = envPort
 	}
 
-	boot := newBootStatus()
-	mux, statusSrv := startBootServer(boot, "localhost:"+statusPort, logger)
+	api := localapi.NewServer("localhost:"+statusPort, logger)
+	api.Start()
 	defer func() {
 		shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutCancel()
-		if shutdownErr := statusSrv.Shutdown(shutCtx); shutdownErr != nil {
-			logger.Error("status server shutdown failed", slog.String("error", shutdownErr.Error()))
+		if shutdownErr := api.Shutdown(shutCtx); shutdownErr != nil {
+			logger.Error("local API server shutdown failed", slog.String("error", shutdownErr.Error()))
 		}
 	}()
 
@@ -55,25 +56,25 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, 
 
 	cfg, err := loadConfig(serverURLDefault, installURLDefault)
 	if err != nil {
-		boot.setError(err.Error())
+		api.SetError(err.Error())
 
 		return fmt.Errorf("load config: %w", err)
 	}
 
 	// First-boot: if no auth token, self-register as a device.
-	boot.setState(bootRegistering)
+	api.SetState(localapi.StateRegistering)
 
 	envPath := envfile.EnvFilePath(appName)
 	regResult, regErr := autoRegister(ctx, cfg, envPath)
 	if regErr != nil {
-		boot.setError(regErr.Error())
+		api.SetError(regErr.Error())
 
 		return fmt.Errorf("auto-register: %w", regErr)
 	}
 
 	if regResult != nil {
-		linkURL := buildLinkURL(frontendURL, regResult.LinkCode)
-		boot.setRegistered(regResult.LinkCode, linkURL, regResult.LinkCodeExpiresAt)
+		linkURL := localapi.BuildLinkURL(frontendURL, regResult.LinkCode)
+		api.SetRegistered(regResult.LinkCode, linkURL, regResult.LinkCodeExpiresAt)
 		logger.Info("device registered",
 			slog.String("device_uuid", regResult.DeviceUUID),
 			slog.String("link_code", regResult.LinkCode),
@@ -81,7 +82,7 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, 
 		)
 		fmt.Fprintf(os.Stderr, "\n  Link this device: %s\n\n", linkURL)
 	} else {
-		boot.setState(bootRunning)
+		api.SetState(localapi.StateRunning)
 	}
 
 	binaryPath, err := os.Executable()
@@ -100,9 +101,9 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, 
 	dmn := daemon.New(cfg.Daemon, subsystems.fsys, subsystems.watcher, subsystems.runner,
 		subsystems.pusher, subsystems.ws, subsystems.plugins, subsystems.updater, logger)
 
-	// Add daemon status to the same mux (safe for concurrent registration).
-	mux.Handle("/status", daemon.StatusHandler(dmn))
-	boot.setState(bootRunning)
+	// Add daemon status to the local API server.
+	api.Handle("/status", daemon.StatusHandler(dmn))
+	api.SetState(localapi.StateRunning)
 
 	logger.Info("starting daemon",
 		slog.String("server", cfg.ServerURL),
