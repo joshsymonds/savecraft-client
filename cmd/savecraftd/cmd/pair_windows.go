@@ -41,7 +41,7 @@ func showPairDialog(appName, serverURL string, logger *slog.Logger) error {
 		envPath := envfile.EnvFilePath(appName)
 
 		if err := w.Bind("pair", func(code string) error {
-			logger.Info("pairing", slog.String("code_length", fmt.Sprintf("%d", len(code))))
+			logger.Info("pairing", slog.Int("code_length", len(code)))
 
 			res, err := pairclient.ClaimCode(serverURL, code)
 			if err != nil {

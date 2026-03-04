@@ -374,6 +374,90 @@ func TestReplaceBinary_WorksWhenTargetDoesNotExist(t *testing.T) {
 	}
 }
 
+func TestDownloadToFile_WritesContent(t *testing.T) {
+	data := []byte("hello-daemon-binary")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write(data)
+	}))
+	defer srv.Close()
+
+	dest := filepath.Join(t.TempDir(), "download.tmp")
+	if err := downloadToFile(context.Background(), srv.URL, dest, srv.Client()); err != nil {
+		t.Fatalf("downloadToFile: %v", err)
+	}
+
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if string(got) != string(data) {
+		t.Errorf("content = %q, want %q", got, data)
+	}
+}
+
+func TestDownloadToFile_HTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	dest := filepath.Join(t.TempDir(), "download.tmp")
+	err := downloadToFile(context.Background(), srv.URL, dest, srv.Client())
+	if err == nil {
+		t.Fatal("expected error for 500 response")
+	}
+	if !os.IsNotExist(func() error { _, e := os.Stat(dest); return e }()) {
+		t.Error("file should not exist after failed download")
+	}
+}
+
+func TestDownloadToFile_BadDestPath(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte("data"))
+	}))
+	defer srv.Close()
+
+	err := downloadToFile(context.Background(), srv.URL, "/nonexistent-dir/file.tmp", srv.Client())
+	if err == nil {
+		t.Fatal("expected error for bad dest path")
+	}
+}
+
+func TestDownloadToFile_CancelledContext(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte("data"))
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	dest := filepath.Join(t.TempDir(), "download.tmp")
+	err := downloadToFile(ctx, srv.URL, dest, srv.Client())
+	if err == nil {
+		t.Fatal("expected error for canceled context")
+	}
+}
+
+func TestCleanupTempFiles_NoErrorOnMissing(t *testing.T) {
+	// Should not panic or error on non-existent files.
+	cleanupTempFiles(
+		filepath.Join(t.TempDir(), "nonexistent-1"),
+		filepath.Join(t.TempDir(), "nonexistent-2"),
+	)
+}
+
+func TestCleanupTempFiles_RemovesExisting(t *testing.T) {
+	tmp := filepath.Join(t.TempDir(), "temp-file")
+	if err := os.WriteFile(tmp, []byte("data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cleanupTempFiles(tmp)
+	if _, err := os.Stat(tmp); !os.IsNotExist(err) {
+		t.Error("file should have been removed")
+	}
+}
+
 func TestCheck_DowngradeNotReturned(t *testing.T) {
 	manifest := manifestResponse{
 		Version: "0.1.0",

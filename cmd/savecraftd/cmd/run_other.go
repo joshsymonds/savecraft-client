@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -71,7 +72,9 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault s
 		}
 	}()
 	defer func() {
-		if shutdownErr := statusSrv.Shutdown(ctx); shutdownErr != nil {
+		shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutCancel()
+		if shutdownErr := statusSrv.Shutdown(shutCtx); shutdownErr != nil {
 			logger.Error("status server shutdown failed", slog.String("error", shutdownErr.Error()))
 		}
 	}()

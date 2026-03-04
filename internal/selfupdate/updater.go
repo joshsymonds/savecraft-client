@@ -214,11 +214,24 @@ func downloadToFile(ctx context.Context, url, destPath string, client *http.Clie
 	if err != nil {
 		return fmt.Errorf("create %s: %w", destPath, err)
 	}
-	defer outFile.Close()
+	closed := false
+	defer func() {
+		if !closed {
+			_ = outFile.Close()
+		}
+	}()
 
-	_, copyErr := io.Copy(outFile, resp.Body)
-	if copyErr != nil {
+	if _, copyErr := io.Copy(outFile, resp.Body); copyErr != nil {
 		return fmt.Errorf("write %s: %w", destPath, copyErr)
+	}
+
+	if syncErr := outFile.Sync(); syncErr != nil {
+		return fmt.Errorf("sync %s: %w", destPath, syncErr)
+	}
+
+	closed = true
+	if closeErr := outFile.Close(); closeErr != nil {
+		return fmt.Errorf("close %s: %w", destPath, closeErr)
 	}
 
 	return nil

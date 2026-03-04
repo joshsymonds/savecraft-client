@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"fyne.io/systray"
 	"github.com/spf13/cobra"
@@ -40,12 +41,16 @@ func runDaemonWithTray(serverURLDefault, installURLDefault, appName, statusPortD
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
-		<-sigCh
-		cancel()
-		systray.Quit()
+		select {
+		case <-sigCh:
+			cancel()
+			systray.Quit()
+		case <-ctx.Done():
+		}
+		signal.Stop(sigCh)
 	}()
 
-	var daemonErr error
+	errCh := make(chan error, 1)
 
 	onReady := func() {
 		trayStatus := setupTray(trayConfig{
@@ -99,7 +104,9 @@ func runDaemonWithTray(serverURLDefault, installURLDefault, appName, statusPortD
 				}
 			}()
 			defer func() {
-				if shutdownErr := statusSrv.Shutdown(ctx); shutdownErr != nil {
+				shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer shutCancel()
+				if shutdownErr := statusSrv.Shutdown(shutCtx); shutdownErr != nil {
 					logger.Error("status server shutdown failed", slog.String("error", shutdownErr.Error()))
 				}
 			}()
@@ -113,9 +120,11 @@ func runDaemonWithTray(serverURLDefault, installURLDefault, appName, statusPortD
 
 			trayStatus <- trayStateConnected
 
-			if runErr := dmn.Run(ctx); runErr != nil {
-				daemonErr = fmt.Errorf("daemon run: %w", runErr)
+			var runErr error
+			if e := dmn.Run(ctx); e != nil {
+				runErr = fmt.Errorf("daemon run: %w", e)
 			}
+			errCh <- runErr
 
 			systray.Quit()
 		}()
@@ -127,5 +136,10 @@ func runDaemonWithTray(serverURLDefault, installURLDefault, appName, statusPortD
 
 	systray.Run(onReady, onQuit)
 
-	return daemonErr
+	select {
+	case err := <-errCh:
+		return err
+	default:
+		return nil
+	}
 }

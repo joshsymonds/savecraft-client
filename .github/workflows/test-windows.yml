@@ -22,6 +22,9 @@ on:
       - '.github/workflows/test-windows.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   test-msi:
     name: MSI Install/Uninstall

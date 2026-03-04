@@ -150,6 +150,7 @@
       await window.pair(code);
       showStatus('Paired successfully!', 'success');
       btnEl.textContent = 'Done';
+      setTimeout(() => window.close(), 1500);
     } catch (err) {
       showStatus(err.toString(), 'error');
       btnEl.disabled = false;

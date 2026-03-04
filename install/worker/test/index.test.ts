@@ -92,9 +92,23 @@ describe("install worker", () => {
 				expect(resp.status).toBe(302);
 				const location = resp.headers.get("location")!;
 				expect(location).toContain("/daemon/");
-				expect(location).toMatch(/\.msi$/);
+				expect(location).toContain(`${env.APP_NAME}.msi`);
 			});
 		}
+
+		it("does not redirect Windows Phone to MSI", async () => {
+			const resp = await SELF.fetch("https://install.savecraft.gg/", {
+				headers: {
+					"user-agent":
+						"Mozilla/5.0 (Windows Phone 8.1; ARM; Trident/7.0; Touch; rv:11.0; IEMobile/11.0) like Gecko",
+				},
+				redirect: "manual",
+			});
+			expect(resp.status).toBe(302);
+			const location = resp.headers.get("location")!;
+			expect(location).not.toContain(".msi");
+			expect(location).toContain(env.REDIRECT_URL);
+		});
 
 		it("still serves install script to CLI tools on Windows (WSL)", async () => {
 			const resp = await SELF.fetch("https://install.savecraft.gg/", {

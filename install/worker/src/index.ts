@@ -24,7 +24,8 @@ function isCli(userAgent: string): boolean {
 }
 
 function isWindows(userAgent: string): boolean {
-	return userAgent.includes('Windows');
+	const lower = userAgent.toLowerCase();
+	return lower.includes('windows') && !lower.includes('windows phone');
 }
 
 async function readJson<T>(bucket: R2Bucket, key: string): Promise<T | null> {
