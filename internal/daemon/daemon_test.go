@@ -409,7 +409,7 @@ func newD2RState() *GameState {
 
 func d2rConfig() Config {
 	return Config{
-		DeviceID: "steam-deck",
+		SourceID: "steam-deck",
 		Version:  "0.1.0",
 		Games: map[string]GameConfig{
 			"d2r": {SavePath: "/saves/d2r", FileExtensions: []string{".d2s"}, Enabled: true},
@@ -474,7 +474,7 @@ func TestParseAndPush_GameScopedSave(t *testing.T) {
 		files: map[string][]byte{"/saves/d2r/SharedStash.d2i": []byte("stash data")},
 	}
 	cfg := Config{
-		DeviceID: "deck",
+		SourceID: "deck",
 		Version:  "0.1.0",
 		Games: map[string]GameConfig{
 			"d2r": {SavePath: "/saves/d2r", FileExtensions: []string{".d2s", ".d2i"}, Enabled: true},
@@ -1120,7 +1120,7 @@ func TestConfigUpdate_AddsNewGame(t *testing.T) {
 	watcher := newFakeWatcher()
 	runner := d2rRunner()
 	fsys := d2rFS()
-	cfg := Config{DeviceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
+	cfg := Config{SourceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
 
 	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
 
@@ -1280,7 +1280,7 @@ func TestConfigUpdate_ReenablesGame(t *testing.T) {
 	runner := d2rRunner()
 	fsys := d2rFS()
 	cfg := Config{
-		DeviceID: "deck",
+		SourceID: "deck",
 		Version:  "0.1.0",
 		Games: map[string]GameConfig{
 			"d2r": {SavePath: "/saves/d2r", FileExtensions: []string{".d2s"}, Enabled: false},
@@ -1313,7 +1313,7 @@ func TestConfigUpdate_ReenablesGame(t *testing.T) {
 func TestRun_LifecycleEvents(t *testing.T) {
 	ws := newFakeWSClient()
 	cfg := Config{
-		DeviceID: "steam-deck",
+		SourceID: "steam-deck",
 		Version:  "0.1.0",
 		Games:    map[string]GameConfig{},
 	}
@@ -1345,19 +1345,19 @@ func TestRun_LifecycleEvents(t *testing.T) {
 	}
 
 	types := ws.sentEventTypes()
-	if types[0] != "daemonOnline" {
-		t.Errorf("first event = %v, want daemonOnline", types[0])
+	if types[0] != "sourceOnline" {
+		t.Errorf("first event = %v, want sourceOnline", types[0])
 	}
-	if types[len(types)-1] != "daemonOffline" {
-		t.Errorf("last event = %v, want daemonOffline", types[len(types)-1])
+	if types[len(types)-1] != "sourceOffline" {
+		t.Errorf("last event = %v, want sourceOffline", types[len(types)-1])
 	}
 
-	online := ws.sentEvent("daemonOnline", 0)
-	if online["deviceId"] != "steam-deck" {
-		t.Errorf("daemonOnline deviceId = %v", online["deviceId"])
+	online := ws.sentEvent("sourceOnline", 0)
+	if online["sourceId"] != "steam-deck" {
+		t.Errorf("sourceOnline sourceId = %v", online["sourceId"])
 	}
 	if online["version"] != "0.1.0" {
-		t.Errorf("daemonOnline version = %v", online["version"])
+		t.Errorf("sourceOnline version = %v", online["version"])
 	}
 }
 
@@ -1381,7 +1381,7 @@ func TestRun_FileEventTriggersParseAndPush(t *testing.T) {
 	go func() { done <- d.Run(ctx) }()
 
 	waitFor(t, func() bool {
-		return slices.Contains(ws.sentEventTypes(), "daemonOnline")
+		return slices.Contains(ws.sentEventTypes(), "sourceOnline")
 	})
 
 	watcher.events <- FileEvent{Path: "/saves/d2r/Hammerdin.d2s", Op: FileModify}
@@ -1452,7 +1452,7 @@ func TestConfigUpdate_EnsurePluginFailed_SkipsGame(t *testing.T) {
 	ws := newFakeWSClient()
 	runner := d2rRunner()
 	fsys := d2rFS()
-	cfg := Config{DeviceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
+	cfg := Config{SourceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
 
 	pm := &fakePluginManager{
 		ensureErr: map[string]error{"d2r": fmt.Errorf("download failed")},
@@ -1523,7 +1523,7 @@ func TestRun_EnsurePluginFailed_SkipsGame(t *testing.T) {
 func TestConfigUpdate_NewGame_PluginFailure_RemovesFromConfig(t *testing.T) {
 	ws := newFakeWSClient()
 	fsys := d2rFS()
-	cfg := Config{DeviceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
+	cfg := Config{SourceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
 
 	pm := &fakePluginManager{
 		ensureErr: map[string]error{"d2r": fmt.Errorf("download failed")},
@@ -1812,7 +1812,7 @@ func TestHandleCommand_DaemonUpdateAvailable(t *testing.T) {
 	ws := newFakeWSClient()
 	updater := &fakeUpdater{}
 	cfg := Config{
-		DeviceID:   "deck",
+		SourceID:   "deck",
 		Version:    "0.1.0",
 		BinaryPath: "/usr/local/bin/savecraft-daemon",
 		Games:      map[string]GameConfig{},
@@ -1842,11 +1842,11 @@ func TestHandleCommand_DaemonUpdateAvailable(t *testing.T) {
 	})
 	d.handleCommand(context.Background(), cmd)
 
-	if !slices.Contains(ws.sentEventTypes(), "daemonUpdateStarted") {
-		t.Error("missing daemonUpdateStarted event")
+	if !slices.Contains(ws.sentEventTypes(), "sourceUpdateStarted") {
+		t.Error("missing sourceUpdateStarted event")
 	}
-	if !slices.Contains(ws.sentEventTypes(), "daemonOffline") {
-		t.Error("missing daemonOffline after successful update")
+	if !slices.Contains(ws.sentEventTypes(), "sourceOffline") {
+		t.Error("missing sourceOffline after successful update")
 	}
 	if exitCode != 0 {
 		t.Errorf("exitFunc called with %d, want 0", exitCode)
@@ -1870,7 +1870,7 @@ func TestHandleCommand_DaemonUpdateFailed(t *testing.T) {
 	ws := newFakeWSClient()
 	updater := &fakeUpdater{applyErr: fmt.Errorf("disk full")}
 	cfg := Config{
-		DeviceID:   "deck",
+		SourceID:   "deck",
 		Version:    "0.1.0",
 		BinaryPath: "/usr/local/bin/savecraft-daemon",
 		Games:      map[string]GameConfig{},
@@ -1898,14 +1898,14 @@ func TestHandleCommand_DaemonUpdateFailed(t *testing.T) {
 	})
 	d.handleCommand(context.Background(), cmd)
 
-	if !slices.Contains(ws.sentEventTypes(), "daemonUpdateStarted") {
-		t.Error("missing daemonUpdateStarted event")
+	if !slices.Contains(ws.sentEventTypes(), "sourceUpdateStarted") {
+		t.Error("missing sourceUpdateStarted event")
 	}
-	if !slices.Contains(ws.sentEventTypes(), "daemonUpdateFailed") {
-		t.Error("missing daemonUpdateFailed event")
+	if !slices.Contains(ws.sentEventTypes(), "sourceUpdateFailed") {
+		t.Error("missing sourceUpdateFailed event")
 	}
 
-	failed := ws.sentEvent("daemonUpdateFailed", 0)
+	failed := ws.sentEvent("sourceUpdateFailed", 0)
 	if failed["message"] != "disk full" {
 		t.Errorf("message = %v, want 'disk full'", failed["message"])
 	}
@@ -1913,7 +1913,7 @@ func TestHandleCommand_DaemonUpdateFailed(t *testing.T) {
 
 func TestHandleCommand_DaemonUpdateAvailable_NilUpdater(t *testing.T) {
 	ws := newFakeWSClient()
-	cfg := Config{DeviceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
+	cfg := Config{SourceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
 
 	d := New(
 		cfg,
@@ -1937,7 +1937,7 @@ func TestHandleCommand_DaemonUpdateAvailable_NilUpdater(t *testing.T) {
 	d.handleCommand(context.Background(), cmd)
 
 	// Should not crash, should not send any update events
-	if slices.Contains(ws.sentEventTypes(), "daemonUpdateStarted") {
+	if slices.Contains(ws.sentEventTypes(), "sourceUpdateStarted") {
 		t.Error("should not start update with nil updater")
 	}
 }
@@ -1953,7 +1953,7 @@ func TestCheckSelfUpdate_TriggersApply(t *testing.T) {
 		},
 	}
 	cfg := Config{
-		DeviceID:   "deck",
+		SourceID:   "deck",
 		Version:    "0.2.0",
 		BinaryPath: "/usr/local/bin/savecraft-daemon",
 		Games:      map[string]GameConfig{},
@@ -1975,11 +1975,11 @@ func TestCheckSelfUpdate_TriggersApply(t *testing.T) {
 
 	d.checkSelfUpdate(context.Background())
 
-	if !slices.Contains(ws.sentEventTypes(), "daemonUpdateStarted") {
-		t.Error("missing daemonUpdateStarted event")
+	if !slices.Contains(ws.sentEventTypes(), "sourceUpdateStarted") {
+		t.Error("missing sourceUpdateStarted event")
 	}
-	if !slices.Contains(ws.sentEventTypes(), "daemonOffline") {
-		t.Error("missing daemonOffline after successful update")
+	if !slices.Contains(ws.sentEventTypes(), "sourceOffline") {
+		t.Error("missing sourceOffline after successful update")
 	}
 	if exitCode != 0 {
 		t.Errorf("exitFunc called with %d, want 0", exitCode)
@@ -2000,7 +2000,7 @@ func TestCheckSelfUpdate_NilResult(t *testing.T) {
 	ws := newFakeWSClient()
 	updater := &fakeUpdater{checkResult: nil}
 	cfg := Config{
-		DeviceID: "deck",
+		SourceID: "deck",
 		Version:  "0.2.0",
 		Games:    map[string]GameConfig{},
 	}
@@ -2019,7 +2019,7 @@ func TestCheckSelfUpdate_NilResult(t *testing.T) {
 
 	d.checkSelfUpdate(context.Background())
 
-	if slices.Contains(ws.sentEventTypes(), "daemonUpdateStarted") {
+	if slices.Contains(ws.sentEventTypes(), "sourceUpdateStarted") {
 		t.Error("should not start update when Check returns nil")
 	}
 }
@@ -2028,7 +2028,7 @@ func TestCheckSelfUpdate_CheckError(t *testing.T) {
 	ws := newFakeWSClient()
 	updater := &fakeUpdater{checkErr: fmt.Errorf("network error")}
 	cfg := Config{
-		DeviceID: "deck",
+		SourceID: "deck",
 		Version:  "0.2.0",
 		Games:    map[string]GameConfig{},
 	}
@@ -2047,7 +2047,7 @@ func TestCheckSelfUpdate_CheckError(t *testing.T) {
 
 	d.checkSelfUpdate(context.Background())
 
-	if slices.Contains(ws.sentEventTypes(), "daemonUpdateStarted") {
+	if slices.Contains(ws.sentEventTypes(), "sourceUpdateStarted") {
 		t.Error("should not start update when Check returns error")
 	}
 }
@@ -2055,7 +2055,7 @@ func TestCheckSelfUpdate_CheckError(t *testing.T) {
 func TestCheckSelfUpdate_NilUpdater(_ *testing.T) {
 	ws := newFakeWSClient()
 	cfg := Config{
-		DeviceID: "deck",
+		SourceID: "deck",
 		Version:  "0.2.0",
 		Games:    map[string]GameConfig{},
 	}
@@ -2077,17 +2077,17 @@ func TestCheckSelfUpdate_NilUpdater(_ *testing.T) {
 }
 
 func TestSendEvent_HeartbeatWireFormat(t *testing.T) {
-	// Verify daemonHeartbeat serializes as {"daemonHeartbeat":{}} (not null).
+	// Verify sourceHeartbeat serializes as {"sourceHeartbeat":{}} (not null).
 	// The hub's Message.fromJSON uses isSet() which returns false for null,
 	// so the empty object is critical for the heartbeat to be recognized.
 	ws := newFakeWSClient()
 	d := New(
-		Config{DeviceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}},
+		Config{SourceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}},
 		&fakeFS{}, newFakeWatcher(), &fakeRunner{},
 		&fakePushClient{}, ws, nil, nil, testLogger(),
 	)
 
-	d.sendEvent(context.Background(), "daemonHeartbeat", map[string]any{})
+	d.sendEvent(context.Background(), "sourceHeartbeat", map[string]any{})
 
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -2099,20 +2099,20 @@ func TestSendEvent_HeartbeatWireFormat(t *testing.T) {
 	if err := json.Unmarshal(ws.sent[0], &raw); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	hb, ok := raw["daemonHeartbeat"]
+	hb, ok := raw["sourceHeartbeat"]
 	if !ok {
-		t.Fatal("missing daemonHeartbeat key")
+		t.Fatal("missing sourceHeartbeat key")
 	}
 	// Must be {} not null — null causes isSet() to return false on the hub
 	if string(hb) != "{}" {
-		t.Errorf("daemonHeartbeat payload = %s, want {}", string(hb))
+		t.Errorf("sourceHeartbeat payload = %s, want {}", string(hb))
 	}
 }
 
 func TestRun_ReconnectReannounces(t *testing.T) {
 	ws := newFakeWSClient()
 	cfg := Config{
-		DeviceID: "deck",
+		SourceID: "deck",
 		Version:  "0.1.0",
 		Games: map[string]GameConfig{
 			"d2r": {
@@ -2135,15 +2135,15 @@ func TestRun_ReconnectReannounces(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- d.Run(ctx) }()
 
-	// Wait for initial daemonOnline.
+	// Wait for initial sourceOnline.
 	waitFor(t, func() bool {
-		return slices.Contains(ws.sentEventTypes(), "daemonOnline")
+		return slices.Contains(ws.sentEventTypes(), "sourceOnline")
 	})
 
-	// Count initial daemonOnline events.
+	// Count initial sourceOnline events.
 	initialCount := 0
 	for _, et := range ws.sentEventTypes() {
-		if et == "daemonOnline" {
+		if et == "sourceOnline" {
 			initialCount++
 		}
 	}
@@ -2151,25 +2151,25 @@ func TestRun_ReconnectReannounces(t *testing.T) {
 	// Simulate reconnect.
 	ws.reconnected <- struct{}{}
 
-	// Wait for second daemonOnline.
+	// Wait for second sourceOnline.
 	waitFor(t, func() bool {
 		count := 0
 		for _, et := range ws.sentEventTypes() {
-			if et == "daemonOnline" {
+			if et == "sourceOnline" {
 				count++
 			}
 		}
 		return count > initialCount
 	})
 
-	// Verify re-announced with correct deviceId.
-	// The second daemonOnline should have the same deviceId.
-	onlineEvent := ws.sentEvent("daemonOnline", 1)
+	// Verify re-announced with correct sourceId.
+	// The second sourceOnline should have the same sourceId.
+	onlineEvent := ws.sentEvent("sourceOnline", 1)
 	if onlineEvent == nil {
-		t.Fatal("second daemonOnline event not found")
+		t.Fatal("second sourceOnline event not found")
 	}
-	if onlineEvent["deviceId"] != "deck" {
-		t.Errorf("reconnect daemonOnline deviceId = %v, want deck", onlineEvent["deviceId"])
+	if onlineEvent["sourceId"] != "deck" {
+		t.Errorf("reconnect sourceOnline sourceId = %v, want deck", onlineEvent["sourceId"])
 	}
 
 	// Verify full announceOnline sequence was re-sent: gamesDiscovered, watching, pushCompleted.

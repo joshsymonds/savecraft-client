@@ -45,7 +45,7 @@ func (c *Client) Boot(ctx context.Context) (*BootResponse, error) {
 	return &result, nil
 }
 
-// Link returns the device link code and URL. The HTTP status code is
+// Link returns the source link code and URL. The HTTP status code is
 // returned alongside the response to distinguish 200/404/503.
 func (c *Client) Link(ctx context.Context) (*LinkResponse, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/link", nil)

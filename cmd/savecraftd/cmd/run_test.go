@@ -141,13 +141,13 @@ func TestLoadConfig_AcceptsMissingAuthToken(t *testing.T) {
 
 func TestAutoRegister_RegistersAndPersists(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		if req.Method != http.MethodPost || req.URL.Path != "/api/v1/device/register" {
+		if req.Method != http.MethodPost || req.URL.Path != "/api/v1/source/register" {
 			rw.WriteHeader(http.StatusNotFound)
 			return
 		}
 
 		var body struct {
-			DeviceName string `json:"device_name"`
+			SourceName string `json:"source_name"`
 		}
 
 		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
@@ -157,7 +157,7 @@ func TestAutoRegister_RegistersAndPersists(t *testing.T) {
 		rw.Header().Set("Content-Type", "application/json")
 		rw.WriteHeader(http.StatusCreated)
 		json.NewEncoder(rw).Encode(map[string]string{
-			"device_uuid":          "test-uuid-1234",
+			"source_uuid":          "test-uuid-1234",
 			"token":                "dvt_testtoken",
 			"link_code":            "123456",
 			"link_code_expires_at": "2026-03-03T12:20:00Z",
@@ -178,7 +178,7 @@ func TestAutoRegister_RegistersAndPersists(t *testing.T) {
 		t.Fatalf("autoRegister: %v", err)
 	}
 	if !registered {
-		t.Fatal("expected registered=true for new device")
+		t.Fatal("expected registered=true for new source")
 	}
 
 	// Verify config was updated.
@@ -188,8 +188,8 @@ func TestAutoRegister_RegistersAndPersists(t *testing.T) {
 	if cfg.Daemon.AuthToken != "dvt_testtoken" {
 		t.Errorf("cfg.Daemon.AuthToken = %q, want dvt_testtoken", cfg.Daemon.AuthToken)
 	}
-	if cfg.Daemon.DeviceUUID != "test-uuid-1234" {
-		t.Errorf("cfg.Daemon.DeviceUUID = %q, want test-uuid-1234", cfg.Daemon.DeviceUUID)
+	if cfg.Daemon.SourceUUID != "test-uuid-1234" {
+		t.Errorf("cfg.Daemon.SourceUUID = %q, want test-uuid-1234", cfg.Daemon.SourceUUID)
 	}
 
 	// Verify credentials persisted to env file.
@@ -201,8 +201,8 @@ func TestAutoRegister_RegistersAndPersists(t *testing.T) {
 	if vars["SAVECRAFT_AUTH_TOKEN"] != "dvt_testtoken" {
 		t.Errorf("env SAVECRAFT_AUTH_TOKEN = %q, want dvt_testtoken", vars["SAVECRAFT_AUTH_TOKEN"])
 	}
-	if vars["SAVECRAFT_DEVICE_UUID"] != "test-uuid-1234" {
-		t.Errorf("env SAVECRAFT_DEVICE_UUID = %q, want test-uuid-1234", vars["SAVECRAFT_DEVICE_UUID"])
+	if vars["SAVECRAFT_SOURCE_UUID"] != "test-uuid-1234" {
+		t.Errorf("env SAVECRAFT_SOURCE_UUID = %q, want test-uuid-1234", vars["SAVECRAFT_SOURCE_UUID"])
 	}
 
 	// Verify link code returned.

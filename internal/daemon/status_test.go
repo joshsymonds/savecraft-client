@@ -11,7 +11,7 @@ import (
 func TestStatus_ReturnsSnapshot(t *testing.T) {
 	ws := newFakeWSClient()
 	cfg := Config{
-		DeviceID: "steam-deck",
+		SourceID: "steam-deck",
 		Version:  "1.2.3",
 		Games: map[string]GameConfig{
 			"d2r": {
@@ -38,8 +38,8 @@ func TestStatus_ReturnsSnapshot(t *testing.T) {
 	if status.Version != "1.2.3" {
 		t.Errorf("version = %q, want %q", status.Version, "1.2.3")
 	}
-	if status.DeviceID != "steam-deck" {
-		t.Errorf("deviceId = %q, want %q", status.DeviceID, "steam-deck")
+	if status.SourceID != "steam-deck" {
+		t.Errorf("sourceId = %q, want %q", status.SourceID, "steam-deck")
 	}
 	if len(status.Games) != 2 {
 		t.Fatalf("games count = %d, want 2", len(status.Games))
@@ -68,7 +68,7 @@ func TestStatus_ReturnsSnapshot(t *testing.T) {
 func TestStatus_WSConnected(t *testing.T) {
 	ws := newFakeWSClient()
 	cfg := Config{
-		DeviceID: "deck",
+		SourceID: "deck",
 		Version:  "0.1.0",
 		Games:    map[string]GameConfig{},
 	}
@@ -95,7 +95,7 @@ func TestStatus_WSConnected(t *testing.T) {
 func TestStatusHandler_ReturnsJSON(t *testing.T) {
 	ws := newFakeWSClient()
 	cfg := Config{
-		DeviceID: "deck",
+		SourceID: "deck",
 		Version:  "0.1.0",
 		Games: map[string]GameConfig{
 			"d2r": {SavePath: "/saves/d2r", Enabled: true, FileExtensions: []string{".d2s"}},
@@ -133,7 +133,7 @@ func TestStatusHandler_ReturnsJSON(t *testing.T) {
 func TestNew_NilLogger(t *testing.T) {
 	ws := newFakeWSClient()
 	cfg := Config{
-		DeviceID: "deck",
+		SourceID: "deck",
 		Version:  "0.1.0",
 		Games:    map[string]GameConfig{},
 	}

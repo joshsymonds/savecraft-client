@@ -132,14 +132,14 @@ func loadConfig(serverURLDefault, installURLDefault string) (*appConfig, error) 
 
 	authToken := os.Getenv("SAVECRAFT_AUTH_TOKEN")
 
-	deviceID := os.Getenv("SAVECRAFT_DEVICE_ID")
-	if deviceID == "" {
+	sourceID := os.Getenv("SAVECRAFT_SOURCE_ID")
+	if sourceID == "" {
 		hostname, err := os.Hostname()
 		if err != nil {
-			return nil, fmt.Errorf("get hostname for device ID: %w", err)
+			return nil, fmt.Errorf("get hostname for source ID: %w", err)
 		}
 
-		deviceID = hostname
+		sourceID = hostname
 	}
 
 	pluginDir := os.Getenv("SAVECRAFT_PLUGIN_DIR")
@@ -149,7 +149,7 @@ func loadConfig(serverURLDefault, installURLDefault string) (*appConfig, error) 
 		cfgVersion = "dev"
 	}
 
-	deviceUUID := os.Getenv("SAVECRAFT_DEVICE_UUID")
+	sourceUUID := os.Getenv("SAVECRAFT_SOURCE_UUID")
 
 	return &appConfig{
 		ServerURL:  serverURL,
@@ -159,8 +159,8 @@ func loadConfig(serverURLDefault, installURLDefault string) (*appConfig, error) 
 		Daemon: daemon.Config{
 			ServerURL:  serverURL,
 			AuthToken:  authToken,
-			DeviceID:   deviceID,
-			DeviceUUID: deviceUUID,
+			SourceID:   sourceID,
+			SourceUUID: sourceUUID,
 			Version:    cfgVersion,
 			Games:      make(map[string]daemon.GameConfig),
 		},
@@ -168,16 +168,16 @@ func loadConfig(serverURLDefault, installURLDefault string) (*appConfig, error) 
 }
 
 // daemonConfigDefaults creates a daemon.Config with minimal defaults.
-func daemonConfigDefaults(deviceID, version string) daemon.Config {
+func daemonConfigDefaults(sourceID, version string) daemon.Config {
 	return daemon.Config{
-		DeviceID: deviceID,
+		SourceID: sourceID,
 		Version:  version,
 		Games:    make(map[string]daemon.GameConfig),
 	}
 }
 
 // autoRegister checks if the daemon has credentials. If not, it calls the
-// device registration endpoint, persists the credentials to the env file,
+// source registration endpoint, persists the credentials to the env file,
 // and updates the config in place. Returns (result, true, nil) if registration
 // happened, or (nil, false, nil) if credentials already exist.
 func autoRegister(ctx context.Context, cfg *appConfig, envPath string) (*regclient.RegisterResult, bool, error) {
@@ -185,15 +185,15 @@ func autoRegister(ctx context.Context, cfg *appConfig, envPath string) (*regclie
 		return nil, false, nil
 	}
 
-	result, err := regclient.Register(ctx, cfg.ServerURL, cfg.Daemon.DeviceID)
+	result, err := regclient.Register(ctx, cfg.ServerURL, cfg.Daemon.SourceID)
 	if err != nil {
-		return nil, false, fmt.Errorf("device registration: %w", err)
+		return nil, false, fmt.Errorf("source registration: %w", err)
 	}
 
 	// Persist credentials.
 	if writeErr := envfile.Write(envPath, map[string]string{
-		"SAVECRAFT_AUTH_TOKEN":  result.Token,
-		"SAVECRAFT_DEVICE_UUID": result.DeviceUUID,
+		"SAVECRAFT_AUTH_TOKEN":   result.Token,
+		"SAVECRAFT_SOURCE_UUID": result.SourceUUID,
 		"SAVECRAFT_SERVER_URL":  cfg.ServerURL,
 	}); writeErr != nil {
 		return nil, false, fmt.Errorf("persist credentials: %w", writeErr)
@@ -202,7 +202,7 @@ func autoRegister(ctx context.Context, cfg *appConfig, envPath string) (*regclie
 	// Update config in place.
 	cfg.AuthToken = result.Token
 	cfg.Daemon.AuthToken = result.Token
-	cfg.Daemon.DeviceUUID = result.DeviceUUID
+	cfg.Daemon.SourceUUID = result.SourceUUID
 
 	return result, true, nil
 }

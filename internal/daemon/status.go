@@ -15,7 +15,7 @@ type GameStatusInfo struct {
 type DaemonStatus struct {
 	Uptime      string                    `json:"uptime"`
 	Version     string                    `json:"version"`
-	DeviceID    string                    `json:"deviceId"`
+	SourceID    string                    `json:"sourceId"`
 	WSConnected bool                      `json:"wsConnected"`
 	Games       map[string]GameStatusInfo `json:"games"`
 }
@@ -40,7 +40,7 @@ func (d *Daemon) Status() DaemonStatus {
 	return DaemonStatus{
 		Uptime:      time.Since(d.startTime).Truncate(time.Second).String(),
 		Version:     d.cfg.Version,
-		DeviceID:    d.cfg.DeviceID,
+		SourceID:    d.cfg.SourceID,
 		WSConnected: d.ws.Connected(),
 		Games:       games,
 	}

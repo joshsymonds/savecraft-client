@@ -121,8 +121,8 @@ const (
 type Config struct {
 	ServerURL  string
 	AuthToken  string `json:"-"`
-	DeviceID   string
-	DeviceUUID string
+	SourceID   string
+	SourceUUID string
 	Version    string
 	BinaryPath string
 	Retry      RetryConfig
@@ -276,7 +276,7 @@ func New(
 func (d *Daemon) Run(ctx context.Context) (runErr error) {
 	d.startTime = time.Now()
 	d.log.InfoContext(ctx, "daemon starting",
-		slog.String("device_id", d.cfg.DeviceID),
+		slog.String("source_id", d.cfg.SourceID),
 		slog.String("version", d.cfg.Version),
 		slog.Int("game_count", len(d.cfg.Games)),
 	)
@@ -317,8 +317,8 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 		select {
 		case <-ctx.Done():
 			d.log.InfoContext(ctx, "daemon shutting down")
-			d.sendEvent(ctx, "daemonOffline", map[string]any{
-				"deviceId": d.cfg.DeviceID,
+			d.sendEvent(ctx, "sourceOffline", map[string]any{
+				"sourceId": d.cfg.SourceID,
 			})
 			return nil
 		case ev := <-d.watcher.Events():
@@ -330,7 +330,7 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 		case <-selfUpdateCh:
 			d.checkSelfUpdate(ctx)
 		case <-heartbeatTicker.C:
-			d.sendEvent(ctx, "daemonHeartbeat", map[string]any{})
+			d.sendEvent(ctx, "sourceHeartbeat", map[string]any{})
 		case <-d.ws.Reconnected():
 			d.log.InfoContext(ctx, "websocket reconnected, re-announcing")
 			d.announceOnline(ctx)
@@ -338,11 +338,11 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 	}
 }
 
-// announceOnline sends the daemonOnline event and full game state.
+// announceOnline sends the sourceOnline event and full game state.
 // Called on initial connect and after each reconnect.
 func (d *Daemon) announceOnline(ctx context.Context) {
-	d.sendEvent(ctx, "daemonOnline", map[string]any{
-		"deviceId": d.cfg.DeviceID,
+	d.sendEvent(ctx, "sourceOnline", map[string]any{
+		"sourceId": d.cfg.SourceID,
 		"version":  d.cfg.Version,
 		"platform": runtime.GOOS + "-" + runtime.GOARCH,
 	})
@@ -384,18 +384,18 @@ func (d *Daemon) applyDaemonUpdate(ctx context.Context, info *UpdateInfo) {
 	if d.updater == nil {
 		return
 	}
-	d.sendEvent(ctx, "daemonUpdateStarted", map[string]any{
+	d.sendEvent(ctx, "sourceUpdateStarted", map[string]any{
 		"version": info.Version,
 	})
 	if err := d.updater.Apply(ctx, info, d.cfg.BinaryPath); err != nil {
-		d.sendEvent(ctx, "daemonUpdateFailed", map[string]any{
+		d.sendEvent(ctx, "sourceUpdateFailed", map[string]any{
 			"version": info.Version,
 			"message": err.Error(),
 		})
 		return
 	}
-	d.sendEvent(ctx, "daemonOffline", map[string]any{
-		"deviceId": d.cfg.DeviceID,
+	d.sendEvent(ctx, "sourceOffline", map[string]any{
+		"sourceId": d.cfg.SourceID,
 	})
 	d.exitFunc(0)
 }

@@ -92,7 +92,7 @@ func runDaemonLoop(
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	// First-boot: if no auth token, self-register as a device.
+	// First-boot: if no auth token, self-register as a source.
 	api.SetState(localapi.StateRegistering)
 
 	envPath := envfile.EnvFilePath(appName)
@@ -106,14 +106,14 @@ func runDaemonLoop(
 	if registered {
 		linkURL := localapi.BuildLinkURL(frontendURL, regResult.LinkCode)
 		api.SetRegistered(regResult.LinkCode, linkURL, regResult.LinkCodeExpiresAt)
-		logger.InfoContext(ctx, "device registered",
-			slog.String("device_uuid", regResult.DeviceUUID),
+		logger.InfoContext(ctx, "source registered",
+			slog.String("source_uuid", regResult.SourceUUID),
 			slog.String("link_code", regResult.LinkCode),
 			slog.String("link_url", linkURL),
 		)
 
 		if svcmgr.Interactive() {
-			fmt.Fprintf(os.Stderr, "\n  Link this device: %s\n\n", linkURL)
+			fmt.Fprintf(os.Stderr, "\n  Link this source: %s\n\n", linkURL)
 		}
 	} else {
 		api.SetState(localapi.StateRunning)
@@ -142,7 +142,7 @@ func runDaemonLoop(
 	logger.InfoContext(ctx, "starting daemon",
 		slog.String("server", cfg.ServerURL),
 		slog.String("install", cfg.InstallURL),
-		slog.String("device_id", cfg.Daemon.DeviceID),
+		slog.String("source_id", cfg.Daemon.SourceID),
 		slog.Int("games", len(cfg.Daemon.Games)),
 	)
 

@@ -181,13 +181,13 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.state == StateRunning {
-		s.writeJSON(w, http.StatusNotFound, LinkResponse{Error: "device was already registered"})
+		s.writeJSON(w, http.StatusNotFound, LinkResponse{Error: "source was already registered"})
 
 		return
 	}
 
 	s.writeJSON(w, http.StatusServiceUnavailable, LinkResponse{
-		Error: "device not yet registered",
+		Error: "source not yet registered",
 		State: s.state,
 	})
 }

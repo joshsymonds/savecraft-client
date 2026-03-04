@@ -81,8 +81,8 @@ func TestClient_Link_NotReady(t *testing.T) {
 	if status != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want 503", status)
 	}
-	if resp.Error != "device not yet registered" {
-		t.Errorf("error = %q, want %q", resp.Error, "device not yet registered")
+	if resp.Error != "source not yet registered" {
+		t.Errorf("error = %q, want %q", resp.Error, "source not yet registered")
 	}
 }
 
@@ -101,8 +101,8 @@ func TestClient_Link_AlreadyRegistered(t *testing.T) {
 	if status != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", status)
 	}
-	if resp.Error != "device was already registered" {
-		t.Errorf("error = %q, want %q", resp.Error, "device was already registered")
+	if resp.Error != "source was already registered" {
+		t.Errorf("error = %q, want %q", resp.Error, "source was already registered")
 	}
 }
 

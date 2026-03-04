@@ -21,27 +21,27 @@ func TestRegister(t *testing.T) {
 				t.Errorf("method = %s, want POST", req.Method)
 			}
 
-			if req.URL.Path != "/api/v1/device/register" {
-				t.Errorf("path = %s, want /api/v1/device/register", req.URL.Path)
+			if req.URL.Path != "/api/v1/source/register" {
+				t.Errorf("path = %s, want /api/v1/source/register", req.URL.Path)
 			}
 
 			var body struct {
-				DeviceName string `json:"device_name"`
+				SourceName string `json:"source_name"`
 			}
 
 			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
 
-			if body.DeviceName != "test-host" {
-				t.Errorf("device_name = %q, want test-host", body.DeviceName)
+			if body.SourceName != "test-host" {
+				t.Errorf("source_name = %q, want test-host", body.SourceName)
 			}
 
 			rw.Header().Set("Content-Type", "application/json")
 			rw.WriteHeader(http.StatusCreated)
 
 			if err := json.NewEncoder(rw).Encode(map[string]string{
-				"device_uuid":          "d1e2f3a4-5678-90ab-cdef-1234567890ab",
+				"source_uuid":          "d1e2f3a4-5678-90ab-cdef-1234567890ab",
 				"token":                "dvt_testtoken123",
 				"link_code":            "482913",
 				"link_code_expires_at": "2026-03-03T12:20:00Z",
@@ -56,8 +56,8 @@ func TestRegister(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if result.DeviceUUID != "d1e2f3a4-5678-90ab-cdef-1234567890ab" {
-			t.Errorf("device_uuid = %q, want d1e2f3a4-...", result.DeviceUUID)
+		if result.SourceUUID != "d1e2f3a4-5678-90ab-cdef-1234567890ab" {
+			t.Errorf("source_uuid = %q, want d1e2f3a4-...", result.SourceUUID)
 		}
 
 		if result.Token != "dvt_testtoken123" {
