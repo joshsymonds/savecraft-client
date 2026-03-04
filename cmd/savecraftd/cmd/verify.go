@@ -11,7 +11,7 @@ import (
 	"github.com/joshsymonds/savecraft.gg/internal/envfile"
 )
 
-func buildVerifyCommand() *cobra.Command {
+func buildVerifyCommand(appName string) *cobra.Command {
 	var serverURL string
 
 	verify := &cobra.Command{
@@ -22,7 +22,7 @@ func buildVerifyCommand() *cobra.Command {
 Exits 0 if the token is valid, non-zero otherwise. Used by the installer
 to decide whether to skip or re-run the pairing flow.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runVerifyWithPath(cmd, serverURL, envfile.EnvFilePath())
+			return runVerifyWithPath(cmd, serverURL, envfile.EnvFilePath(appName))
 		},
 	}
 

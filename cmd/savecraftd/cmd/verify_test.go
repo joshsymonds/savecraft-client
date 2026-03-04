@@ -43,7 +43,7 @@ func TestRunVerifyWithPath(t *testing.T) {
 			t.Fatalf("write env: %v", err)
 		}
 
-		cmd := buildVerifyCommand()
+		cmd := buildVerifyCommand("savecraft")
 		cmd.SetArgs([]string{"--server", srv.URL})
 
 		var out bytes.Buffer
@@ -76,7 +76,7 @@ func TestRunVerifyWithPath(t *testing.T) {
 			t.Fatalf("write env: %v", err)
 		}
 
-		cmd := buildVerifyCommand()
+		cmd := buildVerifyCommand("savecraft")
 		cmd.SetArgs([]string{"--server", srv.URL})
 
 		var out bytes.Buffer
@@ -105,7 +105,7 @@ func TestRunVerifyWithPath(t *testing.T) {
 			t.Fatalf("write env: %v", err)
 		}
 
-		cmd := buildVerifyCommand()
+		cmd := buildVerifyCommand("savecraft")
 		cmd.SetArgs([]string{"--server", "https://example.com"})
 
 		var out bytes.Buffer
@@ -128,7 +128,7 @@ func TestRunVerifyWithPath(t *testing.T) {
 		dir := t.TempDir()
 		envPath := filepath.Join(dir, "nonexistent", "env")
 
-		cmd := buildVerifyCommand()
+		cmd := buildVerifyCommand("savecraft")
 		cmd.SetArgs([]string{"--server", "https://example.com"})
 
 		var out bytes.Buffer
@@ -164,7 +164,7 @@ func TestRunVerifyWithPath(t *testing.T) {
 			t.Fatalf("write env: %v", err)
 		}
 
-		cmd := buildVerifyCommand()
+		cmd := buildVerifyCommand("savecraft")
 		cmd.SetArgs([]string{"--server", srv.URL})
 
 		var out bytes.Buffer
@@ -193,7 +193,7 @@ func TestRunVerifyWithPath(t *testing.T) {
 			t.Fatalf("write env: %v", err)
 		}
 
-		cmd := buildVerifyCommand()
+		cmd := buildVerifyCommand("savecraft")
 		cmd.SetArgs([]string{"--server", "http://127.0.0.1:1"})
 
 		var out bytes.Buffer

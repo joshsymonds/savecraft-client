@@ -1,3 +1,5 @@
+# Reference only — the installer generates the actual unit file inline
+# with paths derived from SAVECRAFT_APP_NAME (see install.sh).
 [Unit]
 Description=Savecraft Daemon
 After=network-online.target

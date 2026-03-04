@@ -80,6 +80,8 @@ jobs:
       install_url: ${{ steps.config.outputs.install_url }}
       server_url: ${{ steps.config.outputs.server_url }}
       r2_bucket: ${{ steps.config.outputs.r2_bucket }}
+      app_name: ${{ steps.config.outputs.app_name }}
+      status_port: ${{ steps.config.outputs.status_port }}
     steps:
       - uses: actions/checkout@v4
 
@@ -99,11 +101,15 @@ jobs:
             echo "install_url=https://install.savecraft.gg" >> "$GITHUB_OUTPUT"
             echo "server_url=https://api.savecraft.gg" >> "$GITHUB_OUTPUT"
             echo "r2_bucket=savecraft-install" >> "$GITHUB_OUTPUT"
+            echo "app_name=savecraft" >> "$GITHUB_OUTPUT"
+            echo "status_port=9182" >> "$GITHUB_OUTPUT"
           else
             echo "is_production=false" >> "$GITHUB_OUTPUT"
             echo "install_url=https://install-staging.savecraft.gg" >> "$GITHUB_OUTPUT"
             echo "server_url=https://staging-api.savecraft.gg" >> "$GITHUB_OUTPUT"
             echo "r2_bucket=savecraft-install-staging" >> "$GITHUB_OUTPUT"
+            echo "app_name=savecraft-staging" >> "$GITHUB_OUTPUT"
+            echo "status_port=9183" >> "$GITHUB_OUTPUT"
           fi
 
   build:
@@ -126,16 +132,18 @@ jobs:
           VERSION: ${{ needs.environment.outputs.version }}
           SERVER_URL: ${{ needs.environment.outputs.server_url }}
           INSTALL_URL: ${{ needs.environment.outputs.install_url }}
-        run: just build-daemon-all "$VERSION" "$SERVER_URL" "$INSTALL_URL"
+          APP_NAME: ${{ needs.environment.outputs.app_name }}
+          STATUS_PORT: ${{ needs.environment.outputs.status_port }}
+        run: just build-daemon-all "$VERSION" "$SERVER_URL" "$INSTALL_URL" "$APP_NAME" "$STATUS_PORT"
 
       - uses: actions/upload-artifact@v4
         with:
           name: daemon-artifacts
-          path: dist/savecraft-daemon-*
+          path: dist/${{ needs.environment.outputs.app_name }}-daemon-*
 
   sign:
     name: Sign
-    needs: build
+    needs: [environment, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -155,16 +163,20 @@ jobs:
           SIGNING_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
 
       - name: Sign daemon binaries
+        env:
+          APP_NAME: ${{ needs.environment.outputs.app_name }}
         run: |
-          for f in dist/savecraft-daemon-*; do
+          for f in dist/"${APP_NAME}"-daemon-*; do
             [ -f "$f" ] || continue
             go run ./cmd/savecraft-sign/ "$f" /tmp/signing_key.priv
           done
 
       - name: Generate checksums
+        env:
+          APP_NAME: ${{ needs.environment.outputs.app_name }}
         run: |
           cd dist
-          sha256sum savecraft-daemon-* > checksums-sha256.txt
+          sha256sum "${APP_NAME}"-daemon-* > checksums-sha256.txt
 
       - name: Clean up signing key
         if: always()
@@ -174,7 +186,7 @@ jobs:
         with:
           name: signed-daemon-artifacts
           path: |
-            dist/savecraft-daemon-*
+            dist/${{ needs.environment.outputs.app_name }}-daemon-*
             dist/checksums-sha256.txt
 
   upload-r2:
@@ -196,6 +208,7 @@ jobs:
         env:
           VERSION: ${{ needs.environment.outputs.version }}
           INSTALL_URL: ${{ needs.environment.outputs.install_url }}
+          APP_NAME: ${{ needs.environment.outputs.app_name }}
         run: |
           # Compute base64 DER public key from raw Ed25519 key
           tmp_der=$(mktemp)
@@ -211,8 +224,8 @@ jobs:
             case "$filename" in
               *.sig|checksums-*) continue ;;
             esac
-            # Extract platform from filename: savecraft-daemon-linux-amd64 → linux-amd64
-            platform="${filename#savecraft-daemon-}"
+            # Extract platform from filename: {app_name}-daemon-linux-amd64 → linux-amd64
+            platform="${filename#"${APP_NAME}"-daemon-}"
             platforms=$(echo "$platforms" | jq \
               --arg p "$platform" \
               --arg url "${INSTALL_URL}/daemon/v${VERSION}/${filename}" \
@@ -235,8 +248,9 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_BUCKET: ${{ needs.environment.outputs.r2_bucket }}
           VERSION: ${{ needs.environment.outputs.version }}
+          APP_NAME: ${{ needs.environment.outputs.app_name }}
         run: |
-          for f in dist/savecraft-daemon-*; do
+          for f in dist/"${APP_NAME}"-daemon-*; do
             [ -f "$f" ] || continue
             filename=$(basename "$f")
             # Versioned (immutable archive)
@@ -295,6 +309,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
           PREV_TAG: ${{ steps.prev.outputs.tag }}
+          APP_NAME: ${{ needs.environment.outputs.app_name }}
         run: |
           notes_flag=""
           if [ -n "$PREV_TAG" ]; then
@@ -304,7 +319,7 @@ jobs:
             --title "$TAG" \
             --generate-notes \
             $notes_flag \
-            dist/savecraft-daemon-* \
+            dist/"${APP_NAME}"-daemon-* \
             dist/checksums-sha256.txt
 
       - name: Notify Discord (release)

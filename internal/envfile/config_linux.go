@@ -7,17 +7,17 @@ import (
 	"path/filepath"
 )
 
-// ConfigDir returns the Linux configuration directory for savecraft.
-// Uses $XDG_CONFIG_HOME/savecraft or falls back to ~/.config/savecraft.
-func ConfigDir() string {
+// ConfigDir returns the Linux configuration directory for the given app.
+// Uses $XDG_CONFIG_HOME/{appName} or falls back to ~/.config/{appName}.
+func ConfigDir(appName string) string {
 	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, "savecraft")
+		return filepath.Join(xdg, appName)
 	}
 
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(".", "savecraft")
+		return filepath.Join(".", appName)
 	}
 
-	return filepath.Join(home, ".config", "savecraft")
+	return filepath.Join(home, ".config", appName)
 }

@@ -156,8 +156,8 @@ upload-install env:
     cd install/worker
     npx wrangler r2 object put "${bucket}/curl/install.sh" --file ../install.sh --content-type "text/x-shellscript" --remote
 
-# Upload daemon binaries to R2: just upload-daemon staging
-upload-daemon env:
+# Upload daemon binaries to R2: just upload-daemon staging savecraft-staging
+upload-daemon env app_name="savecraft":
     #!/usr/bin/env bash
     set -euo pipefail
     if [[ "{{env}}" == "production" ]]; then
@@ -166,7 +166,7 @@ upload-daemon env:
         bucket="savecraft-install-staging"
     fi
     cd install/worker
-    for f in ../../dist/savecraft-daemon-*; do
+    for f in ../../dist/{{app_name}}-daemon-*; do
         name="$(basename "$f")"
         key="daemon/${name}"
         echo "Uploading ${key}..."
@@ -202,23 +202,23 @@ sign-plugins:
         go run ./cmd/savecraft-sign/ "$wasm"
     done
 
-# Cross-compile daemon binary: just build-daemon linux amd64 dev https://api.savecraft.gg https://install.savecraft.gg
-build-daemon os arch version="dev" server_url="https://api.savecraft.gg" install_url="https://install.savecraft.gg":
+# Cross-compile daemon binary: just build-daemon linux amd64 dev https://api.savecraft.gg https://install.savecraft.gg savecraft 9182
+build-daemon os arch version="dev" server_url="https://api.savecraft.gg" install_url="https://install.savecraft.gg" app_name="savecraft" status_port="9182":
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p dist
     CGO_ENABLED=0 GOOS={{os}} GOARCH={{arch}} go build \
-        -ldflags "-s -w -X main.version={{version}} -X main.serverURLDefault={{server_url}} -X main.installURLDefault={{install_url}}" \
-        -o "dist/savecraft-daemon-{{os}}-{{arch}}" \
+        -ldflags "-s -w -X main.version={{version}} -X main.serverURLDefault={{server_url}} -X main.installURLDefault={{install_url}} -X main.appName={{app_name}} -X main.statusPortDefault={{status_port}}" \
+        -o "dist/{{app_name}}-daemon-{{os}}-{{arch}}" \
         ./cmd/savecraftd/
 
 # Build daemon for all release platforms
-build-daemon-all version="dev" server_url="https://api.savecraft.gg" install_url="https://install.savecraft.gg":
-    just build-daemon linux amd64 {{version}} {{server_url}} {{install_url}}
-    just build-daemon linux arm64 {{version}} {{server_url}} {{install_url}}
-    just build-daemon darwin amd64 {{version}} {{server_url}} {{install_url}}
-    just build-daemon darwin arm64 {{version}} {{server_url}} {{install_url}}
-    just build-daemon windows amd64 {{version}} {{server_url}} {{install_url}}
+build-daemon-all version="dev" server_url="https://api.savecraft.gg" install_url="https://install.savecraft.gg" app_name="savecraft" status_port="9182":
+    just build-daemon linux amd64 {{version}} {{server_url}} {{install_url}} {{app_name}} {{status_port}}
+    just build-daemon linux arm64 {{version}} {{server_url}} {{install_url}} {{app_name}} {{status_port}}
+    just build-daemon darwin amd64 {{version}} {{server_url}} {{install_url}} {{app_name}} {{status_port}}
+    just build-daemon darwin arm64 {{version}} {{server_url}} {{install_url}} {{app_name}} {{status_port}}
+    just build-daemon windows amd64 {{version}} {{server_url}} {{install_url}} {{app_name}} {{status_port}}
 
 # Run install Worker tests
 test-install-worker:

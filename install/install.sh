@@ -12,12 +12,14 @@ readonly INSTALLER_VERSION="${SAVECRAFT_INSTALLER_VERSION:?SAVECRAFT_INSTALLER_V
 readonly INSTALL_URL="${SAVECRAFT_INSTALL_URL:?SAVECRAFT_INSTALL_URL must be set}"
 readonly ED25519_PUBKEY_B64="${SAVECRAFT_ED25519_PUBKEY:?SAVECRAFT_ED25519_PUBKEY must be set}"
 
+readonly APP_NAME="${SAVECRAFT_APP_NAME:-savecraft}"
 readonly BIN_DIR="${HOME}/.local/bin"
-readonly CONFIG_DIR="${HOME}/.config/savecraft"
-readonly CACHE_DIR="${HOME}/.cache/savecraft"
+readonly CONFIG_DIR="${HOME}/.config/${APP_NAME}"
+readonly CACHE_DIR="${HOME}/.cache/${APP_NAME}"
 readonly SYSTEMD_DIR="${HOME}/.config/systemd/user"
 
-readonly BINARY_NAME="savecraft-daemon"
+readonly BINARY_NAME="${APP_NAME}-daemon"
+readonly SERVICE_NAME="${APP_NAME}.service"
 
 # Temp files for download — module-level so the EXIT trap can clean them up.
 TMP_BINARY=""
@@ -128,20 +130,20 @@ download() {
 install_systemd_unit() {
     mkdir -p "${SYSTEMD_DIR}"
 
-    cat >"${SYSTEMD_DIR}/savecraft.service" <<'UNIT'
+    cat >"${SYSTEMD_DIR}/${SERVICE_NAME}" <<UNIT
 [Unit]
 Description=Savecraft Daemon
 After=network-online.target
 
 [Service]
-ExecStart=%h/.local/bin/savecraft-daemon
+ExecStart=%h/.local/bin/${BINARY_NAME}
 Restart=always
 RestartSec=5
-EnvironmentFile=-%h/.config/savecraft/env
+EnvironmentFile=-%h/.config/${APP_NAME}/env
 
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=%h/.config/savecraft %h/.cache/savecraft %h/.local/bin
+ReadWritePaths=%h/.config/${APP_NAME} %h/.cache/${APP_NAME} %h/.local/bin
 
 NoNewPrivileges=yes
 PrivateTmp=yes
@@ -152,16 +154,16 @@ RestrictAddressFamilies=AF_INET AF_INET6
 WantedBy=default.target
 UNIT
 
-    info "Installed systemd user unit to ${SYSTEMD_DIR}/savecraft.service"
+    info "Installed systemd user unit to ${SYSTEMD_DIR}/${SERVICE_NAME}"
 
     systemctl --user daemon-reload
 
     if [[ -f "${CONFIG_DIR}/env" ]] && grep -q '^SAVECRAFT_AUTH_TOKEN=' "${CONFIG_DIR}/env"; then
-        systemctl --user enable --now savecraft.service
-        ok "Enabled and started savecraft.service"
+        systemctl --user enable --now "${SERVICE_NAME}"
+        ok "Enabled and started ${SERVICE_NAME}"
     else
-        systemctl --user enable savecraft.service
-        warn "Enabled savecraft.service but NOT starting — set SAVECRAFT_AUTH_TOKEN in ${CONFIG_DIR}/env first"
+        systemctl --user enable "${SERVICE_NAME}"
+        warn "Enabled ${SERVICE_NAME} but NOT starting — set SAVECRAFT_AUTH_TOKEN in ${CONFIG_DIR}/env first"
     fi
 }
 
@@ -394,19 +396,19 @@ main() {
     echo "  Config:   ${CONFIG_DIR}/env"
     echo "  Cache:    ${CACHE_DIR}/"
     if [[ "${no_systemd}" == "false" ]]; then
-        echo "  Service:  ${SYSTEMD_DIR}/savecraft.service"
+        echo "  Service:  ${SYSTEMD_DIR}/${SERVICE_NAME}"
     fi
     echo ""
 
     if [[ "${paired}" == "true" ]]; then
         echo "  Device is paired and ready."
         if [[ "${no_systemd}" == "false" ]]; then
-            echo "  Check daemon status: systemctl --user status savecraft"
+            echo "  Check daemon status: systemctl --user status ${APP_NAME}"
         fi
     elif [[ "${no_systemd}" == "false" ]]; then
         echo "  Next steps:"
-        echo "    Start the daemon: systemctl --user start savecraft"
-        echo "    Check status:     systemctl --user status savecraft"
+        echo "    Start the daemon: systemctl --user start ${APP_NAME}"
+        echo "    Check status:     systemctl --user status ${APP_NAME}"
     fi
     echo ""
 }

@@ -7,13 +7,13 @@ import (
 	"path/filepath"
 )
 
-// ConfigDir returns the macOS configuration directory for savecraft.
-// Uses ~/Library/Application Support/Savecraft.
-func ConfigDir() string {
+// ConfigDir returns the macOS configuration directory for the given app.
+// Uses ~/Library/Application Support/{AppName}.
+func ConfigDir(appName string) string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(".", "savecraft")
+		return filepath.Join(".", appName)
 	}
 
-	return filepath.Join(home, "Library", "Application Support", "Savecraft")
+	return filepath.Join(home, "Library", "Application Support", titleName(appName))
 }

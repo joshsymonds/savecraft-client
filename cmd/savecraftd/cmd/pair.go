@@ -14,7 +14,7 @@ import (
 	"github.com/joshsymonds/savecraft.gg/internal/pairclient"
 )
 
-func buildPairCommand() *cobra.Command {
+func buildPairCommand(appName string) *cobra.Command {
 	var force bool
 
 	var serverURL string
@@ -28,7 +28,7 @@ The code is exchanged for an API token which is written to the daemon's
 configuration file. Run 'savecraftd' (or restart the service) afterward
 to start syncing saves.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runPairWithPath(cmd, serverURL, force, envfile.EnvFilePath())
+			return runPairWithPath(cmd, serverURL, force, envfile.EnvFilePath(appName))
 		},
 	}
 

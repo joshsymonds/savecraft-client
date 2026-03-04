@@ -9,9 +9,9 @@ import (
 
 // Execute builds the command tree and runs the root command.
 // When invoked with no subcommand, the daemon runs (same as "run").
-// serverURL and installURL are compile-time defaults (set via ldflags in main).
-func Execute(version, serverURL, installURL string) error {
-	runFn := buildRunFunc(serverURL, installURL)
+// serverURL, installURL, appName, and statusPort are compile-time defaults (set via ldflags in main).
+func Execute(version, serverURL, installURL, appName, statusPort string) error {
+	runFn := buildRunFunc(serverURL, installURL, appName, statusPort)
 
 	root := &cobra.Command{
 		Use:          "savecraftd",
@@ -27,8 +27,8 @@ func Execute(version, serverURL, installURL string) error {
 	}
 
 	root.AddCommand(runCmd)
-	root.AddCommand(buildPairCommand())
-	root.AddCommand(buildVerifyCommand())
+	root.AddCommand(buildPairCommand(appName))
+	root.AddCommand(buildVerifyCommand(appName))
 	root.AddCommand(buildVersionCommand(version))
 
 	if err := root.Execute(); err != nil {

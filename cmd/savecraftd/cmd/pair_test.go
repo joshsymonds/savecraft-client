@@ -32,7 +32,7 @@ func TestRunPairWithPath(t *testing.T) {
 		dir := t.TempDir()
 		envPath := filepath.Join(dir, "env")
 
-		pairCmd := buildPairCommand()
+		pairCmd := buildPairCommand("savecraft")
 		pairCmd.SetArgs([]string{"--server", srv.URL})
 		pairCmd.SetIn(bytes.NewBufferString("123456\n"))
 
@@ -76,7 +76,7 @@ func TestRunPairWithPath(t *testing.T) {
 			t.Fatalf("write: %v", err)
 		}
 
-		pairCmd := buildPairCommand()
+		pairCmd := buildPairCommand("savecraft")
 		pairCmd.SetArgs([]string{"--server", "https://example.com"})
 		pairCmd.SetIn(bytes.NewBufferString("123456\n"))
 
@@ -115,7 +115,7 @@ func TestRunPairWithPath(t *testing.T) {
 			t.Fatalf("write: %v", err)
 		}
 
-		pairCmd := buildPairCommand()
+		pairCmd := buildPairCommand("savecraft")
 		pairCmd.SetArgs([]string{"--server", srv.URL, "--force"})
 		pairCmd.SetIn(bytes.NewBufferString("123456\n"))
 
@@ -149,7 +149,7 @@ func TestPromptForCodeFromReader(t *testing.T) {
 	t.Run("reads valid 6-digit code", func(t *testing.T) {
 		t.Parallel()
 
-		pairCmd := buildPairCommand()
+		pairCmd := buildPairCommand("savecraft")
 		var out bytes.Buffer
 		pairCmd.SetOut(&out)
 
@@ -166,7 +166,7 @@ func TestPromptForCodeFromReader(t *testing.T) {
 	t.Run("rejects non-numeric input", func(t *testing.T) {
 		t.Parallel()
 
-		pairCmd := buildPairCommand()
+		pairCmd := buildPairCommand("savecraft")
 		var out bytes.Buffer
 		pairCmd.SetOut(&out)
 
@@ -179,7 +179,7 @@ func TestPromptForCodeFromReader(t *testing.T) {
 	t.Run("rejects too-short code", func(t *testing.T) {
 		t.Parallel()
 
-		pairCmd := buildPairCommand()
+		pairCmd := buildPairCommand("savecraft")
 		var out bytes.Buffer
 		pairCmd.SetOut(&out)
 
@@ -192,7 +192,7 @@ func TestPromptForCodeFromReader(t *testing.T) {
 	t.Run("rejects empty input", func(t *testing.T) {
 		t.Parallel()
 
-		pairCmd := buildPairCommand()
+		pairCmd := buildPairCommand("savecraft")
 		var out bytes.Buffer
 		pairCmd.SetOut(&out)
 
@@ -205,7 +205,7 @@ func TestPromptForCodeFromReader(t *testing.T) {
 	t.Run("accepts code with space separator", func(t *testing.T) {
 		t.Parallel()
 
-		pairCmd := buildPairCommand()
+		pairCmd := buildPairCommand("savecraft")
 		var out bytes.Buffer
 		pairCmd.SetOut(&out)
 
@@ -222,7 +222,7 @@ func TestPromptForCodeFromReader(t *testing.T) {
 	t.Run("accepts code with multiple spaces", func(t *testing.T) {
 		t.Parallel()
 
-		pairCmd := buildPairCommand()
+		pairCmd := buildPairCommand("savecraft")
 		var out bytes.Buffer
 		pairCmd.SetOut(&out)
 

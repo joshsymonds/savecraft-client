@@ -168,7 +168,7 @@ func TestWrite(t *testing.T) {
 func TestConfigDir(t *testing.T) {
 	t.Parallel()
 
-	dir := envfile.ConfigDir()
+	dir := envfile.ConfigDir("savecraft")
 	if dir == "" {
 		t.Error("ConfigDir returned empty string")
 	}
@@ -177,20 +177,39 @@ func TestConfigDir(t *testing.T) {
 func TestConfigDirXDG(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "/custom/config")
 
-	dir := envfile.ConfigDir()
+	dir := envfile.ConfigDir("savecraft")
 	if dir != "/custom/config/savecraft" {
 		t.Errorf("ConfigDir = %q, want /custom/config/savecraft", dir)
+	}
+}
+
+func TestConfigDirXDG_Staging(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "/custom/config")
+
+	dir := envfile.ConfigDir("savecraft-staging")
+	if dir != "/custom/config/savecraft-staging" {
+		t.Errorf("ConfigDir = %q, want /custom/config/savecraft-staging", dir)
 	}
 }
 
 func TestEnvFilePath(t *testing.T) {
 	t.Parallel()
 
-	path := envfile.EnvFilePath()
+	path := envfile.EnvFilePath("savecraft")
 	if path == "" {
 		t.Error("EnvFilePath returned empty string")
 	}
 	if filepath.Base(path) != "env" {
 		t.Errorf("basename = %q, want %q", filepath.Base(path), "env")
+	}
+}
+
+func TestEnvFilePath_Staging(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "/custom/config")
+
+	path := envfile.EnvFilePath("savecraft-staging")
+	want := "/custom/config/savecraft-staging/env"
+	if path != want {
+		t.Errorf("EnvFilePath = %q, want %q", path, want)
 	}
 }

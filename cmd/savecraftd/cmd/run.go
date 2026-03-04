@@ -25,20 +25,22 @@ import (
 	"github.com/joshsymonds/savecraft.gg/internal/wsconn"
 )
 
-func buildRunFunc(serverURLDefault, installURLDefault string) func(cmd *cobra.Command, args []string) error {
+func buildRunFunc(
+	serverURLDefault, installURLDefault, appName, statusPortDefault string,
+) func(cmd *cobra.Command, args []string) error {
 	return func(_ *cobra.Command, _ []string) error {
-		return runDaemon(serverURLDefault, installURLDefault)
+		return runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault)
 	}
 }
 
-func runDaemon(serverURLDefault, installURLDefault string) error {
+func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault string) error {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
 	slog.SetDefault(logger)
 
 	// Load env file values first (env vars override).
-	loadEnvFileDefaults()
+	loadEnvFileDefaults(appName)
 
 	cfg, err := loadConfig(serverURLDefault, installURLDefault)
 	if err != nil {
@@ -55,7 +57,7 @@ func runDaemon(serverURLDefault, installURLDefault string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	subsystems, err := createSubsystems(ctx, cfg, logger)
+	subsystems, err := createSubsystems(ctx, cfg, appName, logger)
 	if err != nil {
 		return err
 	}
@@ -64,8 +66,13 @@ func runDaemon(serverURLDefault, installURLDefault string) error {
 	dmn := daemon.New(cfg.Daemon, subsystems.fsys, subsystems.watcher, subsystems.runner,
 		subsystems.pusher, subsystems.ws, subsystems.plugins, subsystems.updater, logger)
 
+	statusPort := statusPortDefault
+	if envPort := os.Getenv("SAVECRAFT_STATUS_PORT"); envPort != "" {
+		statusPort = envPort
+	}
+
 	statusSrv := &http.Server{
-		Addr:    "localhost:9182",
+		Addr:    "localhost:" + statusPort,
 		Handler: daemon.StatusHandler(dmn),
 	}
 	go func() {
@@ -113,7 +120,7 @@ func (s *subsystems) close(ctx context.Context, logger *slog.Logger) {
 	}
 }
 
-func createSubsystems(ctx context.Context, cfg *appConfig, logger *slog.Logger) (*subsystems, error) {
+func createSubsystems(ctx context.Context, cfg *appConfig, appName string, logger *slog.Logger) (*subsystems, error) {
 	fsys := osfs.New()
 
 	wt, err := watcher.New()
@@ -142,7 +149,7 @@ func createSubsystems(ctx context.Context, cfg *appConfig, logger *slog.Logger) 
 		pubKey = signing.PublicKey()
 	}
 
-	cacheDir := pluginmgr.DefaultCacheDir()
+	cacheDir := pluginmgr.DefaultCacheDir(appName)
 	cache := pluginmgr.NewCache(cacheDir)
 	reg := pluginmgr.NewHTTPRegistry(cfg.ServerURL, cfg.AuthToken)
 
@@ -242,8 +249,8 @@ func loadConfig(serverURLDefault, installURLDefault string) (*appConfig, error) 
 // loadEnvFileDefaults reads the env file and sets environment variables
 // for any keys not already set. This allows 'savecraftd pair' to write
 // credentials that 'savecraftd run' picks up automatically.
-func loadEnvFileDefaults() {
-	loadEnvFileDefaultsFromPath(envfile.EnvFilePath())
+func loadEnvFileDefaults(appName string) {
+	loadEnvFileDefaultsFromPath(envfile.EnvFilePath(appName))
 }
 
 func loadEnvFileDefaultsFromPath(path string) {

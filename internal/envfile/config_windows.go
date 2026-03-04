@@ -7,17 +7,17 @@ import (
 	"path/filepath"
 )
 
-// ConfigDir returns the Windows configuration directory for savecraft.
-// Uses %APPDATA%\Savecraft or falls back to ~/AppData/Roaming/Savecraft.
-func ConfigDir() string {
+// ConfigDir returns the Windows configuration directory for the given app.
+// Uses %APPDATA%\{AppName} or falls back to ~/AppData/Roaming/{AppName}.
+func ConfigDir(appName string) string {
 	if appData := os.Getenv("APPDATA"); appData != "" {
-		return filepath.Join(appData, "Savecraft")
+		return filepath.Join(appData, titleName(appName))
 	}
 
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(".", "savecraft")
+		return filepath.Join(".", appName)
 	}
 
-	return filepath.Join(home, "AppData", "Roaming", "Savecraft")
+	return filepath.Join(home, "AppData", "Roaming", titleName(appName))
 }

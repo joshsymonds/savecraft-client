@@ -180,7 +180,7 @@ func TestCache_UpdateVersion(t *testing.T) {
 
 func TestDefaultCacheDir_EnvOverride(t *testing.T) {
 	t.Setenv("SAVECRAFT_CACHE_DIR", "/tmp/custom-cache")
-	got := DefaultCacheDir()
+	got := DefaultCacheDir("savecraft")
 	if got != "/tmp/custom-cache" {
 		t.Errorf("DefaultCacheDir = %q, want /tmp/custom-cache", got)
 	}
@@ -188,7 +188,7 @@ func TestDefaultCacheDir_EnvOverride(t *testing.T) {
 
 func TestDefaultCacheDir_Default(t *testing.T) {
 	t.Setenv("SAVECRAFT_CACHE_DIR", "")
-	got := DefaultCacheDir()
+	got := DefaultCacheDir("savecraft")
 	if got == "" {
 		t.Error("DefaultCacheDir returned empty string")
 	}
@@ -197,8 +197,18 @@ func TestDefaultCacheDir_Default(t *testing.T) {
 func TestDefaultCacheDir_XDGDataHome(t *testing.T) {
 	t.Setenv("SAVECRAFT_CACHE_DIR", "")
 	t.Setenv("XDG_DATA_HOME", "/tmp/xdg-test")
-	got := DefaultCacheDir()
+	got := DefaultCacheDir("savecraft")
 	want := "/tmp/xdg-test/savecraft/plugins"
+	if got != want {
+		t.Errorf("DefaultCacheDir = %q, want %q", got, want)
+	}
+}
+
+func TestDefaultCacheDir_XDGDataHome_Staging(t *testing.T) {
+	t.Setenv("SAVECRAFT_CACHE_DIR", "")
+	t.Setenv("XDG_DATA_HOME", "/tmp/xdg-test")
+	got := DefaultCacheDir("savecraft-staging")
+	want := "/tmp/xdg-test/savecraft-staging/plugins"
 	if got != want {
 		t.Errorf("DefaultCacheDir = %q, want %q", got, want)
 	}

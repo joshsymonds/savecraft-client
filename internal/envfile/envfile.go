@@ -85,6 +85,16 @@ func Write(path string, vars map[string]string) error {
 }
 
 // EnvFilePath returns the full path to the daemon's env file.
-func EnvFilePath() string {
-	return filepath.Join(ConfigDir(), "env")
+// The appName determines the config directory (e.g. "savecraft" or "savecraft-staging").
+func EnvFilePath(appName string) string {
+	return filepath.Join(ConfigDir(appName), "env")
+}
+
+// titleName returns appName with the first letter capitalized,
+// matching platform conventions for macOS and Windows directory names.
+func titleName(appName string) string {
+	if appName == "" {
+		return appName
+	}
+	return strings.ToUpper(appName[:1]) + appName[1:]
 }

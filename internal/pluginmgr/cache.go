@@ -120,53 +120,63 @@ func (c *Cache) UpdateVersion(gameID, version, sha256Hash string) error {
 }
 
 // DefaultCacheDir returns the platform-appropriate cache directory for plugins.
-func DefaultCacheDir() string {
+// The appName determines the directory name (e.g. "savecraft" or "savecraft-staging").
+func DefaultCacheDir(appName string) string {
 	if env := os.Getenv("SAVECRAFT_CACHE_DIR"); env != "" {
 		return env
 	}
 
 	switch runtime.GOOS {
 	case "darwin":
-		return darwinCacheDir()
+		return darwinCacheDir(appName)
 	case "windows":
-		return windowsCacheDir()
+		return windowsCacheDir(appName)
 	default:
-		return linuxCacheDir()
+		return linuxCacheDir(appName)
 	}
 }
 
-func darwinCacheDir() string {
+// titleName returns appName with the first letter capitalized,
+// matching platform conventions for macOS and Windows directory names.
+func titleName(appName string) string {
+	if appName == "" {
+		return appName
+	}
+	return strings.ToUpper(appName[:1]) + appName[1:]
+}
+
+func darwinCacheDir(appName string) string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(".", "savecraft", "plugins")
+		return filepath.Join(".", appName, "plugins")
 	}
 	return filepath.Join(
-		home, "Library", "Application Support", "Savecraft", "plugins",
+		home, "Library", "Application Support", titleName(appName), "plugins",
 	)
 }
 
-func windowsCacheDir() string {
+func windowsCacheDir(appName string) string {
 	if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
-		return filepath.Join(localAppData, "Savecraft", "plugins")
+		return filepath.Join(localAppData, titleName(appName), "plugins")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(".", "savecraft", "plugins")
+		return filepath.Join(".", appName, "plugins")
 	}
 	return filepath.Join(
-		home, "AppData", "Local", "Savecraft", "plugins",
+		home, "AppData", "Local", titleName(appName), "plugins",
 	)
 }
 
-func linuxCacheDir() string {
+func linuxCacheDir(appName string) string {
 	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
-		return filepath.Join(xdg, "savecraft", "plugins")
+		return filepath.Join(xdg, appName, "plugins")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(".", "savecraft", "plugins")
+		return filepath.Join(".", appName, "plugins")
 	}
 	return filepath.Join(
-		home, ".local", "share", "savecraft", "plugins",
+		home, ".local", "share", appName, "plugins",
 	)
 }
