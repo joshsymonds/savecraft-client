@@ -63,7 +63,8 @@ func TestParseTestSave(t *testing.T) {
 	}
 
 	// Summary (includes perfection %)
-	summary := buildSummary(save)
+	sections := buildSections(save)
+	summary := buildSummary(save, sections)
 	// Early game: low perfection, expect format with "% Perfection" suffix
 	if !strings.Contains(summary, "Test, Year 1 Spring 6, Test Farm (Hill-top)") {
 		t.Errorf("summary missing base info: %q", summary)
@@ -73,7 +74,6 @@ func TestParseTestSave(t *testing.T) {
 	}
 
 	// Sections produce valid JSON
-	sections := buildSections(save)
 	sectionJSON, err := json.Marshal(sections)
 	if err != nil {
 		t.Fatalf("marshaling sections: %v", err)

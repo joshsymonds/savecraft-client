@@ -5,6 +5,10 @@ build-parser:
 
 build-reference:
     GOOS=wasip1 GOARCH=wasm go build -o reference.wasm ./reference
+    cp reference.wasm ../../reference/
 
 test:
     go test -v ./parser/ ./reference/
+
+lint:
+    go vet ./parser/ ./reference/

@@ -35,7 +35,7 @@ func main() {
 	writeStatusf(enc, "Farm: %s, %s", save.Player.FarmName, save.Player.Name)
 
 	sections := buildSections(save)
-	summary := buildSummary(save)
+	summary := buildSummary(save, sections)
 
 	if err := enc.Encode(map[string]any{
 		"type": "result",
@@ -66,18 +66,18 @@ type SaveGame struct {
 
 // Player holds the farmer's data from the <player> element.
 type Player struct {
-	Name               string      `xml:"name"`
-	FarmName           string      `xml:"farmName"`
-	FavoriteThing      string      `xml:"favoriteThing"`
-	Gender             string      `xml:"Gender"`
-	Money              int         `xml:"money"`
-	TotalMoneyEarned   int         `xml:"totalMoneyEarned"`
-	MillisecondsPlayed int64       `xml:"millisecondsPlayed"`
-	DayOfMonth         int         `xml:"dayOfMonthForSaveGame"`
-	Year               int         `xml:"yearForSaveGame"`
-	GameVersion        string      `xml:"gameVersion"`
-	ExperiencePoints   IntList     `xml:"experiencePoints"`
-	Professions        IntList     `xml:"professions"`
+	Name               string           `xml:"name"`
+	FarmName           string           `xml:"farmName"`
+	FavoriteThing      string           `xml:"favoriteThing"`
+	Gender             string           `xml:"Gender"`
+	Money              int              `xml:"money"`
+	TotalMoneyEarned   int              `xml:"totalMoneyEarned"`
+	MillisecondsPlayed int64            `xml:"millisecondsPlayed"`
+	DayOfMonth         int              `xml:"dayOfMonthForSaveGame"`
+	Year               int              `xml:"yearForSaveGame"`
+	GameVersion        string           `xml:"gameVersion"`
+	ExperiencePoints   IntList          `xml:"experiencePoints"`
+	Professions        IntList          `xml:"professions"`
 	WhichPetType       string           `xml:"whichPetType"`
 	WhichPetBreed      int              `xml:"whichPetBreed"`
 	Stats              PlayerStats      `xml:"stats"`
@@ -105,7 +105,7 @@ type IntList struct {
 // PlayerStats holds stats in either 1.6 key-value format or 1.5 direct elements.
 type PlayerStats struct {
 	Values                 []StatsItem   `xml:"Values>item"`
-	QuestsCompleted        uint64        `xml:"QuestsCompleted"`        // 1.5 direct element
+	QuestsCompleted        uint64        `xml:"QuestsCompleted"` // 1.5 direct element
 	SpecificMonstersKilled []StringIntKV `xml:"specificMonstersKilled>item"`
 }
 
@@ -170,8 +170,8 @@ type IntIntKV struct {
 
 // IntArrayKV maps an int/string key to an ArrayOfInt value (fish caught, archaeology).
 type IntArrayKV struct {
-	KeyInt int    `xml:"key>int"`
-	KeyStr string `xml:"key>string"`
+	KeyInt int     `xml:"key>int"`
+	KeyStr string  `xml:"key>string"`
 	Values IntList `xml:"value>ArrayOfInt"`
 }
 
@@ -252,13 +252,13 @@ func parseSave(data []byte) (*SaveGame, error) {
 	return &save, nil
 }
 
-func buildSummary(save *SaveGame) string {
+func buildSummary(save *SaveGame, sections map[string]any) string {
 	season := save.CurrentSeason
 	if season == "" {
 		season = "spring"
 	}
 	season = capitalizeFirst(season)
-	perfData := buildPerfectionSection(save)
+	perfData := sections["perfection"].(map[string]any)["data"].(map[string]any)
 	pct := int(perfData["percentage"].(float64))
 	return fmt.Sprintf("%s, Year %d %s %d, %s Farm (%s), %d%% Perfection",
 		save.Player.Name,
@@ -539,11 +539,7 @@ func buildInventorySection(save *SaveGame) map[string]any {
 				"name":  item.Name,
 				"stack": item.Stack,
 			}
-			if q := qualityName(item.Quality); q != "Normal" {
-				entry["quality"] = q
-			} else {
-				entry["quality"] = "Normal"
-			}
+			entry["quality"] = qualityName(item.Quality)
 			items = append(items, entry)
 		}
 	}
@@ -817,13 +813,11 @@ func buildCollectionsSection(save *SaveGame) map[string]any {
 	recipesLearned := len(p.CookingRecipes)
 	recipesCooked := len(cookedIDs)
 	notCooked := make([]string, 0)
-	// We can't easily cross-reference recipe name → output item ID without game data,
-	// so report count-based stats and list not-yet-cooked only from the cookingRecipes
-	// value (which in 1.6 tracks cooked count, but in 1.5 is always 0).
-	// For 1.5 saves, notCooked will be empty since we can't determine it.
+	// In 1.6+, CookingRecipes.Value tracks cook count so we can identify uncooked recipes.
+	// In 1.5, Value is always 0 regardless of cooking — skip notCooked for those saves.
+	is16 := save.GameVersion >= "1.6"
 	for _, cr := range p.CookingRecipes {
-		if cr.Value == 0 && len(cookedIDs) == 0 {
-			// 1.5 format — can't determine which are uncooked
+		if !is16 {
 			continue
 		}
 		if cr.Value == 0 {
@@ -1232,11 +1226,11 @@ func buildFarmSection(save *SaveGame) map[string]any {
 		"scarecrows":     scarecrows,
 		"machines":       machines,
 		"summary": map[string]any{
-			"totalBuildings":  len(buildings),
-			"totalCrops":      totalCrops,
+			"totalBuildings":   len(buildings),
+			"totalCrops":       totalCrops,
 			"totalTilledTiles": tilledTiles,
-			"totalSprinklers": len(sprinklers),
-			"totalScarecrows": len(scarecrows),
+			"totalSprinklers":  len(sprinklers),
+			"totalScarecrows":  len(scarecrows),
 		},
 	}
 }
@@ -1311,6 +1305,16 @@ func parseFarmObjects(farm *GameLocation) ([]sprinklerInfo, []map[string]any, []
 	for name, count := range machineCounts {
 		machines = append(machines, map[string]any{"name": name, "count": count})
 	}
+	// Sort machines by count descending, then name for deterministic output
+	for i := 0; i < len(machines); i++ {
+		for j := i + 1; j < len(machines); j++ {
+			ci := machines[i]["count"].(int)
+			cj := machines[j]["count"].(int)
+			if cj > ci || (cj == ci && machines[j]["name"].(string) < machines[i]["name"].(string)) {
+				machines[i], machines[j] = machines[j], machines[i]
+			}
+		}
+	}
 	return sprinklers, scarecrows, machines
 }
 
@@ -1375,11 +1379,21 @@ func buildSprinklerZones(sprinklers []sprinklerInfo, farm *GameLocation) []map[s
 		for name, count := range z.crops {
 			cropList = append(cropList, map[string]any{"name": name, "count": count})
 		}
+		// Sort zone crops by count descending, then name for deterministic output
+		for ci := 0; ci < len(cropList); ci++ {
+			for cj := ci + 1; cj < len(cropList); cj++ {
+				a := cropList[ci]["count"].(int)
+				b := cropList[cj]["count"].(int)
+				if b > a || (b == a && cropList[cj]["name"].(string) < cropList[ci]["name"].(string)) {
+					cropList[ci], cropList[cj] = cropList[cj], cropList[ci]
+				}
+			}
+		}
 		result = append(result, map[string]any{
-			"sprinkler": z.sprinkler.name,
-			"position":  map[string]any{"x": z.sprinkler.x, "y": z.sprinkler.y},
-			"radius":    sprinklerRadius(z.sprinkler.name),
-			"crops":     cropList,
+			"sprinkler":  z.sprinkler.name,
+			"position":   map[string]any{"x": z.sprinkler.x, "y": z.sprinkler.y},
+			"radius":     sprinklerRadius(z.sprinkler.name),
+			"crops":      cropList,
 			"totalCrops": zoneCropTotal(zones[i]),
 		})
 	}
@@ -1462,7 +1476,7 @@ func capitalizeFirst(s string) string {
 	if len(s) == 0 {
 		return s
 	}
-	return string(s[0]-32) + s[1:]
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 func writeStatusf(enc *json.Encoder, format string, args ...any) {
