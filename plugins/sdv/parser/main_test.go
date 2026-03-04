@@ -680,6 +680,141 @@ func TestCollectionsSectionPerfection(t *testing.T) {
 	}
 }
 
+func TestProgressSection(t *testing.T) {
+	data, err := os.ReadFile("../testdata/TestSave")
+	if err != nil {
+		t.Fatalf("reading test fixture: %v", err)
+	}
+
+	save, err := parseSave(data)
+	if err != nil {
+		t.Fatalf("parseSave: %v", err)
+	}
+
+	sections := buildSections(save)
+	progSection, ok := sections["progress"].(map[string]any)
+	if !ok {
+		t.Fatal("progress section missing")
+	}
+	progData := progSection["data"].(map[string]any)
+
+	// Stardrops: early game, none found
+	stardrops := progData["stardrops"].(map[string]any)
+	if stardrops["count"].(int) != 0 {
+		t.Errorf("stardrops count = %v, want 0", stardrops["count"])
+	}
+	if stardrops["total"].(int) != 7 {
+		t.Errorf("stardrops total = %v, want 7", stardrops["total"])
+	}
+	missing := stardrops["missing"].([]string)
+	if len(missing) != 7 {
+		t.Errorf("stardrops missing = %d, want 7", len(missing))
+	}
+
+	// Golden walnuts: early game, 0
+	walnuts := progData["goldenWalnuts"].(map[string]any)
+	if walnuts["found"].(int) != 0 {
+		t.Errorf("golden walnuts found = %v, want 0", walnuts["found"])
+	}
+
+	// Quests: 1 (from stats)
+	if progData["questsCompleted"].(int) != 1 {
+		t.Errorf("questsCompleted = %v, want 1", progData["questsCompleted"])
+	}
+
+	// Secret notes: 0
+	if progData["secretNotesSeen"].(int) != 0 {
+		t.Errorf("secretNotesSeen = %v, want 0", progData["secretNotesSeen"])
+	}
+
+	// Special orders: 0
+	if progData["specialOrdersCompleted"].(int) != 0 {
+		t.Errorf("specialOrdersCompleted = %v, want 0", progData["specialOrdersCompleted"])
+	}
+
+	// Monster slayer goals
+	monsterSlayer := progData["monsterSlayer"].(map[string]any)
+	goals := monsterSlayer["goals"].([]map[string]any)
+	if len(goals) != 12 {
+		t.Errorf("monster slayer goals = %d, want 12", len(goals))
+	}
+
+	// Rock Crabs goal should have 1 kill (Rock Crab=1 in TestSave)
+	var rockCrabs map[string]any
+	for _, g := range goals {
+		if g["category"] == "Rock Crabs" {
+			rockCrabs = g
+			break
+		}
+	}
+	if rockCrabs == nil {
+		t.Fatal("Rock Crabs goal not found")
+	}
+	if rockCrabs["killed"].(int) != 1 {
+		t.Errorf("Rock Crabs killed = %v, want 1", rockCrabs["killed"])
+	}
+	if rockCrabs["target"].(int) != 60 {
+		t.Errorf("Rock Crabs target = %v, want 60", rockCrabs["target"])
+	}
+	if rockCrabs["complete"].(bool) != false {
+		t.Errorf("Rock Crabs complete = %v, want false", rockCrabs["complete"])
+	}
+}
+
+func TestProgressSectionPerfection(t *testing.T) {
+	data, err := os.ReadFile("../testdata/PerfectionSave")
+	if err != nil {
+		t.Fatalf("reading test fixture: %v", err)
+	}
+
+	save, err := parseSave(data)
+	if err != nil {
+		t.Fatalf("parseSave: %v", err)
+	}
+
+	sections := buildSections(save)
+	progData := sections["progress"].(map[string]any)["data"].(map[string]any)
+
+	// Stardrops: perfection save should have at least 6
+	stardrops := progData["stardrops"].(map[string]any)
+	count := stardrops["count"].(int)
+	if count < 6 {
+		t.Errorf("stardrops count = %d, want >= 6", count)
+	}
+
+	// Golden walnuts: 130 found
+	walnuts := progData["goldenWalnuts"].(map[string]any)
+	if walnuts["found"].(int) != 130 {
+		t.Errorf("golden walnuts found = %v, want 130", walnuts["found"])
+	}
+
+	// Secret notes: 36
+	if progData["secretNotesSeen"].(int) != 36 {
+		t.Errorf("secretNotesSeen = %v, want 36", progData["secretNotesSeen"])
+	}
+
+	// Quests: 48
+	if progData["questsCompleted"].(int) != 48 {
+		t.Errorf("questsCompleted = %v, want 48", progData["questsCompleted"])
+	}
+
+	// Special orders: 25
+	if progData["specialOrdersCompleted"].(int) != 25 {
+		t.Errorf("specialOrdersCompleted = %v, want 25", progData["specialOrdersCompleted"])
+	}
+
+	// Monster slayer: all goals should be complete in perfection save
+	monsterSlayer := progData["monsterSlayer"].(map[string]any)
+	goals := monsterSlayer["goals"].([]map[string]any)
+	for _, g := range goals {
+		killed := g["killed"].(int)
+		target := g["target"].(int)
+		if killed < target {
+			t.Errorf("monster goal %v: killed=%d < target=%d", g["category"], killed, target)
+		}
+	}
+}
+
 func TestFarmTypeName(t *testing.T) {
 	tests := []struct {
 		id   int

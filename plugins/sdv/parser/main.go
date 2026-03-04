@@ -51,13 +51,16 @@ func main() {
 
 // SaveGame is the root XML element of a Stardew Valley save file.
 type SaveGame struct {
-	XMLName       xml.Name         `xml:"SaveGame"`
-	Player        Player           `xml:"player"`
-	CurrentSeason string           `xml:"currentSeason"`
-	WhichFarm     int              `xml:"whichFarm"`
-	GameVersion   string           `xml:"gameVersion"`
-	BundleData    []StringKV       `xml:"bundleData>item"`
-	Locations     []GameLocation   `xml:"locations>GameLocation"`
+	XMLName                xml.Name       `xml:"SaveGame"`
+	Player                 Player         `xml:"player"`
+	CurrentSeason          string         `xml:"currentSeason"`
+	WhichFarm              int            `xml:"whichFarm"`
+	GameVersion            string         `xml:"gameVersion"`
+	BundleData             []StringKV     `xml:"bundleData>item"`
+	Locations              []GameLocation `xml:"locations>GameLocation"`
+	GoldenWalnuts          int            `xml:"goldenWalnuts"`
+	GoldenWalnutsFound     int            `xml:"goldenWalnutsFound"`
+	CompletedSpecialOrders StringList     `xml:"completedSpecialOrders"`
 }
 
 // Player holds the farmer's data from the <player> element.
@@ -83,6 +86,7 @@ type Player struct {
 	DaysMarried        int              `xml:"daysMarried"`
 	Children           []Child          `xml:"children>NPC"`
 	MailReceived       StringList       `xml:"mailReceived"`
+	SecretNotesSeen    IntList          `xml:"secretNotesSeen"`
 	FishCaught         []IntArrayKV     `xml:"fishCaught>item"`
 	CookingRecipes     []StringIntKV    `xml:"cookingRecipes>item"`
 	RecipesCooked      []IntIntKV       `xml:"recipesCooked>item"`
@@ -97,9 +101,11 @@ type IntList struct {
 	Values []int `xml:"int"`
 }
 
-// PlayerStats holds the 1.6 key-value stats dictionary.
+// PlayerStats holds stats in either 1.6 key-value format or 1.5 direct elements.
 type PlayerStats struct {
-	Values []StatsItem `xml:"Values>item"`
+	Values                 []StatsItem   `xml:"Values>item"`
+	QuestsCompleted        uint64        `xml:"QuestsCompleted"`        // 1.5 direct element
+	SpecificMonstersKilled []StringIntKV `xml:"specificMonstersKilled>item"`
 }
 
 // StatsItem is a single key-value entry in the stats dictionary.
@@ -321,6 +327,10 @@ func buildSections(save *SaveGame) map[string]any {
 		"collections": map[string]any{
 			"description": "Fish caught, cooking/crafting recipes, items shipped, and museum donations",
 			"data":        buildCollectionsSection(save),
+		},
+		"progress": map[string]any{
+			"description": "Stardrops, golden walnuts, quests, special orders, and monster slayer goals",
+			"data":        buildProgressSection(save),
 		},
 	}
 }
@@ -817,6 +827,116 @@ func buildCollectionsSection(save *SaveGame) map[string]any {
 		"museum": map[string]any{
 			"mineralsFound":  mineralsFound,
 			"artifactsFound": artifactsFound,
+		},
+	}
+}
+
+// stardropFlags maps mail flags to their human-readable sources.
+var stardropFlags = []struct {
+	flag   string
+	source string
+}{
+	{"CF_Fair", "Stardew Valley Fair"},
+	{"CF_Mines", "The Mines (Floor 100)"},
+	{"CF_Spouse", "Spouse/Roommate"},
+	{"CF_Sewer", "Old Master Cannoli"},
+	{"CF_Fish", "Master Angler"},
+	{"CF_Statue", "Grandpa's Shrine"},
+	{"museumComplete", "Museum Collection"},
+}
+
+// monsterGoal defines a Monster Eradication Goal category.
+type monsterGoal struct {
+	Name     string
+	Target   int
+	Monsters []string
+}
+
+// monsterGoals lists the Adventurer's Guild Monster Eradication Goals.
+var monsterGoals = []monsterGoal{
+	{"Slimes", 1000, []string{"Green Slime", "Frost Jelly", "Sludge", "Tiger Slime", "Prismatic Slime"}},
+	{"Void Spirits", 150, []string{"Shadow Brute", "Shadow Shaman", "Shadow Sniper"}},
+	{"Bats", 200, []string{"Bat", "Frost Bat", "Lava Bat", "Iridium Bat"}},
+	{"Skeletons", 50, []string{"Skeleton", "Skeleton Mage"}},
+	{"Cave Insects", 125, []string{"Bug", "Cave Fly", "Grub", "Mutant Fly", "Mutant Grub", "Armored Bug"}},
+	{"Duggies", 30, []string{"Duggy", "Magma Duggy"}},
+	{"Dust Sprites", 500, []string{"Dust Spirit"}},
+	{"Rock Crabs", 60, []string{"Rock Crab", "Lava Crab", "Iridium Crab"}},
+	{"Mummies", 100, []string{"Mummy"}},
+	{"Pepper Rex", 50, []string{"Pepper Rex"}},
+	{"Serpents", 250, []string{"Serpent", "Royal Serpent"}},
+	{"Magma Sprites", 150, []string{"Magma Sprite", "Magma Sparker"}},
+}
+
+// statValue retrieves a stat from either 1.6 key-value or 1.5 direct element format.
+func statValue(stats PlayerStats, key string) uint64 {
+	for _, item := range stats.Values {
+		if item.Key == key {
+			return item.Value
+		}
+	}
+	switch key {
+	case "questsCompleted":
+		return stats.QuestsCompleted
+	}
+	return 0
+}
+
+func buildProgressSection(save *SaveGame) map[string]any {
+	p := save.Player
+
+	// Stardrops
+	mailSet := map[string]bool{}
+	for _, m := range p.MailReceived.Values {
+		mailSet[m] = true
+	}
+
+	foundStardrops := make([]string, 0)
+	missingStardrops := make([]string, 0)
+	for _, sd := range stardropFlags {
+		if mailSet[sd.flag] {
+			foundStardrops = append(foundStardrops, sd.source)
+		} else {
+			missingStardrops = append(missingStardrops, sd.source)
+		}
+	}
+
+	// Monster slayer goals
+	monsterKillMap := map[string]int{}
+	for _, mk := range p.Stats.SpecificMonstersKilled {
+		monsterKillMap[mk.Key] = mk.Value
+	}
+
+	goals := make([]map[string]any, 0, len(monsterGoals))
+	for _, goal := range monsterGoals {
+		killed := 0
+		for _, m := range goal.Monsters {
+			killed += monsterKillMap[m]
+		}
+		goals = append(goals, map[string]any{
+			"category": goal.Name,
+			"killed":   killed,
+			"target":   goal.Target,
+			"complete": killed >= goal.Target,
+		})
+	}
+
+	return map[string]any{
+		"stardrops": map[string]any{
+			"count":    len(foundStardrops),
+			"total":    len(stardropFlags),
+			"obtained": foundStardrops,
+			"missing":  missingStardrops,
+		},
+		"goldenWalnuts": map[string]any{
+			"found": save.GoldenWalnutsFound,
+			"total": 130,
+		},
+		"secretNotesSeen":        len(p.SecretNotesSeen.Values),
+		"questsCompleted":        int(statValue(p.Stats, "questsCompleted")),
+		"specialOrdersCompleted": len(save.CompletedSpecialOrders.Values),
+		"monsterSlayer": map[string]any{
+			"goals": goals,
 		},
 	}
 }
