@@ -30,7 +30,7 @@ func TestBootHandler_InitialState(t *testing.T) {
 
 func TestBootHandler_Registering(t *testing.T) {
 	bs := newBootStatus()
-	bs.setState("registering")
+	bs.setState(bootRegistering)
 
 	rec := httptest.NewRecorder()
 	bs.bootHandler(rec, httptest.NewRequest(http.MethodGet, "/boot", nil))
@@ -122,7 +122,7 @@ func TestLinkHandler_AfterRegistration(t *testing.T) {
 
 func TestLinkHandler_AlreadyRegistered(t *testing.T) {
 	bs := newBootStatus()
-	bs.setState("running")
+	bs.setState(bootRunning)
 
 	rec := httptest.NewRecorder()
 	bs.linkHandler(rec, httptest.NewRequest(http.MethodGet, "/link", nil))

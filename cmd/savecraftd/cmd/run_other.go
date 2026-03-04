@@ -50,6 +50,9 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, 
 		}
 	}()
 
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+
 	cfg, err := loadConfig(serverURLDefault, installURLDefault)
 	if err != nil {
 		boot.setError(err.Error())
@@ -58,10 +61,10 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, 
 	}
 
 	// First-boot: if no auth token, self-register as a device.
-	boot.setState("registering")
+	boot.setState(bootRegistering)
 
 	envPath := envfile.EnvFilePath(appName)
-	regResult, regErr := autoRegister(cfg, envPath)
+	regResult, regErr := autoRegister(ctx, cfg, envPath)
 	if regErr != nil {
 		boot.setError(regErr.Error())
 
@@ -78,7 +81,7 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, 
 		)
 		fmt.Fprintf(os.Stderr, "\n  Link this device: %s\n\n", linkURL)
 	} else {
-		boot.setState("running")
+		boot.setState(bootRunning)
 	}
 
 	binaryPath, err := os.Executable()
@@ -87,9 +90,6 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, 
 	}
 
 	cfg.Daemon.BinaryPath = binaryPath
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-	defer stop()
 
 	subsystems, err := createSubsystems(ctx, cfg, appName, logger)
 	if err != nil {
@@ -102,7 +102,7 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, 
 
 	// Add daemon status to the same mux (safe for concurrent registration).
 	mux.Handle("/status", daemon.StatusHandler(dmn))
-	boot.setState("running")
+	boot.setState(bootRunning)
 
 	logger.Info("starting daemon",
 		slog.String("server", cfg.ServerURL),

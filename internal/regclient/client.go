@@ -3,6 +3,7 @@ package regclient
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,15 +12,15 @@ import (
 // RegisterResult holds the response from a successful device registration.
 // JSON tags use snake_case to match the server API wire format.
 type RegisterResult struct {
-	DeviceUUID        string `json:"device_uuid"` //nolint:tagliatelle // wire format.
+	DeviceUUID        string `json:"device_uuid"`
 	Token             string `json:"token"`
-	LinkCode          string `json:"link_code"`            //nolint:tagliatelle // wire format.
-	LinkCodeExpiresAt string `json:"link_code_expires_at"` //nolint:tagliatelle // wire format.
+	LinkCode          string `json:"link_code"`
+	LinkCodeExpiresAt string `json:"link_code_expires_at"`
 }
 
 // Register calls POST /api/v1/device/register to create a new device.
 // The deviceName is a human-readable label (typically the hostname).
-func Register(baseURL, deviceName string) (*RegisterResult, error) {
+func Register(ctx context.Context, baseURL, deviceName string) (*RegisterResult, error) {
 	payload, err := json.Marshal(map[string]string{"device_name": deviceName})
 	if err != nil {
 		return nil, fmt.Errorf("marshal register request: %w", err)
@@ -27,8 +28,14 @@ func Register(baseURL, deviceName string) (*RegisterResult, error) {
 
 	endpoint := baseURL + "/api/v1/device/register"
 
-	//nolint:noctx // CLI one-shot call, no context needed.
-	resp, err := http.Post(endpoint, "application/json", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("create register request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("register request: %w", err)
 	}

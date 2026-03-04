@@ -16,7 +16,7 @@ var trayIconBytes []byte
 type trayState int
 
 const (
-	trayStateNotPaired trayState = iota
+	trayStateNotLinked trayState = iota
 	trayStateDisconnected
 	trayStateConnected
 )
@@ -75,7 +75,7 @@ func setupTray(cfg trayConfig) chan<- trayState {
 	go func() {
 		for state := range stateCh {
 			switch state {
-			case trayStateNotPaired:
+			case trayStateNotLinked:
 				mStatus.SetTitle("Not linked")
 				mStatus.SetTooltip("Enter your link code at savecraft.gg/setup")
 			case trayStateDisconnected:

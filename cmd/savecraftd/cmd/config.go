@@ -119,7 +119,7 @@ func loadConfig(serverURLDefault, installURLDefault string) (*appConfig, error) 
 		serverURL = serverURLDefault
 	}
 	if serverURL == "" {
-		return nil, fmt.Errorf("SAVECRAFT_SERVER_URL is required (set in env or run 'savecraftd pair' first)")
+		return nil, fmt.Errorf("SAVECRAFT_SERVER_URL is required")
 	}
 
 	installURL := os.Getenv("SAVECRAFT_INSTALL_URL")
@@ -180,12 +180,12 @@ func daemonConfigDefaults(deviceID, version string) daemon.Config {
 // device registration endpoint, persists the credentials to the env file,
 // and updates the config in place. Returns the registration result (with
 // link code) if registration happened, or nil if credentials already exist.
-func autoRegister(cfg *appConfig, envPath string) (*regclient.RegisterResult, error) {
+func autoRegister(ctx context.Context, cfg *appConfig, envPath string) (*regclient.RegisterResult, error) {
 	if cfg.AuthToken != "" {
 		return nil, nil //nolint:nilnil // nil result means "already registered, nothing to do."
 	}
 
-	result, err := regclient.Register(cfg.ServerURL, cfg.Daemon.DeviceID)
+	result, err := regclient.Register(ctx, cfg.ServerURL, cfg.Daemon.DeviceID)
 	if err != nil {
 		return nil, fmt.Errorf("device registration: %w", err)
 	}
@@ -208,8 +208,8 @@ func autoRegister(cfg *appConfig, envPath string) (*regclient.RegisterResult, er
 }
 
 // loadEnvFileDefaults reads the env file and sets environment variables
-// for any keys not already set. This allows 'savecraftd pair' to write
-// credentials that 'savecraftd run' picks up automatically.
+// for any keys not already set. Auto-registration writes credentials here
+// on first boot; subsequent runs pick them up automatically.
 func loadEnvFileDefaults(appName string) {
 	loadEnvFileDefaultsFromPath(envfile.EnvFilePath(appName))
 }

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -146,7 +147,7 @@ func TestAutoRegister_RegistersAndPersists(t *testing.T) {
 		}
 
 		var body struct {
-			DeviceName string `json:"device_name"` //nolint:tagliatelle // wire format.
+			DeviceName string `json:"device_name"`
 		}
 
 		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
@@ -172,7 +173,7 @@ func TestAutoRegister_RegistersAndPersists(t *testing.T) {
 		Daemon:    daemonConfigDefaults("test-host", "dev"),
 	}
 
-	result, err := autoRegister(cfg, envPath)
+	result, err := autoRegister(context.Background(), cfg, envPath)
 	if err != nil {
 		t.Fatalf("autoRegister: %v", err)
 	}
@@ -215,7 +216,7 @@ func TestAutoRegister_SkipsIfTokenExists(t *testing.T) {
 	}
 	cfg.Daemon.AuthToken = "dvt_existing"
 
-	result, err := autoRegister(cfg, "/nonexistent/path")
+	result, err := autoRegister(context.Background(), cfg, "/nonexistent/path")
 	if err != nil {
 		t.Fatalf("autoRegister: %v", err)
 	}

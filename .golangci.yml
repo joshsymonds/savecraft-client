@@ -482,6 +482,7 @@ linters:
           - gosec
           - govet
           - noctx
+          - tagliatelle
           - wrapcheck
           - containedctx
           - forbidigo
@@ -495,6 +496,11 @@ linters:
         text: 'G(107|704)'
         linters:
           - gosec
+
+      # Wire format clients must match server snake_case JSON field names
+      - path: 'internal/regclient/.*\.go'
+        linters:
+          - tagliatelle
 
       # Env file path is from our own config, not user-tainted input
       - path: 'internal/envfile/.*\.go'

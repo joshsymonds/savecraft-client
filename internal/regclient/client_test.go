@@ -1,6 +1,7 @@
 package regclient_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -25,7 +26,7 @@ func TestRegister(t *testing.T) {
 			}
 
 			var body struct {
-				DeviceName string `json:"device_name"` //nolint:tagliatelle // wire format.
+				DeviceName string `json:"device_name"`
 			}
 
 			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
@@ -50,7 +51,7 @@ func TestRegister(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		result, err := regclient.Register(srv.URL, "test-host")
+		result, err := regclient.Register(context.Background(), srv.URL, "test-host")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -86,7 +87,7 @@ func TestRegister(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		_, err := regclient.Register(srv.URL, "test-host")
+		_, err := regclient.Register(context.Background(), srv.URL, "test-host")
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -95,7 +96,7 @@ func TestRegister(t *testing.T) {
 	t.Run("network error returns wrapped error", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := regclient.Register("http://localhost:1", "test-host")
+		_, err := regclient.Register(context.Background(), "http://localhost:1", "test-host")
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -111,7 +112,7 @@ func TestRegister(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		_, err := regclient.Register(srv.URL, "test-host")
+		_, err := regclient.Register(context.Background(), srv.URL, "test-host")
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}

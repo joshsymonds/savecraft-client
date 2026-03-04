@@ -8,11 +8,22 @@ import (
 	"sync"
 )
 
+// bootState represents the daemon's boot lifecycle phase.
+type bootState string
+
+const (
+	bootStarting    bootState = "starting"
+	bootRegistering bootState = "registering"
+	bootRegistered  bootState = "registered"
+	bootRunning     bootState = "running"
+	bootError       bootState = "error"
+)
+
 // bootStatus tracks the daemon's boot progress and registration result.
 // Thread-safe — updated by the boot goroutine, read by HTTP handlers.
 type bootStatus struct {
 	mu        sync.RWMutex
-	state     string
+	state     bootState
 	linkCode  string
 	linkURL   string
 	expiresAt string
@@ -20,10 +31,10 @@ type bootStatus struct {
 }
 
 func newBootStatus() *bootStatus {
-	return &bootStatus{state: "starting"}
+	return &bootStatus{state: bootStarting}
 }
 
-func (bs *bootStatus) setState(state string) {
+func (bs *bootStatus) setState(state bootState) {
 	bs.mu.Lock()
 	defer bs.mu.Unlock()
 
@@ -34,7 +45,7 @@ func (bs *bootStatus) setRegistered(linkCode, linkURL, expiresAt string) {
 	bs.mu.Lock()
 	defer bs.mu.Unlock()
 
-	bs.state = "registered"
+	bs.state = bootRegistered
 	bs.linkCode = linkCode
 	bs.linkURL = linkURL
 	bs.expiresAt = expiresAt
@@ -44,7 +55,7 @@ func (bs *bootStatus) setError(msg string) {
 	bs.mu.Lock()
 	defer bs.mu.Unlock()
 
-	bs.state = "error"
+	bs.state = bootError
 	bs.errMsg = msg
 }
 
@@ -53,7 +64,7 @@ func (bs *bootStatus) bootHandler(rw http.ResponseWriter, _ *http.Request) {
 	bs.mu.RLock()
 	defer bs.mu.RUnlock()
 
-	resp := map[string]string{"state": bs.state}
+	resp := map[string]string{"state": string(bs.state)}
 	if bs.errMsg != "" {
 		resp["error"] = bs.errMsg
 	}
@@ -68,28 +79,31 @@ func (bs *bootStatus) linkHandler(rw http.ResponseWriter, _ *http.Request) {
 	bs.mu.RLock()
 	defer bs.mu.RUnlock()
 
-	if bs.linkCode == "" {
-		if bs.state == "running" || bs.state == "registered" && bs.linkCode == "" {
-			rw.Header().Set("Content-Type", "application/json")
-			rw.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(rw).Encode(map[string]string{"error": "device was already registered"})
-
-			return
-		}
-
+	if bs.linkCode != "" {
 		rw.Header().Set("Content-Type", "application/json")
-		rw.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(rw).Encode(map[string]string{"error": "device not yet registered",
-			"state": bs.state,
+		json.NewEncoder(rw).Encode(map[string]string{
+			"linkCode":  bs.linkCode,
+			"linkUrl":   bs.linkURL,
+			"expiresAt": bs.expiresAt,
 		})
 
 		return
 	}
 
+	// No link code — either we're still booting or the device was already registered.
+	if bs.state == bootRunning {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(rw).Encode(map[string]string{"error": "device was already registered"})
+
+		return
+	}
+
 	rw.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(rw).Encode(map[string]string{"linkCode": bs.linkCode,
-		"linkUrl":   bs.linkURL,
-		"expiresAt": bs.expiresAt,
+	rw.WriteHeader(http.StatusServiceUnavailable)
+	json.NewEncoder(rw).Encode(map[string]string{
+		"error": "device not yet registered",
+		"state": string(bs.state),
 	})
 }
 

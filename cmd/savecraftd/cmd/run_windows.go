@@ -79,10 +79,10 @@ func runDaemonWithTray(serverURLDefault, installURLDefault, appName, statusPortD
 		}
 
 		// First-boot: if no auth token, self-register as a device.
-		boot.setState("registering")
+		boot.setState(bootRegistering)
 
 		envPath := envfile.EnvFilePath(appName)
-		regResult, regErr := autoRegister(cfg, envPath)
+		regResult, regErr := autoRegister(ctx, cfg, envPath)
 		if regErr != nil {
 			logger.Error("auto-register", slog.String("error", regErr.Error()))
 			boot.setError(regErr.Error())
@@ -98,7 +98,7 @@ func runDaemonWithTray(serverURLDefault, installURLDefault, appName, statusPortD
 				slog.String("link_url", linkURL),
 			)
 		} else {
-			boot.setState("running")
+			boot.setState(bootRunning)
 		}
 
 		binaryPath, err := os.Executable()
@@ -123,7 +123,7 @@ func runDaemonWithTray(serverURLDefault, installURLDefault, appName, statusPortD
 				subs.pusher, subs.ws, subs.plugins, subs.updater, logger)
 
 			mux.Handle("/status", daemon.StatusHandler(dmn))
-			boot.setState("running")
+			boot.setState(bootRunning)
 
 			logger.Info("starting daemon",
 				slog.String("server", cfg.ServerURL),
