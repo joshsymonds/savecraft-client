@@ -9,7 +9,7 @@ import (
 
 func loadAtmus(t *testing.T) *d2s.D2S {
 	t.Helper()
-	data, err := os.ReadFile("../../../reference/Diablo II Resurrected/Atmus.d2s")
+	data, err := os.ReadFile("../testdata/Atmus.d2s")
 	if err != nil {
 		t.Fatalf("read Atmus.d2s: %v", err)
 	}
@@ -22,7 +22,7 @@ func loadAtmus(t *testing.T) *d2s.D2S {
 
 func loadStash(t *testing.T) *d2s.SharedStash {
 	t.Helper()
-	data, err := os.ReadFile("../../../reference/Diablo II Resurrected/ModernSharedStashSoftCoreV2.d2i")
+	data, err := os.ReadFile("../testdata/ModernSharedStashSoftCoreV2.d2i")
 	if err != nil {
 		t.Fatalf("read stash: %v", err)
 	}

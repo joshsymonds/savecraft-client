@@ -7,7 +7,7 @@ import (
 )
 
 func TestParseSharedStash(t *testing.T) {
-	data, err := os.ReadFile("../../../reference/Diablo II Resurrected/ModernSharedStashSoftCoreV2.d2i")
+	data, err := os.ReadFile("../testdata/ModernSharedStashSoftCoreV2.d2i")
 	if err != nil {
 		t.Fatalf("read file: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestParseSharedStash(t *testing.T) {
 }
 
 func TestIsStash_ReturnsFalseForD2S(t *testing.T) {
-	data, err := os.ReadFile("../../../reference/Diablo II Resurrected/Atmus.d2s")
+	data, err := os.ReadFile("../testdata/Atmus.d2s")
 	if err != nil {
 		t.Fatalf("read file: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestParseStash_TooSmall(t *testing.T) {
 }
 
 func TestParseAtmus(t *testing.T) {
-	data, err := os.ReadFile("../../../reference/Diablo II Resurrected/Atmus.d2s")
+	data, err := os.ReadFile("../testdata/Atmus.d2s")
 	if err != nil {
 		t.Fatalf("read file: %v", err)
 	}
