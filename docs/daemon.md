@@ -4,7 +4,19 @@
 
 The daemon orchestrator (`internal/daemon/`) defines interfaces for all external dependencies: `Watcher`, `Runner`, `PushClient`, `WSClient`, `FS`, `PluginManager`. Tests inject hand-written fakes. Real implementations live in separate packages (`internal/runner/`, `internal/watcher/`, etc.) and satisfy the interfaces implicitly.
 
-The `Daemon.Run()` loop: connect WebSocket → send `DaemonOnline` → scan configured games → enter event loop (file events, WS commands, context cancellation). On shutdown, send `DaemonOffline`.
+The `Daemon.Run()` loop: register device (if first boot) → connect WebSocket → send `DaemonOnline` → scan configured games → enter event loop (file events, WS commands, context cancellation). On shutdown, send `DaemonOffline`.
+
+## First-Boot Device Registration
+
+On first boot, the daemon has no device token. It self-registers by calling `POST /api/v1/device/register` (unauthenticated). The server returns a `dvt_*` device token, device UUID, and a 6-digit link code (20-minute TTL).
+
+The daemon:
+1. Persists the device token and UUID to local config (`~/.config/savecraft/device.json`)
+2. Displays the 6-digit link code to the user (CLI output, tray notification, or terminal banner)
+3. Polls `GET /api/v1/device/status` periodically to check if the user has linked the device
+4. If the link code expires before linking, calls `POST /api/v1/device/link-code` to get a fresh code
+
+On subsequent boots, the daemon reads the persisted token and skips registration. The push API and WebSocket both authenticate with this device token.
 
 ## Filesystem Watching
 
@@ -54,7 +66,7 @@ This handles:
 Uses `nhooyr.io/websocket` for context-aware WebSocket with clean shutdown.
 
 **Connection lifecycle:**
-1. On startup, connect to `wss://api.savecraft.gg/ws/daemon` (or `wss://staging-api.savecraft.gg/ws/daemon` for staging) with bearer token in header.
+1. On startup, connect to `wss://api.savecraft.gg/ws/daemon` (or `wss://staging-api.savecraft.gg/ws/daemon` for staging) with bearer token in header. The WebSocket connection is authenticated via API key and requires the device to be linked to a user, since the DaemonHub DO is keyed by user UUID. (Push API uses the device token `dvt_*` separately.)
 2. On connect success, send `daemon_online` event.
 3. Listen for incoming messages (config updates, rescan commands) in a goroutine.
 4. Send status events as they occur (parse results, errors, game detection).

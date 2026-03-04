@@ -26,13 +26,14 @@
 
 ### Principle: R2 is Private, Server Mediates All Access
 
-Neither R2 bucket has public access. The Worker (with R2 bindings) is the only reader/writer. Save access is scoped to the authenticated user's `users/{user_uuid}/` prefix. Plugin access is unauthenticated but read-only via the manifest API endpoint.
+Neither R2 bucket has public access. The Worker (with R2 bindings) is the only reader/writer. Save access is scoped to the authenticated device's `devices/{device_uuid}/` prefix. Plugin access is unauthenticated but read-only via the manifest API endpoint.
 
 ### Daemon → Cloud Push
 
-- Daemon authenticates with bearer token tied to user account.
+- Daemon authenticates with device token (`dvt_*`), verified via SHA-256 hash lookup in D1.
 - Server validates: well-formed JSON, under 5MB, expected top-level structure.
-- Write scoped to user's prefix only.
+- Write scoped to device's R2 prefix only (`devices/{device_uuid}/`).
+- Device token is issued at registration (`POST /api/v1/device/register`) and persisted locally by the daemon.
 
 ### WASM Plugin Security
 
@@ -120,8 +121,8 @@ The install script:
 3. Verifies Ed25519 signature against baked-in public key
 4. Installs systemd user unit to `~/.config/systemd/user/savecraft.service`
 5. Enables and starts the service (`systemctl --user enable --now savecraft`)
-6. Auto-detects game save directories by scanning known Steam/Proton paths
-7. Prints sandbox summary and opens `savecraft.gg/setup` for account linking
+6. Daemon self-registers on first boot (`POST /api/v1/device/register`), receives a device token and 6-digit link code
+7. Prints sandbox summary and link code — user enters the code at `savecraft.gg/setup` to link the device to their account
 
 **No root required.** Everything installs in `~/.local/bin/` and `~/.config/`. The daemon runs as a systemd user service under the current user. `inotify` (used by fsnotify) only needs read permission on watched directories.
 
