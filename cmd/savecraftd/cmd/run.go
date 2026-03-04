@@ -96,14 +96,14 @@ func runDaemonLoop(
 	api.SetState(localapi.StateRegistering)
 
 	envPath := envfile.EnvFilePath(appName)
-	regResult, regErr := autoRegister(ctx, cfg, envPath)
+	regResult, registered, regErr := autoRegister(ctx, cfg, envPath)
 	if regErr != nil {
 		api.SetError(regErr.Error())
 
 		return fmt.Errorf("auto-register: %w", regErr)
 	}
 
-	if regResult != nil {
+	if registered {
 		linkURL := localapi.BuildLinkURL(frontendURL, regResult.LinkCode)
 		api.SetRegistered(regResult.LinkCode, linkURL, regResult.LinkCodeExpiresAt)
 		logger.InfoContext(ctx, "device registered",

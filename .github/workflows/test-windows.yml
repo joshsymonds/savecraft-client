@@ -43,6 +43,9 @@ jobs:
       - name: Build daemon (Windows, CGO)
         run: just build-daemon windows amd64
 
+      - name: Build tray (Windows)
+        run: just build-tray windows amd64
+
       - name: Install WiX v4
         run: dotnet tool install --global wix
 
@@ -50,7 +53,8 @@ jobs:
         run: |
           wix build `
             -d Version="1.0.0" `
-            -d BinaryPath="dist/savecraft-daemon-windows-amd64.exe" `
+            -d DaemonPath="dist/savecraft-daemon-windows-amd64.exe" `
+            -d TrayPath="dist/savecraft-tray-windows-amd64.exe" `
             -o "dist/savecraft.msi" `
             install/windows/savecraft.wxs
 

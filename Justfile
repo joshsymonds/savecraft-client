@@ -166,7 +166,7 @@ upload-daemon env app_name="savecraft":
         bucket="savecraft-install-staging"
     fi
     cd install/worker
-    for f in ../../dist/{{app_name}}-daemon-*; do
+    for f in ../../dist/{{app_name}}-daemon-* ../../dist/{{app_name}}-tray-*; do
         name="$(basename "$f")"
         key="daemon/${name}"
         echo "Uploading ${key}..."

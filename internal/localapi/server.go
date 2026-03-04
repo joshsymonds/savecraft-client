@@ -109,16 +109,21 @@ func (s *Server) SetError(msg string) {
 
 func (s *Server) writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
-	if status != http.StatusOK {
-		w.WriteHeader(status)
-	}
+	w.WriteHeader(status)
 
 	if err := json.NewEncoder(w).Encode(body); err != nil {
 		s.logger.Error("write JSON response", slog.String("error", err.Error()))
 	}
 }
 
-func (s *Server) handleBoot(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleBoot(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		s.writeJSON(w, http.StatusMethodNotAllowed, OKResponse{Error: "use GET"})
+
+		return
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -132,20 +137,36 @@ func (s *Server) handleBoot(w http.ResponseWriter, _ *http.Request) {
 
 // SetRingBuffer sets the ring buffer used by GET /logs.
 func (s *Server) SetRingBuffer(rb *RingBuffer) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.ringBuf = rb
 }
 
 // SetShutdownFunc sets the callback invoked by POST /shutdown.
 func (s *Server) SetShutdownFunc(fn func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.shutdownFn = fn
 }
 
 // SetRestartFunc sets the callback invoked by POST /restart.
 func (s *Server) SetRestartFunc(fn func() error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.restartFn = fn
 }
 
-func (s *Server) handleLink(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleLink(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		s.writeJSON(w, http.StatusMethodNotAllowed, OKResponse{Error: "use GET"})
+
+		return
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -172,13 +193,17 @@ func (s *Server) handleLink(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) handleLogs(w http.ResponseWriter, _ *http.Request) {
-	if s.ringBuf == nil {
+	s.mu.RLock()
+	rb := s.ringBuf
+	s.mu.RUnlock()
+
+	if rb == nil {
 		s.writeJSON(w, http.StatusServiceUnavailable, OKResponse{Error: "log buffer not available"})
 
 		return
 	}
 
-	entries := s.ringBuf.Entries()
+	entries := rb.Entries()
 	if entries == nil {
 		entries = []LogEntry{}
 	}
@@ -194,7 +219,11 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.shutdownFn == nil {
+	s.mu.RLock()
+	fn := s.shutdownFn
+	s.mu.RUnlock()
+
+	if fn == nil {
 		s.writeJSON(w, http.StatusServiceUnavailable, OKResponse{Error: "shutdown not available"})
 
 		return
@@ -203,7 +232,7 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, OKResponse{OK: true})
 
 	// Call shutdown after writing the response so the client gets a clean 200.
-	go s.shutdownFn()
+	go fn()
 }
 
 func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
@@ -214,13 +243,17 @@ func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.restartFn == nil {
+	s.mu.RLock()
+	restartFn := s.restartFn
+	s.mu.RUnlock()
+
+	if restartFn == nil {
 		s.writeJSON(w, http.StatusServiceUnavailable, OKResponse{Error: "restart not available"})
 
 		return
 	}
 
-	if err := s.restartFn(); err != nil {
+	if err := restartFn(); err != nil {
 		s.writeJSON(w, http.StatusInternalServerError, OKResponse{Error: err.Error()})
 
 		return

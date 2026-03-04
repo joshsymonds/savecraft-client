@@ -147,7 +147,7 @@ jobs:
           just build-daemon darwin arm64 "$VERSION" "$SERVER_URL" "$INSTALL_URL" "$APP_NAME" "$STATUS_PORT" "$FRONTEND_URL"
 
       # systray uses pure Go (dbus) on Linux — no CGO needed, cross-compile works.
-      # macOS tray requires CGO (Cocoa) and needs a macos-latest runner (future task).
+      # TODO(#XX): macOS tray requires CGO (Cocoa) and needs a macos-latest runner.
       - name: Build tray (Linux)
         env:
           APP_NAME: ${{ needs.environment.outputs.app_name }}

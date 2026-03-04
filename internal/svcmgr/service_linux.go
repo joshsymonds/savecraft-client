@@ -78,7 +78,7 @@ func install(cfg Config, exePath string, run commandRunner) error {
 }
 
 func uninstall(cfg Config, run commandRunner) error {
-	//nolint:errcheck,gosec // best-effort: service may already be disabled/stopped
+	//nolint:errcheck,gosec // best-effort: service may already be disabled
 	systemctlRun(run, "disable", cfg.Name+".service")
 	//nolint:errcheck,gosec // best-effort: service may already be stopped
 	systemctlRun(run, "stop", cfg.Name+".service")

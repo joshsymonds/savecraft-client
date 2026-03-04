@@ -228,3 +228,30 @@ func TestSystemctlRun_ErrorIncludesOutput(t *testing.T) {
 		t.Errorf("error should contain command args: %v", err)
 	}
 }
+
+func TestControl_Restart(t *testing.T) {
+	var called bool
+	fake := func(name string, args ...string) ([]byte, error) {
+		called = true
+		if name != "systemctl" {
+			t.Errorf("name = %q, want systemctl", name)
+		}
+		// Expect: systemctl --user restart test-daemon.service
+		wantArgs := []string{"--user", "restart", "test-daemon.service"}
+		for i, want := range wantArgs {
+			if i >= len(args) || args[i] != want {
+				t.Errorf("args[%d] = %q, want %q", i, args[i], want)
+			}
+		}
+
+		return nil, nil
+	}
+
+	cfg := Config{Name: "test-daemon"}
+	if err := control(cfg, "restart", fake); err != nil {
+		t.Fatalf("control restart: %v", err)
+	}
+	if !called {
+		t.Fatal("command runner was not called")
+	}
+}

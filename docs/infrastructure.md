@@ -106,13 +106,14 @@ curl -sSL https://install.savecraft.gg | bash
 The install script:
 1. Detects architecture (amd64/arm64)
 2. Downloads signed daemon binary to `~/.local/bin/savecraft-daemon`
-3. Verifies Ed25519 signature against baked-in public key
-4. Delegates service registration to `savecraftd install` (generates systemd unit with sandboxing)
-5. Starts the service via `savecraftd start`
-6. Daemon self-registers on first boot (`POST /api/v1/device/register`), receives a device token and 6-digit link code
-7. Prints link URL — user visits it to link the device to their account
+3. Downloads signed tray binary to `~/.local/bin/savecraft-tray` (optional — failure warns but does not abort)
+4. Verifies Ed25519 signatures against baked-in public key
+5. Delegates service registration to `savecraftd install` (generates systemd unit with sandboxing)
+6. Starts the service via `savecraftd start`
+7. Daemon self-registers on first boot (`POST /api/v1/device/register`), receives a device token and 6-digit link code
+8. Prints link URL — user visits it to link the device to their account
 
-**No root required.** Everything installs in `~/.local/bin/` and `~/.config/`. The daemon runs as a systemd user service under the current user. `inotify` (used by fsnotify) only needs read permission on watched directories.
+**No root required.** Everything installs in `~/.local/bin/` and `~/.config/`. The daemon runs as a systemd user service under the current user. The tray binary is standalone — users can add it to their desktop environment's autostart (XDG autostart, GNOME Tweaks, etc.) if desired. `inotify` (used by fsnotify) only needs read permission on watched directories.
 
 **Steam Deck specifics:** SteamOS is immutable — the root filesystem is read-only and resets on OS updates. But `~/.local/bin/` and `~/.config/` persist on the user partition. Systemd user services survive updates. Users need to switch to Desktop Mode to run the curl command via Konsole.
 
@@ -204,7 +205,7 @@ git tag plugin-d2r-v0.0.3 && git push --tags
 
 Triggered by `daemon-v*` tags. Four parallel-then-sequential jobs:
 
-1. **Build:** Cross-compile for 5 platforms (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64)
+1. **Build:** Cross-compile daemon for 5 platforms (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64) and tray for Linux + Windows (macOS tray requires CGO and a macOS runner — deferred)
 2. **Sign:** Ed25519 signature on each binary, SHA256 checksums
 3. **Upload to R2:** Binaries + signatures + daemon manifest to `savecraft-install/daemon/`
 4. **GitHub Release:** Create release with all artifacts, notify Discord

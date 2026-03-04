@@ -74,7 +74,11 @@ func copyToClipboard(text string) error {
 	case "windows":
 		args = []string{"clip"}
 	default:
-		args = []string{"xclip", "-selection", "clipboard"}
+		if os.Getenv("WAYLAND_DISPLAY") != "" {
+			args = []string{"wl-copy"}
+		} else {
+			args = []string{"xclip", "-selection", "clipboard"}
+		}
 	}
 
 	return runCommandWithStdin(args[0], text, args[1:]...)

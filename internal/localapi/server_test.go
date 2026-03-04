@@ -347,6 +347,28 @@ func TestHandleRestart_NoCallback(t *testing.T) {
 	}
 }
 
+func TestHandleBoot_WrongMethod(t *testing.T) {
+	srv := NewServer("localhost:0", nil)
+
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/boot", nil))
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 405", rec.Code)
+	}
+}
+
+func TestHandleLink_WrongMethod(t *testing.T) {
+	srv := NewServer("localhost:0", nil)
+
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/link", nil))
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 405", rec.Code)
+	}
+}
+
 func TestServer_ConcurrentStateAccess(t *testing.T) {
 	srv := NewServer("localhost:0", nil)
 

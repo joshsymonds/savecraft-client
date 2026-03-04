@@ -18,9 +18,13 @@ type trayApp struct {
 	client      *localapi.Client
 	frontendURL string
 	logger      *slog.Logger
+	cancel      context.CancelFunc
 }
 
 func (a *trayApp) onReady() {
+	ctx, cancel := context.WithCancel(context.Background())
+	a.cancel = cancel
+
 	systray.SetIcon(iconBytes)
 	systray.SetTooltip("Savecraft")
 
@@ -44,10 +48,14 @@ func (a *trayApp) onReady() {
 	go a.handleClicks(mCopyLogs, mRestart, mDashboard, mQuit)
 
 	// Poll daemon state.
-	go a.pollState(mStatus)
+	go a.pollState(ctx, mStatus)
 }
 
-func (a *trayApp) onExit() {}
+func (a *trayApp) onExit() {
+	if a.cancel != nil {
+		a.cancel()
+	}
+}
 
 func (a *trayApp) handleClicks(
 	mCopyLogs, mRestart, mDashboard, mQuit *systray.MenuItem,
@@ -70,15 +78,20 @@ func (a *trayApp) handleClicks(
 	}
 }
 
-func (a *trayApp) pollState(mStatus *systray.MenuItem) {
+func (a *trayApp) pollState(ctx context.Context, mStatus *systray.MenuItem) {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
 	// Poll immediately on start, then on each tick.
 	a.updateStatus(mStatus)
 
-	for range ticker.C {
-		a.updateStatus(mStatus)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			a.updateStatus(mStatus)
+		}
 	}
 }
 

@@ -173,9 +173,12 @@ func TestAutoRegister_RegistersAndPersists(t *testing.T) {
 		Daemon:    daemonConfigDefaults("test-host", "dev"),
 	}
 
-	result, err := autoRegister(context.Background(), cfg, envPath)
+	result, registered, err := autoRegister(context.Background(), cfg, envPath)
 	if err != nil {
 		t.Fatalf("autoRegister: %v", err)
+	}
+	if !registered {
+		t.Fatal("expected registered=true for new device")
 	}
 
 	// Verify config was updated.
@@ -216,11 +219,14 @@ func TestAutoRegister_SkipsIfTokenExists(t *testing.T) {
 	}
 	cfg.Daemon.AuthToken = "dvt_existing"
 
-	result, err := autoRegister(context.Background(), cfg, "/nonexistent/path")
+	result, registered, err := autoRegister(context.Background(), cfg, "/nonexistent/path")
 	if err != nil {
 		t.Fatalf("autoRegister: %v", err)
 	}
 
+	if registered {
+		t.Error("expected registered=false when token exists")
+	}
 	if result != nil {
 		t.Error("expected nil result when token exists")
 	}

@@ -74,3 +74,44 @@ Uses `nhooyr.io/websocket` for context-aware WebSocket with clean shutdown.
 6. On graceful shutdown (SIGTERM), send `daemon_offline` event, close connection.
 
 **Graceful degradation:** If the WebSocket is down, the daemon continues operating locally — watching files, parsing saves, queuing push API calls. Status events are dropped (not queued) during disconnection. The push API (HTTP POST) is independent of the WebSocket; save data always reaches R2 even if the real-time channel is down.
+
+## Local API (`internal/localapi`)
+
+The daemon exposes a localhost HTTP API on port 9182 for tray-to-daemon IPC. The server starts early in the boot sequence so endpoints are available before registration completes.
+
+**Endpoints:**
+- `GET /boot` — Returns daemon lifecycle state (starting, registering, registered, running, error)
+- `GET /link` — Returns the 6-digit link code and URL during first-boot registration (503 before registration, 404 after linking)
+- `GET /logs` — Returns the last 1000 log entries from the in-memory ring buffer
+- `GET /status` — Returns daemon runtime status (connected games, sync activity). Added after subsystem initialization.
+- `POST /shutdown` — Triggers graceful daemon shutdown
+- `POST /restart` — Triggers service restart via `svcmgr.Control`
+
+**Ring buffer:** A `slog.Handler` wrapper (`RingBuffer`) that captures log records into a fixed-size circular buffer while forwarding to the underlying handler. Thread-safe. Entries are returned as structured JSON with timestamp, level, message, and attributes.
+
+## Service Manager (`internal/svcmgr`)
+
+Cross-platform service management replacing `kardianos/service`. The daemon binary handles its own service lifecycle via `savecraftd install`, `savecraftd start`, `savecraftd stop`, and `savecraftd uninstall` subcommands.
+
+**Platform backends:**
+- **Linux:** systemd user units (`~/.config/systemd/user/`) with security hardening (ProtectSystem, ProtectHome, ReadWritePaths, NoNewPrivileges, RestrictAddressFamilies)
+- **macOS:** launchd user agents (`~/Library/LaunchAgents/`) with KeepAlive and RunAtLoad
+- **Windows:** Registry `HKCU\Run` key for auto-start. Stop uses `taskkill`. Restart is not supported (user must stop/start manually).
+
+The `Program` type wraps a `RunFunc` with context cancellation, WaitGroup-based goroutine tracking, and signal handling. `svcmgr.Run()` starts the program, waits for SIGINT/SIGTERM, stops gracefully, and returns any error from the run function.
+
+## Tray Application (`cmd/savecraft-tray`)
+
+A separate binary that displays daemon status in the system tray. Communicates with the daemon exclusively via the local API (no shared memory, no IPC pipes).
+
+**Features:**
+- Polls `GET /boot` every 3 seconds to display daemon state
+- Copy Logs: fetches `GET /logs` and copies formatted entries to clipboard
+- Restart Daemon: sends `POST /restart` to trigger service restart
+- Open Dashboard: opens the Savecraft web frontend in the default browser
+- Quit: exits the tray app (does not stop the daemon)
+
+**Platform notes:**
+- Linux: uses pure Go dbus backend (no CGO). Clipboard uses `wl-copy` on Wayland, `xclip` on X11.
+- macOS: requires CGO for Cocoa integration.
+- Windows: uses WinAPI. `-H=windowsgui` linker flag suppresses console window.

@@ -4,6 +4,7 @@ package svcmgr
 
 import (
 	"fmt"
+	"html"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,11 +27,11 @@ func PlistContent(cfg Config, exePath string) string {
 	buf.WriteString("<dict>\n")
 
 	buf.WriteString("    <key>Label</key>\n")
-	buf.WriteString("    <string>" + cfg.Name + "</string>\n")
+	buf.WriteString("    <string>" + html.EscapeString(cfg.Name) + "</string>\n")
 
 	buf.WriteString("    <key>ProgramArguments</key>\n")
 	buf.WriteString("    <array>\n")
-	buf.WriteString("        <string>" + exePath + "</string>\n")
+	buf.WriteString("        <string>" + html.EscapeString(exePath) + "</string>\n")
 	buf.WriteString("        <string>run</string>\n")
 	buf.WriteString("    </array>\n")
 
@@ -41,10 +42,10 @@ func PlistContent(cfg Config, exePath string) string {
 	buf.WriteString("    <true/>\n")
 
 	buf.WriteString("    <key>StandardOutPath</key>\n")
-	buf.WriteString("    <string>" + filepath.Join(logDir, "stdout.log") + "</string>\n")
+	buf.WriteString("    <string>" + html.EscapeString(filepath.Join(logDir, "stdout.log")) + "</string>\n")
 
 	buf.WriteString("    <key>StandardErrorPath</key>\n")
-	buf.WriteString("    <string>" + filepath.Join(logDir, "stderr.log") + "</string>\n")
+	buf.WriteString("    <string>" + html.EscapeString(filepath.Join(logDir, "stderr.log")) + "</string>\n")
 
 	buf.WriteString("</dict>\n")
 	buf.WriteString("</plist>\n")

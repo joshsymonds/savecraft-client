@@ -62,6 +62,10 @@ func serviceStart(_ Config, _ commandRunner) error {
 		return fmt.Errorf("start daemon process: %w", startErr)
 	}
 
+	// Release the process handle — this is a fire-and-forget launch.
+	// Without Release(), the handle leaks until the Go process exits.
+	_ = cmd.Process.Release()
+
 	return nil
 }
 

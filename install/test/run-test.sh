@@ -119,6 +119,7 @@ EOF
 # Remove installed files between tests so each starts clean.
 clean_install_dirs() {
     rm -rf "${HOME}/.local/bin/savecraft-daemon"
+    rm -rf "${HOME}/.local/bin/savecraft-tray"
     rm -rf "${HOME}/.config/savecraft"
     rm -rf "${HOME}/.cache/savecraft"
     rm -rf "${HOME}/.config/systemd"
@@ -183,25 +184,37 @@ generate_fixtures() {
     openssl genpkey -algorithm Ed25519 -out "${key_dir}/private.pem" 2>/dev/null
     openssl pkey -in "${key_dir}/private.pem" -pubout -out "${key_dir}/public.pem" 2>/dev/null
 
-    # Create dummy daemon binary (shell script that handles 'version')
+    # Create dummy daemon and tray binaries (shell scripts)
     mkdir -p "${FIXTURES}/daemon"
     for arch in amd64 arm64; do
-        local artifact="savecraft-daemon-linux-${arch}"
-        cat >"${FIXTURES}/daemon/${artifact}" <<'SCRIPT'
+        local daemon_artifact="savecraft-daemon-linux-${arch}"
+        cat >"${FIXTURES}/daemon/${daemon_artifact}" <<'SCRIPT'
 #!/bin/bash
 case "$1" in
     version) echo "savecraft-daemon 0.0.0-test" ;;
     *) echo "unknown command: $1" >&2; exit 1 ;;
 esac
 SCRIPT
-        chmod +x "${FIXTURES}/daemon/${artifact}"
+        chmod +x "${FIXTURES}/daemon/${daemon_artifact}"
 
-        # Sign binary with ephemeral key
         openssl pkeyutl -sign \
             -inkey "${key_dir}/private.pem" \
             -rawin \
-            -in "${FIXTURES}/daemon/${artifact}" \
-            -out "${FIXTURES}/daemon/${artifact}.sig"
+            -in "${FIXTURES}/daemon/${daemon_artifact}" \
+            -out "${FIXTURES}/daemon/${daemon_artifact}.sig"
+
+        local tray_artifact="savecraft-tray-linux-${arch}"
+        cat >"${FIXTURES}/daemon/${tray_artifact}" <<'SCRIPT'
+#!/bin/bash
+echo "savecraft-tray 0.0.0-test"
+SCRIPT
+        chmod +x "${FIXTURES}/daemon/${tray_artifact}"
+
+        openssl pkeyutl -sign \
+            -inkey "${key_dir}/private.pem" \
+            -rawin \
+            -in "${FIXTURES}/daemon/${tray_artifact}" \
+            -out "${FIXTURES}/daemon/${tray_artifact}.sig"
     done
 
     # Extract base64 DER public key for the test harness
@@ -225,6 +238,10 @@ SCRIPT
 #   daemon/savecraft-daemon-linux-amd64.sig  (signature)
 #   daemon/savecraft-daemon-linux-arm64      (binary)
 #   daemon/savecraft-daemon-linux-arm64.sig  (signature)
+#   daemon/savecraft-tray-linux-amd64        (binary)
+#   daemon/savecraft-tray-linux-amd64.sig    (signature)
+#   daemon/savecraft-tray-linux-arm64        (binary)
+#   daemon/savecraft-tray-linux-arm64.sig    (signature)
 # ---------------------------------------------------------------------------
 start_http_server() {
     info "Starting HTTP server on port ${HTTP_PORT} serving ${FIXTURES}/"
@@ -253,9 +270,13 @@ test_happy_path() {
 
     run_installer_ok "${FIXTURES}/install.sh"
 
-    # Binary exists and is executable
+    # Daemon binary exists and is executable
     assert_file_exists "${HOME}/.local/bin/savecraft-daemon" "daemon binary"
     assert_executable "${HOME}/.local/bin/savecraft-daemon" "daemon binary"
+
+    # Tray binary exists and is executable
+    assert_file_exists "${HOME}/.local/bin/savecraft-tray" "tray binary"
+    assert_executable "${HOME}/.local/bin/savecraft-tray" "tray binary"
 
     # --no-service means no unit file written
     if [[ -f "${HOME}/.config/systemd/user/savecraft.service" ]]; then
