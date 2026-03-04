@@ -77,3 +77,6 @@ jobs:
 
       - name: Run selfupdate tests
         run: go test -v ./internal/selfupdate/...
+
+      - name: Run svcmgr tests
+        run: go test -v ./internal/svcmgr/...

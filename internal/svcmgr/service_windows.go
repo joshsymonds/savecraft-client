@@ -46,13 +46,10 @@ func uninstall(cfg Config, _ commandRunner) error {
 	return nil
 }
 
-//nolint:unparam // commandRunner parameter required by cross-platform interface
-func serviceStart(_ Config, _ commandRunner) error {
-	exePath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("get executable path: %w", err)
-	}
-
+// startProcess spawns the daemon as a detached process.
+// Package-level variable for testability — tests swap this to avoid
+// actually launching a process.
+var startProcess = func(exePath string) error {
 	cmd := exec.Command(exePath, "run")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP,
@@ -67,6 +64,16 @@ func serviceStart(_ Config, _ commandRunner) error {
 	_ = cmd.Process.Release()
 
 	return nil
+}
+
+//nolint:unparam // commandRunner parameter required by cross-platform interface
+func serviceStart(_ Config, _ commandRunner) error {
+	exePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("get executable path: %w", err)
+	}
+
+	return startProcess(exePath)
 }
 
 func serviceStop(cfg Config, run commandRunner) error {
