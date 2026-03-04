@@ -12,7 +12,8 @@
 
 Savecraft is operated by Josh Symonds ("we," "us," "our").
 
-**Contact:** [privacy@savecraft.gg](mailto:privacy@savecraft.gg)
+**General contact:** [josh@savecraft.gg](mailto:josh@savecraft.gg)
+**Privacy contact:** [privacy@savecraft.gg](mailto:privacy@savecraft.gg)
 
 Savecraft is a gaming companion tool that parses your game save files and serves structured game state data to AI assistants (Claude, ChatGPT, Gemini) via the Model Context Protocol (MCP). It consists of a local daemon that runs on your gaming device, a cloud service that stores and serves your data, and a web interface for managing your devices and settings.
 
