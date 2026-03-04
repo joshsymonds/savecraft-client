@@ -12,6 +12,8 @@
   <a href="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-cloud.yml"><img src="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-cloud.yml/badge.svg" alt="Cloud Deploy" /></a>
   <a href="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-daemon.yml"><img src="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-daemon.yml/badge.svg" alt="Daemon Deploy" /></a>
   <a href="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-plugin.yml"><img src="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-plugin.yml/badge.svg" alt="Plugin Deploy" /></a>
+  <a href="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-install.yml"><img src="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-install.yml/badge.svg" alt="Install Deploy" /></a>
+  <a href="https://github.com/joshsymonds/savecraft.gg/actions/workflows/test-windows.yml"><img src="https://github.com/joshsymonds/savecraft.gg/actions/workflows/test-windows.yml/badge.svg" alt="Windows Tests" /></a>
 </p>
 
 <p align="center">
@@ -85,7 +87,7 @@ Plugins are WASM binaries that parse game save files. They read raw bytes on std
 |------|--------|-------------------|--------|--------|
 | [Diablo II: Resurrected](plugins/d2r/) | `.d2s` / `.d2i` binary | Drop Calculator | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [Stardew Valley](plugins/sdv/) | XML save directory | Gift Preferences, Crop Planner | Beta | [@joshsymonds](https://github.com/joshsymonds) |
-| [Victoria 3](plugins/vic3/) | `.v3` (Clausewitz) | Game Rules Database | Alpha | [@joshsymonds](https://github.com/joshsymonds) |
+| [Victoria 3](plugins/vic3/) | `.v3` (Clausewitz) | Game Rules Database | Scaffold | [@joshsymonds](https://github.com/joshsymonds) |
 
 **Planned save-file parsers:** Stellaris/CK3 (Clausewitz), Baldur's Gate 3 (.lsv), Elden Ring (.sl2), Civilization VI, Bethesda games (.ess)
 
