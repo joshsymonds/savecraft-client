@@ -516,8 +516,10 @@ linters:
           - gosec
 
       # CLI entrypoints: fmt.Print, file I/O from args, arg count checks, cleanup close are idiomatic
+      # contextcheck: shutdown defer handlers correctly use context.Background() since parent ctx is canceled
       - path: 'cmd/.*\.go'
         linters:
+          - contextcheck
           - errcheck
           - forbidigo
           - gosec

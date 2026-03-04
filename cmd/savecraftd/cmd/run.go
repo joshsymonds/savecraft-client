@@ -1,5 +1,3 @@
-//go:build !windows
-
 package cmd
 
 import (
@@ -7,15 +5,15 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
+	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
 
 	"github.com/joshsymonds/savecraft.gg/internal/daemon"
 	"github.com/joshsymonds/savecraft.gg/internal/envfile"
 	"github.com/joshsymonds/savecraft.gg/internal/localapi"
+	"github.com/joshsymonds/savecraft.gg/internal/svcmgr"
 )
 
 func buildRunFunc(
@@ -32,6 +30,38 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, 
 	}))
 	slog.SetDefault(logger)
 
+	prog := svcmgr.New(svcmgr.Config{
+		Name:        appName + "-daemon",
+		DisplayName: "Savecraft Daemon",
+		Description: "Syncs game saves to the cloud via Savecraft",
+	}, func(ctx context.Context) error {
+		return runDaemonLoop(ctx, logger, serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL)
+	})
+
+	svc, err := service.New(prog, prog.ServiceConfig())
+	if err != nil {
+		return fmt.Errorf("create service: %w", err)
+	}
+
+	// When run as an OS service, svc.Run blocks and manages Start/Stop.
+	// When run interactively, it does the same but with signal handling.
+	if runErr := svc.Run(); runErr != nil {
+		return fmt.Errorf("service run: %w", runErr)
+	}
+
+	// Check if the daemon's run func returned an error.
+	if progErr := prog.Err(); progErr != nil {
+		return fmt.Errorf("daemon run func: %w", progErr)
+	}
+
+	return nil
+}
+
+func runDaemonLoop(
+	ctx context.Context,
+	logger *slog.Logger,
+	serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL string,
+) error {
 	loadEnvFileDefaults(appName)
 
 	// Start the local API server early so /boot and /link are available
@@ -50,9 +80,6 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, 
 			logger.Error("local API server shutdown failed", slog.String("error", shutdownErr.Error()))
 		}
 	}()
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-	defer stop()
 
 	cfg, err := loadConfig(serverURLDefault, installURLDefault)
 	if err != nil {
@@ -75,12 +102,15 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, 
 	if regResult != nil {
 		linkURL := localapi.BuildLinkURL(frontendURL, regResult.LinkCode)
 		api.SetRegistered(regResult.LinkCode, linkURL, regResult.LinkCodeExpiresAt)
-		logger.Info("device registered",
+		logger.InfoContext(ctx, "device registered",
 			slog.String("device_uuid", regResult.DeviceUUID),
 			slog.String("link_code", regResult.LinkCode),
 			slog.String("link_url", linkURL),
 		)
-		fmt.Fprintf(os.Stderr, "\n  Link this device: %s\n\n", linkURL)
+
+		if service.Interactive() {
+			fmt.Fprintf(os.Stderr, "\n  Link this device: %s\n\n", linkURL)
+		}
 	} else {
 		api.SetState(localapi.StateRunning)
 	}
@@ -105,7 +135,7 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, 
 	api.Handle("/status", daemon.StatusHandler(dmn))
 	api.SetState(localapi.StateRunning)
 
-	logger.Info("starting daemon",
+	logger.InfoContext(ctx, "starting daemon",
 		slog.String("server", cfg.ServerURL),
 		slog.String("install", cfg.InstallURL),
 		slog.String("device_id", cfg.Daemon.DeviceID),
