@@ -66,7 +66,7 @@ This handles:
 Uses `nhooyr.io/websocket` for context-aware WebSocket with clean shutdown.
 
 **Connection lifecycle:**
-1. On startup, connect to `wss://api.savecraft.gg/ws/daemon` (or `wss://staging-api.savecraft.gg/ws/daemon` for staging) with bearer token in header. The WebSocket connection is authenticated via API key and requires the source to be linked to a user, since the DaemonHub DO is keyed by user UUID. (Push API uses the source token `sct_*` separately.)
+1. On startup, connect to `wss://api.savecraft.gg/ws/daemon` (or `wss://staging-api.savecraft.gg/ws/daemon` for staging) with bearer token in header. The WebSocket connection is authenticated via API key and requires the source to be linked to a user, since the SourceHub DO is keyed by user UUID. (Push API uses the source token `sct_*` separately.)
 2. On connect success, send `source_online` event.
 3. Listen for incoming messages (config updates, rescan commands) in a goroutine.
 4. Send status events as they occur (parse results, errors, game detection).

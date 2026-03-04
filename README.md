@@ -39,7 +39,7 @@ Same tools, same data. The conversation goes wherever you take it.
   │                      │  ───────>  │                           │
   │  savecraftd          │   push     │  Push API ──> R2 Storage  │
   │  - fs watcher        │            │                           │
-  │  - WASM plugin       │  <──────>  │  DaemonHub DO (WebSocket) │
+  │  - WASM plugin       │  <──────>  │  SourceHub DO (WebSocket)  │
   │    runtime (wazero)  │    WS      │                           │
   └─────────────────────┘            │  MCP Server ──> AI Tools  │
                                       └───────────────────────────┘
