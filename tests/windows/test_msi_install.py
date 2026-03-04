@@ -10,6 +10,7 @@ Runs on windows-latest GitHub Actions runners. Tests:
 import os
 import subprocess
 import sys
+import tempfile
 import winreg
 
 INSTALL_DIR = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Savecraft")
@@ -21,40 +22,47 @@ TRAY_REGISTRY_VALUE = "Savecraft Tray"
 
 
 def find_msi() -> str:
-    """Find the MSI file in dist/."""
+    """Find the MSI file in dist/ and return its absolute path."""
     dist = os.path.join(os.path.dirname(__file__), "..", "..", "dist")
     for f in os.listdir(dist):
         if f.endswith(".msi"):
-            return os.path.join(dist, f)
+            return os.path.abspath(os.path.join(dist, f))
     raise FileNotFoundError("No .msi file found in dist/")
+
+
+def _run_msiexec(flag: str, msi_path: str, label: str) -> None:
+    """Run msiexec with verbose logging. flag is '/i' or '/x'. Uses subprocess.run with list args (safe)."""
+    log_file = os.path.join(tempfile.gettempdir(), f"msi_{label}.log")
+    result = subprocess.run(
+        ["msiexec", flag, msi_path, "/qn", "/norestart", "/l*v", log_file],
+        capture_output=True,
+        timeout=120,
+    )
+    if result.returncode != 0:
+        print(f"msiexec {label} failed (exit {result.returncode})", file=sys.stderr)
+        print(f"MSI path: {msi_path}", file=sys.stderr)
+        print(f"MSI exists: {os.path.isfile(msi_path)}", file=sys.stderr)
+        if os.path.isfile(msi_path):
+            print(f"MSI size: {os.path.getsize(msi_path)} bytes", file=sys.stderr)
+        if os.path.isfile(log_file):
+            with open(log_file, encoding="utf-16-le", errors="replace") as f:
+                log_content = f.read()
+            lines = log_content.splitlines()
+            print(f"\n--- msiexec log (last 100 of {len(lines)} lines) ---", file=sys.stderr)
+            for line in lines[-100:]:
+                print(line, file=sys.stderr)
+            print("--- end log ---", file=sys.stderr)
+        raise RuntimeError(f"MSI {label} failed with exit code {result.returncode}")
 
 
 def msi_install(msi_path: str) -> None:
     """Silently install the MSI."""
-    result = subprocess.run(
-        ["msiexec", "/i", msi_path, "/qn", "/norestart"],
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        print(f"STDOUT: {result.stdout}", file=sys.stderr)
-        print(f"STDERR: {result.stderr}", file=sys.stderr)
-        raise RuntimeError(f"MSI install failed with exit code {result.returncode}")
+    _run_msiexec("/i", msi_path, "install")
 
 
 def msi_uninstall(msi_path: str) -> None:
     """Silently uninstall the MSI."""
-    result = subprocess.run(
-        ["msiexec", "/x", msi_path, "/qn", "/norestart"],
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        print(f"STDOUT: {result.stdout}", file=sys.stderr)
-        print(f"STDERR: {result.stderr}", file=sys.stderr)
-        raise RuntimeError(f"MSI uninstall failed with exit code {result.returncode}")
+    _run_msiexec("/x", msi_path, "uninstall")
 
 
 def test_install_creates_daemon():
