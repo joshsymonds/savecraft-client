@@ -40,7 +40,7 @@ func setupTray(cfg trayConfig) chan<- trayState {
 
 	systray.AddSeparator()
 
-	mPair := systray.AddMenuItem("Sign in && Pair...", "Pair this device with savecraft.gg")
+	mLink := systray.AddMenuItem("Link Device...", "Open savecraft.gg to link this device")
 	mDashboard := systray.AddMenuItem("Open Dashboard", "Open savecraft.gg in your browser")
 
 	systray.AddSeparator()
@@ -51,15 +51,12 @@ func setupTray(cfg trayConfig) chan<- trayState {
 	go func() {
 		for {
 			select {
-			case <-mPair.ClickedCh:
-				mPair.Disable()
-				if err := showPairDialog(cfg.appName, cfg.serverURL, cfg.logger); err != nil {
-					cfg.logger.Error("pair dialog", slog.String("error", err.Error()))
-				} else {
-					cfg.logger.Info("pairing complete — restart to connect")
-					mStatus.SetTitle("Paired — restart to connect")
+			case <-mLink.ClickedCh:
+				if cfg.frontendURL != "" {
+					if err := exec.Command("rundll32", "url.dll,FileProtocolHandler", cfg.frontendURL+"/setup").Start(); err != nil {
+						cfg.logger.Error("open link page", slog.String("error", err.Error()))
+					}
 				}
-				mPair.Enable()
 			case <-mDashboard.ClickedCh:
 				if cfg.frontendURL != "" {
 					if err := exec.Command("rundll32", "url.dll,FileProtocolHandler", cfg.frontendURL).Start(); err != nil {
@@ -79,8 +76,8 @@ func setupTray(cfg trayConfig) chan<- trayState {
 		for state := range stateCh {
 			switch state {
 			case trayStateNotPaired:
-				mStatus.SetTitle("Not paired")
-				mStatus.SetTooltip("Run Sign in & Pair to connect this device")
+				mStatus.SetTitle("Not linked")
+				mStatus.SetTooltip("Enter your link code at savecraft.gg/setup")
 			case trayStateDisconnected:
 				mStatus.SetTitle("Disconnected")
 				mStatus.SetTooltip("Daemon is not connected to savecraft.gg")

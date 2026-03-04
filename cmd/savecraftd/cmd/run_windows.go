@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/joshsymonds/savecraft.gg/internal/daemon"
+	"github.com/joshsymonds/savecraft.gg/internal/envfile"
 )
 
 func buildRunFunc(
@@ -62,10 +63,24 @@ func runDaemonWithTray(serverURLDefault, installURLDefault, appName, statusPortD
 
 		cfg, err := loadConfig(serverURLDefault, installURLDefault)
 		if err != nil {
-			logger.Warn("daemon not configured, waiting for pairing",
-				slog.String("error", err.Error()))
-			trayStatus <- trayStateNotPaired
+			logger.Error("load config", slog.String("error", err.Error()))
+			trayStatus <- trayStateDisconnected
 			return
+		}
+
+		// First-boot: if no auth token, self-register as a device.
+		envPath := envfile.EnvFilePath(appName)
+		regResult, regErr := autoRegister(cfg, envPath)
+		if regErr != nil {
+			logger.Error("auto-register", slog.String("error", regErr.Error()))
+			trayStatus <- trayStateDisconnected
+			return
+		}
+		if regResult != nil {
+			logger.Info("device registered",
+				slog.String("device_uuid", regResult.DeviceUUID),
+				slog.String("link_code", regResult.LinkCode),
+			)
 		}
 
 		binaryPath, err := os.Executable()

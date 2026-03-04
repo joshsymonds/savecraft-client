@@ -13,6 +13,7 @@ import (
 	"github.com/joshsymonds/savecraft.gg/internal/osfs"
 	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
 	"github.com/joshsymonds/savecraft.gg/internal/push"
+	"github.com/joshsymonds/savecraft.gg/internal/regclient"
 	"github.com/joshsymonds/savecraft.gg/internal/runner"
 	"github.com/joshsymonds/savecraft.gg/internal/selfupdate"
 	"github.com/joshsymonds/savecraft.gg/internal/signing"
@@ -130,9 +131,6 @@ func loadConfig(serverURLDefault, installURLDefault string) (*appConfig, error) 
 	}
 
 	authToken := os.Getenv("SAVECRAFT_AUTH_TOKEN")
-	if authToken == "" {
-		return nil, fmt.Errorf("SAVECRAFT_AUTH_TOKEN is required (set in env or run 'savecraftd pair' first)")
-	}
 
 	deviceID := os.Getenv("SAVECRAFT_DEVICE_ID")
 	if deviceID == "" {
@@ -151,19 +149,62 @@ func loadConfig(serverURLDefault, installURLDefault string) (*appConfig, error) 
 		cfgVersion = "dev"
 	}
 
+	deviceUUID := os.Getenv("SAVECRAFT_DEVICE_UUID")
+
 	return &appConfig{
 		ServerURL:  serverURL,
 		InstallURL: installURL,
 		AuthToken:  authToken,
 		PluginDir:  pluginDir,
 		Daemon: daemon.Config{
-			ServerURL: serverURL,
-			AuthToken: authToken,
-			DeviceID:  deviceID,
-			Version:   cfgVersion,
-			Games:     make(map[string]daemon.GameConfig),
+			ServerURL:  serverURL,
+			AuthToken:  authToken,
+			DeviceID:   deviceID,
+			DeviceUUID: deviceUUID,
+			Version:    cfgVersion,
+			Games:      make(map[string]daemon.GameConfig),
 		},
 	}, nil
+}
+
+// daemonConfigDefaults creates a daemon.Config with minimal defaults.
+func daemonConfigDefaults(deviceID, version string) daemon.Config {
+	return daemon.Config{
+		DeviceID: deviceID,
+		Version:  version,
+		Games:    make(map[string]daemon.GameConfig),
+	}
+}
+
+// autoRegister checks if the daemon has credentials. If not, it calls the
+// device registration endpoint, persists the credentials to the env file,
+// and updates the config in place. Returns the registration result (with
+// link code) if registration happened, or nil if credentials already exist.
+func autoRegister(cfg *appConfig, envPath string) (*regclient.RegisterResult, error) {
+	if cfg.AuthToken != "" {
+		return nil, nil //nolint:nilnil // nil result means "already registered, nothing to do."
+	}
+
+	result, err := regclient.Register(cfg.ServerURL, cfg.Daemon.DeviceID)
+	if err != nil {
+		return nil, fmt.Errorf("device registration: %w", err)
+	}
+
+	// Persist credentials.
+	if writeErr := envfile.Write(envPath, map[string]string{
+		"SAVECRAFT_AUTH_TOKEN":  result.Token,
+		"SAVECRAFT_DEVICE_UUID": result.DeviceUUID,
+		"SAVECRAFT_SERVER_URL":  cfg.ServerURL,
+	}); writeErr != nil {
+		return nil, fmt.Errorf("persist credentials: %w", writeErr)
+	}
+
+	// Update config in place.
+	cfg.AuthToken = result.Token
+	cfg.Daemon.AuthToken = result.Token
+	cfg.Daemon.DeviceUUID = result.DeviceUUID
+
+	return result, nil
 }
 
 // loadEnvFileDefaults reads the env file and sets environment variables

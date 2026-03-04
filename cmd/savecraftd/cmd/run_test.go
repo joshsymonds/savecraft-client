@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -117,5 +120,107 @@ func TestLoadConfig_InstallURLFallsBackToDefault(t *testing.T) {
 
 	if cfg.InstallURL != "https://install.savecraft.gg" {
 		t.Errorf("InstallURL = %q, want https://install.savecraft.gg", cfg.InstallURL)
+	}
+}
+
+func TestLoadConfig_AcceptsMissingAuthToken(t *testing.T) {
+	t.Setenv("SAVECRAFT_SERVER_URL", "https://api.savecraft.gg")
+	t.Setenv("SAVECRAFT_AUTH_TOKEN", "")
+	os.Unsetenv("SAVECRAFT_AUTH_TOKEN")
+
+	cfg, err := loadConfig("https://api.savecraft.gg", "https://install.savecraft.gg")
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+
+	if cfg.AuthToken != "" {
+		t.Errorf("AuthToken = %q, want empty string", cfg.AuthToken)
+	}
+}
+
+func TestAutoRegister_RegistersAndPersists(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodPost || req.URL.Path != "/api/v1/device/register" {
+			rw.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		var body struct {
+			DeviceName string `json:"device_name"` //nolint:tagliatelle // wire format.
+		}
+
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusCreated)
+		json.NewEncoder(rw).Encode(map[string]string{
+			"device_uuid":          "test-uuid-1234",
+			"token":                "dvt_testtoken",
+			"link_code":            "123456",
+			"link_code_expires_at": "2026-03-03T12:20:00Z",
+		})
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	envPath := filepath.Join(dir, "env")
+
+	cfg := &appConfig{
+		ServerURL: srv.URL,
+		Daemon:    daemonConfigDefaults("test-host", "dev"),
+	}
+
+	result, err := autoRegister(cfg, envPath)
+	if err != nil {
+		t.Fatalf("autoRegister: %v", err)
+	}
+
+	// Verify config was updated.
+	if cfg.AuthToken != "dvt_testtoken" {
+		t.Errorf("cfg.AuthToken = %q, want dvt_testtoken", cfg.AuthToken)
+	}
+	if cfg.Daemon.AuthToken != "dvt_testtoken" {
+		t.Errorf("cfg.Daemon.AuthToken = %q, want dvt_testtoken", cfg.Daemon.AuthToken)
+	}
+	if cfg.Daemon.DeviceUUID != "test-uuid-1234" {
+		t.Errorf("cfg.Daemon.DeviceUUID = %q, want test-uuid-1234", cfg.Daemon.DeviceUUID)
+	}
+
+	// Verify credentials persisted to env file.
+	vars, readErr := envfile.Read(envPath)
+	if readErr != nil {
+		t.Fatalf("read env: %v", readErr)
+	}
+
+	if vars["SAVECRAFT_AUTH_TOKEN"] != "dvt_testtoken" {
+		t.Errorf("env SAVECRAFT_AUTH_TOKEN = %q, want dvt_testtoken", vars["SAVECRAFT_AUTH_TOKEN"])
+	}
+	if vars["SAVECRAFT_DEVICE_UUID"] != "test-uuid-1234" {
+		t.Errorf("env SAVECRAFT_DEVICE_UUID = %q, want test-uuid-1234", vars["SAVECRAFT_DEVICE_UUID"])
+	}
+
+	// Verify link code returned.
+	if result.LinkCode != "123456" {
+		t.Errorf("link_code = %q, want 123456", result.LinkCode)
+	}
+}
+
+func TestAutoRegister_SkipsIfTokenExists(t *testing.T) {
+	cfg := &appConfig{
+		ServerURL: "https://api.savecraft.gg",
+		AuthToken: "dvt_existing",
+		Daemon:    daemonConfigDefaults("test-host", "dev"),
+	}
+	cfg.Daemon.AuthToken = "dvt_existing"
+
+	result, err := autoRegister(cfg, "/nonexistent/path")
+	if err != nil {
+		t.Fatalf("autoRegister: %v", err)
+	}
+
+	if result != nil {
+		t.Error("expected nil result when token exists")
 	}
 }

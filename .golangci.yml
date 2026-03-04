@@ -491,7 +491,7 @@ linters:
           - musttag
 
       # Daemon HTTP clients use configured server URLs, not user-tainted input
-      - path: 'internal/(pluginmgr|push|selfupdate|pairclient)/.*\.go'
+      - path: 'internal/(pluginmgr|push|selfupdate|regclient)/.*\.go'
         text: 'G(107|704)'
         linters:
           - gosec

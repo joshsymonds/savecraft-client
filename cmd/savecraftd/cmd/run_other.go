@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/joshsymonds/savecraft.gg/internal/daemon"
+	"github.com/joshsymonds/savecraft.gg/internal/envfile"
 )
 
 func buildRunFunc(
@@ -36,6 +37,21 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault s
 	cfg, err := loadConfig(serverURLDefault, installURLDefault)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
+	}
+
+	// First-boot: if no auth token, self-register as a device.
+	envPath := envfile.EnvFilePath(appName)
+	regResult, regErr := autoRegister(cfg, envPath)
+	if regErr != nil {
+		return fmt.Errorf("auto-register: %w", regErr)
+	}
+	if regResult != nil {
+		logger.Info("device registered",
+			slog.String("device_uuid", regResult.DeviceUUID),
+			slog.String("link_code", regResult.LinkCode),
+			slog.String("link_code_expires_at", regResult.LinkCodeExpiresAt),
+		)
+		fmt.Fprintf(os.Stderr, "\n  Link this device at savecraft.gg/setup\n  Code: %s\n\n", regResult.LinkCode)
 	}
 
 	binaryPath, err := os.Executable()

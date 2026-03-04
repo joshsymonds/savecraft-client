@@ -122,6 +122,7 @@ type Config struct {
 	ServerURL  string
 	AuthToken  string `json:"-"`
 	DeviceID   string
+	DeviceUUID string
 	Version    string
 	BinaryPath string
 	Retry      RetryConfig

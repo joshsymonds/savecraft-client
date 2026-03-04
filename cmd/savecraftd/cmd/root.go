@@ -27,7 +27,6 @@ func Execute(version, serverURL, installURL, appName, statusPort, frontendURL st
 	}
 
 	root.AddCommand(runCmd)
-	root.AddCommand(buildPairCommand(appName, frontendURL))
 	root.AddCommand(buildVerifyCommand(appName))
 	root.AddCommand(buildVersionCommand(version))
 
