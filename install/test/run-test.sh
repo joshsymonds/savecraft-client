@@ -183,7 +183,7 @@ generate_fixtures() {
     openssl genpkey -algorithm Ed25519 -out "${key_dir}/private.pem" 2>/dev/null
     openssl pkey -in "${key_dir}/private.pem" -pubout -out "${key_dir}/public.pem" 2>/dev/null
 
-    # Create dummy daemon binary (shell script that handles 'version' and 'pair')
+    # Create dummy daemon binary (shell script that handles 'version')
     mkdir -p "${FIXTURES}/daemon"
     for arch in amd64 arm64; do
         local artifact="savecraft-daemon-linux-${arch}"
@@ -191,7 +191,6 @@ generate_fixtures() {
 #!/bin/bash
 case "$1" in
     version) echo "savecraft-daemon 0.0.0-test" ;;
-    pair) exit 0 ;;
     *) echo "unknown command: $1" >&2; exit 1 ;;
 esac
 SCRIPT
@@ -252,10 +251,7 @@ test_happy_path() {
     info "=== Test: happy path ==="
     clean_install_dirs
 
-    # Supply auth token so the installer skips interactive pairing
-    export SAVECRAFT_AUTH_TOKEN="test-token-for-ci"
     run_installer_ok "${FIXTURES}/install.sh"
-    unset SAVECRAFT_AUTH_TOKEN
 
     # Binary exists and is executable
     assert_file_exists "${HOME}/.local/bin/savecraft-daemon" "daemon binary"
@@ -276,9 +272,7 @@ test_happy_path() {
     assert_file_contains "${HOME}/.config/savecraft/env" \
         "SAVECRAFT_INSTALL_URL=http://localhost:${HTTP_PORT}" \
         "env file contains install URL"
-    assert_file_contains "${HOME}/.config/savecraft/env" \
-        "SAVECRAFT_AUTH_TOKEN=test-token-for-ci" \
-        "env file contains auth token"
+    # Auth token is no longer in env file — daemon self-registers on first boot
 }
 
 # ---------------------------------------------------------------------------
@@ -370,7 +364,6 @@ test_sha256_dedup_skip() {
     clean_install_dirs
 
     # First install — normal download
-    export SAVECRAFT_AUTH_TOKEN="test-token-for-ci"
     run_installer_ok "${FIXTURES}/install.sh"
 
     # Generate manifest matching the installed binary
@@ -381,7 +374,6 @@ test_sha256_dedup_skip() {
     assert_output_contains "up to date" "SHA256 dedup skips re-download"
 
     rm -f "${FIXTURES}/daemon/manifest.json"
-    unset SAVECRAFT_AUTH_TOKEN
 }
 
 # ---------------------------------------------------------------------------
@@ -392,7 +384,6 @@ test_sha256_dedup_mismatch() {
     clean_install_dirs
 
     # First install
-    export SAVECRAFT_AUTH_TOKEN="test-token-for-ci"
     run_installer_ok "${FIXTURES}/install.sh"
 
     # Write manifest with a bogus hash
@@ -408,7 +399,6 @@ EOF
     assert_output_contains "downloading|installed" "SHA256 mismatch triggers re-download"
 
     rm -f "${FIXTURES}/daemon/manifest.json"
-    unset SAVECRAFT_AUTH_TOKEN
 }
 
 # ---------------------------------------------------------------------------
