@@ -158,5 +158,5 @@ See [`docs/overview.md`](docs/overview.md) for the system architecture, or brows
 ---
 
 <p align="center">
-  <sub>savecraft.gg — by <a href="https://joshsymonds.com">@joshsymonds</a></sub>
+  <sub>savecraft.gg — by <a href="https://joshsymonds.com">@joshsymonds</a> · <a href="https://savecraft.gg/privacy">Privacy Policy</a></sub>
 </p>
