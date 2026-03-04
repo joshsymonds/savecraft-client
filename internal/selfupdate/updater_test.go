@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -191,12 +192,14 @@ func TestApply_DownloadsAndReplaces(t *testing.T) {
 		t.Errorf("binary contents = %q, want %q", got, binaryData)
 	}
 
-	stat, err := os.Stat(binaryPath)
-	if err != nil {
-		t.Fatalf("stat binary: %v", err)
-	}
-	if stat.Mode().Perm() != 0o700 {
-		t.Errorf("binary mode = %v, want 0700", stat.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		stat, err := os.Stat(binaryPath)
+		if err != nil {
+			t.Fatalf("stat binary: %v", err)
+		}
+		if stat.Mode().Perm() != 0o700 {
+			t.Errorf("binary mode = %v, want 0700", stat.Mode().Perm())
+		}
 	}
 }
 

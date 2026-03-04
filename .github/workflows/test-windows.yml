@@ -46,8 +46,8 @@ jobs:
       - name: Build tray (Windows)
         run: just build-tray windows amd64
 
-      - name: Install WiX v4
-        run: dotnet tool install --global wix
+      - name: Install WiX v5
+        run: dotnet tool install --global wix --version 5.0.2
 
       - name: Build MSI
         run: |
@@ -57,6 +57,9 @@ jobs:
             -d TrayPath="dist/savecraft-tray-windows-amd64.exe" `
             -o "dist/savecraft.msi" `
             install/windows/savecraft.wxs
+          $msi = Get-Item "dist/savecraft.msi"
+          Write-Output "MSI size: $($msi.Length) bytes"
+          if ($msi.Length -lt 1024) { throw "MSI file too small ($($msi.Length) bytes) - build likely failed" }
 
       - name: Run MSI integration tests
         run: python tests/windows/test_msi_install.py
