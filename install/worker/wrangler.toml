@@ -33,11 +33,11 @@ bucket_name = "savecraft-install"
 [env.staging]
 name = "savecraft-install-staging"
 routes = [
-  { pattern = "install-staging.savecraft.gg/*", zone_name = "savecraft.gg" },
+  { pattern = "staging-install.savecraft.gg/*", zone_name = "savecraft.gg" },
 ]
 
 [env.staging.vars]
-INSTALL_URL = "https://install-staging.savecraft.gg"
+INSTALL_URL = "https://staging-install.savecraft.gg"
 SERVER_URL = "https://staging-api.savecraft.gg"
 REDIRECT_URL = "https://staging.savecraft.gg"
 APP_NAME = "savecraft-staging"

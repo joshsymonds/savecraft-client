@@ -19,7 +19,7 @@ func TestLoadConfig_UsesServerURLDefault(t *testing.T) {
 
 	t.Setenv("SAVECRAFT_AUTH_TOKEN", "test-token")
 
-	cfg, err := loadConfig("https://staging-api.savecraft.gg", "https://install-staging.savecraft.gg")
+	cfg, err := loadConfig("https://staging-api.savecraft.gg", "https://staging-install.savecraft.gg")
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
@@ -27,8 +27,8 @@ func TestLoadConfig_UsesServerURLDefault(t *testing.T) {
 	if cfg.ServerURL != "https://staging-api.savecraft.gg" {
 		t.Errorf("ServerURL = %q, want https://staging-api.savecraft.gg", cfg.ServerURL)
 	}
-	if cfg.InstallURL != "https://install-staging.savecraft.gg" {
-		t.Errorf("InstallURL = %q, want https://install-staging.savecraft.gg", cfg.InstallURL)
+	if cfg.InstallURL != "https://staging-install.savecraft.gg" {
+		t.Errorf("InstallURL = %q, want https://staging-install.savecraft.gg", cfg.InstallURL)
 	}
 }
 
@@ -37,7 +37,7 @@ func TestLoadConfig_EnvVarOverridesDefault(t *testing.T) {
 	t.Setenv("SAVECRAFT_INSTALL_URL", "https://custom-install.savecraft.gg")
 	t.Setenv("SAVECRAFT_AUTH_TOKEN", "test-token")
 
-	cfg, err := loadConfig("https://staging-api.savecraft.gg", "https://install-staging.savecraft.gg")
+	cfg, err := loadConfig("https://staging-api.savecraft.gg", "https://staging-install.savecraft.gg")
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestLoadConfig_EnvFileOverridesDefault(t *testing.T) {
 
 	loadEnvFileDefaultsFromPath(envPath)
 
-	cfg, err := loadConfig("https://staging-api.savecraft.gg", "https://install-staging.savecraft.gg")
+	cfg, err := loadConfig("https://staging-api.savecraft.gg", "https://staging-install.savecraft.gg")
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}

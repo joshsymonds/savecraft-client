@@ -109,7 +109,7 @@ jobs:
             echo "frontend_url=https://savecraft.gg" >> "$GITHUB_OUTPUT"
           else
             echo "is_production=false" >> "$GITHUB_OUTPUT"
-            echo "install_url=https://install-staging.savecraft.gg" >> "$GITHUB_OUTPUT"
+            echo "install_url=https://staging-install.savecraft.gg" >> "$GITHUB_OUTPUT"
             echo "server_url=https://staging-api.savecraft.gg" >> "$GITHUB_OUTPUT"
             echo "r2_bucket=savecraft-install-staging" >> "$GITHUB_OUTPUT"
             echo "app_name=savecraft-staging" >> "$GITHUB_OUTPUT"
