@@ -87,6 +87,10 @@ jobs:
             just build-plugin "$game_id"
           done
 
+      - name: Install reference Worker dependencies
+        if: steps.changed.outputs.plugins != ''
+        run: cd reference && npm ci
+
       - name: Test reference Worker infrastructure
         if: steps.changed.outputs.plugins != ''
         run: just test-reference-worker
