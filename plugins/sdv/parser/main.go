@@ -83,6 +83,13 @@ type Player struct {
 	DaysMarried        int              `xml:"daysMarried"`
 	Children           []Child          `xml:"children>NPC"`
 	MailReceived       StringList       `xml:"mailReceived"`
+	FishCaught         []IntArrayKV     `xml:"fishCaught>item"`
+	CookingRecipes     []StringIntKV    `xml:"cookingRecipes>item"`
+	RecipesCooked      []IntIntKV       `xml:"recipesCooked>item"`
+	CraftingRecipes    []StringIntKV    `xml:"craftingRecipes>item"`
+	BasicShipped       []IntIntKV       `xml:"basicShipped>item"`
+	MineralsFound      []IntIntKV       `xml:"mineralsFound>item"`
+	ArchaeologyFound   []IntArrayKV     `xml:"archaeologyFound>item"`
 }
 
 // IntList parses <element><int>...</int></element> lists.
@@ -138,6 +145,27 @@ type Item struct {
 type StringKV struct {
 	Key   string `xml:"key>string"`
 	Value string `xml:"value>string"`
+}
+
+// StringIntKV maps a string key to an int value (cooking/crafting recipes).
+type StringIntKV struct {
+	Key   string `xml:"key>string"`
+	Value int    `xml:"value>int"`
+}
+
+// IntIntKV maps an int key to an int value (shipped items, minerals).
+// In 1.6, keys may be stored as strings like "(O)131"; we parse both.
+type IntIntKV struct {
+	KeyInt int    `xml:"key>int"`
+	KeyStr string `xml:"key>string"`
+	Value  int    `xml:"value>int"`
+}
+
+// IntArrayKV maps an int/string key to an ArrayOfInt value (fish caught, archaeology).
+type IntArrayKV struct {
+	KeyInt int    `xml:"key>int"`
+	KeyStr string `xml:"key>string"`
+	Values IntList `xml:"value>ArrayOfInt"`
 }
 
 // StringList parses <element><string>...</string></element> lists.
@@ -289,6 +317,10 @@ func buildSections(save *SaveGame) map[string]any {
 		"bundles": map[string]any{
 			"description": "Community center bundles or Joja route, per-room and per-bundle completion",
 			"data":        buildBundlesSection(save),
+		},
+		"collections": map[string]any{
+			"description": "Fish caught, cooking/crafting recipes, items shipped, and museum donations",
+			"data":        buildCollectionsSection(save),
 		},
 	}
 }
@@ -541,7 +573,7 @@ func buildBundlesSection(save *SaveGame) map[string]any {
 			var name string
 			if itemID == -1 {
 				name = formatGold(qty)
-			} else if n, ok := bundleItemNames[itemID]; ok {
+			} else if n, ok := objectNames[itemID]; ok {
 				name = n
 			} else {
 				name = fmt.Sprintf("Item #%d", itemID)
@@ -674,44 +706,119 @@ func formatGold(n int) string {
 	return string(result) + "g"
 }
 
-// bundleItemNames maps item IDs to human-readable names for community center bundles.
-var bundleItemNames = map[int]string{
-	16: "Wild Horseradish", 18: "Daffodil", 20: "Leek", 22: "Dandelion",
-	24: "Parsnip", 62: "Aquamarine", 74: "Prismatic Shard", 78: "Cave Carrot",
-	80: "Quartz", 82: "Fire Quartz", 84: "Frozen Tear", 86: "Earth Crystal",
-	88: "Coconut", 90: "Cactus Fruit",
-	128: "Pufferfish", 130: "Tuna", 131: "Sardine", 132: "Bream",
-	136: "Largemouth Bass", 140: "Walleye", 142: "Carp", 143: "Catfish",
-	145: "Sunfish", 148: "Eel", 150: "Red Snapper", 156: "Ghostfish",
-	164: "Sandfish", 174: "Large Egg (White)", 178: "Hay",
-	182: "Large Egg (Brown)", 186: "Large Milk",
-	188: "Green Bean", 190: "Cauliflower", 192: "Potato", 194: "Fried Egg",
-	228: "Maki Roll", 254: "Melon", 256: "Tomato", 257: "Morel",
-	258: "Blueberry", 259: "Fiddlehead Fern", 260: "Hot Pepper",
-	262: "Wheat", 266: "Red Cabbage", 270: "Corn", 272: "Eggplant",
-	276: "Pumpkin", 280: "Yam",
-	334: "Copper Bar", 335: "Iron Bar", 336: "Gold Bar",
-	340: "Honey", 344: "Jelly", 348: "Wine",
-	372: "Clam", 376: "Poppy", 388: "Wood", 390: "Stone",
-	392: "Nautilus Shell", 396: "Spice Berry", 397: "Sea Urchin",
-	398: "Grape", 402: "Sweet Pea",
-	404: "Common Mushroom", 406: "Wild Plum", 408: "Hazelnut", 410: "Blackberry",
-	412: "Winter Root", 414: "Crystal Fruit", 416: "Snow Yam", 418: "Crocus",
-	420: "Red Mushroom", 421: "Sunflower", 422: "Purple Mushroom",
-	424: "Cheese", 426: "Goat Cheese", 428: "Cloth", 430: "Truffle",
-	432: "Truffle Oil", 438: "L. Goat Milk", 440: "Wool", 442: "Duck Egg",
-	444: "Duck Feather", 445: "Caviar", 446: "Rabbit's Foot",
-	454: "Ancient Fruit", 536: "Frozen Geode",
-	613: "Apple", 634: "Apricot", 635: "Orange", 636: "Peach",
-	637: "Pomegranate", 638: "Cherry",
-	698: "Sturgeon", 699: "Tiger Trout", 700: "Bullhead", 701: "Tilapia",
-	702: "Chub", 706: "Shad", 709: "Hardwood",
-	715: "Lobster", 716: "Crayfish", 717: "Crab", 718: "Cockle",
-	719: "Mussel", 720: "Shrimp", 721: "Snail", 722: "Periwinkle",
-	723: "Oyster", 724: "Maple Syrup", 725: "Oak Resin", 726: "Pine Tar",
-	734: "Woodskip", 766: "Slime", 767: "Bat Wing",
-	768: "Solar Essence", 769: "Void Essence",
-	795: "Void Salmon", 807: "Dinosaur Mayonnaise",
+// resolveItemID extracts the numeric item ID from 1.5 (int key) or 1.6 (string key like "(O)131") format.
+func resolveItemID(keyInt int, keyStr string) int {
+	if keyInt != 0 {
+		return keyInt
+	}
+	s := keyStr
+	if strings.HasPrefix(s, "(O)") {
+		s = s[3:]
+	}
+	id, _ := strconv.Atoi(s)
+	return id
+}
+
+// itemName returns the human-readable name for an item ID, with a fallback.
+func itemName(id int) string {
+	if name, ok := objectNames[id]; ok {
+		return name
+	}
+	return fmt.Sprintf("Item #%d", id)
+}
+
+func buildCollectionsSection(save *SaveGame) map[string]any {
+	p := save.Player
+
+	// Fish
+	fishCaught := make([]map[string]any, 0, len(p.FishCaught))
+	for _, fc := range p.FishCaught {
+		id := resolveItemID(fc.KeyInt, fc.KeyStr)
+		entry := map[string]any{
+			"name": itemName(id),
+		}
+		if len(fc.Values.Values) > 0 {
+			entry["timesCaught"] = fc.Values.Values[0]
+		}
+		if len(fc.Values.Values) > 1 && fc.Values.Values[1] > 0 {
+			entry["maxSize"] = fc.Values.Values[1]
+		}
+		fishCaught = append(fishCaught, entry)
+	}
+
+	// Cooking: cookingRecipes has names of learned recipes.
+	// recipesCooked (keyed by item ID) tracks actual cook counts.
+	cookedIDs := map[int]bool{}
+	for _, rc := range p.RecipesCooked {
+		id := resolveItemID(rc.KeyInt, rc.KeyStr)
+		if rc.Value > 0 {
+			cookedIDs[id] = true
+		}
+	}
+	recipesLearned := len(p.CookingRecipes)
+	recipesCooked := len(cookedIDs)
+	notCooked := make([]string, 0)
+	// We can't easily cross-reference recipe name → output item ID without game data,
+	// so report count-based stats and list not-yet-cooked only from the cookingRecipes
+	// value (which in 1.6 tracks cooked count, but in 1.5 is always 0).
+	// For 1.5 saves, notCooked will be empty since we can't determine it.
+	for _, cr := range p.CookingRecipes {
+		if cr.Value == 0 && len(cookedIDs) == 0 {
+			// 1.5 format — can't determine which are uncooked
+			continue
+		}
+		if cr.Value == 0 {
+			notCooked = append(notCooked, cr.Key)
+		}
+	}
+
+	// Crafting
+	craftLearned := len(p.CraftingRecipes)
+	craftCrafted := 0
+	notCrafted := make([]string, 0)
+	for _, cr := range p.CraftingRecipes {
+		if cr.Value > 0 {
+			craftCrafted++
+		} else {
+			notCrafted = append(notCrafted, cr.Key)
+		}
+	}
+
+	// Shipping
+	uniqueShipped := len(p.BasicShipped)
+	totalShipped := 0
+	for _, bs := range p.BasicShipped {
+		totalShipped += bs.Value
+	}
+
+	// Museum
+	mineralsFound := len(p.MineralsFound)
+	artifactsFound := len(p.ArchaeologyFound)
+
+	return map[string]any{
+		"fish": map[string]any{
+			"caught":        fishCaught,
+			"speciesCaught": len(fishCaught),
+		},
+		"cooking": map[string]any{
+			"recipesLearned": recipesLearned,
+			"recipesCooked":  recipesCooked,
+			"notYetCooked":   notCooked,
+		},
+		"crafting": map[string]any{
+			"recipesLearned": craftLearned,
+			"recipesCrafted": craftCrafted,
+			"notYetCrafted":  notCrafted,
+		},
+		"shipping": map[string]any{
+			"uniqueItemsShipped": uniqueShipped,
+			"totalItemsShipped":  totalShipped,
+		},
+		"museum": map[string]any{
+			"mineralsFound":  mineralsFound,
+			"artifactsFound": artifactsFound,
+		},
+	}
 }
 
 func buildCharacterSection(save *SaveGame) map[string]any {

@@ -551,6 +551,135 @@ func TestBundlesSectionPerfection(t *testing.T) {
 	}
 }
 
+func TestCollectionsSection(t *testing.T) {
+	data, err := os.ReadFile("../testdata/TestSave")
+	if err != nil {
+		t.Fatalf("reading test fixture: %v", err)
+	}
+
+	save, err := parseSave(data)
+	if err != nil {
+		t.Fatalf("parseSave: %v", err)
+	}
+
+	sections := buildSections(save)
+	colSection, ok := sections["collections"].(map[string]any)
+	if !ok {
+		t.Fatal("collections section missing")
+	}
+	colData := colSection["data"].(map[string]any)
+
+	// Fish sub-collection
+	fish, ok := colData["fish"].(map[string]any)
+	if !ok {
+		t.Fatal("fish sub-collection missing")
+	}
+	fishCaught := fish["caught"].([]map[string]any)
+	if len(fishCaught) != 4 {
+		t.Errorf("fish caught = %d, want 4", len(fishCaught))
+	}
+	// All should have string names (not raw IDs)
+	for _, f := range fishCaught {
+		name, ok := f["name"].(string)
+		if !ok || name == "" {
+			t.Errorf("fish entry missing name: %v", f)
+		}
+	}
+
+	// Cooking
+	cooking, ok := colData["cooking"].(map[string]any)
+	if !ok {
+		t.Fatal("cooking sub-collection missing")
+	}
+	recipesLearned := cooking["recipesLearned"].(int)
+	if recipesLearned != 1 {
+		t.Errorf("cooking recipesLearned = %d, want 1", recipesLearned)
+	}
+
+	// Crafting
+	crafting, ok := colData["crafting"].(map[string]any)
+	if !ok {
+		t.Fatal("crafting sub-collection missing")
+	}
+	craftLearned := crafting["recipesLearned"].(int)
+	if craftLearned != 14 {
+		t.Errorf("crafting recipesLearned = %d, want 14", craftLearned)
+	}
+
+	// Shipping
+	shipping, ok := colData["shipping"].(map[string]any)
+	if !ok {
+		t.Fatal("shipping sub-collection missing")
+	}
+	uniqueShipped := shipping["uniqueItemsShipped"].(int)
+	if uniqueShipped != 6 {
+		t.Errorf("uniqueItemsShipped = %d, want 6", uniqueShipped)
+	}
+
+	// Museum
+	museum, ok := colData["museum"].(map[string]any)
+	if !ok {
+		t.Fatal("museum sub-collection missing")
+	}
+	// Early game - should have minerals found
+	mineralsFound := museum["mineralsFound"].(int)
+	if mineralsFound != 2 {
+		t.Errorf("mineralsFound = %d, want 2", mineralsFound)
+	}
+}
+
+func TestCollectionsSectionPerfection(t *testing.T) {
+	data, err := os.ReadFile("../testdata/PerfectionSave")
+	if err != nil {
+		t.Fatalf("reading test fixture: %v", err)
+	}
+
+	save, err := parseSave(data)
+	if err != nil {
+		t.Fatalf("parseSave: %v", err)
+	}
+
+	sections := buildSections(save)
+	colData := sections["collections"].(map[string]any)["data"].(map[string]any)
+
+	// Fish: perfection save should have many species
+	fish := colData["fish"].(map[string]any)
+	fishCaught := fish["caught"].([]map[string]any)
+	if len(fishCaught) < 60 {
+		t.Errorf("fish caught species = %d, want >= 60", len(fishCaught))
+	}
+
+	// Cooking: should have many recipes
+	cooking := colData["cooking"].(map[string]any)
+	if cooking["recipesLearned"].(int) < 70 {
+		t.Errorf("cooking recipesLearned = %d, want >= 70", cooking["recipesLearned"].(int))
+	}
+	if cooking["recipesCooked"].(int) < 70 {
+		t.Errorf("cooking recipesCooked = %d, want >= 70", cooking["recipesCooked"].(int))
+	}
+
+	// Crafting
+	crafting := colData["crafting"].(map[string]any)
+	if crafting["recipesLearned"].(int) < 100 {
+		t.Errorf("crafting recipesLearned = %d, want >= 100", crafting["recipesLearned"].(int))
+	}
+
+	// Shipping: many items
+	shipping := colData["shipping"].(map[string]any)
+	if shipping["uniqueItemsShipped"].(int) < 150 {
+		t.Errorf("uniqueItemsShipped = %d, want >= 150", shipping["uniqueItemsShipped"].(int))
+	}
+
+	// Museum
+	museum := colData["museum"].(map[string]any)
+	if museum["mineralsFound"].(int) < 40 {
+		t.Errorf("mineralsFound = %d, want >= 40", museum["mineralsFound"].(int))
+	}
+	if museum["artifactsFound"].(int) < 30 {
+		t.Errorf("artifactsFound = %d, want >= 30", museum["artifactsFound"].(int))
+	}
+}
+
 func TestFarmTypeName(t *testing.T) {
 	tests := []struct {
 		id   int
