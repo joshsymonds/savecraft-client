@@ -7,7 +7,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
 
 	"github.com/joshsymonds/savecraft.gg/internal/daemon"
@@ -34,24 +33,13 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, 
 		Name:        appName + "-daemon",
 		DisplayName: "Savecraft Daemon",
 		Description: "Syncs game saves to the cloud via Savecraft",
+		AppName:     appName,
 	}, func(ctx context.Context) error {
 		return runDaemonLoop(ctx, logger, serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL)
 	})
 
-	svc, err := service.New(prog, prog.ServiceConfig())
-	if err != nil {
-		return fmt.Errorf("create service: %w", err)
-	}
-
-	// When run as an OS service, svc.Run blocks and manages Start/Stop.
-	// When run interactively, it does the same but with signal handling.
-	if runErr := svc.Run(); runErr != nil {
-		return fmt.Errorf("service run: %w", runErr)
-	}
-
-	// Check if the daemon's run func returned an error.
-	if progErr := prog.Err(); progErr != nil {
-		return fmt.Errorf("daemon run func: %w", progErr)
+	if err := svcmgr.Run(prog); err != nil {
+		return fmt.Errorf("daemon run: %w", err)
 	}
 
 	return nil
@@ -108,7 +96,7 @@ func runDaemonLoop(
 			slog.String("link_url", linkURL),
 		)
 
-		if service.Interactive() {
+		if svcmgr.Interactive() {
 			fmt.Fprintf(os.Stderr, "\n  Link this device: %s\n\n", linkURL)
 		}
 	} else {

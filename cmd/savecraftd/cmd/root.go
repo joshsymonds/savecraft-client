@@ -4,7 +4,6 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
 
 	"github.com/joshsymonds/savecraft.gg/internal/svcmgr"
@@ -33,6 +32,7 @@ func Execute(version, serverURL, installURL, appName, statusPort, frontendURL st
 		Name:        appName + "-daemon",
 		DisplayName: "Savecraft Daemon",
 		Description: "Syncs game saves to the cloud via Savecraft",
+		AppName:     appName,
 	}
 
 	root.AddCommand(runCmd)
@@ -50,21 +50,14 @@ func Execute(version, serverURL, installURL, appName, statusPort, frontendURL st
 	return nil
 }
 
-// buildServiceCommand creates a cobra command that invokes service.Control
+// buildServiceCommand creates a cobra command that invokes svcmgr.Control
 // for the given action (install, uninstall, start, stop).
 func buildServiceCommand(action, short string, cfg svcmgr.Config) *cobra.Command {
 	return &cobra.Command{
 		Use:   action,
 		Short: short,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			prog := svcmgr.New(cfg, nil)
-
-			svc, svcErr := service.New(prog, prog.ServiceConfig())
-			if svcErr != nil {
-				return fmt.Errorf("create service: %w", svcErr)
-			}
-
-			if err := service.Control(svc, action); err != nil {
+			if err := svcmgr.Control(cfg, action); err != nil {
 				return fmt.Errorf("service %s: %w", action, err)
 			}
 
