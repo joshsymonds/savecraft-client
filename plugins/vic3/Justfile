@@ -1,0 +1,13 @@
+build: build-parser build-reference
+
+build-parser:
+    cargo build -p vic3-parser --target wasm32-wasip1 --release
+    cp ../../target/wasm32-wasip1/release/vic3-parser.wasm parser.wasm
+
+build-reference:
+    cargo build -p vic3-reference --target wasm32-wasip1 --release
+    cp ../../target/wasm32-wasip1/release/vic3-reference.wasm reference.wasm
+    cp reference.wasm ../../reference/
+
+test:
+    cargo test -p vic3-parser -p vic3-reference

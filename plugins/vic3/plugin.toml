@@ -1,0 +1,34 @@
+game_id = "vic3"
+name = "Victoria 3"
+description = "Parses Victoria 3 save files (.v3) — economy, politics, military, diplomacy, and population"
+channel = "alpha"
+coverage = "partial"
+file_extensions = [".v3"]
+homepage = "https://savecraft.gg/plugins/vic3"
+
+limitations = [
+  "Ironman save support untested",
+]
+
+[author]
+name = "Josh Symonds"
+github = "joshsymonds"
+
+[default_paths]
+windows = "%USERPROFILE%/Documents/Paradox Interactive/Victoria 3/save games"
+linux = "~/.local/share/Paradox Interactive/Victoria 3/save games"
+darwin = "~/Documents/Paradox Interactive/Victoria 3/save games"
+
+[reference.modules.game_rules]
+name = "Game Rules Database"
+description = "Query building definitions, production methods, law effects, technology unlocks, and goods chains from Victoria 3's game data files."
+
+[reference.modules.game_rules.attribution]
+author = "Josh Symonds"
+data_sources = [
+  { name = "common/buildings", origin = "Victoria 3 game data" },
+  { name = "common/production_methods", origin = "Victoria 3 game data" },
+  { name = "common/laws", origin = "Victoria 3 game data" },
+  { name = "common/technology", origin = "Victoria 3 game data" },
+  { name = "common/goods", origin = "Victoria 3 game data" },
+]

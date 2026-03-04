@@ -43,6 +43,9 @@
     pkgs.nodePackages.npm
     pkgs.nodePackages.wrangler
 
+    # Rust (Clausewitz/Paradox plugins)
+    pkgs.rustup
+
     # WASM tooling
     pkgs.wabt           # wasm-objdump, wasm2wat, wat2wasm
 
@@ -65,6 +68,14 @@
     # Install deadcode if not present (no nix package available)
     if ! command -v deadcode &>/dev/null; then
       go install golang.org/x/tools/cmd/deadcode@latest
+    fi
+
+    # Rust: ensure stable toolchain + WASI target for Clausewitz plugins
+    if ! rustup toolchain list 2>/dev/null | grep -q stable; then
+      rustup default stable
+    fi
+    if ! rustup target list --installed 2>/dev/null | grep -q wasm32-wasip1; then
+      rustup target add wasm32-wasip1
     fi
 
     # Use nix-patched workerd binary for miniflare/vitest (NixOS can't run npm's dynamically linked workerd)

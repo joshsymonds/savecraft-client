@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = [
+    "libs/clausewitz-core",
+    "plugins/vic3/parser",
+    "plugins/vic3/reference",
+]
