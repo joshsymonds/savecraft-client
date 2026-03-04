@@ -146,10 +146,21 @@ jobs:
           just build-daemon darwin amd64 "$VERSION" "$SERVER_URL" "$INSTALL_URL" "$APP_NAME" "$STATUS_PORT" "$FRONTEND_URL"
           just build-daemon darwin arm64 "$VERSION" "$SERVER_URL" "$INSTALL_URL" "$APP_NAME" "$STATUS_PORT" "$FRONTEND_URL"
 
+      # systray uses pure Go (dbus) on Linux — no CGO needed, cross-compile works.
+      # macOS tray requires CGO (Cocoa) and needs a macos-latest runner (future task).
+      - name: Build tray (Linux)
+        env:
+          APP_NAME: ${{ needs.environment.outputs.app_name }}
+        run: |
+          just build-tray linux amd64 "$APP_NAME"
+          just build-tray linux arm64 "$APP_NAME"
+
       - uses: actions/upload-artifact@v4
         with:
           name: daemon-artifacts
-          path: dist/${{ needs.environment.outputs.app_name }}-daemon-*
+          path: |
+            dist/${{ needs.environment.outputs.app_name }}-daemon-*
+            dist/${{ needs.environment.outputs.app_name }}-tray-linux-*
 
   build-windows:
     name: Build (Windows + MSI)
@@ -166,7 +177,7 @@ jobs:
         with:
           tool: just
 
-      - name: Build daemon (Windows, CGO)
+      - name: Build daemon (Windows)
         env:
           VERSION: ${{ needs.environment.outputs.version }}
           SERVER_URL: ${{ needs.environment.outputs.server_url }}
@@ -175,6 +186,11 @@ jobs:
           STATUS_PORT: ${{ needs.environment.outputs.status_port }}
           FRONTEND_URL: ${{ needs.environment.outputs.frontend_url }}
         run: just build-daemon windows amd64 "$env:VERSION" "$env:SERVER_URL" "$env:INSTALL_URL" "$env:APP_NAME" "$env:STATUS_PORT" "$env:FRONTEND_URL"
+
+      - name: Build tray (Windows)
+        env:
+          APP_NAME: ${{ needs.environment.outputs.app_name }}
+        run: just build-tray windows amd64 "$env:APP_NAME"
 
       - name: Install WiX v4
         run: dotnet tool install --global wix
@@ -186,7 +202,8 @@ jobs:
         run: |
           wix build `
             -d Version="$env:VERSION" `
-            -d BinaryPath="dist/$env:APP_NAME-daemon-windows-amd64.exe" `
+            -d DaemonPath="dist/$env:APP_NAME-daemon-windows-amd64.exe" `
+            -d TrayPath="dist/$env:APP_NAME-tray-windows-amd64.exe" `
             -o "dist/$env:APP_NAME.msi" `
             install/windows/savecraft.wxs
 
@@ -195,6 +212,7 @@ jobs:
           name: windows-artifacts
           path: |
             dist/${{ needs.environment.outputs.app_name }}-daemon-windows-*
+            dist/${{ needs.environment.outputs.app_name }}-tray-windows-*
             dist/${{ needs.environment.outputs.app_name }}.msi
 
   sign:
@@ -223,11 +241,11 @@ jobs:
         env:
           SIGNING_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
 
-      - name: Sign daemon binaries
+      - name: Sign binaries
         env:
           APP_NAME: ${{ needs.environment.outputs.app_name }}
         run: |
-          for f in dist/"${APP_NAME}"-daemon-*; do
+          for f in dist/"${APP_NAME}"-daemon-* dist/"${APP_NAME}"-tray-*; do
             [ -f "$f" ] || continue
             go run ./cmd/savecraft-sign/ "$f" /tmp/signing_key.priv
           done
@@ -237,7 +255,7 @@ jobs:
           APP_NAME: ${{ needs.environment.outputs.app_name }}
         run: |
           cd dist
-          sha256sum "${APP_NAME}"-daemon-* "${APP_NAME}.msi" > checksums-sha256.txt
+          sha256sum "${APP_NAME}"-daemon-* "${APP_NAME}"-tray-* "${APP_NAME}.msi" > checksums-sha256.txt
 
       - name: Clean up signing key
         if: always()
@@ -248,6 +266,7 @@ jobs:
           name: signed-daemon-artifacts
           path: |
             dist/${{ needs.environment.outputs.app_name }}-daemon-*
+            dist/${{ needs.environment.outputs.app_name }}-tray-*
             dist/${{ needs.environment.outputs.app_name }}.msi
             dist/checksums-sha256.txt
 
@@ -312,7 +331,7 @@ jobs:
           VERSION: ${{ needs.environment.outputs.version }}
           APP_NAME: ${{ needs.environment.outputs.app_name }}
         run: |
-          for f in dist/"${APP_NAME}"-daemon-*; do
+          for f in dist/"${APP_NAME}"-daemon-* dist/"${APP_NAME}"-tray-*; do
             [ -f "$f" ] || continue
             filename=$(basename "$f")
             # Versioned (immutable archive)
@@ -395,6 +414,7 @@ jobs:
             --generate-notes \
             $notes_flag \
             dist/"${APP_NAME}"-daemon-* \
+            dist/"${APP_NAME}"-tray-* \
             dist/"${APP_NAME}".msi \
             dist/checksums-sha256.txt
 
