@@ -67,15 +67,15 @@ Same tools, same data. The conversation goes wherever you take it.
 
 | Tool | Description |
 |------|-------------|
-| `list_saves` | All saves with metadata and summaries |
-| `get_save_sections` | Available sections and descriptions for a save |
-| `get_section` | A single section's data (optional historical timestamp) |
-| `get_save_summary` | Quick overview of a save |
+| `list_games` | All games with saves, note titles, and reference modules with parameter schemas |
+| `get_save` | Summary, overview, sections, and notes for a save |
+| `get_section` | Section data (optional historical timestamp) |
 | `get_section_diff` | Changes between two snapshots |
 | `refresh_save` | Request fresh data (daemon-backed or API-backed) |
-| `search` | Full-text search across all saves and notes |
-| `list_notes` / `get_note` | User-attached reference material (build guides, goals) |
+| `search_saves` | Full-text search across all saves and notes |
+| `get_note` | Full content of a user-attached note |
 | `create_note` / `update_note` / `delete_note` | Manage notes via AI conversation |
+| `query_reference` | Execute reference data computations (drop rates, build math) |
 
 ## Plugins
 
