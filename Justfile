@@ -203,21 +203,17 @@ sign-plugins:
     done
 
 # Cross-compile daemon binary: just build-daemon linux amd64
-# Windows builds use CGO_ENABLED=1 (for systray + webview) and suppress the console window.
-# All other platforms use CGO_ENABLED=0 for static binaries.
+# Daemon is always CGO_ENABLED=0 — no GUI dependencies.
 build-daemon os arch version="dev" server_url="https://api.savecraft.gg" install_url="https://install.savecraft.gg" app_name="savecraft" status_port="9182" frontend_url="https://savecraft.gg":
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p dist
-    cgo=0
     ldflags="-s -w -X main.version={{version}} -X main.serverURLDefault={{server_url}} -X main.installURLDefault={{install_url}} -X main.appName={{app_name}} -X main.statusPortDefault={{status_port}} -X main.frontendURLDefault={{frontend_url}}"
     output="dist/{{app_name}}-daemon-{{os}}-{{arch}}"
     if [[ "{{os}}" == "windows" ]]; then
-        cgo=1
-        ldflags="${ldflags} -H=windowsgui"
         output="${output}.exe"
     fi
-    CGO_ENABLED="${cgo}" GOOS={{os}} GOARCH={{arch}} go build \
+    CGO_ENABLED=0 GOOS={{os}} GOARCH={{arch}} go build \
         -ldflags "${ldflags}" \
         -o "${output}" \
         ./cmd/savecraftd/
@@ -229,6 +225,31 @@ build-daemon-all version="dev" server_url="https://api.savecraft.gg" install_url
     just build-daemon darwin amd64 {{version}} {{server_url}} {{install_url}} {{app_name}} {{status_port}} {{frontend_url}}
     just build-daemon darwin arm64 {{version}} {{server_url}} {{install_url}} {{app_name}} {{status_port}} {{frontend_url}}
     just build-daemon windows amd64 {{version}} {{server_url}} {{install_url}} {{app_name}} {{status_port}} {{frontend_url}}
+
+# Cross-compile tray binary: just build-tray linux amd64
+# Tray uses CGO_ENABLED=1 (systray requires CGO). Windows gets -H=windowsgui.
+build-tray os arch app_name="savecraft":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p dist
+    ldflags="-s -w"
+    output="dist/{{app_name}}-tray-{{os}}-{{arch}}"
+    if [[ "{{os}}" == "windows" ]]; then
+        ldflags="${ldflags} -H=windowsgui"
+        output="${output}.exe"
+    fi
+    CGO_ENABLED=1 GOOS={{os}} GOARCH={{arch}} go build \
+        -ldflags "${ldflags}" \
+        -o "${output}" \
+        ./cmd/savecraft-tray/
+
+# Build tray for all release platforms
+build-tray-all app_name="savecraft":
+    just build-tray linux amd64 {{app_name}}
+    just build-tray linux arm64 {{app_name}}
+    just build-tray darwin amd64 {{app_name}}
+    just build-tray darwin arm64 {{app_name}}
+    just build-tray windows amd64 {{app_name}}
 
 # Build Windows MSI installer (requires WiX v4: dotnet tool install --global wix)
 build-msi version="1.0.0" app_name="savecraft":

@@ -19,7 +19,10 @@ import (
 //go:embed assets/icon.png
 var iconBytes []byte
 
-const defaultStatusPort = "9182"
+const (
+	defaultStatusPort  = "9182"
+	defaultFrontendURL = "https://savecraft.gg"
+)
 
 func main() {
 	port := os.Getenv("SAVECRAFT_STATUS_PORT")
@@ -29,7 +32,7 @@ func main() {
 
 	frontendURL := os.Getenv("SAVECRAFT_FRONTEND_URL")
 	if frontendURL == "" {
-		frontendURL = "https://savecraft.gg"
+		frontendURL = defaultFrontendURL
 	}
 
 	client := localapi.NewClient("http://localhost:" + port)
