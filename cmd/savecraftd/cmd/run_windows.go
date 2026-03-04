@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -34,6 +33,16 @@ func runDaemonWithTray(serverURLDefault, installURLDefault, appName, statusPortD
 	slog.SetDefault(logger)
 
 	loadEnvFileDefaults(appName)
+
+	// Start the status server early so /boot and /link are available
+	// before registration completes.
+	statusPort := statusPortDefault
+	if envPort := os.Getenv("SAVECRAFT_STATUS_PORT"); envPort != "" {
+		statusPort = envPort
+	}
+
+	boot := newBootStatus()
+	mux, statusSrv := startBootServer(boot, "localhost:"+statusPort, logger)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -64,23 +73,32 @@ func runDaemonWithTray(serverURLDefault, installURLDefault, appName, statusPortD
 		cfg, err := loadConfig(serverURLDefault, installURLDefault)
 		if err != nil {
 			logger.Error("load config", slog.String("error", err.Error()))
+			boot.setError(err.Error())
 			trayStatus <- trayStateDisconnected
 			return
 		}
 
 		// First-boot: if no auth token, self-register as a device.
+		boot.setState("registering")
+
 		envPath := envfile.EnvFilePath(appName)
 		regResult, regErr := autoRegister(cfg, envPath)
 		if regErr != nil {
 			logger.Error("auto-register", slog.String("error", regErr.Error()))
+			boot.setError(regErr.Error())
 			trayStatus <- trayStateDisconnected
 			return
 		}
 		if regResult != nil {
+			linkURL := buildLinkURL(frontendURL, regResult.LinkCode)
+			boot.setRegistered(regResult.LinkCode, linkURL, regResult.LinkCodeExpiresAt)
 			logger.Info("device registered",
 				slog.String("device_uuid", regResult.DeviceUUID),
 				slog.String("link_code", regResult.LinkCode),
+				slog.String("link_url", linkURL),
 			)
+		} else {
+			boot.setState("running")
 		}
 
 		binaryPath, err := os.Executable()
@@ -104,27 +122,8 @@ func runDaemonWithTray(serverURLDefault, installURLDefault, appName, statusPortD
 			dmn := daemon.New(cfg.Daemon, subs.fsys, subs.watcher, subs.runner,
 				subs.pusher, subs.ws, subs.plugins, subs.updater, logger)
 
-			statusPort := statusPortDefault
-			if envPort := os.Getenv("SAVECRAFT_STATUS_PORT"); envPort != "" {
-				statusPort = envPort
-			}
-
-			statusSrv := &http.Server{
-				Addr:    "localhost:" + statusPort,
-				Handler: daemon.StatusHandler(dmn),
-			}
-			go func() {
-				if err := statusSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-					logger.Error("status server failed", slog.String("error", err.Error()))
-				}
-			}()
-			defer func() {
-				shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer shutCancel()
-				if shutdownErr := statusSrv.Shutdown(shutCtx); shutdownErr != nil {
-					logger.Error("status server shutdown failed", slog.String("error", shutdownErr.Error()))
-				}
-			}()
+			mux.Handle("/status", daemon.StatusHandler(dmn))
+			boot.setState("running")
 
 			logger.Info("starting daemon",
 				slog.String("server", cfg.ServerURL),
@@ -147,6 +146,12 @@ func runDaemonWithTray(serverURLDefault, installURLDefault, appName, statusPortD
 
 	onQuit := func() {
 		cancel()
+
+		shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutCancel()
+		if shutdownErr := statusSrv.Shutdown(shutCtx); shutdownErr != nil {
+			logger.Error("status server shutdown failed", slog.String("error", shutdownErr.Error()))
+		}
 	}
 
 	systray.Run(onReady, onQuit)

@@ -199,6 +199,33 @@ create_env_template() {
 }
 
 # ---------------------------------------------------------------------------
+# wait_for_link — poll the daemon's /link endpoint for the link URL
+#   $1  base URL (e.g. http://localhost:9182)
+#   Prints the link URL on success, empty string on timeout/failure.
+# ---------------------------------------------------------------------------
+wait_for_link() {
+    local base_url="$1"
+    local max_wait=15
+    local waited=0
+
+    info "Waiting for daemon to register..."
+    while [[ ${waited} -lt ${max_wait} ]]; do
+        local response
+        response="$(curl -sf "${base_url}/link" 2>/dev/null || true)"
+        if [[ -n "${response}" ]]; then
+            local link_url
+            link_url="$(echo "${response}" | sed -n 's/.*"linkUrl"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+            if [[ -n "${link_url}" ]]; then
+                echo "${link_url}"
+                return
+            fi
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+}
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 main() {
@@ -319,11 +346,24 @@ main() {
     fi
     echo ""
 
-    local frontend_url="${SAVECRAFT_FRONTEND_URL:-https://savecraft.gg}"
-    echo "  Next steps:"
-    echo "    Link your device at ${frontend_url}/setup"
+    # Wait for the daemon to register and retrieve the link URL.
     if [[ "${no_systemd}" == "false" ]]; then
-        echo "    Check daemon status: systemctl --user status ${APP_NAME}"
+        local status_port="${SAVECRAFT_STATUS_PORT:-9182}"
+        local link_url=""
+        link_url="$(wait_for_link "http://localhost:${status_port}")"
+
+        if [[ -n "${link_url}" ]]; then
+            echo ""
+            ok "Device registered. Link it to your account:"
+            echo ""
+            echo "    ${link_url}"
+            echo ""
+        else
+            local frontend_url="${SAVECRAFT_FRONTEND_URL:-https://savecraft.gg}"
+            echo "  Next steps:"
+            echo "    Link your device at ${frontend_url}/setup"
+        fi
+        echo "  Check daemon status: systemctl --user status ${APP_NAME}"
     fi
     echo ""
 }

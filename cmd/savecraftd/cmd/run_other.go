@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -19,14 +18,14 @@ import (
 )
 
 func buildRunFunc(
-	serverURLDefault, installURLDefault, appName, statusPortDefault, _ string,
+	serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL string,
 ) func(cmd *cobra.Command, args []string) error {
 	return func(_ *cobra.Command, _ []string) error {
-		return runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault)
+		return runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL)
 	}
 }
 
-func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault string) error {
+func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL string) error {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
@@ -34,24 +33,52 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault s
 
 	loadEnvFileDefaults(appName)
 
+	// Start the status server early so /boot and /link are available
+	// before registration completes. The daemon /status route is added later.
+	statusPort := statusPortDefault
+	if envPort := os.Getenv("SAVECRAFT_STATUS_PORT"); envPort != "" {
+		statusPort = envPort
+	}
+
+	boot := newBootStatus()
+	mux, statusSrv := startBootServer(boot, "localhost:"+statusPort, logger)
+	defer func() {
+		shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutCancel()
+		if shutdownErr := statusSrv.Shutdown(shutCtx); shutdownErr != nil {
+			logger.Error("status server shutdown failed", slog.String("error", shutdownErr.Error()))
+		}
+	}()
+
 	cfg, err := loadConfig(serverURLDefault, installURLDefault)
 	if err != nil {
+		boot.setError(err.Error())
+
 		return fmt.Errorf("load config: %w", err)
 	}
 
 	// First-boot: if no auth token, self-register as a device.
+	boot.setState("registering")
+
 	envPath := envfile.EnvFilePath(appName)
 	regResult, regErr := autoRegister(cfg, envPath)
 	if regErr != nil {
+		boot.setError(regErr.Error())
+
 		return fmt.Errorf("auto-register: %w", regErr)
 	}
+
 	if regResult != nil {
+		linkURL := buildLinkURL(frontendURL, regResult.LinkCode)
+		boot.setRegistered(regResult.LinkCode, linkURL, regResult.LinkCodeExpiresAt)
 		logger.Info("device registered",
 			slog.String("device_uuid", regResult.DeviceUUID),
 			slog.String("link_code", regResult.LinkCode),
-			slog.String("link_code_expires_at", regResult.LinkCodeExpiresAt),
+			slog.String("link_url", linkURL),
 		)
-		fmt.Fprintf(os.Stderr, "\n  Link this device at savecraft.gg/setup\n  Code: %s\n\n", regResult.LinkCode)
+		fmt.Fprintf(os.Stderr, "\n  Link this device: %s\n\n", linkURL)
+	} else {
+		boot.setState("running")
 	}
 
 	binaryPath, err := os.Executable()
@@ -73,27 +100,9 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault s
 	dmn := daemon.New(cfg.Daemon, subsystems.fsys, subsystems.watcher, subsystems.runner,
 		subsystems.pusher, subsystems.ws, subsystems.plugins, subsystems.updater, logger)
 
-	statusPort := statusPortDefault
-	if envPort := os.Getenv("SAVECRAFT_STATUS_PORT"); envPort != "" {
-		statusPort = envPort
-	}
-
-	statusSrv := &http.Server{
-		Addr:    "localhost:" + statusPort,
-		Handler: daemon.StatusHandler(dmn),
-	}
-	go func() {
-		if err := statusSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("status server failed", slog.String("error", err.Error()))
-		}
-	}()
-	defer func() {
-		shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer shutCancel()
-		if shutdownErr := statusSrv.Shutdown(shutCtx); shutdownErr != nil {
-			logger.Error("status server shutdown failed", slog.String("error", shutdownErr.Error()))
-		}
-	}()
+	// Add daemon status to the same mux (safe for concurrent registration).
+	mux.Handle("/status", daemon.StatusHandler(dmn))
+	boot.setState("running")
 
 	logger.Info("starting daemon",
 		slog.String("server", cfg.ServerURL),
