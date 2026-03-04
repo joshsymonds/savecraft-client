@@ -2,7 +2,7 @@ package localapi
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -106,33 +106,8 @@ func TestClient_Link_AlreadyRegistered(t *testing.T) {
 	}
 }
 
-func TestClient_Status(t *testing.T) {
-	srv := NewServer("localhost:0", nil)
-	srv.Handle("/status", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"version": "1.0.0"})
-	}))
-
-	ts := httptest.NewServer(srv.mux)
-	defer ts.Close()
-
-	client := NewClient(ts.URL)
-	raw, err := client.Status(context.Background())
-	if err != nil {
-		t.Fatalf("Status: %v", err)
-	}
-
-	var parsed map[string]string
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if parsed["version"] != "1.0.0" {
-		t.Errorf("version = %q, want %q", parsed["version"], "1.0.0")
-	}
-}
-
 func TestClient_Logs(t *testing.T) {
-	inner := slog.NewJSONHandler(discardWriter{}, nil)
+	inner := testHandler{}
 	rb := NewRingBuffer(10, inner)
 	logger := slog.New(rb)
 
@@ -196,6 +171,46 @@ func TestClient_Restart(t *testing.T) {
 	}
 	if !called {
 		t.Error("restart callback was not called")
+	}
+}
+
+func TestClient_Shutdown_NotAvailable(t *testing.T) {
+	srv := NewServer("localhost:0", nil)
+	// No SetShutdownFunc → server returns 503 with OK=false
+
+	ts := httptest.NewServer(srv.mux)
+	defer ts.Close()
+
+	client := NewClient(ts.URL)
+	err := client.Shutdown(context.Background())
+	if err == nil {
+		t.Fatal("expected error when shutdown not available")
+	}
+
+	want := "shutdown: shutdown not available"
+	if err.Error() != want {
+		t.Errorf("err = %q, want %q", err.Error(), want)
+	}
+}
+
+func TestClient_Restart_Error(t *testing.T) {
+	srv := NewServer("localhost:0", nil)
+	srv.SetRestartFunc(func() error {
+		return fmt.Errorf("restart failed")
+	})
+
+	ts := httptest.NewServer(srv.mux)
+	defer ts.Close()
+
+	client := NewClient(ts.URL)
+	err := client.Restart(context.Background())
+	if err == nil {
+		t.Fatal("expected error when restart fails")
+	}
+
+	want := "restart: restart failed"
+	if err.Error() != want {
+		t.Errorf("err = %q, want %q", err.Error(), want)
 	}
 }
 

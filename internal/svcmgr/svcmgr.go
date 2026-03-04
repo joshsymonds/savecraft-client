@@ -48,6 +48,7 @@ type Program struct {
 	run    RunFunc
 	cancel context.CancelFunc
 	once   sync.Once
+	wg     sync.WaitGroup
 	mu     sync.Mutex
 	err    error
 }
@@ -65,13 +66,18 @@ func (p *Program) Start() {
 	ctx, cancel := context.WithCancel(context.Background())
 	p.cancel = cancel
 
-	go func() {
+	p.wg.Go(func() {
 		if err := p.run(ctx); err != nil {
 			p.mu.Lock()
 			p.err = err
 			p.mu.Unlock()
 		}
-	}()
+	})
+}
+
+// Wait blocks until the run function goroutine completes.
+func (p *Program) Wait() {
+	p.wg.Wait()
 }
 
 // Stop cancels the context to signal the run function to shut down.
@@ -103,6 +109,7 @@ func Run(prog *Program) error {
 	signal.Stop(sig)
 
 	prog.Stop()
+	prog.Wait()
 
 	return prog.Err()
 }
@@ -135,6 +142,8 @@ func control(cfg Config, action string, run commandRunner) error {
 		return serviceStart(cfg, run)
 	case "stop":
 		return serviceStop(cfg, run)
+	case "restart":
+		return serviceRestart(cfg, run)
 	default:
 		return fmt.Errorf("unknown service action: %s", action)
 	}

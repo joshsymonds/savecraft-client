@@ -7,12 +7,14 @@ import (
 	"strings"
 )
 
-// runCommand executes a command and returns an error if it fails.
+// runCommand starts a background command (e.g. open browser) and returns immediately.
 func runCommand(name string, args ...string) error {
 	cmd := exec.CommandContext(context.Background(), name, args...)
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start %s: %w", name, err)
 	}
+
+	go func() { _ = cmd.Wait() }() // reap the process to avoid zombies
 
 	return nil
 }

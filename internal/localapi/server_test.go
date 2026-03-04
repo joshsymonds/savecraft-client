@@ -156,7 +156,7 @@ func TestServer_Handle_ExtendsRoutes(t *testing.T) {
 }
 
 func TestHandleLogs_ReturnsEntries(t *testing.T) {
-	inner := slog.NewJSONHandler(discardWriter{}, nil)
+	inner := testHandler{}
 	rb := NewRingBuffer(10, inner)
 	logger := slog.New(rb)
 
@@ -189,7 +189,7 @@ func TestHandleLogs_ReturnsEntries(t *testing.T) {
 }
 
 func TestHandleLogs_EmptyBuffer(t *testing.T) {
-	rb := NewRingBuffer(10, slog.NewJSONHandler(discardWriter{}, nil))
+	rb := NewRingBuffer(10, testHandler{})
 
 	srv := NewServer("localhost:0", nil)
 	srv.SetRingBuffer(rb)

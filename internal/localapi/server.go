@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -33,7 +34,7 @@ type Server struct {
 // Pass nil logger for no-op logging.
 func NewServer(addr string, logger *slog.Logger) *Server {
 	if logger == nil {
-		logger = slog.New(slog.NewTextHandler(discardW{}, nil))
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 
 	server := &Server{
@@ -54,10 +55,6 @@ func NewServer(addr string, logger *slog.Logger) *Server {
 
 	return server
 }
-
-type discardW struct{}
-
-func (discardW) Write(p []byte) (int, error) { return len(p), nil }
 
 // Start begins serving in a background goroutine.
 func (s *Server) Start() {

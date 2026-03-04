@@ -8,8 +8,20 @@ import (
 	"time"
 )
 
+// testHandler accepts all log records but discards output. Used instead of
+// testHandler{} which returns false from Enabled, preventing records
+// from reaching the RingBuffer's Handle method.
+type testHandler struct {
+	level slog.Level
+}
+
+func (h testHandler) Enabled(_ context.Context, l slog.Level) bool { return l >= h.level }
+func (testHandler) Handle(context.Context, slog.Record) error      { return nil }
+func (h testHandler) WithAttrs([]slog.Attr) slog.Handler           { return h }
+func (h testHandler) WithGroup(string) slog.Handler                { return h }
+
 func TestRingBuffer_CapturesEntries(t *testing.T) {
-	inner := slog.NewJSONHandler(discardWriter{}, nil)
+	inner := testHandler{}
 	rb := NewRingBuffer(10, inner)
 	logger := slog.New(rb)
 
@@ -35,7 +47,7 @@ func TestRingBuffer_CapturesEntries(t *testing.T) {
 }
 
 func TestRingBuffer_CapturesAttrs(t *testing.T) {
-	inner := slog.NewJSONHandler(discardWriter{}, nil)
+	inner := testHandler{}
 	rb := NewRingBuffer(10, inner)
 	logger := slog.New(rb)
 
@@ -54,7 +66,7 @@ func TestRingBuffer_CapturesAttrs(t *testing.T) {
 }
 
 func TestRingBuffer_Overflow(t *testing.T) {
-	inner := slog.NewJSONHandler(discardWriter{}, nil)
+	inner := testHandler{}
 	rb := NewRingBuffer(3, inner)
 	logger := slog.New(rb)
 
@@ -81,7 +93,7 @@ func TestRingBuffer_Overflow(t *testing.T) {
 }
 
 func TestRingBuffer_EmptyEntries(t *testing.T) {
-	inner := slog.NewJSONHandler(discardWriter{}, nil)
+	inner := testHandler{}
 	rb := NewRingBuffer(10, inner)
 
 	entries := rb.Entries()
@@ -91,7 +103,7 @@ func TestRingBuffer_EmptyEntries(t *testing.T) {
 }
 
 func TestRingBuffer_ExactCapacity(t *testing.T) {
-	inner := slog.NewJSONHandler(discardWriter{}, nil)
+	inner := testHandler{}
 	rb := NewRingBuffer(3, inner)
 	logger := slog.New(rb)
 
@@ -112,7 +124,7 @@ func TestRingBuffer_ExactCapacity(t *testing.T) {
 }
 
 func TestRingBuffer_ConcurrentAccess(t *testing.T) {
-	inner := slog.NewJSONHandler(discardWriter{}, nil)
+	inner := testHandler{}
 	rb := NewRingBuffer(100, inner)
 	logger := slog.New(rb)
 
@@ -136,9 +148,7 @@ func TestRingBuffer_ConcurrentAccess(t *testing.T) {
 }
 
 func TestRingBuffer_Enabled(t *testing.T) {
-	inner := slog.NewJSONHandler(discardWriter{}, &slog.HandlerOptions{
-		Level: slog.LevelWarn,
-	})
+	inner := testHandler{level: slog.LevelWarn}
 	rb := NewRingBuffer(10, inner)
 
 	if rb.Enabled(context.Background(), slog.LevelInfo) {
@@ -150,7 +160,7 @@ func TestRingBuffer_Enabled(t *testing.T) {
 }
 
 func TestRingBuffer_HasTimestamp(t *testing.T) {
-	inner := slog.NewJSONHandler(discardWriter{}, nil)
+	inner := testHandler{}
 	rb := NewRingBuffer(10, inner)
 	logger := slog.New(rb)
 
@@ -167,6 +177,49 @@ func TestRingBuffer_HasTimestamp(t *testing.T) {
 	}
 }
 
-type discardWriter struct{}
+func TestRingBuffer_WithAttrs_SharesBuffer(t *testing.T) {
+	inner := testHandler{}
+	rb := NewRingBuffer(10, inner)
 
-func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
+	// Create a child handler via WithAttrs — should share the same buffer.
+	child := rb.WithAttrs([]slog.Attr{slog.String("component", "test")})
+	childLogger := slog.New(child)
+	parentLogger := slog.New(rb)
+
+	parentLogger.Info("from parent")
+	childLogger.Info("from child")
+
+	entries := rb.Entries()
+	if len(entries) != 2 {
+		t.Fatalf("entries = %d, want 2", len(entries))
+	}
+	if entries[0].Message != "from parent" {
+		t.Errorf("entries[0] = %q, want %q", entries[0].Message, "from parent")
+	}
+	if entries[1].Message != "from child" {
+		t.Errorf("entries[1] = %q, want %q", entries[1].Message, "from child")
+	}
+}
+
+func TestRingBuffer_WithGroup_SharesBuffer(t *testing.T) {
+	inner := testHandler{}
+	rb := NewRingBuffer(10, inner)
+
+	child := rb.WithGroup("subsystem")
+	childLogger := slog.New(child)
+	parentLogger := slog.New(rb)
+
+	parentLogger.Info("parent msg")
+	childLogger.Info("child msg")
+
+	entries := rb.Entries()
+	if len(entries) != 2 {
+		t.Fatalf("entries = %d, want 2", len(entries))
+	}
+	if entries[0].Message != "parent msg" {
+		t.Errorf("entries[0] = %q, want %q", entries[0].Message, "parent msg")
+	}
+	if entries[1].Message != "child msg" {
+		t.Errorf("entries[1] = %q, want %q", entries[1].Message, "child msg")
+	}
+}

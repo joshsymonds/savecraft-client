@@ -31,15 +31,17 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, 
 	logger := slog.New(ringBuf)
 	slog.SetDefault(logger)
 
-	var prog *svcmgr.Program
-	prog = svcmgr.New(svcmgr.Config{
+	svcCfg := svcmgr.Config{
 		Name:        appName + "-daemon",
 		DisplayName: "Savecraft Daemon",
 		Description: "Syncs game saves to the cloud via Savecraft",
 		AppName:     appName,
-	}, func(ctx context.Context) error {
+	}
+
+	var prog *svcmgr.Program
+	prog = svcmgr.New(svcCfg, func(ctx context.Context) error {
 		return runDaemonLoop(
-			ctx, logger, ringBuf, prog.Stop,
+			ctx, logger, ringBuf, prog.Stop, svcCfg,
 			serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL,
 		)
 	})
@@ -56,12 +58,13 @@ func runDaemonLoop(
 	logger *slog.Logger,
 	ringBuf *localapi.RingBuffer,
 	shutdownFn func(),
+	svcCfg svcmgr.Config,
 	serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL string,
 ) error {
 	loadEnvFileDefaults(appName)
 
-	// Start the local API server early so /boot and /link are available
-	// before registration completes. The daemon /status route is added later.
+	// Start the local API server early so /boot, /link, /shutdown, and /restart
+	// are available before registration completes. The /status route is added later.
 	statusPort := statusPortDefault
 	if envPort := os.Getenv("SAVECRAFT_STATUS_PORT"); envPort != "" {
 		statusPort = envPort
@@ -70,6 +73,9 @@ func runDaemonLoop(
 	api := localapi.NewServer("localhost:"+statusPort, logger)
 	api.SetRingBuffer(ringBuf)
 	api.SetShutdownFunc(shutdownFn)
+	api.SetRestartFunc(func() error {
+		return svcmgr.Control(svcCfg, "restart")
+	})
 	api.Start()
 	defer func() {
 		shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)

@@ -35,9 +35,7 @@ func TestProgram_StartStop(t *testing.T) {
 	}
 
 	prog.Stop()
-
-	// Give the goroutine a moment to finish.
-	time.Sleep(10 * time.Millisecond)
+	prog.Wait()
 
 	if !stopped.Load() {
 		t.Fatal("run func did not observe context cancellation")
@@ -55,9 +53,7 @@ func TestProgram_RunFuncError(t *testing.T) {
 	})
 
 	prog.Start()
-
-	// Wait for the run func to complete and error to propagate.
-	time.Sleep(50 * time.Millisecond)
+	prog.Wait()
 
 	if prog.Err() == nil {
 		t.Fatal("expected error from run func")
@@ -119,6 +115,50 @@ func TestRun_PropagatesRunFuncError(t *testing.T) {
 	err := Run(prog)
 	if !errors.Is(err, runErr) {
 		t.Errorf("Run err = %v, want %v", err, runErr)
+	}
+}
+
+func TestProgram_Wait(_ *testing.T) {
+	done := make(chan struct{})
+	prog := New(Config{}, func(_ context.Context) error {
+		<-done
+
+		return nil
+	})
+
+	prog.Start()
+
+	// Wait should block until the goroutine completes.
+	close(done)
+	prog.Wait()
+
+	// If we get here, Wait returned after the goroutine finished.
+}
+
+func TestControl_Restart(t *testing.T) {
+	var called bool
+	fake := func(name string, args ...string) ([]byte, error) {
+		called = true
+		if name != "systemctl" {
+			t.Errorf("name = %q, want systemctl", name)
+		}
+		// Expect: systemctl --user restart test-daemon.service
+		wantArgs := []string{"--user", "restart", "test-daemon.service"}
+		for i, want := range wantArgs {
+			if i >= len(args) || args[i] != want {
+				t.Errorf("args[%d] = %q, want %q", i, args[i], want)
+			}
+		}
+
+		return nil, nil
+	}
+
+	cfg := Config{Name: "test-daemon"}
+	if err := control(cfg, "restart", fake); err != nil {
+		t.Fatalf("control restart: %v", err)
+	}
+	if !called {
+		t.Fatal("command runner was not called")
 	}
 }
 

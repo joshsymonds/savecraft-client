@@ -99,6 +99,10 @@ func serviceStop(cfg Config, run commandRunner) error {
 	return systemctlRun(run, "stop", cfg.Name+".service")
 }
 
+func serviceRestart(cfg Config, run commandRunner) error {
+	return systemctlRun(run, "restart", cfg.Name+".service")
+}
+
 func systemctlRun(run commandRunner, args ...string) error {
 	fullArgs := append([]string{"--user"}, args...)
 

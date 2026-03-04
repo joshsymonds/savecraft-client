@@ -3,6 +3,7 @@
 package svcmgr
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -38,7 +39,7 @@ func uninstall(cfg Config, _ commandRunner) error {
 	}
 	defer key.Close()
 
-	if delErr := key.DeleteValue(cfg.DisplayName); delErr != nil {
+	if delErr := key.DeleteValue(cfg.DisplayName); delErr != nil && !errors.Is(delErr, registry.ErrNotExist) {
 		return fmt.Errorf("delete registry Run value: %w", delErr)
 	}
 
@@ -73,4 +74,9 @@ func serviceStop(cfg Config, run commandRunner) error {
 	}
 
 	return nil
+}
+
+//nolint:unparam // commandRunner parameter required by cross-platform interface
+func serviceRestart(_ Config, _ commandRunner) error {
+	return fmt.Errorf("restart not supported on Windows; stop and start the daemon manually")
 }

@@ -1,5 +1,5 @@
 // Package localapi provides the daemon's localhost HTTP API server and client.
-// The server exposes boot status, link info, and extensible endpoints.
+// The server exposes daemon state, link info, logs, and control endpoints (shutdown, restart).
 // The client is used by the tray app to poll daemon state.
 package localapi
 
@@ -136,26 +136,4 @@ func (c *Client) Restart(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-// Status returns the daemon's runtime status as raw JSON.
-// The caller can unmarshal into the appropriate type.
-func (c *Client) Status(ctx context.Context) (json.RawMessage, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/status", nil)
-	if err != nil {
-		return nil, fmt.Errorf("build status request: %w", err)
-	}
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("status request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	var raw json.RawMessage
-	if decErr := json.NewDecoder(resp.Body).Decode(&raw); decErr != nil {
-		return nil, fmt.Errorf("decode status response: %w", decErr)
-	}
-
-	return raw, nil
 }

@@ -97,6 +97,14 @@ func serviceStop(cfg Config, run commandRunner) error {
 	return launchctlRun(run, "stop", cfg.Name)
 }
 
+func serviceRestart(cfg Config, run commandRunner) error {
+	if err := serviceStop(cfg, run); err != nil {
+		return err
+	}
+
+	return serviceStart(cfg, run)
+}
+
 func launchctlRun(run commandRunner, args ...string) error {
 	out, err := run("launchctl", args...)
 	if err != nil {
