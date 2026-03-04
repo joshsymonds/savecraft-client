@@ -64,3 +64,4 @@ site/build/
 /.reference/
 
 /savecraft-verify
+.worktrees/
