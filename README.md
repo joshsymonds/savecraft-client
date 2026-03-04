@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/joshsymonds/savecraft.gg/actions/workflows/ci.yml"><img src="https://github.com/joshsymonds/savecraft.gg/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
+  <a href="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-cloud.yml"><img src="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-cloud.yml/badge.svg" alt="Cloud Deploy" /></a>
   <a href="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-daemon.yml"><img src="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-daemon.yml/badge.svg" alt="Daemon Deploy" /></a>
   <a href="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-plugin.yml"><img src="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-plugin.yml/badge.svg" alt="Plugin Deploy" /></a>
 </p>
@@ -79,15 +79,19 @@ Same tools, same data. The conversation goes wherever you take it.
 
 ## Plugins
 
-Plugins are WASM binaries that parse game save files. They read raw bytes on stdin, emit ndjson on stdout, and cannot access the filesystem or network. Each plugin is Ed25519 signed and verified before loading.
+Plugins are WASM binaries that parse game save files. They read raw bytes on stdin, emit ndjson on stdout, and cannot access the filesystem or network. Each plugin is Ed25519 signed and verified before loading. Plugins can optionally ship a second WASM binary (`reference.wasm`) for server-side computation — drop calculators, gift databases, crop planners — deployed via Workers for Platforms.
 
-| Game | Format | Status | Author |
-|------|--------|--------|--------|
-| [Diablo II: Resurrected](plugins/d2r/) | `.d2s` binary | Beta | [@joshsymonds](https://github.com/joshsymonds) |
+| Game | Format | Reference Modules | Status | Author |
+|------|--------|-------------------|--------|--------|
+| [Diablo II: Resurrected](plugins/d2r/) | `.d2s` / `.d2i` binary | Drop Calculator | Beta | [@joshsymonds](https://github.com/joshsymonds) |
+| [Stardew Valley](plugins/sdv/) | XML save directory | Gift Preferences, Crop Planner | Beta | [@joshsymonds](https://github.com/joshsymonds) |
+| [Victoria 3](plugins/vic3/) | `.v3` (Clausewitz) | Game Rules Database | Alpha | [@joshsymonds](https://github.com/joshsymonds) |
 
-**Planned:** Stardew Valley (XML), Stellaris/CK3 (Clausewitz), Baldur's Gate 3 (.lsv), Elden Ring (.sl2), Civilization VI
+**Planned save-file parsers:** Stellaris/CK3 (Clausewitz), Baldur's Gate 3 (.lsv), Elden Ring (.sl2), Civilization VI, Bethesda games (.ess)
 
-Server-side adapters (no daemon required) planned for API-backed games: Path of Exile 2, WoW (Battle.net API), FFXIV.
+**Planned API adapters** (no daemon required): Path of Exile 2, WoW (Battle.net API), FFXIV
+
+**Planned mod integrations:** Rimworld, Minecraft, Terraria (mod-as-device — mod pushes directly, no daemon), Factorio (mod-as-emitter — mod writes JSON, daemon relays)
 
 ### Writing a Plugin
 
@@ -111,14 +115,18 @@ savecraft.gg/
 │   ├── watcher/          # Filesystem watcher (fsnotify + debounce)
 │   ├── push/             # HTTP push client
 │   ├── wsconn/           # WebSocket client (reconnecting)
-│   └── pluginmgr/        # Plugin download, verification, caching
+│   ├── pluginmgr/        # Plugin download, verification, caching
+│   ├── regclient/        # Device registration client
+│   ├── selfupdate/       # Daemon self-update mechanism
+│   └── signing/          # Ed25519 plugin signature verification
 ├── worker/               # Cloudflare Worker + Durable Object (TypeScript)
+├── reference/            # Reference Worker — WASI shim for server-side plugin computation (WfP)
 ├── web/                  # SvelteKit frontend
-├── plugins/              # WASM plugin sources
+├── plugins/              # WASM plugin sources (parser + optional reference per game)
 ├── proto/                # Protobuf protocol definitions
 ├── install/              # Platform installers + systemd units
 ├── assets/               # Brand assets
-└── docs/                 # Architecture docs + wireframes
+└── docs/                 # Architecture docs
 ```
 
 ## Development
@@ -145,7 +153,7 @@ See [`docs/overview.md`](docs/overview.md) for the system architecture, or brows
 
 ## License
 
-Proprietary. All rights reserved.
+[Apache License 2.0](LICENSE)
 
 ---
 
