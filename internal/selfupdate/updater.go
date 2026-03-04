@@ -175,14 +175,9 @@ func (u *HTTPUpdater) Apply(ctx context.Context, info *daemon.UpdateInfo, binary
 		return fmt.Errorf("sha256 mismatch: got %s, want %s", actualHex, info.SHA256)
 	}
 
-	renameErr := os.Rename(tempBinaryPath, binaryPath)
-	if renameErr != nil {
-		return fmt.Errorf("replace binary: %w", renameErr)
-	}
-
-	chmodErr := os.Chmod(binaryPath, 0o700)
-	if chmodErr != nil {
-		return fmt.Errorf("chmod binary: %w", chmodErr)
+	replaceErr := replaceBinary(tempBinaryPath, binaryPath)
+	if replaceErr != nil {
+		return fmt.Errorf("replace binary: %w", replaceErr)
 	}
 
 	return nil

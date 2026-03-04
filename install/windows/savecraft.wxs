@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Savecraft MSI installer definition (WiX v4).
+
+  Build: wix build -d Version=1.0.0 -d BinaryPath=../../dist/savecraft-daemon-windows-amd64.exe -o savecraft.msi savecraft.wxs
+
+  No custom actions — installs files only. Pairing happens in the tray app post-install.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="Savecraft"
+    Manufacturer="Savecraft"
+    Version="$(var.Version)"
+    UpgradeCode="abfd37bd-ee90-4422-8423-2eccd3326a30"
+    Compressed="yes">
+
+    <!-- Allow upgrades, prevent downgrades -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Savecraft is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <Feature Id="Main" Title="Savecraft" Level="1">
+      <ComponentRef Id="DaemonExe" />
+      <ComponentRef Id="StartupRegistryKey" />
+    </Feature>
+  </Package>
+
+  <!-- Install to C:\Program Files\Savecraft\ -->
+  <Fragment>
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="Savecraft" />
+    </StandardDirectory>
+  </Fragment>
+
+  <!-- Main binary -->
+  <Fragment>
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <Component Id="DaemonExe">
+        <File Id="savecraftd.exe" Source="$(var.BinaryPath)" Name="savecraftd.exe" KeyPath="yes" />
+        <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+
+  <!-- Start on login via HKCU Run key (no admin needed for the key itself) -->
+  <Fragment>
+    <Component Id="StartupRegistryKey" Directory="INSTALLFOLDER">
+      <RegistryValue
+        Root="HKCU"
+        Key="Software\Microsoft\Windows\CurrentVersion\Run"
+        Name="Savecraft"
+        Type="string"
+        Value="[INSTALLFOLDER]savecraftd.exe"
+        KeyPath="yes" />
+    </Component>
+  </Fragment>
+</Wix>

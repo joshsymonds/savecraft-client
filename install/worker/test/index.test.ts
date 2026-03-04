@@ -59,14 +59,13 @@ describe("install worker", () => {
 	});
 
 	describe("install script (browser redirect)", () => {
-		const browserAgents = [
+		const nonWindowsBrowserAgents = [
 			"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
 			"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
-			"Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
 		];
 
-		for (const ua of browserAgents) {
-			it(`redirects browser (${ua.slice(0, 30)}...)`, async () => {
+		for (const ua of nonWindowsBrowserAgents) {
+			it(`redirects non-Windows browser to site (${ua.slice(0, 30)}...)`, async () => {
 				const resp = await SELF.fetch("https://install.savecraft.gg/", {
 					headers: { "user-agent": ua },
 					redirect: "manual",
@@ -75,6 +74,35 @@ describe("install worker", () => {
 				expect(resp.headers.get("location")).toContain(env.REDIRECT_URL);
 			});
 		}
+	});
+
+	describe("Windows browser → MSI redirect", () => {
+		const windowsBrowserAgents = [
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0",
+		];
+
+		for (const ua of windowsBrowserAgents) {
+			it(`redirects Windows browser to MSI (${ua.slice(0, 40)}...)`, async () => {
+				const resp = await SELF.fetch("https://install.savecraft.gg/", {
+					headers: { "user-agent": ua },
+					redirect: "manual",
+				});
+				expect(resp.status).toBe(302);
+				const location = resp.headers.get("location")!;
+				expect(location).toContain("/daemon/");
+				expect(location).toMatch(/\.msi$/);
+			});
+		}
+
+		it("still serves install script to CLI tools on Windows (WSL)", async () => {
+			const resp = await SELF.fetch("https://install.savecraft.gg/", {
+				headers: { "user-agent": "curl/8.7.1" },
+			});
+			expect(resp.status).toBe(200);
+			expect(resp.headers.get("content-type")).toBe("text/x-shellscript; charset=utf-8");
+		});
 	});
 
 	it("redirects when no user-agent is set", async () => {

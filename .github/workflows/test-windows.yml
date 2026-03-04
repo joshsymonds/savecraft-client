@@ -1,0 +1,68 @@
+name: Test Windows Installer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'install/windows/**'
+      - 'tests/windows/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/test-windows.yml'
+  pull_request:
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'install/windows/**'
+      - 'tests/windows/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/test-windows.yml'
+  workflow_dispatch:
+
+jobs:
+  test-msi:
+    name: MSI Install/Uninstall
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - uses: taiki-e/install-action@a3324fb0eb94b8230ec968c3389c1b7929fc2f3b # v2
+        with:
+          tool: just
+
+      - name: Build daemon (Windows, CGO)
+        run: just build-daemon windows amd64
+
+      - name: Install WiX v4
+        run: dotnet tool install --global wix
+
+      - name: Build MSI
+        run: |
+          wix build `
+            -d Version="1.0.0" `
+            -d BinaryPath="dist/savecraft-daemon-windows-amd64.exe" `
+            -o "dist/savecraft.msi" `
+            install/windows/savecraft.wxs
+
+      - name: Run MSI integration tests
+        run: python tests/windows/test_msi_install.py
+
+  test-go-windows:
+    name: Go Tests (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Run selfupdate tests
+        run: go test -v ./internal/selfupdate/...

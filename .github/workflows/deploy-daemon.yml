@@ -8,6 +8,7 @@ on:
       - 'cmd/**'
       - 'internal/**'
       - 'proto/**'
+      - 'install/windows/**'
       - 'go.mod'
       - 'go.sum'
       - '.github/workflows/deploy-daemon.yml'
@@ -16,6 +17,7 @@ on:
       - 'cmd/**'
       - 'internal/**'
       - 'proto/**'
+      - 'install/windows/**'
       - 'go.mod'
       - 'go.sum'
       - '.github/workflows/deploy-daemon.yml'
@@ -116,7 +118,7 @@ jobs:
           fi
 
   build:
-    name: Build
+    name: Build (Linux + macOS)
     needs: [environment, test]
     runs-on: ubuntu-latest
     steps:
@@ -130,7 +132,7 @@ jobs:
         with:
           tool: just
 
-      - name: Build daemon (all platforms)
+      - name: Build daemon (Linux + macOS)
         env:
           VERSION: ${{ needs.environment.outputs.version }}
           SERVER_URL: ${{ needs.environment.outputs.server_url }}
@@ -138,16 +140,66 @@ jobs:
           APP_NAME: ${{ needs.environment.outputs.app_name }}
           STATUS_PORT: ${{ needs.environment.outputs.status_port }}
           FRONTEND_URL: ${{ needs.environment.outputs.frontend_url }}
-        run: just build-daemon-all "$VERSION" "$SERVER_URL" "$INSTALL_URL" "$APP_NAME" "$STATUS_PORT" "$FRONTEND_URL"
+        run: |
+          just build-daemon linux amd64 "$VERSION" "$SERVER_URL" "$INSTALL_URL" "$APP_NAME" "$STATUS_PORT" "$FRONTEND_URL"
+          just build-daemon linux arm64 "$VERSION" "$SERVER_URL" "$INSTALL_URL" "$APP_NAME" "$STATUS_PORT" "$FRONTEND_URL"
+          just build-daemon darwin amd64 "$VERSION" "$SERVER_URL" "$INSTALL_URL" "$APP_NAME" "$STATUS_PORT" "$FRONTEND_URL"
+          just build-daemon darwin arm64 "$VERSION" "$SERVER_URL" "$INSTALL_URL" "$APP_NAME" "$STATUS_PORT" "$FRONTEND_URL"
 
       - uses: actions/upload-artifact@v4
         with:
           name: daemon-artifacts
           path: dist/${{ needs.environment.outputs.app_name }}-daemon-*
 
+  build-windows:
+    name: Build (Windows + MSI)
+    needs: [environment, test]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - uses: taiki-e/install-action@a3324fb0eb94b8230ec968c3389c1b7929fc2f3b # v2
+        with:
+          tool: just
+
+      - name: Build daemon (Windows, CGO)
+        env:
+          VERSION: ${{ needs.environment.outputs.version }}
+          SERVER_URL: ${{ needs.environment.outputs.server_url }}
+          INSTALL_URL: ${{ needs.environment.outputs.install_url }}
+          APP_NAME: ${{ needs.environment.outputs.app_name }}
+          STATUS_PORT: ${{ needs.environment.outputs.status_port }}
+          FRONTEND_URL: ${{ needs.environment.outputs.frontend_url }}
+        run: just build-daemon windows amd64 "$env:VERSION" "$env:SERVER_URL" "$env:INSTALL_URL" "$env:APP_NAME" "$env:STATUS_PORT" "$env:FRONTEND_URL"
+
+      - name: Install WiX v4
+        run: dotnet tool install --global wix
+
+      - name: Build MSI
+        env:
+          VERSION: ${{ needs.environment.outputs.version }}
+          APP_NAME: ${{ needs.environment.outputs.app_name }}
+        run: |
+          wix build `
+            -d Version="$env:VERSION" `
+            -d BinaryPath="dist/$env:APP_NAME-daemon-windows-amd64.exe" `
+            -o "dist/$env:APP_NAME.msi" `
+            install/windows/savecraft.wxs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: |
+            dist/${{ needs.environment.outputs.app_name }}-daemon-windows-*
+            dist/${{ needs.environment.outputs.app_name }}.msi
+
   sign:
     name: Sign
-    needs: [environment, build]
+    needs: [environment, build, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -159,6 +211,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: daemon-artifacts
+          path: dist
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-artifacts
           path: dist
 
       - name: Decode signing key
@@ -180,7 +237,7 @@ jobs:
           APP_NAME: ${{ needs.environment.outputs.app_name }}
         run: |
           cd dist
-          sha256sum "${APP_NAME}"-daemon-* > checksums-sha256.txt
+          sha256sum "${APP_NAME}"-daemon-* "${APP_NAME}.msi" > checksums-sha256.txt
 
       - name: Clean up signing key
         if: always()
@@ -191,6 +248,7 @@ jobs:
           name: signed-daemon-artifacts
           path: |
             dist/${{ needs.environment.outputs.app_name }}-daemon-*
+            dist/${{ needs.environment.outputs.app_name }}.msi
             dist/checksums-sha256.txt
 
   upload-r2:
@@ -224,9 +282,9 @@ jobs:
           # Build platforms object from checksums
           platforms="{}"
           while IFS='  ' read -r hash filename; do
-            # Skip sig files and checksums file itself
+            # Skip sig files, MSI, and checksums file itself
             case "$filename" in
-              *.sig|checksums-*) continue ;;
+              *.sig|*.msi|checksums-*) continue ;;
             esac
             # Extract platform from filename: {app_name}-daemon-linux-amd64 → linux-amd64
             platform="${filename#"${APP_NAME}"-daemon-}"
@@ -262,6 +320,19 @@ jobs:
             # Unversioned (latest alias for install.sh)
             wrangler r2 object put "${R2_BUCKET}/daemon/${filename}" --file="$f" --remote
           done
+
+      - name: Upload MSI to R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_BUCKET: ${{ needs.environment.outputs.r2_bucket }}
+          VERSION: ${{ needs.environment.outputs.version }}
+          APP_NAME: ${{ needs.environment.outputs.app_name }}
+        run: |
+          # Versioned (immutable archive)
+          wrangler r2 object put "${R2_BUCKET}/daemon/v${VERSION}/${APP_NAME}.msi" --file="dist/${APP_NAME}.msi" --remote
+          # Unversioned (latest for install page)
+          wrangler r2 object put "${R2_BUCKET}/daemon/${APP_NAME}.msi" --file="dist/${APP_NAME}.msi" --remote
 
       - name: Upload manifest to R2
         env:
@@ -324,6 +395,7 @@ jobs:
             --generate-notes \
             $notes_flag \
             dist/"${APP_NAME}"-daemon-* \
+            dist/"${APP_NAME}".msi \
             dist/checksums-sha256.txt
 
       - name: Notify Discord (release)

@@ -2,6 +2,7 @@ interface Env {
 	INSTALL_URL: string;
 	SERVER_URL: string;
 	REDIRECT_URL: string;
+	APP_NAME: string;
 	INSTALL: R2Bucket;
 }
 
@@ -22,6 +23,10 @@ function isCli(userAgent: string): boolean {
 	return CLI_PATTERNS.some((p) => lower.includes(p));
 }
 
+function isWindows(userAgent: string): boolean {
+	return userAgent.includes('Windows');
+}
+
 async function readJson<T>(bucket: R2Bucket, key: string): Promise<T | null> {
 	const obj = await bucket.get(key);
 	if (!obj) return null;
@@ -32,6 +37,9 @@ async function handleInstallScript(request: Request, env: Env): Promise<Response
 	const ua = request.headers.get('user-agent') ?? '';
 
 	if (!isCli(ua)) {
+		if (isWindows(ua)) {
+			return Response.redirect(`${env.INSTALL_URL}/daemon/${env.APP_NAME}.msi`, 302);
+		}
 		return Response.redirect(env.REDIRECT_URL, 302);
 	}
 

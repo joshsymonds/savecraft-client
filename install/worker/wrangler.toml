@@ -6,6 +6,7 @@ compatibility_date = "2024-12-01"
 INSTALL_URL = "https://install.savecraft.gg"
 SERVER_URL = "https://api.savecraft.gg"
 REDIRECT_URL = "https://savecraft.gg"
+APP_NAME = "savecraft"
 
 [[r2_buckets]]
 binding = "INSTALL"
@@ -22,6 +23,7 @@ routes = [
 INSTALL_URL = "https://install.savecraft.gg"
 SERVER_URL = "https://api.savecraft.gg"
 REDIRECT_URL = "https://savecraft.gg"
+APP_NAME = "savecraft"
 
 [[env.production.r2_buckets]]
 binding = "INSTALL"
@@ -38,6 +40,7 @@ routes = [
 INSTALL_URL = "https://install-staging.savecraft.gg"
 SERVER_URL = "https://staging-api.savecraft.gg"
 REDIRECT_URL = "https://staging.savecraft.gg"
+APP_NAME = "savecraft-staging"
 
 [[env.staging.r2_buckets]]
 binding = "INSTALL"

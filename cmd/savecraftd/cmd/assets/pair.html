@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', -apple-system, sans-serif;
+    background: #0f0f1a;
+    color: #e0e0e0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    overflow: hidden;
+  }
+
+  /* Subtle grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(46, 204, 113, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(46, 204, 113, 0.03) 1px, transparent 1px);
+    background-size: 32px 32px;
+    pointer-events: none;
+  }
+
+  .logo {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: #2ecc71;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+
+  .logo span {
+    color: #e0e0e0;
+    font-weight: 300;
+  }
+
+  h1 {
+    font-size: 18px;
+    font-weight: 400;
+    color: #aaa;
+    margin-bottom: 32px;
+  }
+
+  .input-wrap {
+    position: relative;
+    margin-bottom: 20px;
+  }
+
+  input {
+    width: 240px;
+    padding: 14px 16px;
+    font-size: 28px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    letter-spacing: 8px;
+    text-align: center;
+    background: #1a1a2e;
+    border: 2px solid #2a2a3e;
+    border-radius: 8px;
+    color: #fff;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  input:focus {
+    border-color: #2ecc71;
+  }
+
+  input::placeholder {
+    letter-spacing: 4px;
+    font-size: 16px;
+    color: #555;
+  }
+
+  button {
+    width: 240px;
+    padding: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    background: #2ecc71;
+    color: #0f0f1a;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, opacity 0.2s;
+  }
+
+  button:hover { background: #27ae60; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .status {
+    margin-top: 16px;
+    font-size: 13px;
+    min-height: 20px;
+    text-align: center;
+  }
+
+  .status.error { color: #e74c3c; }
+  .status.success { color: #2ecc71; }
+  .status.loading { color: #888; }
+</style>
+</head>
+<body>
+  <div class="logo">SAVE<span>CRAFT</span></div>
+  <h1>Pair this device</h1>
+  <div class="input-wrap">
+    <input id="code" type="text" maxlength="6" placeholder="000000"
+           pattern="\d{6}" inputmode="numeric" autofocus>
+  </div>
+  <button id="btn" onclick="submit()">Connect</button>
+  <div id="status" class="status"></div>
+
+<script>
+  const codeEl = document.getElementById('code');
+  const btnEl = document.getElementById('btn');
+  const statusEl = document.getElementById('status');
+
+  // Only allow digits, auto-submit on 6.
+  codeEl.addEventListener('input', () => {
+    codeEl.value = codeEl.value.replace(/\D/g, '').slice(0, 6);
+  });
+
+  codeEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && codeEl.value.length === 6) submit();
+  });
+
+  async function submit() {
+    const code = codeEl.value.trim();
+    if (code.length !== 6 || !/^\d{6}$/.test(code)) {
+      showStatus('Enter a 6-digit code', 'error');
+      return;
+    }
+
+    btnEl.disabled = true;
+    showStatus('Pairing...', 'loading');
+
+    try {
+      await window.pair(code);
+      showStatus('Paired successfully!', 'success');
+      btnEl.textContent = 'Done';
+    } catch (err) {
+      showStatus(err.toString(), 'error');
+      btnEl.disabled = false;
+      codeEl.focus();
+      codeEl.select();
+    }
+  }
+
+  function showStatus(msg, cls) {
+    statusEl.textContent = msg;
+    statusEl.className = 'status ' + cls;
+  }
+</script>
+</body>
+</html>

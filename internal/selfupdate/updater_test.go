@@ -324,6 +324,56 @@ func TestIsNewer(t *testing.T) {
 	}
 }
 
+func TestReplaceBinary_ReplacesContent(t *testing.T) {
+	targetDir := t.TempDir()
+	binaryPath := filepath.Join(targetDir, "savecraftd.exe")
+
+	// Write "old" binary.
+	if err := os.WriteFile(binaryPath, []byte("old-daemon"), 0o755); err != nil {
+		t.Fatalf("write old: %v", err)
+	}
+
+	// Write "new" binary to a temp location.
+	newBinary := filepath.Join(t.TempDir(), "new-daemon.tmp")
+	if err := os.WriteFile(newBinary, []byte("new-daemon-v2"), 0o644); err != nil {
+		t.Fatalf("write new: %v", err)
+	}
+
+	if err := replaceBinary(newBinary, binaryPath); err != nil {
+		t.Fatalf("replaceBinary: %v", err)
+	}
+
+	got, err := os.ReadFile(binaryPath)
+	if err != nil {
+		t.Fatalf("read replaced: %v", err)
+	}
+	if string(got) != "new-daemon-v2" {
+		t.Errorf("content = %q, want %q", got, "new-daemon-v2")
+	}
+}
+
+func TestReplaceBinary_WorksWhenTargetDoesNotExist(t *testing.T) {
+	targetDir := t.TempDir()
+	binaryPath := filepath.Join(targetDir, "savecraftd.exe")
+
+	newBinary := filepath.Join(t.TempDir(), "new-daemon.tmp")
+	if err := os.WriteFile(newBinary, []byte("fresh-install"), 0o644); err != nil {
+		t.Fatalf("write new: %v", err)
+	}
+
+	if err := replaceBinary(newBinary, binaryPath); err != nil {
+		t.Fatalf("replaceBinary: %v", err)
+	}
+
+	got, err := os.ReadFile(binaryPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if string(got) != "fresh-install" {
+		t.Errorf("content = %q, want %q", got, "fresh-install")
+	}
+}
+
 func TestCheck_DowngradeNotReturned(t *testing.T) {
 	manifest := manifestResponse{
 		Version: "0.1.0",

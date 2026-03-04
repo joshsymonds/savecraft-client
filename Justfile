@@ -203,13 +203,23 @@ sign-plugins:
     done
 
 # Cross-compile daemon binary: just build-daemon linux amd64
+# Windows builds use CGO_ENABLED=1 (for systray + webview) and suppress the console window.
+# All other platforms use CGO_ENABLED=0 for static binaries.
 build-daemon os arch version="dev" server_url="https://api.savecraft.gg" install_url="https://install.savecraft.gg" app_name="savecraft" status_port="9182" frontend_url="https://savecraft.gg":
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p dist
-    CGO_ENABLED=0 GOOS={{os}} GOARCH={{arch}} go build \
-        -ldflags "-s -w -X main.version={{version}} -X main.serverURLDefault={{server_url}} -X main.installURLDefault={{install_url}} -X main.appName={{app_name}} -X main.statusPortDefault={{status_port}} -X main.frontendURLDefault={{frontend_url}}" \
-        -o "dist/{{app_name}}-daemon-{{os}}-{{arch}}" \
+    cgo=0
+    ldflags="-s -w -X main.version={{version}} -X main.serverURLDefault={{server_url}} -X main.installURLDefault={{install_url}} -X main.appName={{app_name}} -X main.statusPortDefault={{status_port}} -X main.frontendURLDefault={{frontend_url}}"
+    output="dist/{{app_name}}-daemon-{{os}}-{{arch}}"
+    if [[ "{{os}}" == "windows" ]]; then
+        cgo=1
+        ldflags="${ldflags} -H=windowsgui"
+        output="${output}.exe"
+    fi
+    CGO_ENABLED="${cgo}" GOOS={{os}} GOARCH={{arch}} go build \
+        -ldflags "${ldflags}" \
+        -o "${output}" \
         ./cmd/savecraftd/
 
 # Build daemon for all release platforms
@@ -219,6 +229,14 @@ build-daemon-all version="dev" server_url="https://api.savecraft.gg" install_url
     just build-daemon darwin amd64 {{version}} {{server_url}} {{install_url}} {{app_name}} {{status_port}} {{frontend_url}}
     just build-daemon darwin arm64 {{version}} {{server_url}} {{install_url}} {{app_name}} {{status_port}} {{frontend_url}}
     just build-daemon windows amd64 {{version}} {{server_url}} {{install_url}} {{app_name}} {{status_port}} {{frontend_url}}
+
+# Build Windows MSI installer (requires WiX v4: dotnet tool install --global wix)
+build-msi version="1.0.0" app_name="savecraft":
+    wix build \
+        -d Version={{version}} \
+        -d BinaryPath=dist/{{app_name}}-daemon-windows-amd64.exe \
+        -o dist/{{app_name}}.msi \
+        install/windows/savecraft.wxs
 
 # Run install Worker tests
 test-install-worker:
