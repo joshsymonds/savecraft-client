@@ -8,7 +8,7 @@
 | Durable Objects | Per-user WebSocket hub for daemon ↔ web UI real-time communication | Requires Workers Paid ($5/mo); $0.15/M requests, $12.50/M GB-s duration |
 | R2 (`savecraft-saves`) | User save snapshots | 10M reads, 1M writes/month |
 | R2 (`savecraft-plugins`) | Plugin binaries and manifests | (shared free tier) |
-| D1 | User accounts, device configs, device events, save UUID mapping, note content, FTS5 search index, plugin registry metadata | 5M rows read, 100K writes/day |
+| D1 | User accounts, source configs, source events, save UUID mapping, note content, FTS5 search index, plugin registry metadata | 5M rows read, 100K writes/day |
 | Workers for Platforms | Dispatch namespace for reference plugin Workers (drop calculators, etc.) | $25/month flat (included in Workers Paid plan) |
 
 **Cost projections:**
@@ -26,14 +26,14 @@
 
 ### Principle: R2 is Private, Server Mediates All Access
 
-Neither R2 bucket has public access. The Worker (with R2 bindings) is the only reader/writer. Save access is scoped to the authenticated device's `devices/{device_uuid}/` prefix. Plugin access is unauthenticated but read-only via the manifest API endpoint.
+Neither R2 bucket has public access. The Worker (with R2 bindings) is the only reader/writer. Save access is scoped to the authenticated source's `sources/{source_uuid}/` prefix. Plugin access is unauthenticated but read-only via the manifest API endpoint.
 
 ### Daemon → Cloud Push
 
-- Daemon authenticates with device token (`dvt_*`), verified via SHA-256 hash lookup in D1.
+- Daemon authenticates with source token (`sct_*`), verified via SHA-256 hash lookup in D1.
 - Server validates: well-formed JSON, under 5MB, expected top-level structure.
-- Write scoped to device's R2 prefix only (`devices/{device_uuid}/`).
-- Device token is issued at registration (`POST /api/v1/device/register`) and persisted locally by the daemon.
+- Write scoped to source's R2 prefix only (`sources/{source_uuid}/`).
+- Source token is issued at registration (`POST /api/v1/source/register`) and persisted locally by the daemon.
 
 ### WASM Plugin Security
 
@@ -110,8 +110,8 @@ The install script:
 4. Verifies Ed25519 signatures against baked-in public key
 5. Delegates service registration to `savecraftd install` (generates systemd unit with sandboxing)
 6. Starts the service via `savecraftd start`
-7. Daemon self-registers on first boot (`POST /api/v1/device/register`), receives a device token and 6-digit link code
-8. Prints link URL — user visits it to link the device to their account
+7. Daemon self-registers on first boot (`POST /api/v1/source/register`), receives a source token and 6-digit link code
+8. Prints link URL — user visits it to link the source to their account
 
 **No root required.** Everything installs in `~/.local/bin/` and `~/.config/`. The daemon runs as a systemd user service under the current user. The tray binary is standalone — users can add it to their desktop environment's autostart (XDG autostart, GNOME Tweaks, etc.) if desired. `inotify` (used by fsnotify) only needs read permission on watched directories.
 

@@ -197,7 +197,7 @@ data_sources = [
 | `default_paths` | yes | Per-OS default save directory (env vars and `~` expanded by daemon) |
 | `reference.modules.*` | no | Reference modules for server-side computation (name, description, attribution) |
 
-The daemon resolves environment variables and `~` in default paths at startup. If a declared path exists, it auto-configures. The user can override paths via the web settings UI; overrides are stored per-device in D1.
+The daemon resolves environment variables and `~` in default paths at startup. If a declared path exists, it auto-configures. The user can override paths via the web settings UI; overrides are stored per-source in D1.
 
 ## Reference Modules (Server-Side WASM)
 

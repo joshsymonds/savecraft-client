@@ -4,19 +4,19 @@
 
 The daemon orchestrator (`internal/daemon/`) defines interfaces for all external dependencies: `Watcher`, `Runner`, `PushClient`, `WSClient`, `FS`, `PluginManager`. Tests inject hand-written fakes. Real implementations live in separate packages (`internal/runner/`, `internal/watcher/`, etc.) and satisfy the interfaces implicitly.
 
-The `Daemon.Run()` loop: register device (if first boot) → connect WebSocket → send `DaemonOnline` → scan configured games → enter event loop (file events, WS commands, context cancellation). On shutdown, send `DaemonOffline`.
+The `Daemon.Run()` loop: register source (if first boot) → connect WebSocket → send `SourceOnline` → scan configured games → enter event loop (file events, WS commands, context cancellation). On shutdown, send `SourceOffline`.
 
-## First-Boot Device Registration
+## First-Boot Source Registration
 
-On first boot, the daemon has no device token. It self-registers by calling `POST /api/v1/device/register` (unauthenticated). The server returns a `dvt_*` device token, device UUID, and a 6-digit link code (20-minute TTL).
+On first boot, the daemon has no source token. It self-registers as a source by calling `POST /api/v1/source/register` (unauthenticated). The server returns a `sct_*` source token, source UUID, and a 6-digit link code (20-minute TTL).
 
 The daemon:
-1. Persists the device token and UUID to local config (`~/.config/savecraft/device.json`)
+1. Persists the source token and UUID to local config (`~/.config/savecraft/device.json`)
 2. Displays the 6-digit link code to the user (CLI output, tray notification, or terminal banner)
-3. Polls `GET /api/v1/device/status` periodically to check if the user has linked the device
-4. If the link code expires before linking, calls `POST /api/v1/device/link-code` to get a fresh code
+3. Polls `GET /api/v1/source/status` periodically to check if the user has linked the source
+4. If the link code expires before linking, calls `POST /api/v1/source/link-code` to get a fresh code
 
-On subsequent boots, the daemon reads the persisted token and skips registration. The push API and WebSocket both authenticate with this device token.
+On subsequent boots, the daemon reads the persisted token and skips registration. The push API and WebSocket both authenticate with this source token.
 
 ## Filesystem Watching
 
@@ -40,7 +40,7 @@ This handles:
 
 ## Save Directory Discovery
 
-1. On startup, after sending `DaemonOnline`, daemon calls `PluginManager.Manifests()` to get the full plugin manifest.
+1. On startup, after sending `SourceOnline`, daemon calls `PluginManager.Manifests()` to get the full plugin manifest.
 2. For each plugin, picks the `default_paths` entry for the current OS (`runtime.GOOS`).
 3. Expands path templates: `~` → home directory, `%VAR%` → environment variable.
 4. Checks if path exists on disk via `FS.Stat()`. If exists, counts matching files by extension via `FS.ReadDir()`.
@@ -66,12 +66,12 @@ This handles:
 Uses `nhooyr.io/websocket` for context-aware WebSocket with clean shutdown.
 
 **Connection lifecycle:**
-1. On startup, connect to `wss://api.savecraft.gg/ws/daemon` (or `wss://staging-api.savecraft.gg/ws/daemon` for staging) with bearer token in header. The WebSocket connection is authenticated via API key and requires the device to be linked to a user, since the DaemonHub DO is keyed by user UUID. (Push API uses the device token `dvt_*` separately.)
-2. On connect success, send `daemon_online` event.
+1. On startup, connect to `wss://api.savecraft.gg/ws/daemon` (or `wss://staging-api.savecraft.gg/ws/daemon` for staging) with bearer token in header. The WebSocket connection is authenticated via API key and requires the source to be linked to a user, since the DaemonHub DO is keyed by user UUID. (Push API uses the source token `sct_*` separately.)
+2. On connect success, send `source_online` event.
 3. Listen for incoming messages (config updates, rescan commands) in a goroutine.
 4. Send status events as they occur (parse results, errors, game detection).
 5. On disconnect, reconnect with exponential backoff: 1s → 2s → 4s → 8s → ... → 60s cap.
-6. On graceful shutdown (SIGTERM), send `daemon_offline` event, close connection.
+6. On graceful shutdown (SIGTERM), send `source_offline` event, close connection.
 
 **Graceful degradation:** If the WebSocket is down, the daemon continues operating locally — watching files, parsing saves, queuing push API calls. Status events are dropped (not queued) during disconnection. The push API (HTTP POST) is independent of the WebSocket; save data always reaches R2 even if the real-time channel is down.
 
