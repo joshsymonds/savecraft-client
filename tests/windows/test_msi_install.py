@@ -106,7 +106,7 @@ def test_daemon_runs():
         timeout=10,
     )
     assert result.returncode == 0, f"Daemon exited with {result.returncode}: {result.stderr}"
-    assert len(result.stdout.strip()) > 0, "No version output"
+    assert len(result.stdout.strip()) > 0, f"No version output (stdout={result.stdout!r}, stderr={result.stderr!r})"
 
 
 def test_uninstall_removes_daemon():
