@@ -255,9 +255,10 @@ build-tray-all app_name="savecraft":
     just build-tray darwin arm64 {{app_name}}
     just build-tray windows amd64 {{app_name}}
 
-# Build Windows MSI installer (requires WiX v4: dotnet tool install --global wix)
+# Build Windows MSI installer (requires WiX v5: dotnet tool install --global wix --version 5.0.2)
 build-msi version="1.0.0" app_name="savecraft":
     wix build \
+        -arch x64 \
         -d Version={{version}} \
         -d DaemonPath=dist/{{app_name}}-daemon-windows-amd64.exe \
         -d TrayPath=dist/{{app_name}}-tray-windows-amd64.exe \

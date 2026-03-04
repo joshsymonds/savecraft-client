@@ -52,6 +52,7 @@ jobs:
       - name: Build MSI
         run: |
           wix build `
+            -arch x64 `
             -d Version="1.0.0" `
             -d DaemonPath="dist/savecraft-daemon-windows-amd64.exe" `
             -d TrayPath="dist/savecraft-tray-windows-amd64.exe" `

@@ -192,8 +192,8 @@ jobs:
           APP_NAME: ${{ needs.environment.outputs.app_name }}
         run: just build-tray windows amd64 "$env:APP_NAME"
 
-      - name: Install WiX v4
-        run: dotnet tool install --global wix
+      - name: Install WiX v5
+        run: dotnet tool install --global wix --version 5.0.2
 
       - name: Build MSI
         env:
@@ -201,6 +201,7 @@ jobs:
           APP_NAME: ${{ needs.environment.outputs.app_name }}
         run: |
           wix build `
+            -arch x64 `
             -d Version="$env:VERSION" `
             -d DaemonPath="dist/$env:APP_NAME-daemon-windows-amd64.exe" `
             -d TrayPath="dist/$env:APP_NAME-tray-windows-amd64.exe" `
