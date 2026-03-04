@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -565,13 +566,7 @@ var roomIndex = map[string]int{
 
 func buildBundlesSection(save *SaveGame) map[string]any {
 	// Detect Joja route
-	isJoja := false
-	for _, m := range save.Player.MailReceived.Values {
-		if m == "JojaMember" {
-			isJoja = true
-			break
-		}
-	}
+	isJoja := slices.Contains(save.Player.MailReceived.Values, "JojaMember")
 
 	route := "Community Center"
 	if isJoja {
@@ -778,10 +773,7 @@ func resolveItemID(keyInt int, keyStr string) int {
 	if keyInt != 0 {
 		return keyInt
 	}
-	s := keyStr
-	if strings.HasPrefix(s, "(O)") {
-		s = s[3:]
-	}
+	s := strings.TrimPrefix(keyStr, "(O)")
 	id, _ := strconv.Atoi(s)
 	return id
 }
@@ -1367,20 +1359,17 @@ func buildSprinklerZones(sprinklers []sprinklerInfo, farm *GameLocation) []map[s
 	}
 
 	// Sort by total crops descending, cap at 100
-	for i := 0; i < len(zones); i++ {
+	for i := range len(zones) {
 		for j := i + 1; j < len(zones); j++ {
 			if zoneCropTotal(zones[j]) > zoneCropTotal(zones[i]) {
 				zones[i], zones[j] = zones[j], zones[i]
 			}
 		}
 	}
-	cap := 100
-	if len(zones) < cap {
-		cap = len(zones)
-	}
+	cap := min(100, len(zones))
 
 	result := make([]map[string]any, 0, cap)
-	for i := 0; i < cap; i++ {
+	for i := range cap {
 		z := zones[i]
 		cropList := make([]map[string]any, 0, len(z.crops))
 		for name, count := range z.crops {
