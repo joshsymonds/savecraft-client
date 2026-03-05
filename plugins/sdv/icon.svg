@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Pixel-art sprout/seedling for Stardew Valley -->
+  <!-- Stem -->
+  <rect x="15" y="14" width="2" height="2" fill="#5abe8a"/>
+  <rect x="15" y="16" width="2" height="2" fill="#5abe8a"/>
+  <rect x="15" y="18" width="2" height="2" fill="#4a9a6a"/>
+  <rect x="15" y="20" width="2" height="2" fill="#4a9a6a"/>
+  <!-- Left leaf -->
+  <rect x="11" y="10" width="2" height="2" fill="#5abe8a"/>
+  <rect x="13" y="10" width="2" height="2" fill="#5abe8a"/>
+  <rect x="11" y="12" width="2" height="2" fill="#4a9a6a"/>
+  <rect x="13" y="12" width="2" height="2" fill="#5abe8a"/>
+  <rect x="15" y="12" width="2" height="2" fill="#5abe8a"/>
+  <rect x="9" y="12" width="2" height="2" fill="#5abe8a"/>
+  <!-- Right leaf -->
+  <rect x="17" y="8" width="2" height="2" fill="#5abe8a"/>
+  <rect x="19" y="8" width="2" height="2" fill="#5abe8a"/>
+  <rect x="17" y="10" width="2" height="2" fill="#5abe8a"/>
+  <rect x="19" y="10" width="2" height="2" fill="#4a9a6a"/>
+  <rect x="21" y="10" width="2" height="2" fill="#5abe8a"/>
+  <!-- Top bud -->
+  <rect x="15" y="6" width="2" height="2" fill="#e8c86e"/>
+  <rect x="13" y="8" width="2" height="2" fill="#5abe8a"/>
+  <rect x="15" y="8" width="2" height="2" fill="#e8c86e"/>
+  <!-- Soil -->
+  <rect x="11" y="22" width="2" height="2" fill="#4a5080"/>
+  <rect x="13" y="22" width="2" height="2" fill="#4a5080"/>
+  <rect x="15" y="22" width="2" height="2" fill="#4a5080"/>
+  <rect x="17" y="22" width="2" height="2" fill="#4a5080"/>
+  <rect x="19" y="22" width="2" height="2" fill="#4a5080"/>
+  <rect x="9" y="22" width="2" height="2" fill="#3a4060"/>
+  <rect x="21" y="22" width="2" height="2" fill="#3a4060"/>
+</svg>
