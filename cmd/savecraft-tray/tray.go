@@ -114,6 +114,7 @@ func (a *trayApp) updateStatus(mStatus *systray.MenuItem) {
 
 	resp, err := a.client.Boot(ctx)
 	if err != nil {
+		a.hideLinkAccount()
 		mStatus.SetTitle("Daemon offline")
 		mStatus.SetTooltip("Cannot reach daemon at localhost")
 		systray.SetTooltip("Savecraft — offline")
@@ -121,7 +122,20 @@ func (a *trayApp) updateStatus(mStatus *systray.MenuItem) {
 		return
 	}
 
+	// When registered, poll /link for the pairing URL.
+	var linkAvailable bool
+
+	if resp.State == localapi.StateRegistered {
+		linkAvailable = a.updateLinkAccount(ctx)
+	} else {
+		a.hideLinkAccount()
+	}
+
 	title := stateTitle(resp.State)
+	if linkAvailable {
+		title = "Registered — click Link Account"
+	}
+
 	mStatus.SetTitle(title)
 
 	if resp.Error != "" {
@@ -131,6 +145,25 @@ func (a *trayApp) updateStatus(mStatus *systray.MenuItem) {
 	}
 
 	systray.SetTooltip("Savecraft — " + title)
+}
+
+func (a *trayApp) updateLinkAccount(ctx context.Context) bool {
+	linkResp, status, err := a.client.Link(ctx)
+	if err != nil || status != 200 || linkResp.LinkURL == "" {
+		a.hideLinkAccount()
+
+		return false
+	}
+
+	a.linkURL = linkResp.LinkURL
+	a.mLinkAccount.Show()
+
+	return true
+}
+
+func (a *trayApp) hideLinkAccount() {
+	a.linkURL = ""
+	a.mLinkAccount.Hide()
 }
 
 func stateTitle(state localapi.State) string {
