@@ -14,6 +14,7 @@ worker/.dev.vars
 /bin/
 /vendor/
 /savecraftd
+/savecraft-tray
 /plugin-manifest
 
 # Compiled WASM plugins and binaries
