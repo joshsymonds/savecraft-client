@@ -26,15 +26,15 @@ func TestRegister(t *testing.T) {
 			}
 
 			var body struct {
-				SourceName string `json:"source_name"`
+				Hostname string `json:"hostname"`
 			}
 
 			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
 
-			if body.SourceName != "test-host" {
-				t.Errorf("source_name = %q, want test-host", body.SourceName)
+			if body.Hostname != "test-host" {
+				t.Errorf("hostname = %q, want test-host", body.Hostname)
 			}
 
 			rw.Header().Set("Content-Type", "application/json")
@@ -42,7 +42,7 @@ func TestRegister(t *testing.T) {
 
 			if err := json.NewEncoder(rw).Encode(map[string]string{
 				"source_uuid":          "d1e2f3a4-5678-90ab-cdef-1234567890ab",
-				"token":                "dvt_testtoken123",
+				"source_token":         "dvt_testtoken123",
 				"link_code":            "482913",
 				"link_code_expires_at": "2026-03-03T12:20:00Z",
 			}); err != nil {

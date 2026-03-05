@@ -13,7 +13,7 @@ import (
 // JSON tags use snake_case to match the server API wire format.
 type RegisterResult struct {
 	SourceUUID        string `json:"source_uuid"`
-	Token             string `json:"token"`
+	Token             string `json:"source_token"`
 	LinkCode          string `json:"link_code"`
 	LinkCodeExpiresAt string `json:"link_code_expires_at"`
 }
@@ -64,7 +64,7 @@ func Status(ctx context.Context, baseURL, authToken string) (*StatusResult, erro
 // Register calls POST /api/v1/source/register to create a new source.
 // The sourceName is a human-readable label (typically the hostname).
 func Register(ctx context.Context, baseURL, sourceName string) (*RegisterResult, error) {
-	payload, err := json.Marshal(map[string]string{"source_name": sourceName})
+	payload, err := json.Marshal(map[string]string{"hostname": sourceName})
 	if err != nil {
 		return nil, fmt.Errorf("marshal register request: %w", err)
 	}

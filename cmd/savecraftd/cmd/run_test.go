@@ -147,7 +147,7 @@ func TestAutoRegister_RegistersAndPersists(t *testing.T) {
 		}
 
 		var body struct {
-			SourceName string `json:"source_name"`
+			Hostname string `json:"hostname"`
 		}
 
 		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
@@ -158,7 +158,7 @@ func TestAutoRegister_RegistersAndPersists(t *testing.T) {
 		rw.WriteHeader(http.StatusCreated)
 		json.NewEncoder(rw).Encode(map[string]string{
 			"source_uuid":          "test-uuid-1234",
-			"token":                "dvt_testtoken",
+			"source_token":         "dvt_testtoken",
 			"link_code":            "123456",
 			"link_code_expires_at": "2026-03-03T12:20:00Z",
 		})
