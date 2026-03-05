@@ -19,6 +19,10 @@ type trayApp struct {
 	frontendURL string
 	logger      *slog.Logger
 	cancel      context.CancelFunc
+
+	// Link Account menu item — created at startup, shown/hidden dynamically.
+	mLinkAccount *systray.MenuItem
+	linkURL      string // set by pollState, read by handleClicks
 }
 
 func (a *trayApp) onReady() {
@@ -30,6 +34,9 @@ func (a *trayApp) onReady() {
 
 	mStatus := systray.AddMenuItem("Starting...", "Daemon status")
 	mStatus.Disable()
+
+	a.mLinkAccount = systray.AddMenuItem("Link Account", "Link this source to your savecraft.gg account")
+	a.mLinkAccount.Hide()
 
 	systray.AddSeparator()
 
@@ -45,7 +52,7 @@ func (a *trayApp) onReady() {
 	mQuit := systray.AddMenuItem("Quit", "Close the tray app")
 
 	// Handle menu clicks.
-	go a.handleClicks(mCopyLogs, mRestart, mDashboard, mQuit)
+	go a.handleClicks(mCopyLogs, mRestart, mDashboard, mQuit, a.mLinkAccount)
 
 	// Poll daemon state.
 	go a.pollState(ctx, mStatus)
@@ -58,10 +65,16 @@ func (a *trayApp) onExit() {
 }
 
 func (a *trayApp) handleClicks(
-	mCopyLogs, mRestart, mDashboard, mQuit *systray.MenuItem,
+	mCopyLogs, mRestart, mDashboard, mQuit, mLinkAccount *systray.MenuItem,
 ) {
 	for {
 		select {
+		case <-mLinkAccount.ClickedCh:
+			if url := a.linkURL; url != "" {
+				if err := openBrowser(url); err != nil {
+					a.logger.Error("open link", slog.String("error", err.Error()))
+				}
+			}
 		case <-mCopyLogs.ClickedCh:
 			a.doCopyLogs()
 		case <-mRestart.ClickedCh:
