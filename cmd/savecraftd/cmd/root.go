@@ -44,7 +44,7 @@ func Execute(version, serverURL, installURL, appName, statusPort, frontendURL st
 	root.AddCommand(buildServiceCommand("start", "Start the daemon OS service", svcCfg))
 	root.AddCommand(buildStopCommand(statusPort))
 	root.AddCommand(buildRepairCommand(statusPort))
-	root.AddCommand(buildVerifyCommand(appName))
+	root.AddCommand(buildVerifyCommand(appName, serverURL))
 	root.AddCommand(buildVersionCommand(version))
 
 	if err := root.Execute(); err != nil {

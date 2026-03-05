@@ -189,7 +189,7 @@ wait_for_link() {
     local max_wait=15
     local waited=0
 
-    info "Waiting for daemon to register..."
+    info "Waiting for daemon to register..." >&2
     while [[ ${waited} -lt ${max_wait} ]]; do
         local response
         response="$(curl -sf "${base_url}/link" 2>/dev/null || true)"

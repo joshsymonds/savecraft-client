@@ -11,7 +11,7 @@ import (
 	"github.com/joshsymonds/savecraft.gg/internal/envfile"
 )
 
-func buildVerifyCommand(appName string) *cobra.Command {
+func buildVerifyCommand(appName, serverURLDefault string) *cobra.Command {
 	var serverURL string
 
 	verify := &cobra.Command{
@@ -20,17 +20,27 @@ func buildVerifyCommand(appName string) *cobra.Command {
 		Long: `Check whether the daemon's auth token is accepted by the server.
 
 Exits 0 if the token is valid, non-zero otherwise. Used by the installer
-to decide whether to skip or re-run the source linking flow.`,
+to decide whether to skip or re-run the source linking flow.
+
+If --server is not provided, the command reads SAVECRAFT_SERVER_URL from
+the daemon's env file, falling back to the compiled-in default.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runVerifyWithPath(cmd, serverURL, envfile.EnvFilePath(appName))
+			envPath := envfile.EnvFilePath(appName)
+			if serverURL == "" {
+				vars, err := envfile.Read(envPath)
+				if err != nil {
+					return fmt.Errorf("read env file: %w", err)
+				}
+				serverURL = vars["SAVECRAFT_SERVER_URL"]
+			}
+			if serverURL == "" {
+				serverURL = serverURLDefault
+			}
+			return runVerifyWithPath(cmd, serverURL, envPath)
 		},
 	}
 
-	verify.Flags().StringVar(&serverURL, "server", "", "server URL to verify against (required)")
-
-	if err := verify.MarkFlagRequired("server"); err != nil {
-		verify.Printf("warning: could not mark server flag required: %v\n", err)
-	}
+	verify.Flags().StringVar(&serverURL, "server", "", "server URL to verify against (reads from env file if not set)")
 
 	return verify
 }

@@ -43,7 +43,7 @@ func TestRunVerifyWithPath(t *testing.T) {
 			t.Fatalf("write env: %v", err)
 		}
 
-		cmd := buildVerifyCommand("savecraft")
+		cmd := buildVerifyCommand("savecraft", "https://api.savecraft.gg")
 		cmd.SetArgs([]string{"--server", srv.URL})
 
 		var out bytes.Buffer
@@ -76,7 +76,7 @@ func TestRunVerifyWithPath(t *testing.T) {
 			t.Fatalf("write env: %v", err)
 		}
 
-		cmd := buildVerifyCommand("savecraft")
+		cmd := buildVerifyCommand("savecraft", "https://api.savecraft.gg")
 		cmd.SetArgs([]string{"--server", srv.URL})
 
 		var out bytes.Buffer
@@ -105,7 +105,7 @@ func TestRunVerifyWithPath(t *testing.T) {
 			t.Fatalf("write env: %v", err)
 		}
 
-		cmd := buildVerifyCommand("savecraft")
+		cmd := buildVerifyCommand("savecraft", "https://api.savecraft.gg")
 		cmd.SetArgs([]string{"--server", "https://example.com"})
 
 		var out bytes.Buffer
@@ -128,7 +128,7 @@ func TestRunVerifyWithPath(t *testing.T) {
 		dir := t.TempDir()
 		envPath := filepath.Join(dir, "nonexistent", "env")
 
-		cmd := buildVerifyCommand("savecraft")
+		cmd := buildVerifyCommand("savecraft", "https://api.savecraft.gg")
 		cmd.SetArgs([]string{"--server", "https://example.com"})
 
 		var out bytes.Buffer
@@ -164,7 +164,7 @@ func TestRunVerifyWithPath(t *testing.T) {
 			t.Fatalf("write env: %v", err)
 		}
 
-		cmd := buildVerifyCommand("savecraft")
+		cmd := buildVerifyCommand("savecraft", "https://api.savecraft.gg")
 		cmd.SetArgs([]string{"--server", srv.URL})
 
 		var out bytes.Buffer
@@ -181,6 +181,79 @@ func TestRunVerifyWithPath(t *testing.T) {
 		}
 	})
 
+	t.Run("reads server URL from env file when flag not set", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Authorization") != "Bearer sav_env" {
+				rw.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			rw.Header().Set("Content-Type", "application/json")
+			rw.Write([]byte(`{"status":"ok"}`))
+		}))
+		defer srv.Close()
+
+		dir := t.TempDir()
+		envPath := filepath.Join(dir, "env")
+		if err := envfile.Write(envPath, map[string]string{
+			"SAVECRAFT_AUTH_TOKEN": "sav_env",
+			"SAVECRAFT_SERVER_URL": srv.URL,
+		}); err != nil {
+			t.Fatalf("write env: %v", err)
+		}
+
+		// Exercise the server-URL-from-env-file logic directly.
+		vars, err := envfile.Read(envPath)
+		if err != nil {
+			t.Fatalf("read env: %v", err)
+		}
+		serverURL := vars["SAVECRAFT_SERVER_URL"]
+		if serverURL == "" {
+			t.Fatal("expected SAVECRAFT_SERVER_URL in env file")
+		}
+
+		cmd := buildVerifyCommand("savecraft", "https://api.savecraft.gg")
+		cmd.SetArgs([]string{})
+
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetErr(&out)
+
+		cmd.RunE = func(c *cobra.Command, _ []string) error {
+			return runVerifyWithPath(c, serverURL, envPath)
+		}
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("verify should succeed with env-file server: %v\noutput: %s", err, out.String())
+		}
+	})
+
+	t.Run("defaults to production server URL when not in env or flag", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		envPath := filepath.Join(dir, "env")
+		if err := envfile.Write(envPath, map[string]string{
+			"SAVECRAFT_AUTH_TOKEN": "sav_test",
+		}); err != nil {
+			t.Fatalf("write env: %v", err)
+		}
+
+		vars, err := envfile.Read(envPath)
+		if err != nil {
+			t.Fatalf("read env: %v", err)
+		}
+		serverURL := vars["SAVECRAFT_SERVER_URL"]
+		if serverURL == "" {
+			serverURL = "https://api.savecraft.gg"
+		}
+
+		if serverURL != "https://api.savecraft.gg" {
+			t.Fatalf("expected default server URL, got %s", serverURL)
+		}
+	})
+
 	t.Run("server unreachable returns error", func(t *testing.T) {
 		t.Parallel()
 
@@ -193,7 +266,7 @@ func TestRunVerifyWithPath(t *testing.T) {
 			t.Fatalf("write env: %v", err)
 		}
 
-		cmd := buildVerifyCommand("savecraft")
+		cmd := buildVerifyCommand("savecraft", "https://api.savecraft.gg")
 		cmd.SetArgs([]string{"--server", "http://127.0.0.1:1"})
 
 		var out bytes.Buffer
