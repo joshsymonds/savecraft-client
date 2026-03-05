@@ -24,6 +24,43 @@ type LinkCodeResult struct {
 	ExpiresAt string `json:"expires_at"`
 }
 
+// StatusResult holds the response from GET /api/v1/source/status.
+type StatusResult struct {
+	Linked            bool   `json:"linked"`
+	LinkCode          string `json:"link_code,omitempty"`
+	LinkCodeExpiresAt string `json:"link_code_expires_at,omitempty"`
+}
+
+// Status calls GET /api/v1/source/status to check whether the source is linked.
+func Status(ctx context.Context, baseURL, authToken string) (*StatusResult, error) {
+	endpoint := baseURL + "/api/v1/source/status"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create status request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+authToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("status request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("status request failed with status %d", resp.StatusCode)
+	}
+
+	var result StatusResult
+
+	if decErr := json.NewDecoder(resp.Body).Decode(&result); decErr != nil {
+		return nil, fmt.Errorf("decode status response: %w", decErr)
+	}
+
+	return &result, nil
+}
+
 // Register calls POST /api/v1/source/register to create a new source.
 // The sourceName is a human-readable label (typically the hostname).
 func Register(ctx context.Context, baseURL, sourceName string) (*RegisterResult, error) {

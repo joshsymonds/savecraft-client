@@ -119,6 +119,85 @@ func TestRegister(t *testing.T) {
 	})
 }
 
+func TestStatus(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns linked status", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+			if req.Method != http.MethodGet {
+				t.Errorf("method = %s, want GET", req.Method)
+			}
+
+			if req.URL.Path != "/api/v1/source/status" {
+				t.Errorf("path = %s, want /api/v1/source/status", req.URL.Path)
+			}
+
+			auth := req.Header.Get("Authorization")
+			if auth != "Bearer sct_testtoken" {
+				t.Errorf("Authorization = %q, want Bearer sct_testtoken", auth)
+			}
+
+			rw.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(rw).Encode(map[string]any{
+				"linked": true,
+			})
+		}))
+		defer srv.Close()
+
+		result, err := regclient.Status(context.Background(), srv.URL, "sct_testtoken")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if !result.Linked {
+			t.Error("expected linked=true")
+		}
+	})
+
+	t.Run("returns unlinked status with code", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+			rw.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(rw).Encode(map[string]any{
+				"linked":                false,
+				"link_code":             "123456",
+				"link_code_expires_at":  "2026-03-03T12:20:00Z",
+			})
+		}))
+		defer srv.Close()
+
+		result, err := regclient.Status(context.Background(), srv.URL, "sct_testtoken")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if result.Linked {
+			t.Error("expected linked=false")
+		}
+
+		if result.LinkCode != "123456" {
+			t.Errorf("link_code = %q, want 123456", result.LinkCode)
+		}
+	})
+
+	t.Run("server error returns wrapped error", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+			rw.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer srv.Close()
+
+		_, err := regclient.Status(context.Background(), srv.URL, "sct_testtoken")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
+}
+
 func TestUnlink(t *testing.T) {
 	t.Parallel()
 

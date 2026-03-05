@@ -12,6 +12,7 @@ import (
 	"github.com/joshsymonds/savecraft.gg/internal/daemon"
 	"github.com/joshsymonds/savecraft.gg/internal/envfile"
 	"github.com/joshsymonds/savecraft.gg/internal/localapi"
+	"github.com/joshsymonds/savecraft.gg/internal/regclient"
 	"github.com/joshsymonds/savecraft.gg/internal/svcmgr"
 )
 
@@ -105,7 +106,6 @@ func runDaemonLoop(
 
 	if registered {
 		linkURL := localapi.BuildLinkURL(frontendURL, regResult.LinkCode)
-		api.SetRegistered(regResult.LinkCode, linkURL, regResult.LinkCodeExpiresAt)
 		logger.InfoContext(ctx, "source registered",
 			slog.String("source_uuid", regResult.SourceUUID),
 			slog.String("link_code", regResult.LinkCode),
@@ -115,8 +115,54 @@ func runDaemonLoop(
 		if svcmgr.Interactive() {
 			fmt.Fprintf(os.Stderr, "\n  Link this source: %s\n\n", linkURL)
 		}
+
+		// Wait for the user to link the source via the web UI.
+		// waitForLink sets StateRegistered, polls for linking, auto-refreshes codes,
+		// and transitions to StateRunning when linked.
+		if linkErr := waitForLink(ctx, cfg.ServerURL, cfg.AuthToken, frontendURL,
+			api, regResult.LinkCode, regResult.LinkCodeExpiresAt,
+			5*time.Second, logger); linkErr != nil {
+			return fmt.Errorf("wait for link: %w", linkErr)
+		}
 	} else {
-		api.SetState(localapi.StateRunning)
+		// Token exists — check if source is actually linked.
+		status, statusErr := regclient.Status(ctx, cfg.ServerURL, cfg.AuthToken)
+		if statusErr != nil {
+			logger.WarnContext(ctx, "could not check source status, assuming linked",
+				slog.String("error", statusErr.Error()))
+			api.SetState(localapi.StateRunning)
+		} else if !status.Linked {
+			// Source exists but is not linked to a user — enter the linking flow.
+			logger.InfoContext(ctx, "source exists but is not linked, waiting for link")
+
+			linkCode := status.LinkCode
+			expiresAt := status.LinkCodeExpiresAt
+
+			// If no active code, generate one.
+			if linkCode == "" {
+				refreshed, refreshErr := regclient.RefreshLinkCode(ctx, cfg.ServerURL, cfg.AuthToken)
+				if refreshErr != nil {
+					api.SetError(refreshErr.Error())
+					return fmt.Errorf("generate link code for unlinked source: %w", refreshErr)
+				}
+
+				linkCode = refreshed.LinkCode
+				expiresAt = refreshed.ExpiresAt
+			}
+
+			linkURL := localapi.BuildLinkURL(frontendURL, linkCode)
+			if svcmgr.Interactive() {
+				fmt.Fprintf(os.Stderr, "\n  Link this source: %s\n\n", linkURL)
+			}
+
+			if linkErr := waitForLink(ctx, cfg.ServerURL, cfg.AuthToken, frontendURL,
+				api, linkCode, expiresAt,
+				5*time.Second, logger); linkErr != nil {
+				return fmt.Errorf("wait for link: %w", linkErr)
+			}
+		} else {
+			api.SetState(localapi.StateRunning)
+		}
 	}
 
 	binaryPath, err := os.Executable()
