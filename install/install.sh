@@ -118,7 +118,7 @@ download() {
     local out="$2"
 
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL --retry 3 --retry-delay 2 -o "${out}" "${url}"
+        curl -fSsL --retry 3 --retry-delay 2 -o "${out}" "${url}"
     elif command -v wget >/dev/null 2>&1; then
         wget -q -O "${out}" "${url}"
     else
