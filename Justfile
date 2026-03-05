@@ -219,7 +219,7 @@ build-daemon os arch version="dev" server_url="https://api.savecraft.gg" install
         ./cmd/savecraftd/
 
 # Build daemon for all release platforms
-build-daemon-all version="dev" server_url="https://api.savecraft.gg" install_url="https://install.savecraft.gg" app_name="savecraft" status_port="9182" frontend_url="https://savecraft.gg":
+build-daemon-all version="dev" server_url="https://api.savecraft.gg" install_url="https://install.savecraft.gg" app_name="savecraft" status_port="9182" frontend_url="https://my.savecraft.gg":
     just build-daemon linux amd64 {{version}} {{server_url}} {{install_url}} {{app_name}} {{status_port}} {{frontend_url}}
     just build-daemon linux arm64 {{version}} {{server_url}} {{install_url}} {{app_name}} {{status_port}} {{frontend_url}}
     just build-daemon darwin amd64 {{version}} {{server_url}} {{install_url}} {{app_name}} {{status_port}} {{frontend_url}}
@@ -229,12 +229,15 @@ build-daemon-all version="dev" server_url="https://api.savecraft.gg" install_url
 # Cross-compile tray binary: just build-tray linux amd64
 # systray uses pure Go (dbus) on Linux, WinAPI on Windows — CGO only needed for macOS (Cocoa).
 # Windows gets -H=windowsgui to suppress the console window.
-build-tray os arch app_name="savecraft":
+build-tray os arch app_name="savecraft" status_port="9182" frontend_url="https://my.savecraft.gg":
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p dist
     cgo=0
+    pkg="main"
     ldflags="-s -w"
+    ldflags="${ldflags} -X ${pkg}.defaultStatusPort={{status_port}}"
+    ldflags="${ldflags} -X ${pkg}.defaultFrontendURL={{frontend_url}}"
     output="dist/{{app_name}}-tray-{{os}}-{{arch}}"
     if [[ "{{os}}" == "darwin" ]]; then
         cgo=1
@@ -247,13 +250,9 @@ build-tray os arch app_name="savecraft":
         -o "${output}" \
         ./cmd/savecraft-tray/
 
-# Build tray for all release platforms
-build-tray-all app_name="savecraft":
-    just build-tray linux amd64 {{app_name}}
-    just build-tray linux arm64 {{app_name}}
-    just build-tray darwin amd64 {{app_name}}
-    just build-tray darwin arm64 {{app_name}}
-    just build-tray windows amd64 {{app_name}}
+# Build tray for all release platforms (Windows only — Linux uses systemd, no tray)
+build-tray-all app_name="savecraft" status_port="9182" frontend_url="https://my.savecraft.gg":
+    just build-tray windows amd64 {{app_name}} {{status_port}} {{frontend_url}}
 
 # Build Windows MSI installer (requires WiX v5: dotnet tool install --global wix --version 5.0.2)
 build-msi version="1.0.0" app_name="savecraft":

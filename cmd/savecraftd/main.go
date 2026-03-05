@@ -12,7 +12,7 @@ var serverURLDefault = "https://api.savecraft.gg"
 var installURLDefault = "https://install.savecraft.gg"
 var appName = "savecraft"
 var statusPortDefault = "9182"
-var frontendURLDefault = "https://savecraft.gg"
+var frontendURLDefault = "https://my.savecraft.gg"
 
 func main() {
 	if err := cmd.Execute(

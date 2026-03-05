@@ -53,7 +53,7 @@ func (a *trayApp) onReady() {
 
 	systray.AddSeparator()
 
-	mDashboard := systray.AddMenuItem("Open Dashboard", "Open savecraft.gg in your browser")
+	mDashboard := systray.AddMenuItem("Open Dashboard", "Open the Savecraft dashboard in your browser")
 
 	systray.AddSeparator()
 

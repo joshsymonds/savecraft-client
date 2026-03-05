@@ -146,21 +146,11 @@ jobs:
           just build-daemon darwin amd64 "$VERSION" "$SERVER_URL" "$INSTALL_URL" "$APP_NAME" "$STATUS_PORT" "$FRONTEND_URL"
           just build-daemon darwin arm64 "$VERSION" "$SERVER_URL" "$INSTALL_URL" "$APP_NAME" "$STATUS_PORT" "$FRONTEND_URL"
 
-      # systray uses pure Go (dbus) on Linux — no CGO needed, cross-compile works.
-      # TODO(#XX): macOS tray requires CGO (Cocoa) and needs a macos-latest runner.
-      - name: Build tray (Linux)
-        env:
-          APP_NAME: ${{ needs.environment.outputs.app_name }}
-        run: |
-          just build-tray linux amd64 "$APP_NAME"
-          just build-tray linux arm64 "$APP_NAME"
-
       - uses: actions/upload-artifact@v4
         with:
           name: daemon-artifacts
           path: |
             dist/${{ needs.environment.outputs.app_name }}-daemon-*
-            dist/${{ needs.environment.outputs.app_name }}-tray-linux-*
 
   build-windows:
     name: Build (Windows + MSI)
@@ -190,7 +180,9 @@ jobs:
       - name: Build tray (Windows)
         env:
           APP_NAME: ${{ needs.environment.outputs.app_name }}
-        run: just build-tray windows amd64 "$env:APP_NAME"
+          STATUS_PORT: ${{ needs.environment.outputs.status_port }}
+          FRONTEND_URL: ${{ needs.environment.outputs.frontend_url }}
+        run: just build-tray windows amd64 "$env:APP_NAME" "$env:STATUS_PORT" "$env:FRONTEND_URL"
 
       - name: Install WiX v5
         run: dotnet tool install --global wix --version 5.0.2

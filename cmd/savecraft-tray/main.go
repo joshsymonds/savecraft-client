@@ -19,9 +19,10 @@ import (
 //go:embed assets/icon.png
 var iconBytes []byte
 
-const (
+// Overridden via ldflags at build time for staging/production.
+var (
 	defaultStatusPort  = "9182"
-	defaultFrontendURL = "https://savecraft.gg"
+	defaultFrontendURL = "https://my.savecraft.gg"
 )
 
 func main() {

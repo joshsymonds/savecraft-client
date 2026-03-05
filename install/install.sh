@@ -17,19 +17,13 @@ readonly BIN_DIR="${HOME}/.local/bin"
 readonly CONFIG_DIR="${HOME}/.config/${APP_NAME}"
 readonly CACHE_DIR="${HOME}/.cache/${APP_NAME}"
 readonly BINARY_NAME="${APP_NAME}-daemon"
-readonly TRAY_NAME="${APP_NAME}-tray"
-
 # Temp files for download — module-level so the EXIT trap can clean them up.
 TMP_BINARY=""
 TMP_SIG=""
-TMP_TRAY=""
-TMP_TRAY_SIG=""
 
 cleanup() {
     if [[ -n "${TMP_BINARY}" ]]; then rm -f "${TMP_BINARY}"; fi
     if [[ -n "${TMP_SIG}" ]]; then rm -f "${TMP_SIG}"; fi
-    if [[ -n "${TMP_TRAY}" ]]; then rm -f "${TMP_TRAY}"; fi
-    if [[ -n "${TMP_TRAY_SIG}" ]]; then rm -f "${TMP_TRAY_SIG}"; fi
 }
 trap cleanup EXIT
 
@@ -305,43 +299,6 @@ main() {
         ok "Installed ${daemon_version:-${BINARY_NAME}}"
     fi
 
-    # Download and install tray binary (optional — failure does not abort)
-    local tray_artifact="${TRAY_NAME}-${os}-${arch}"
-    local tray_url="${INSTALL_URL}/daemon/${tray_artifact}"
-    local tray_sig_url="${INSTALL_URL}/daemon/${tray_artifact}.sig"
-    local tray_skip=false
-
-    if [[ -x "${BIN_DIR}/${TRAY_NAME}" ]] && [[ "${skip_download}" == "true" ]]; then
-        tray_skip=true
-    fi
-
-    if [[ "${tray_skip}" == "true" ]]; then
-        ok "Tray binary up to date"
-    else
-        TMP_TRAY="$(mktemp)"
-        TMP_TRAY_SIG="$(mktemp)"
-
-        info "Downloading ${tray_artifact}..."
-        if download "${tray_url}" "${TMP_TRAY}" 2>/dev/null; then
-            info "Downloading ${tray_artifact}.sig..."
-            if download "${tray_sig_url}" "${TMP_TRAY_SIG}" 2>/dev/null; then
-                info "Verifying tray signature..."
-                if verify_signature "${TMP_TRAY}" "${TMP_TRAY_SIG}"; then
-                    chmod +x "${TMP_TRAY}"
-                    mv -f "${TMP_TRAY}" "${BIN_DIR}/${TRAY_NAME}"
-                    TMP_TRAY=""
-                    ok "Installed ${TRAY_NAME}"
-                else
-                    warn "Tray signature verification failed — skipping tray install"
-                fi
-            else
-                warn "Could not download tray signature — skipping tray install"
-            fi
-        else
-            warn "Could not download tray binary — skipping tray install"
-        fi
-    fi
-
     # Write env file — daemon self-registers on first boot
     create_env_template
 
@@ -357,9 +314,6 @@ main() {
     echo "  Installation Summary"
     echo "  --------------------"
     echo "  Daemon:   ${BIN_DIR}/${BINARY_NAME}"
-    if [[ -x "${BIN_DIR}/${TRAY_NAME}" ]]; then
-        echo "  Tray:     ${BIN_DIR}/${TRAY_NAME}"
-    fi
     echo "  Config:   ${CONFIG_DIR}/env"
     echo "  Cache:    ${CACHE_DIR}/"
     echo ""
