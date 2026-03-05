@@ -127,7 +127,7 @@ describe("install worker", () => {
 		expect(resp.status).toBe(302);
 	});
 
-	it("prepends all four env vars into the script", async () => {
+	it("prepends all env vars into the script", async () => {
 		const resp = await SELF.fetch("https://install.savecraft.gg/", {
 			headers: { "user-agent": "curl/8.0" },
 		});
@@ -138,6 +138,7 @@ describe("install worker", () => {
 		expect(lines[2]).toBe(`SAVECRAFT_FRONTEND_URL="${env.REDIRECT_URL}"`);
 		expect(lines[3]).toBe(`SAVECRAFT_INSTALLER_VERSION="1.2.3"`);
 		expect(lines[4]).toBe(`SAVECRAFT_ED25519_PUBKEY="${FAKE_PUBKEY}"`);
+		expect(lines[5]).toBe(`SAVECRAFT_APP_NAME="${env.APP_NAME}"`);
 		expect(body).toContain("#!/usr/bin/env bash");
 	});
 
@@ -157,9 +158,9 @@ describe("install worker", () => {
 			headers: { "user-agent": "curl/8.0" },
 		});
 		const body = await resp.text();
-		const lines = body.split("\n");
-		expect(lines[3]).toBe('SAVECRAFT_INSTALLER_VERSION="dev"');
-		expect(lines[4]).toBe('SAVECRAFT_ED25519_PUBKEY=""');
+		expect(body).toContain('SAVECRAFT_INSTALLER_VERSION="dev"');
+		expect(body).toContain('SAVECRAFT_ED25519_PUBKEY=""');
+		expect(body).toContain(`SAVECRAFT_APP_NAME="${env.APP_NAME}"`);
 		expect(body).toContain("#!/usr/bin/env bash");
 	});
 
