@@ -162,9 +162,9 @@ func TestStatus(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
 			rw.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(rw).Encode(map[string]any{
-				"linked":                false,
-				"link_code":             "123456",
-				"link_code_expires_at":  "2026-03-03T12:20:00Z",
+				"linked":               false,
+				"link_code":            "123456",
+				"link_code_expires_at": "2026-03-03T12:20:00Z",
 			})
 		}))
 		defer srv.Close()

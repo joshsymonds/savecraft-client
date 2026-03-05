@@ -64,20 +64,7 @@ func runDaemonLoop(
 ) error {
 	loadEnvFileDefaults(appName)
 
-	// Start the local API server early so /boot, /link, /shutdown, and /restart
-	// are available before registration completes. The /status route is added later.
-	statusPort := statusPortDefault
-	if envPort := os.Getenv("SAVECRAFT_STATUS_PORT"); envPort != "" {
-		statusPort = envPort
-	}
-
-	api := localapi.NewServer("localhost:"+statusPort, logger)
-	api.SetRingBuffer(ringBuf)
-	api.SetShutdownFunc(shutdownFn)
-	api.SetRestartFunc(func() error {
-		return svcmgr.Control(svcCfg, "restart")
-	})
-	api.Start()
+	api := startLocalAPI(statusPortDefault, svcCfg, ringBuf, shutdownFn, logger)
 	defer func() {
 		shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutCancel()
@@ -93,7 +80,45 @@ func runDaemonLoop(
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	// First-boot: if no auth token, self-register as a source.
+	if linkErr := ensureLinked(ctx, cfg, appName, frontendURL, api, logger); linkErr != nil {
+		return linkErr
+	}
+
+	return runDaemonSubsystems(ctx, cfg, appName, frontendURL, api, logger)
+}
+
+// startLocalAPI creates and starts the local API server.
+func startLocalAPI(
+	statusPortDefault string,
+	svcCfg svcmgr.Config,
+	ringBuf *localapi.RingBuffer,
+	shutdownFn func(),
+	logger *slog.Logger,
+) *localapi.Server {
+	statusPort := statusPortDefault
+	if envPort := os.Getenv("SAVECRAFT_STATUS_PORT"); envPort != "" {
+		statusPort = envPort
+	}
+
+	api := localapi.NewServer("localhost:"+statusPort, logger)
+	api.SetRingBuffer(ringBuf)
+	api.SetShutdownFunc(shutdownFn)
+	api.SetRestartFunc(func() error {
+		return svcmgr.Control(svcCfg, "restart")
+	})
+	api.Start()
+
+	return api
+}
+
+// ensureLinked handles registration and the wait-for-link flow at boot.
+func ensureLinked(
+	ctx context.Context,
+	cfg *appConfig,
+	appName, frontendURL string,
+	api *localapi.Server,
+	logger *slog.Logger,
+) error {
 	api.SetState(localapi.StateRegistering)
 
 	envPath := envfile.EnvFilePath(appName)
@@ -105,66 +130,115 @@ func runDaemonLoop(
 	}
 
 	if registered {
-		linkURL := localapi.BuildLinkURL(frontendURL, regResult.LinkCode)
-		logger.InfoContext(ctx, "source registered",
-			slog.String("source_uuid", regResult.SourceUUID),
-			slog.String("link_code", regResult.LinkCode),
-			slog.String("link_url", linkURL),
-		)
-
-		if svcmgr.Interactive() {
-			fmt.Fprintf(os.Stderr, "\n  Link this source: %s\n\n", linkURL)
-		}
-
-		// Wait for the user to link the source via the web UI.
-		// waitForLink sets StateRegistered, polls for linking, auto-refreshes codes,
-		// and transitions to StateRunning when linked.
-		if linkErr := waitForLink(ctx, cfg.ServerURL, cfg.AuthToken, frontendURL,
-			api, regResult.LinkCode, regResult.LinkCodeExpiresAt,
-			5*time.Second, logger); linkErr != nil {
-			return fmt.Errorf("wait for link: %w", linkErr)
-		}
-	} else {
-		// Token exists — check if source is actually linked.
-		status, statusErr := regclient.Status(ctx, cfg.ServerURL, cfg.AuthToken)
-		if statusErr != nil {
-			logger.WarnContext(ctx, "could not check source status, assuming linked",
-				slog.String("error", statusErr.Error()))
-			api.SetState(localapi.StateRunning)
-		} else if !status.Linked {
-			// Source exists but is not linked to a user — enter the linking flow.
-			logger.InfoContext(ctx, "source exists but is not linked, waiting for link")
-
-			linkCode := status.LinkCode
-			expiresAt := status.LinkCodeExpiresAt
-
-			// If no active code, generate one.
-			if linkCode == "" {
-				refreshed, refreshErr := regclient.RefreshLinkCode(ctx, cfg.ServerURL, cfg.AuthToken)
-				if refreshErr != nil {
-					api.SetError(refreshErr.Error())
-					return fmt.Errorf("generate link code for unlinked source: %w", refreshErr)
-				}
-
-				linkCode = refreshed.LinkCode
-				expiresAt = refreshed.ExpiresAt
-			}
-
-			linkURL := localapi.BuildLinkURL(frontendURL, linkCode)
-			if svcmgr.Interactive() {
-				fmt.Fprintf(os.Stderr, "\n  Link this source: %s\n\n", linkURL)
-			}
-
-			if linkErr := waitForLink(ctx, cfg.ServerURL, cfg.AuthToken, frontendURL,
-				api, linkCode, expiresAt,
-				5*time.Second, logger); linkErr != nil {
-				return fmt.Errorf("wait for link: %w", linkErr)
-			}
-		} else {
-			api.SetState(localapi.StateRunning)
-		}
+		return handleNewRegistration(ctx, cfg, frontendURL, api, regResult, logger)
 	}
 
+	return handleExistingSource(ctx, cfg, frontendURL, api, logger)
+}
+
+// handleNewRegistration handles the first-boot case where the source was just registered.
+func handleNewRegistration(
+	ctx context.Context,
+	cfg *appConfig,
+	frontendURL string,
+	api *localapi.Server,
+	regResult *regclient.RegisterResult,
+	logger *slog.Logger,
+) error {
+	linkURL := localapi.BuildLinkURL(frontendURL, regResult.LinkCode)
+	logger.InfoContext(ctx, "source registered",
+		slog.String("source_uuid", regResult.SourceUUID),
+		slog.String("link_code", regResult.LinkCode),
+		slog.String("link_url", linkURL),
+	)
+
+	if svcmgr.Interactive() {
+		fmt.Fprintf(os.Stderr, "\n  Link this source: %s\n\n", linkURL)
+	}
+
+	if linkErr := waitForLink(ctx, cfg.ServerURL, cfg.AuthToken, frontendURL,
+		api, regResult.LinkCode, regResult.LinkCodeExpiresAt,
+		5*time.Second, logger); linkErr != nil {
+		return fmt.Errorf("wait for link: %w", linkErr)
+	}
+
+	return nil
+}
+
+// handleExistingSource checks link status for a source with an existing token.
+func handleExistingSource(
+	ctx context.Context,
+	cfg *appConfig,
+	frontendURL string,
+	api *localapi.Server,
+	logger *slog.Logger,
+) error {
+	status, statusErr := regclient.Status(ctx, cfg.ServerURL, cfg.AuthToken)
+
+	switch {
+	case statusErr != nil:
+		logger.WarnContext(ctx, "could not check source status, assuming linked",
+			slog.String("error", statusErr.Error()))
+		api.SetState(localapi.StateRunning)
+	case !status.Linked:
+		if err := handleUnlinkedSource(ctx, cfg, frontendURL, api, status, logger); err != nil {
+			return err
+		}
+	default:
+		api.SetState(localapi.StateRunning)
+	}
+
+	return nil
+}
+
+// handleUnlinkedSource enters the wait-for-link flow for an existing but unlinked source.
+func handleUnlinkedSource(
+	ctx context.Context,
+	cfg *appConfig,
+	frontendURL string,
+	api *localapi.Server,
+	status *regclient.StatusResult,
+	logger *slog.Logger,
+) error {
+	logger.InfoContext(ctx, "source exists but is not linked, waiting for link")
+
+	linkCode := status.LinkCode
+	expiresAt := status.LinkCodeExpiresAt
+
+	if linkCode == "" {
+		refreshed, refreshErr := regclient.RefreshLinkCode(ctx, cfg.ServerURL, cfg.AuthToken)
+		if refreshErr != nil {
+			api.SetError(refreshErr.Error())
+
+			return fmt.Errorf("generate link code for unlinked source: %w", refreshErr)
+		}
+
+		linkCode = refreshed.LinkCode
+		expiresAt = refreshed.ExpiresAt
+	}
+
+	linkURL := localapi.BuildLinkURL(frontendURL, linkCode)
+	if svcmgr.Interactive() {
+		fmt.Fprintf(os.Stderr, "\n  Link this source: %s\n\n", linkURL)
+	}
+
+	if linkErr := waitForLink(ctx, cfg.ServerURL, cfg.AuthToken, frontendURL,
+		api, linkCode, expiresAt,
+		5*time.Second, logger); linkErr != nil {
+		return fmt.Errorf("wait for link: %w", linkErr)
+	}
+
+	return nil
+}
+
+// runDaemonSubsystems creates subsystems, wires up repair, and runs the daemon.
+func runDaemonSubsystems(
+	ctx context.Context,
+	cfg *appConfig,
+	appName, frontendURL string,
+	api *localapi.Server,
+	logger *slog.Logger,
+) error {
 	binaryPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("get executable path: %w", err)
@@ -181,15 +255,36 @@ func runDaemonLoop(
 	dmn := daemon.New(cfg.Daemon, subsystems.fsys, subsystems.watcher, subsystems.runner,
 		subsystems.pusher, subsystems.ws, subsystems.plugins, subsystems.updater, logger)
 
-	// Add daemon status to the local API server.
 	api.Handle("/status", daemon.StatusHandler(dmn))
 	api.SetState(localapi.StateRunning)
 
-	// Set up repair callback — unlinks the source and starts a background
-	// waitForLink goroutine. Cancels any previous repair goroutine.
+	wireRepairCallback(ctx, cfg, frontendURL, api, logger)
+
+	logger.InfoContext(ctx, "starting daemon",
+		slog.String("server", cfg.ServerURL),
+		slog.String("install", cfg.InstallURL),
+		slog.String("source_id", cfg.Daemon.SourceID),
+		slog.Int("games", len(cfg.Daemon.Games)),
+	)
+
+	if runErr := dmn.Run(ctx); runErr != nil {
+		return fmt.Errorf("daemon run: %w", runErr)
+	}
+
+	return nil
+}
+
+// wireRepairCallback sets up the repair callback on the local API server.
+func wireRepairCallback(
+	ctx context.Context,
+	cfg *appConfig,
+	frontendURL string,
+	api *localapi.Server,
+	logger *slog.Logger,
+) {
 	var repairCancel context.CancelFunc
+
 	api.SetRepairFunc(func(_ context.Context) (string, string, string, error) {
-		// Cancel any in-flight repair goroutine.
 		if repairCancel != nil {
 			repairCancel()
 		}
@@ -201,7 +296,6 @@ func runDaemonLoop(
 
 		linkURL := localapi.BuildLinkURL(frontendURL, result.LinkCode)
 
-		// Start background goroutine to poll for re-linking.
 		repairCtx, cancel := context.WithCancel(ctx)
 		repairCancel = cancel
 
@@ -216,17 +310,4 @@ func runDaemonLoop(
 
 		return result.LinkCode, linkURL, result.ExpiresAt, nil
 	})
-
-	logger.InfoContext(ctx, "starting daemon",
-		slog.String("server", cfg.ServerURL),
-		slog.String("install", cfg.InstallURL),
-		slog.String("source_id", cfg.Daemon.SourceID),
-		slog.Int("games", len(cfg.Daemon.Games)),
-	)
-
-	if runErr := dmn.Run(ctx); runErr != nil {
-		return fmt.Errorf("daemon run: %w", runErr)
-	}
-
-	return nil
 }

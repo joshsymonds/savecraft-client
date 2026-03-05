@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -40,39 +41,11 @@ func waitForLink(
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("wait for link: %w", ctx.Err())
 		case <-ticker.C:
-			// Refresh code if near expiry.
-			if time.Until(expiry) < refreshThreshold {
-				refreshed, err := regclient.RefreshLinkCode(ctx, serverURL, authToken)
-				if err != nil {
-					logger.WarnContext(ctx, "failed to refresh link code", slog.String("error", err.Error()))
-				} else {
-					linkCode = refreshed.LinkCode
-					linkURL = localapi.BuildLinkURL(frontendURL, refreshed.LinkCode)
+			linkCode, expiry = maybeRefreshCode(ctx, serverURL, authToken, frontendURL, api, linkCode, expiry, logger)
 
-					newExpiry, pErr := time.Parse(time.RFC3339, refreshed.ExpiresAt)
-					if pErr == nil {
-						expiry = newExpiry
-					}
-
-					api.SetRegistered(linkCode, linkURL, refreshed.ExpiresAt)
-					logger.InfoContext(ctx, "refreshed link code",
-						slog.String("link_code", linkCode),
-						slog.String("expires_at", refreshed.ExpiresAt),
-					)
-				}
-			}
-
-			// Check if linked.
-			status, err := regclient.Status(ctx, serverURL, authToken)
-			if err != nil {
-				logger.WarnContext(ctx, "failed to check source status", slog.String("error", err.Error()))
-
-				continue
-			}
-
-			if status.Linked {
+			if pollLinked(ctx, serverURL, authToken, logger) {
 				api.SetState(localapi.StateRunning)
 				logger.InfoContext(ctx, "source linked to user")
 
@@ -80,4 +53,52 @@ func waitForLink(
 			}
 		}
 	}
+}
+
+// maybeRefreshCode refreshes the link code if it's near expiry.
+func maybeRefreshCode(
+	ctx context.Context,
+	serverURL, authToken, frontendURL string,
+	api *localapi.Server,
+	linkCode string, expiry time.Time,
+	logger *slog.Logger,
+) (string, time.Time) {
+	if time.Until(expiry) >= refreshThreshold {
+		return linkCode, expiry
+	}
+
+	refreshed, err := regclient.RefreshLinkCode(ctx, serverURL, authToken)
+	if err != nil {
+		logger.WarnContext(ctx, "failed to refresh link code", slog.String("error", err.Error()))
+
+		return linkCode, expiry
+	}
+
+	linkCode = refreshed.LinkCode
+	linkURL := localapi.BuildLinkURL(frontendURL, refreshed.LinkCode)
+
+	newExpiry, pErr := time.Parse(time.RFC3339, refreshed.ExpiresAt)
+	if pErr == nil {
+		expiry = newExpiry
+	}
+
+	api.SetRegistered(linkCode, linkURL, refreshed.ExpiresAt)
+	logger.InfoContext(ctx, "refreshed link code",
+		slog.String("link_code", linkCode),
+		slog.String("expires_at", refreshed.ExpiresAt),
+	)
+
+	return linkCode, expiry
+}
+
+// pollLinked checks whether the source has been linked to a user.
+func pollLinked(ctx context.Context, serverURL, authToken string, logger *slog.Logger) bool {
+	status, err := regclient.Status(ctx, serverURL, authToken)
+	if err != nil {
+		logger.WarnContext(ctx, "failed to check source status", slog.String("error", err.Error()))
+
+		return false
+	}
+
+	return status.Linked
 }
