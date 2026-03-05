@@ -2020,13 +2020,17 @@ func (x *SourceState) GetSources() []*SourceInfo {
 }
 
 type SourceInfo struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SourceId      string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
-	Online        bool                   `protobuf:"varint,2,opt,name=online,proto3" json:"online,omitempty"`
-	LastSeen      *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=last_seen,json=lastSeen,proto3" json:"last_seen,omitempty"`
-	Games         []*GameInfo            `protobuf:"bytes,4,rep,name=games,proto3" json:"games,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	SourceId         string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	Online           bool                   `protobuf:"varint,2,opt,name=online,proto3" json:"online,omitempty"`
+	LastSeen         *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=last_seen,json=lastSeen,proto3" json:"last_seen,omitempty"`
+	Games            []*GameInfo            `protobuf:"bytes,4,rep,name=games,proto3" json:"games,omitempty"`
+	SourceKind       string                 `protobuf:"bytes,5,opt,name=source_kind,json=sourceKind,proto3" json:"source_kind,omitempty"`
+	Hostname         string                 `protobuf:"bytes,6,opt,name=hostname,proto3" json:"hostname,omitempty"`
+	CanRescan        bool                   `protobuf:"varint,7,opt,name=can_rescan,json=canRescan,proto3" json:"can_rescan,omitempty"`
+	CanReceiveConfig bool                   `protobuf:"varint,8,opt,name=can_receive_config,json=canReceiveConfig,proto3" json:"can_receive_config,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *SourceInfo) Reset() {
@@ -2085,6 +2089,34 @@ func (x *SourceInfo) GetGames() []*GameInfo {
 		return x.Games
 	}
 	return nil
+}
+
+func (x *SourceInfo) GetSourceKind() string {
+	if x != nil {
+		return x.SourceKind
+	}
+	return ""
+}
+
+func (x *SourceInfo) GetHostname() string {
+	if x != nil {
+		return x.Hostname
+	}
+	return ""
+}
+
+func (x *SourceInfo) GetCanRescan() bool {
+	if x != nil {
+		return x.CanRescan
+	}
+	return false
+}
+
+func (x *SourceInfo) GetCanReceiveConfig() bool {
+	if x != nil {
+		return x.CanReceiveConfig
+	}
+	return false
 }
 
 type GameInfo struct {
@@ -2723,13 +2755,19 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\x03url\x18\x03 \x01(\tR\x03url\"\x0f\n" +
 	"\rDiscoverGames\"A\n" +
 	"\vSourceState\x122\n" +
-	"\asources\x18\x01 \x03(\v2\x18.savecraft.v1.SourceInfoR\asources\"\xa8\x01\n" +
+	"\asources\x18\x01 \x03(\v2\x18.savecraft.v1.SourceInfoR\asources\"\xb2\x02\n" +
 	"\n" +
 	"SourceInfo\x12\x1b\n" +
 	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\x16\n" +
 	"\x06online\x18\x02 \x01(\bR\x06online\x127\n" +
 	"\tlast_seen\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\blastSeen\x12,\n" +
-	"\x05games\x18\x04 \x03(\v2\x16.savecraft.v1.GameInfoR\x05games\"\xe5\x01\n" +
+	"\x05games\x18\x04 \x03(\v2\x16.savecraft.v1.GameInfoR\x05games\x12\x1f\n" +
+	"\vsource_kind\x18\x05 \x01(\tR\n" +
+	"sourceKind\x12\x1a\n" +
+	"\bhostname\x18\x06 \x01(\tR\bhostname\x12\x1d\n" +
+	"\n" +
+	"can_rescan\x18\a \x01(\bR\tcanRescan\x12,\n" +
+	"\x12can_receive_config\x18\b \x01(\bR\x10canReceiveConfig\"\xe5\x01\n" +
 	"\bGameInfo\x12\x17\n" +
 	"\agame_id\x18\x01 \x01(\tR\x06gameId\x12\x1b\n" +
 	"\tgame_name\x18\x02 \x01(\tR\bgameName\x124\n" +

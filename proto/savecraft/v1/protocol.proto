@@ -242,6 +242,10 @@ message SourceInfo {
   bool online = 2;
   google.protobuf.Timestamp last_seen = 3;
   repeated GameInfo games = 4;
+  string source_kind = 5;
+  string hostname = 6;
+  bool can_rescan = 7;
+  bool can_receive_config = 8;
 }
 
 message GameInfo {
