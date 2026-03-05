@@ -192,7 +192,7 @@ func autoRegister(ctx context.Context, cfg *appConfig, envPath string) (*regclie
 
 	// Persist credentials.
 	if writeErr := envfile.Write(envPath, map[string]string{
-		"SAVECRAFT_AUTH_TOKEN":   result.Token,
+		"SAVECRAFT_AUTH_TOKEN":  result.Token,
 		"SAVECRAFT_SOURCE_UUID": result.SourceUUID,
 		"SAVECRAFT_SERVER_URL":  cfg.ServerURL,
 	}); writeErr != nil {
