@@ -43,6 +43,7 @@ func Execute(version, serverURL, installURL, appName, statusPort, frontendURL st
 	root.AddCommand(buildServiceCommand("uninstall", "Remove the daemon OS service", svcCfg))
 	root.AddCommand(buildServiceCommand("start", "Start the daemon OS service", svcCfg))
 	root.AddCommand(buildStopCommand(statusPort))
+	root.AddCommand(buildRepairCommand(statusPort))
 	root.AddCommand(buildVerifyCommand(appName))
 	root.AddCommand(buildVersionCommand(version))
 
@@ -65,6 +66,30 @@ func buildServiceCommand(action, short string, cfg svcmgr.Config) *cobra.Command
 			}
 
 			fmt.Printf("Service %s: success\n", action)
+
+			return nil
+		},
+	}
+}
+
+// buildRepairCommand creates a cobra command that triggers re-pairing via the
+// local API /repair endpoint.
+func buildRepairCommand(statusPort string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "repair",
+		Short: "Re-pair the daemon with a different user account",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			client := localapi.NewClient("http://localhost:" + statusPort)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			resp, err := client.Repair(ctx)
+			if err != nil {
+				return fmt.Errorf("repair: %w", err)
+			}
+
+			fmt.Printf("Re-pairing initiated.\n\n  Link this source: %s\n  Code: %s\n\n", resp.LinkURL, resp.LinkCode)
 
 			return nil
 		},

@@ -1,6 +1,7 @@
 package localapi
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -363,6 +364,81 @@ func TestHandleLink_WrongMethod(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	srv.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/link", nil))
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 405", rec.Code)
+	}
+}
+
+func TestHandleRepair_CallsCallback(t *testing.T) {
+	srv := NewServer("localhost:0", nil)
+	srv.SetRepairFunc(func(_ context.Context) (string, string, string, error) {
+		return "123456", "https://savecraft.gg/link/123456", "2026-03-03T12:20:00Z", nil
+	})
+
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/repair", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	var resp LinkResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.LinkCode != "123456" {
+		t.Errorf("linkCode = %q, want 123456", resp.LinkCode)
+	}
+	if resp.LinkURL != "https://savecraft.gg/link/123456" {
+		t.Errorf("linkUrl = %q, want https://savecraft.gg/link/123456", resp.LinkURL)
+	}
+	if resp.ExpiresAt != "2026-03-03T12:20:00Z" {
+		t.Errorf("expiresAt = %q, want 2026-03-03T12:20:00Z", resp.ExpiresAt)
+	}
+}
+
+func TestHandleRepair_Error(t *testing.T) {
+	srv := NewServer("localhost:0", nil)
+	srv.SetRepairFunc(func(_ context.Context) (string, string, string, error) {
+		return "", "", "", fmt.Errorf("unlink failed")
+	})
+
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/repair", nil))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+
+	var resp LinkResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Error != "unlink failed" {
+		t.Errorf("error = %q, want %q", resp.Error, "unlink failed")
+	}
+}
+
+func TestHandleRepair_NoCallback(t *testing.T) {
+	srv := NewServer("localhost:0", nil)
+
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/repair", nil))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+}
+
+func TestHandleRepair_WrongMethod(t *testing.T) {
+	srv := NewServer("localhost:0", nil)
+	srv.SetRepairFunc(func(_ context.Context) (string, string, string, error) {
+		return "123456", "url", "exp", nil
+	})
+
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/repair", nil))
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, want 405", rec.Code)

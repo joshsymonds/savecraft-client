@@ -185,6 +185,38 @@ func runDaemonLoop(
 	api.Handle("/status", daemon.StatusHandler(dmn))
 	api.SetState(localapi.StateRunning)
 
+	// Set up repair callback — unlinks the source and starts a background
+	// waitForLink goroutine. Cancels any previous repair goroutine.
+	var repairCancel context.CancelFunc
+	api.SetRepairFunc(func(_ context.Context) (string, string, string, error) {
+		// Cancel any in-flight repair goroutine.
+		if repairCancel != nil {
+			repairCancel()
+		}
+
+		result, unlinkErr := regclient.Unlink(ctx, cfg.ServerURL, cfg.AuthToken)
+		if unlinkErr != nil {
+			return "", "", "", fmt.Errorf("unlink source: %w", unlinkErr)
+		}
+
+		linkURL := localapi.BuildLinkURL(frontendURL, result.LinkCode)
+
+		// Start background goroutine to poll for re-linking.
+		repairCtx, cancel := context.WithCancel(ctx)
+		repairCancel = cancel
+
+		go func() {
+			if linkErr := waitForLink(repairCtx, cfg.ServerURL, cfg.AuthToken, frontendURL,
+				api, result.LinkCode, result.ExpiresAt,
+				5*time.Second, logger); linkErr != nil && repairCtx.Err() == nil {
+				logger.ErrorContext(repairCtx, "repair wait-for-link failed",
+					slog.String("error", linkErr.Error()))
+			}
+		}()
+
+		return result.LinkCode, linkURL, result.ExpiresAt, nil
+	})
+
 	logger.InfoContext(ctx, "starting daemon",
 		slog.String("server", cfg.ServerURL),
 		slog.String("install", cfg.InstallURL),

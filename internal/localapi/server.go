@@ -24,6 +24,7 @@ type Server struct {
 	ringBuf    *RingBuffer
 	shutdownFn func()
 	restartFn  func() error
+	repairFn   func(ctx context.Context) (linkCode, linkURL, expiresAt string, err error)
 
 	mux    *http.ServeMux
 	srv    *http.Server
@@ -47,6 +48,7 @@ func NewServer(addr string, logger *slog.Logger) *Server {
 	server.mux.HandleFunc("/logs", server.handleLogs)
 	server.mux.HandleFunc("/shutdown", server.handleShutdown)
 	server.mux.HandleFunc("/restart", server.handleRestart)
+	server.mux.HandleFunc("/repair", server.handleRepair)
 	server.srv = &http.Server{
 		Addr:              addr,
 		Handler:           server.mux,
@@ -163,6 +165,48 @@ func (s *Server) SetRestartFunc(fn func() error) {
 	defer s.mu.Unlock()
 
 	s.restartFn = fn
+}
+
+// SetRepairFunc sets the callback invoked by POST /repair.
+// The callback should unlink the source and start the wait-for-link flow,
+// returning the new link code, URL, and expiry.
+func (s *Server) SetRepairFunc(fn func(ctx context.Context) (linkCode, linkURL, expiresAt string, err error)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.repairFn = fn
+}
+
+func (s *Server) handleRepair(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		s.writeJSON(w, http.StatusMethodNotAllowed, OKResponse{Error: "use POST"})
+
+		return
+	}
+
+	s.mu.RLock()
+	fn := s.repairFn
+	s.mu.RUnlock()
+
+	if fn == nil {
+		s.writeJSON(w, http.StatusServiceUnavailable, LinkResponse{Error: "repair not available"})
+
+		return
+	}
+
+	linkCode, linkURL, expiresAt, err := fn(r.Context())
+	if err != nil {
+		s.writeJSON(w, http.StatusInternalServerError, LinkResponse{Error: err.Error()})
+
+		return
+	}
+
+	s.writeJSON(w, http.StatusOK, LinkResponse{
+		LinkCode:  linkCode,
+		LinkURL:   linkURL,
+		ExpiresAt: expiresAt,
+	})
 }
 
 func (s *Server) handleLink(w http.ResponseWriter, r *http.Request) {

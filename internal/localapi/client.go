@@ -113,6 +113,32 @@ func (c *Client) Shutdown(ctx context.Context) error {
 	return nil
 }
 
+// Repair triggers re-pairing via POST /repair.
+// Returns the new link code, URL, and expiry for the re-linking flow.
+func (c *Client) Repair(ctx context.Context) (*LinkResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/repair", nil)
+	if err != nil {
+		return nil, fmt.Errorf("build repair request: %w", err)
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("repair request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result LinkResponse
+	if decErr := json.NewDecoder(resp.Body).Decode(&result); decErr != nil {
+		return nil, fmt.Errorf("decode repair response: %w", decErr)
+	}
+
+	if result.Error != "" {
+		return nil, fmt.Errorf("repair: %s", result.Error)
+	}
+
+	return &result, nil
+}
+
 // Restart requests a daemon restart via POST /restart.
 func (c *Client) Restart(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/restart", nil)
