@@ -377,11 +377,19 @@ main() {
             echo "    ${link_url}"
             echo ""
         else
-            local frontend_url="${SAVECRAFT_FRONTEND_URL:-https://savecraft.gg}"
-            echo "  Next steps:"
-            echo "    Link your device at ${frontend_url}/setup"
+            echo ""
+            warn "Something went wrong — the daemon did not respond in time."
+            echo ""
+            echo "  Try reinstalling:"
+            echo "    curl -sSL ${INSTALL_URL} | bash"
+            echo ""
+            echo "  If the problem persists, check the logs and bring them to"
+            echo "  our Discord (https://discord.gg/YnC8stpEmF) or paste them"
+            echo "  into your local LLM for debugging:"
+            echo ""
+            echo "    journalctl --user -u ${BINARY_NAME} --no-pager -n 50"
+            echo ""
         fi
-        echo "  Check daemon status: ${BIN_DIR}/${BINARY_NAME} verify"
     fi
     echo ""
 }

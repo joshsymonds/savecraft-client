@@ -139,6 +139,7 @@ describe("install worker", () => {
 		expect(lines[3]).toBe(`SAVECRAFT_INSTALLER_VERSION="1.2.3"`);
 		expect(lines[4]).toBe(`SAVECRAFT_ED25519_PUBKEY="${FAKE_PUBKEY}"`);
 		expect(lines[5]).toBe(`SAVECRAFT_APP_NAME="${env.APP_NAME}"`);
+		expect(lines[6]).toBe(`SAVECRAFT_STATUS_PORT="${env.STATUS_PORT}"`);
 		expect(body).toContain("#!/usr/bin/env bash");
 	});
 

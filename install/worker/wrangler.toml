@@ -7,6 +7,7 @@ INSTALL_URL = "https://install.savecraft.gg"
 SERVER_URL = "https://api.savecraft.gg"
 REDIRECT_URL = "https://savecraft.gg"
 APP_NAME = "savecraft"
+STATUS_PORT = "9182"
 
 [[r2_buckets]]
 binding = "INSTALL"
@@ -24,6 +25,7 @@ INSTALL_URL = "https://install.savecraft.gg"
 SERVER_URL = "https://api.savecraft.gg"
 REDIRECT_URL = "https://savecraft.gg"
 APP_NAME = "savecraft"
+STATUS_PORT = "9182"
 
 [[env.production.r2_buckets]]
 binding = "INSTALL"
@@ -41,6 +43,7 @@ INSTALL_URL = "https://staging-install.savecraft.gg"
 SERVER_URL = "https://staging-api.savecraft.gg"
 REDIRECT_URL = "https://staging.savecraft.gg"
 APP_NAME = "savecraft-staging"
+STATUS_PORT = "9183"
 
 [[env.staging.r2_buckets]]
 binding = "INSTALL"

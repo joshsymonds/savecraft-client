@@ -3,6 +3,7 @@ interface Env {
 	SERVER_URL: string;
 	REDIRECT_URL: string;
 	APP_NAME: string;
+	STATUS_PORT: string;
 	INSTALL: R2Bucket;
 }
 
@@ -66,6 +67,7 @@ async function handleInstallScript(request: Request, env: Env): Promise<Response
 		`SAVECRAFT_INSTALLER_VERSION="${installerVersion}"`,
 		`SAVECRAFT_ED25519_PUBKEY="${pubkey}"`,
 		`SAVECRAFT_APP_NAME="${env.APP_NAME}"`,
+		`SAVECRAFT_STATUS_PORT="${env.STATUS_PORT}"`,
 	].join('\n');
 	const patched = `${vars}\n${script}`;
 
