@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"fyne.io/systray"
@@ -21,8 +22,9 @@ type trayApp struct {
 	cancel      context.CancelFunc
 
 	// Link Account menu item — created at startup, shown/hidden dynamically.
+	// linkURL is accessed from both pollState and handleClicks goroutines.
 	mLinkAccount *systray.MenuItem
-	linkURL      string // set by pollState, read by handleClicks
+	linkURL      atomic.Pointer[string]
 }
 
 func (a *trayApp) onReady() {
@@ -52,7 +54,7 @@ func (a *trayApp) onReady() {
 	mQuit := systray.AddMenuItem("Quit", "Close the tray app")
 
 	// Handle menu clicks.
-	go a.handleClicks(mCopyLogs, mRestart, mDashboard, mQuit, a.mLinkAccount)
+	go a.handleClicks(mCopyLogs, mRestart, mDashboard, mQuit)
 
 	// Poll daemon state.
 	go a.pollState(ctx, mStatus)
@@ -65,13 +67,13 @@ func (a *trayApp) onExit() {
 }
 
 func (a *trayApp) handleClicks(
-	mCopyLogs, mRestart, mDashboard, mQuit, mLinkAccount *systray.MenuItem,
+	mCopyLogs, mRestart, mDashboard, mQuit *systray.MenuItem,
 ) {
 	for {
 		select {
-		case <-mLinkAccount.ClickedCh:
-			if url := a.linkURL; url != "" {
-				if err := openBrowser(url); err != nil {
+		case <-a.mLinkAccount.ClickedCh:
+			if url := a.linkURL.Load(); url != nil && *url != "" {
+				if err := openBrowser(*url); err != nil {
 					a.logger.Error("open link", slog.String("error", err.Error()))
 				}
 			}
@@ -155,14 +157,15 @@ func (a *trayApp) updateLinkAccount(ctx context.Context) bool {
 		return false
 	}
 
-	a.linkURL = linkResp.LinkURL
+	a.linkURL.Store(&linkResp.LinkURL)
 	a.mLinkAccount.Show()
 
 	return true
 }
 
 func (a *trayApp) hideLinkAccount() {
-	a.linkURL = ""
+	empty := ""
+	a.linkURL.Store(&empty)
 	a.mLinkAccount.Hide()
 }
 

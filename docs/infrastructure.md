@@ -100,7 +100,7 @@ These are kernel-level enforcement. Even if the daemon binary were compromised, 
 **Curl installer:**
 
 ```bash
-curl -fSsL https://install.savecraft.gg | bash
+curl -fsSL https://install.savecraft.gg | bash
 ```
 
 The install script:
