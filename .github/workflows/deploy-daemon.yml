@@ -106,7 +106,7 @@ jobs:
             echo "r2_bucket=savecraft-install" >> "$GITHUB_OUTPUT"
             echo "app_name=savecraft" >> "$GITHUB_OUTPUT"
             echo "status_port=9182" >> "$GITHUB_OUTPUT"
-            echo "frontend_url=https://savecraft.gg" >> "$GITHUB_OUTPUT"
+            echo "frontend_url=https://my.savecraft.gg" >> "$GITHUB_OUTPUT"
           else
             echo "is_production=false" >> "$GITHUB_OUTPUT"
             echo "install_url=https://staging-install.savecraft.gg" >> "$GITHUB_OUTPUT"
@@ -114,7 +114,7 @@ jobs:
             echo "r2_bucket=savecraft-install-staging" >> "$GITHUB_OUTPUT"
             echo "app_name=savecraft-staging" >> "$GITHUB_OUTPUT"
             echo "status_port=9183" >> "$GITHUB_OUTPUT"
-            echo "frontend_url=https://staging.savecraft.gg" >> "$GITHUB_OUTPUT"
+            echo "frontend_url=https://staging-my.savecraft.gg" >> "$GITHUB_OUTPUT"
           fi
 
   build:

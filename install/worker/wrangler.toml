@@ -5,7 +5,7 @@ compatibility_date = "2024-12-01"
 [vars]
 INSTALL_URL = "https://install.savecraft.gg"
 SERVER_URL = "https://api.savecraft.gg"
-REDIRECT_URL = "https://savecraft.gg"
+REDIRECT_URL = "https://my.savecraft.gg"
 APP_NAME = "savecraft"
 STATUS_PORT = "9182"
 
@@ -23,7 +23,7 @@ routes = [
 [env.production.vars]
 INSTALL_URL = "https://install.savecraft.gg"
 SERVER_URL = "https://api.savecraft.gg"
-REDIRECT_URL = "https://savecraft.gg"
+REDIRECT_URL = "https://my.savecraft.gg"
 APP_NAME = "savecraft"
 STATUS_PORT = "9182"
 
@@ -41,7 +41,7 @@ routes = [
 [env.staging.vars]
 INSTALL_URL = "https://staging-install.savecraft.gg"
 SERVER_URL = "https://staging-api.savecraft.gg"
-REDIRECT_URL = "https://staging.savecraft.gg"
+REDIRECT_URL = "https://staging-my.savecraft.gg"
 APP_NAME = "savecraft-staging"
 STATUS_PORT = "9183"
 
