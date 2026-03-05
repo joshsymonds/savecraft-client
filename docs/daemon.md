@@ -11,7 +11,7 @@ The `Daemon.Run()` loop: register source (if first boot) â†’ connect WebSocket â
 On first boot, the daemon has no source token. It self-registers as a source by calling `POST /api/v1/source/register` (unauthenticated). The server returns a `sct_*` source token, source UUID, and a 6-digit link code (20-minute TTL).
 
 The daemon:
-1. Persists the source token and UUID to local config (`~/.config/savecraft/device.json`)
+1. Persists the source token and UUID to local config (`~/.config/savecraft/env`)
 2. Displays the 6-digit link code to the user (CLI output, tray notification, or terminal banner)
 3. Polls `GET /api/v1/source/status` periodically to check if the user has linked the source
 4. If the link code expires before linking, calls `POST /api/v1/source/link-code` to get a fresh code
