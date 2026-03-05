@@ -560,8 +560,11 @@ linters:
           - godox
           - govet
 
-      # Daemon entrypoint — ldflags injection targets must be package-level vars
+      # Entrypoints — ldflags injection targets must be package-level vars
       - path: cmd/savecraftd/main\.go
+        linters:
+          - gochecknoglobals
+      - path: cmd/savecraft-tray/main\.go
         linters:
           - gochecknoglobals
 
