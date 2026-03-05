@@ -25,6 +25,9 @@ type trayApp struct {
 	// linkURL is accessed from both pollState and handleClicks goroutines.
 	mLinkAccount *systray.MenuItem
 	linkURL      atomic.Pointer[string]
+
+	// Re-pair menu item — visible only in StateRunning.
+	mRepair *systray.MenuItem
 }
 
 func (a *trayApp) onReady() {
@@ -39,6 +42,9 @@ func (a *trayApp) onReady() {
 
 	a.mLinkAccount = systray.AddMenuItem("Link Account", "Link this source to your savecraft.gg account")
 	a.mLinkAccount.Hide()
+
+	a.mRepair = systray.AddMenuItem("Re-pair", "Re-pair this source with a different account")
+	a.mRepair.Hide()
 
 	systray.AddSeparator()
 
@@ -77,6 +83,8 @@ func (a *trayApp) handleClicks(
 					a.logger.Error("open link", slog.String("error", err.Error()))
 				}
 			}
+		case <-a.mRepair.ClickedCh:
+			a.doRepair()
 		case <-mCopyLogs.ClickedCh:
 			a.doCopyLogs()
 		case <-mRestart.ClickedCh:
@@ -129,8 +137,15 @@ func (a *trayApp) updateStatus(mStatus *systray.MenuItem) {
 
 	if resp.State == localapi.StateRegistered {
 		linkAvailable = a.updateLinkAccount(ctx)
+		a.mRepair.Hide()
 	} else {
 		a.hideLinkAccount()
+
+		if resp.State == localapi.StateRunning {
+			a.mRepair.Show()
+		} else {
+			a.mRepair.Hide()
+		}
 	}
 
 	title := stateTitle(resp.State)
@@ -205,6 +220,18 @@ func (a *trayApp) doCopyLogs() {
 	if clipErr := copyToClipboard(text); clipErr != nil {
 		a.logger.Error("clipboard", slog.String("error", clipErr.Error()))
 	}
+}
+
+func (a *trayApp) doRepair() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if _, err := a.client.Repair(ctx); err != nil {
+		a.logger.Error("repair daemon", slog.String("error", err.Error()))
+		systray.SetTooltip(fmt.Sprintf("Savecraft — re-pair failed: %v", err))
+	}
+
+	// State transitions to StateRegistered — pollState will show "Link Account" automatically.
 }
 
 func (a *trayApp) doRestart() {
