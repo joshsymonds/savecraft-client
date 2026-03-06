@@ -1,15 +1,18 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/joshsymonds/savecraft.gg/internal/envfile"
 	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
+	"github.com/joshsymonds/savecraft.gg/internal/regclient"
 	"github.com/joshsymonds/savecraft.gg/internal/svcmgr"
 )
 
@@ -28,6 +31,9 @@ func buildUninstallCommand(cfg svcmgr.Config, appName string) *cobra.Command {
 			fmt.Println("  =============================")
 			fmt.Println()
 
+			// Best-effort remote deregistration before local cleanup.
+			deregisterSource(appName)
+
 			if uninstallErr := svcmgr.Uninstall(cfg, paths, os.Stdout); uninstallErr != nil {
 				return fmt.Errorf("uninstall: %w", uninstallErr)
 			}
@@ -39,6 +45,33 @@ func buildUninstallCommand(cfg svcmgr.Config, appName string) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// deregisterSource reads credentials from the env file and asks the server
+// to delete this source. Failures are logged but never block uninstall.
+func deregisterSource(appName string) {
+	vars, err := envfile.Read(envfile.EnvFilePath(appName))
+	if err != nil {
+		return
+	}
+
+	serverURL := vars["SAVECRAFT_SERVER_URL"]
+	authToken := vars["SAVECRAFT_AUTH_TOKEN"]
+	if serverURL == "" || authToken == "" {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	fmt.Println("  Deregistering from server...")
+	if err := regclient.Deregister(ctx, serverURL, authToken); err != nil {
+		fmt.Printf("  Warning: could not deregister from server: %v\n", err)
+		fmt.Println("  (The server will clean this up automatically.)")
+	} else {
+		fmt.Println("  Deregistered successfully.")
+	}
+	fmt.Println()
 }
 
 func resolveUninstallPaths(appName string) (svcmgr.UninstallPaths, error) {

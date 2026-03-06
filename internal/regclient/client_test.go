@@ -285,6 +285,90 @@ func TestUnlink(t *testing.T) {
 	})
 }
 
+func TestDeregister(t *testing.T) {
+	t.Parallel()
+
+	t.Run("successful deregister", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+			if req.Method != http.MethodPost {
+				t.Errorf("method = %s, want POST", req.Method)
+			}
+
+			if req.URL.Path != "/api/v1/source/deregister" {
+				t.Errorf("path = %s, want /api/v1/source/deregister", req.URL.Path)
+			}
+
+			auth := req.Header.Get("Authorization")
+			if auth != "Bearer sct_testtoken" {
+				t.Errorf("Authorization = %q, want Bearer sct_testtoken", auth)
+			}
+
+			rw.Header().Set("Content-Type", "application/json")
+
+			if err := json.NewEncoder(rw).Encode(map[string]bool{"ok": true}); err != nil {
+				t.Fatalf("encode response: %v", err)
+			}
+		}))
+		defer srv.Close()
+
+		err := regclient.Deregister(context.Background(), srv.URL, "sct_testtoken")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("server error with body includes message", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+			rw.Header().Set("Content-Type", "application/json")
+			rw.WriteHeader(http.StatusInternalServerError)
+
+			if err := json.NewEncoder(rw).Encode(map[string]string{
+				"error": "source not found",
+			}); err != nil {
+				t.Fatalf("encode: %v", err)
+			}
+		}))
+		defer srv.Close()
+
+		err := regclient.Deregister(context.Background(), srv.URL, "sct_testtoken")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+
+		want := "deregister failed (500): source not found"
+		if err.Error() != want {
+			t.Errorf("error = %q, want %q", err.Error(), want)
+		}
+	})
+
+	t.Run("server error without body returns status", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+			rw.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer srv.Close()
+
+		err := regclient.Deregister(context.Background(), srv.URL, "sct_testtoken")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
+
+	t.Run("connection error returns error", func(t *testing.T) {
+		t.Parallel()
+
+		err := regclient.Deregister(context.Background(), "http://127.0.0.1:1", "sct_testtoken")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
+}
+
 func TestRefreshLinkCode(t *testing.T) {
 	t.Parallel()
 

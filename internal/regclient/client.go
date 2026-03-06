@@ -121,6 +121,39 @@ func Unlink(ctx context.Context, baseURL, authToken string) (*LinkCodeResult, er
 	return authedPost(ctx, baseURL+"/api/v1/source/unlink", authToken)
 }
 
+// Deregister calls POST /api/v1/source/deregister to permanently delete the
+// source and all associated data (D1, SourceHub DO, UserHub state).
+func Deregister(ctx context.Context, baseURL, authToken string) error {
+	endpoint := baseURL + "/api/v1/source/deregister"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("create deregister request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+authToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("deregister request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errBody struct {
+			Error string `json:"error"`
+		}
+
+		if decErr := json.NewDecoder(resp.Body).Decode(&errBody); decErr == nil && errBody.Error != "" {
+			return fmt.Errorf("deregister failed (%d): %s", resp.StatusCode, errBody.Error)
+		}
+
+		return fmt.Errorf("deregister failed with status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
 // RefreshLinkCode calls POST /api/v1/source/link-code to generate a new
 // link code with a fresh TTL, replacing any existing code.
 func RefreshLinkCode(ctx context.Context, baseURL, authToken string) (*LinkCodeResult, error) {
