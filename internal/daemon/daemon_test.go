@@ -1599,11 +1599,32 @@ func TestConfigUpdate_PathChange_PluginFailure_RemovesFromConfig(t *testing.T) {
 
 // --- Tests: ConfigResult ---
 
+// configResultGame extracts a per-game result map from a configResult event.
+func configResultGame(t *testing.T, ws *fakeWSClient, gameID string) map[string]any {
+	t.Helper()
+	event := ws.sentEvent("configResult", 0)
+	if event == nil {
+		t.Fatal("missing configResult event")
+	}
+	results, ok := event["results"].(map[string]any)
+	if !ok {
+		t.Fatalf("results not a map: %T", event["results"])
+	}
+	game, ok := results[gameID].(map[string]any)
+	if !ok {
+		t.Fatalf("%s result not a map: %T", gameID, results[gameID])
+	}
+	return game
+}
+
 func TestConfigResult_ValidPath(t *testing.T) {
 	ws := newFakeWSClient()
 	cfg := Config{SourceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
 
-	d := New(cfg, d2rFS(), newFakeWatcher(), d2rRunner(), &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(
+		cfg, d2rFS(), newFakeWatcher(), d2rRunner(),
+		&fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger(),
+	)
 
 	cmd, _ := json.Marshal(map[string]any{
 		"configUpdate": map[string]any{
@@ -1618,19 +1639,7 @@ func TestConfigResult_ValidPath(t *testing.T) {
 	})
 	d.handleCommand(context.Background(), cmd)
 
-	event := ws.sentEvent("configResult", 0)
-	if event == nil {
-		t.Fatal("missing configResult event")
-	}
-
-	results, ok := event["results"].(map[string]any)
-	if !ok {
-		t.Fatalf("results not a map: %T", event["results"])
-	}
-	d2rResult, ok := results["d2r"].(map[string]any)
-	if !ok {
-		t.Fatalf("d2r result not a map: %T", results["d2r"])
-	}
+	d2rResult := configResultGame(t, ws, "d2r")
 	if d2rResult["success"] != true {
 		t.Errorf("success = %v, want true", d2rResult["success"])
 	}
@@ -1644,11 +1653,13 @@ func TestConfigResult_ValidPath(t *testing.T) {
 
 func TestConfigResult_InvalidPath(t *testing.T) {
 	ws := newFakeWSClient()
-	// FS with no directories — path won't exist
 	fsys := &fakeFS{dirs: map[string][]string{}, files: map[string][]byte{}}
 	cfg := Config{SourceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
 
-	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(
+		cfg, fsys, newFakeWatcher(), &fakeRunner{},
+		&fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger(),
+	)
 
 	cmd, _ := json.Marshal(map[string]any{
 		"configUpdate": map[string]any{
@@ -1663,13 +1674,7 @@ func TestConfigResult_InvalidPath(t *testing.T) {
 	})
 	d.handleCommand(context.Background(), cmd)
 
-	event := ws.sentEvent("configResult", 0)
-	if event == nil {
-		t.Fatal("missing configResult event")
-	}
-
-	results := event["results"].(map[string]any)
-	d2rResult := results["d2r"].(map[string]any)
+	d2rResult := configResultGame(t, ws, "d2r")
 	if d2rResult["success"] != false {
 		t.Errorf("success = %v, want false", d2rResult["success"])
 	}
@@ -1682,7 +1687,10 @@ func TestConfigResult_DisabledGame(t *testing.T) {
 	ws := newFakeWSClient()
 	cfg := d2rConfig()
 
-	d := New(cfg, d2rFS(), newFakeWatcher(), d2rRunner(), &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(
+		cfg, d2rFS(), newFakeWatcher(), d2rRunner(),
+		&fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger(),
+	)
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	cmd, _ := json.Marshal(map[string]any{
@@ -1698,13 +1706,7 @@ func TestConfigResult_DisabledGame(t *testing.T) {
 	})
 	d.handleCommand(context.Background(), cmd)
 
-	event := ws.sentEvent("configResult", 0)
-	if event == nil {
-		t.Fatal("missing configResult event")
-	}
-
-	results := event["results"].(map[string]any)
-	d2rResult := results["d2r"].(map[string]any)
+	d2rResult := configResultGame(t, ws, "d2r")
 	if d2rResult["success"] != true {
 		t.Errorf("success = %v, want true for disabled game", d2rResult["success"])
 	}
@@ -1718,7 +1720,10 @@ func TestConfigResult_MultipleGames(t *testing.T) {
 	}
 	cfg := Config{SourceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
 
-	d := New(cfg, fsys, newFakeWatcher(), d2rRunner(), &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(
+		cfg, fsys, newFakeWatcher(), d2rRunner(),
+		&fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger(),
+	)
 
 	cmd, _ := json.Marshal(map[string]any{
 		"configUpdate": map[string]any{
@@ -1738,21 +1743,62 @@ func TestConfigResult_MultipleGames(t *testing.T) {
 	})
 	d.handleCommand(context.Background(), cmd)
 
-	event := ws.sentEvent("configResult", 0)
-	if event == nil {
-		t.Fatal("missing configResult event")
-	}
-
-	results := event["results"].(map[string]any)
-
-	d2rResult := results["d2r"].(map[string]any)
+	d2rResult := configResultGame(t, ws, "d2r")
 	if d2rResult["success"] != true {
 		t.Errorf("d2r success = %v, want true", d2rResult["success"])
 	}
 
-	sdvResult := results["sdv"].(map[string]any)
+	sdvResult := configResultGame(t, ws, "sdv")
 	if sdvResult["success"] != false {
 		t.Errorf("sdv success = %v, want false", sdvResult["success"])
+	}
+}
+
+func TestConfigResult_ExpandsTildePath(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home dir")
+	}
+	expandedPath := filepath.Join(home, "saves", "d2r")
+
+	ws := newFakeWSClient()
+	fsys := &fakeFS{
+		dirs:  map[string][]string{expandedPath: {"Hammerdin.d2s"}},
+		files: map[string][]byte{filepath.Join(expandedPath, "Hammerdin.d2s"): []byte("fake")},
+	}
+	cfg := Config{SourceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
+
+	d := New(
+		cfg, fsys, newFakeWatcher(), d2rRunner(),
+		&fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger(),
+	)
+
+	cmd, _ := json.Marshal(map[string]any{
+		"configUpdate": map[string]any{
+			"games": map[string]any{
+				"d2r": map[string]any{
+					"savePath":       "~/saves/d2r",
+					"enabled":        true,
+					"fileExtensions": []string{".d2s"},
+				},
+			},
+		},
+	})
+	d.handleCommand(context.Background(), cmd)
+
+	d2rResult := configResultGame(t, ws, "d2r")
+	if d2rResult["success"] != true {
+		t.Errorf("success = %v, want true", d2rResult["success"])
+	}
+	if d2rResult["resolvedPath"] != expandedPath {
+		t.Errorf("resolvedPath = %v, want %s", d2rResult["resolvedPath"], expandedPath)
+	}
+
+	d.mu.RLock()
+	stored := d.cfg.Games["d2r"]
+	d.mu.RUnlock()
+	if stored.SavePath != expandedPath {
+		t.Errorf("stored SavePath = %s, want %s", stored.SavePath, expandedPath)
 	}
 }
 

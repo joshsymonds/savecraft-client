@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"maps"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -132,9 +132,9 @@ type Config struct {
 
 // GameConfig holds per-game configuration.
 type GameConfig struct {
-	SavePath       string
-	FileExtensions []string
-	Enabled        bool
+	SavePath       string   `json:"savePath"`
+	FileExtensions []string `json:"fileExtensions"`
+	Enabled        bool     `json:"enabled"`
 }
 
 // --- Interfaces ---
@@ -277,18 +277,21 @@ func New(
 	}
 }
 
+func (d *Daemon) loadCachedConfig(ctx context.Context) {
+	if len(d.cfg.Games) > 0 {
+		return
+	}
+	if cached := loadConfigCache(d.configDir); len(cached) > 0 {
+		d.log.InfoContext(ctx, "loaded config from cache", slog.Int("game_count", len(cached)))
+		d.cfg.Games = cached
+	}
+}
+
 // Run connects to the server and enters the main event loop.
 // It blocks until ctx is canceled.
 func (d *Daemon) Run(ctx context.Context) (runErr error) {
 	d.startTime = time.Now()
-
-	// Load cached config for offline startup.
-	if len(d.cfg.Games) == 0 {
-		if cached, _ := loadConfigCache(d.configDir); len(cached) > 0 {
-			d.log.InfoContext(ctx, "loaded config from cache", slog.Int("game_count", len(cached)))
-			d.cfg.Games = cached
-		}
-	}
+	d.loadCachedConfig(ctx)
 
 	d.log.InfoContext(ctx, "daemon starting",
 		slog.String("source_id", d.cfg.SourceID),
@@ -885,6 +888,28 @@ func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
 	}
 }
 
+// configGameResult is the per-game result of applying a ConfigUpdate.
+type configGameResult struct {
+	Success      bool   `json:"success"`
+	Error        string `json:"error"`
+	ResolvedPath string `json:"resolvedPath"`
+}
+
+// buildGameResult checks if a resolved path is a valid directory.
+func (d *Daemon) buildGameResult(resolvedPath string) configGameResult {
+	info, err := d.fs.Stat(resolvedPath)
+	if err != nil {
+		return configGameResult{Error: fmt.Sprintf("path not found: %s", resolvedPath), ResolvedPath: resolvedPath}
+	}
+	if !info.IsDir() {
+		return configGameResult{
+			Error:        fmt.Sprintf("path is not a directory: %s", resolvedPath),
+			ResolvedPath: resolvedPath,
+		}
+	}
+	return configGameResult{Success: true, ResolvedPath: resolvedPath}
+}
+
 func (d *Daemon) handleConfigUpdate(
 	ctx context.Context, payload json.RawMessage,
 ) {
@@ -907,8 +932,9 @@ func (d *Daemon) handleConfigUpdate(
 	results := make(map[string]configGameResult, len(update.Games))
 
 	for gameID, newGame := range update.Games {
+		resolvedPath := expandPath(newGame.SavePath)
 		gameCfg := GameConfig{
-			SavePath:       newGame.SavePath,
+			SavePath:       resolvedPath,
 			Enabled:        newGame.Enabled,
 			FileExtensions: newGame.FileExtensions,
 		}
@@ -917,8 +943,6 @@ func (d *Daemon) handleConfigUpdate(
 		oldCfg, existed := d.cfg.Games[gameID]
 		d.cfg.Games[gameID] = gameCfg
 		d.mu.Unlock()
-
-		resolvedPath := expandPath(newGame.SavePath)
 
 		switch {
 		case !newGame.Enabled:
@@ -932,7 +956,7 @@ func (d *Daemon) handleConfigUpdate(
 				ctx,
 				"new game configured",
 				slog.String("game_id", gameID),
-				slog.String("save_path", newGame.SavePath),
+				slog.String("save_path", resolvedPath),
 				slog.Bool("enabled", newGame.Enabled),
 			)
 			if !d.ensurePluginReady(ctx, gameID) {
@@ -944,13 +968,13 @@ func (d *Daemon) handleConfigUpdate(
 			}
 			d.scanGame(ctx, gameID, gameCfg)
 			results[gameID] = d.buildGameResult(resolvedPath)
-		case oldCfg.SavePath != newGame.SavePath:
+		case oldCfg.SavePath != resolvedPath:
 			d.log.InfoContext(
 				ctx,
 				"game path changed",
 				slog.String("game_id", gameID),
 				slog.String("old_path", oldCfg.SavePath),
-				slog.String("new_path", newGame.SavePath),
+				slog.String("new_path", resolvedPath),
 			)
 			d.unwatchGame(ctx, oldCfg.SavePath)
 			if !d.ensurePluginReady(ctx, gameID) {
@@ -979,25 +1003,6 @@ func (d *Daemon) handleConfigUpdate(
 	if err := saveConfigCache(d.configDir, games); err != nil {
 		d.log.WarnContext(ctx, "failed to save config cache", slog.String("error", err.Error()))
 	}
-}
-
-// configGameResult is the per-game result of applying a ConfigUpdate.
-type configGameResult struct {
-	Success      bool   `json:"success"`
-	Error        string `json:"error"`
-	ResolvedPath string `json:"resolvedPath"`
-}
-
-// buildGameResult checks if a resolved path is a valid directory.
-func (d *Daemon) buildGameResult(resolvedPath string) configGameResult {
-	info, err := d.fs.Stat(resolvedPath)
-	if err != nil {
-		return configGameResult{Error: fmt.Sprintf("path not found: %s", resolvedPath), ResolvedPath: resolvedPath}
-	}
-	if !info.IsDir() {
-		return configGameResult{Error: fmt.Sprintf("path is not a directory: %s", resolvedPath), ResolvedPath: resolvedPath}
-	}
-	return configGameResult{Success: true, ResolvedPath: resolvedPath}
 }
 
 func (d *Daemon) removeStaleGames(ctx context.Context, newGames map[string]struct {

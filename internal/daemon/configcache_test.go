@@ -17,10 +17,7 @@ func TestConfigCache_RoundTrip(t *testing.T) {
 		t.Fatalf("save: %v", err)
 	}
 
-	loaded, err := loadConfigCache(dir)
-	if err != nil {
-		t.Fatalf("load: %v", err)
-	}
+	loaded := loadConfigCache(dir)
 	if len(loaded) != 2 {
 		t.Fatalf("loaded %d games, want 2", len(loaded))
 	}
@@ -40,10 +37,7 @@ func TestConfigCache_RoundTrip(t *testing.T) {
 
 func TestConfigCache_MissingFile(t *testing.T) {
 	dir := t.TempDir()
-	games, err := loadConfigCache(dir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	games := loadConfigCache(dir)
 	if games != nil {
 		t.Errorf("expected nil for missing file, got %v", games)
 	}
@@ -54,20 +48,14 @@ func TestConfigCache_CorruptFile(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, configCacheFile), []byte("{invalid json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	games, err := loadConfigCache(dir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	games := loadConfigCache(dir)
 	if games != nil {
 		t.Errorf("expected nil for corrupt file, got %v", games)
 	}
 }
 
 func TestConfigCache_EmptyDir(t *testing.T) {
-	games, err := loadConfigCache("")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	games := loadConfigCache("")
 	if games != nil {
 		t.Errorf("expected nil for empty dir, got %v", games)
 	}
@@ -81,7 +69,6 @@ func TestConfigCache_CreatesDirectory(t *testing.T) {
 	if err := saveConfigCache(dir, games); err != nil {
 		t.Fatalf("save: %v", err)
 	}
-	// Verify the file was created
 	if _, err := os.Stat(filepath.Join(dir, configCacheFile)); err != nil {
 		t.Errorf("config file not created: %v", err)
 	}

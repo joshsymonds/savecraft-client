@@ -24,7 +24,7 @@ func saveConfigCache(configDir string, games map[string]GameConfig) error {
 	if configDir == "" {
 		return nil
 	}
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 	data, err := json.MarshalIndent(games, "", "  ")
@@ -32,26 +32,26 @@ func saveConfigCache(configDir string, games map[string]GameConfig) error {
 		return fmt.Errorf("marshal config: %w", err)
 	}
 	path := filepath.Join(configDir, configCacheFile)
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return fmt.Errorf("write config cache: %w", err)
+	if writeErr := os.WriteFile(path, data, 0o600); writeErr != nil {
+		return fmt.Errorf("write config cache: %w", writeErr)
 	}
 	return nil
 }
 
 // loadConfigCache reads game config from configDir/config_cache.json.
-// Returns nil map and nil error if the file doesn't exist or is corrupt.
-func loadConfigCache(configDir string) (map[string]GameConfig, error) {
+// Returns nil if the file doesn't exist, is unreadable, or is corrupt.
+func loadConfigCache(configDir string) map[string]GameConfig {
 	if configDir == "" {
-		return nil, nil
+		return nil
 	}
 	path := filepath.Join(configDir, configCacheFile)
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //#nosec G304 -- path is built from os.UserConfigDir + constant filename
 	if err != nil {
-		return nil, nil //nolint:nilerr // missing/unreadable cache is not an error
+		return nil
 	}
 	var games map[string]GameConfig
-	if err := json.Unmarshal(data, &games); err != nil {
-		return nil, nil //nolint:nilerr // corrupt cache is not an error
+	if unmarshalErr := json.Unmarshal(data, &games); unmarshalErr != nil {
+		return nil
 	}
-	return games, nil
+	return games
 }
