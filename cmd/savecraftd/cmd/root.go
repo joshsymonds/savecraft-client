@@ -40,7 +40,7 @@ func Execute(version, serverURL, installURL, appName, statusPort, frontendURL st
 
 	root.AddCommand(runCmd)
 	root.AddCommand(buildServiceCommand("install", "Install the daemon as an OS service", svcCfg))
-	root.AddCommand(buildServiceCommand("uninstall", "Remove the daemon OS service", svcCfg))
+	root.AddCommand(buildUninstallCommand(svcCfg, appName))
 	root.AddCommand(buildServiceCommand("start", "Start the daemon OS service", svcCfg))
 	root.AddCommand(buildStopCommand(statusPort))
 	root.AddCommand(buildRepairCommand(statusPort))

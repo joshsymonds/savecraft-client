@@ -190,6 +190,128 @@ func TestServiceStart_CallsSystemctl(t *testing.T) {
 	}
 }
 
+func TestDoUninstall_RemovesEverything(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Create fake directories and binary.
+	configDir := filepath.Join(home, ".config", "test")
+	cacheDir := filepath.Join(home, ".cache", "test")
+	dataDir := filepath.Join(home, ".local", "share", "test")
+	binaryPath := filepath.Join(home, ".local", "bin", "test-daemon")
+
+	for _, dir := range []string{configDir, cacheDir, dataDir, filepath.Dir(binaryPath)} {
+		if mkErr := os.MkdirAll(dir, 0o755); mkErr != nil {
+			t.Fatal(mkErr)
+		}
+	}
+
+	// Write some files inside dirs to verify recursive removal.
+	os.WriteFile(filepath.Join(configDir, "env"), []byte("token=secret"), 0o600)
+	os.WriteFile(binaryPath, []byte("fake-binary"), 0o755)
+
+	// Create a fake systemd unit so uninstall has something to remove.
+	unitDir := filepath.Join(home, ".config", "systemd", "user")
+	os.MkdirAll(unitDir, 0o755)
+	os.WriteFile(filepath.Join(unitDir, "test-daemon.service"), []byte("fake"), 0o644)
+
+	var commands []string
+	fakeRunner := func(name string, args ...string) ([]byte, error) {
+		commands = append(commands, name+" "+strings.Join(args, " "))
+		return nil, nil
+	}
+
+	cfg := Config{Name: "test-daemon", AppName: "test"}
+	paths := UninstallPaths{
+		ConfigDir: configDir,
+		CacheDir:  cacheDir,
+		DataDir:   dataDir,
+		Binary:    binaryPath,
+	}
+
+	var buf strings.Builder
+	err := doUninstall(cfg, paths, &buf, fakeRunner)
+	if err != nil {
+		t.Fatalf("doUninstall: %v", err)
+	}
+
+	// Verify all directories and binary are gone.
+	for _, path := range []string{configDir, cacheDir, dataDir, binaryPath} {
+		if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+			t.Errorf("path should have been removed: %s", path)
+		}
+	}
+
+	// Verify systemctl commands were called (disable, stop, daemon-reload).
+	if len(commands) != 3 {
+		t.Fatalf("expected 3 systemctl calls, got %d: %v", len(commands), commands)
+	}
+
+	// Verify output mentions each removal.
+	output := buf.String()
+	for _, want := range []string{"Removed OS service", configDir, cacheDir, dataDir, binaryPath} {
+		if !strings.Contains(output, want) {
+			t.Errorf("output missing %q\n\nFull output:\n%s", want, output)
+		}
+	}
+}
+
+func TestDoUninstall_MissingDirsAreWarnings(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	fakeRunner := func(_ string, _ ...string) ([]byte, error) {
+		return nil, nil
+	}
+
+	cfg := Config{Name: "test-daemon", AppName: "test"}
+	paths := UninstallPaths{
+		ConfigDir: filepath.Join(home, "nonexistent-config"),
+		CacheDir:  filepath.Join(home, "nonexistent-cache"),
+		DataDir:   filepath.Join(home, "nonexistent-data"),
+		Binary:    filepath.Join(home, "nonexistent-binary"),
+	}
+
+	var buf strings.Builder
+	err := doUninstall(cfg, paths, &buf, fakeRunner)
+	if err != nil {
+		t.Fatalf("doUninstall should not return error for missing paths: %v", err)
+	}
+
+	// RemoveAll on nonexistent dir succeeds (returns nil), so they show as "Removed".
+	// Remove on nonexistent binary also succeeds (we handle IsNotExist).
+	// The key assertion: no error returned.
+}
+
+func TestDoUninstall_EmptyLogDir_Skipped(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	configDir := filepath.Join(home, "config")
+	os.MkdirAll(configDir, 0o755)
+
+	fakeRunner := func(_ string, _ ...string) ([]byte, error) {
+		return nil, nil
+	}
+
+	cfg := Config{Name: "test-daemon", AppName: "test"}
+	paths := UninstallPaths{
+		ConfigDir: configDir,
+		LogDir:    "", // empty — should be skipped
+	}
+
+	var buf strings.Builder
+	err := doUninstall(cfg, paths, &buf, fakeRunner)
+	if err != nil {
+		t.Fatalf("doUninstall: %v", err)
+	}
+
+	output := buf.String()
+	if strings.Contains(output, "log") {
+		t.Errorf("should not mention log dir when empty\n\nFull output:\n%s", output)
+	}
+}
+
 func TestServiceStop_CallsSystemctl(t *testing.T) {
 	var commands []string
 	fakeRunner := func(name string, args ...string) ([]byte, error) {

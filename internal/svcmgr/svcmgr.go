@@ -6,6 +6,7 @@ package svcmgr
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -121,10 +122,64 @@ func Interactive() bool {
 	return term.IsTerminal(int(os.Stderr.Fd()))
 }
 
+// UninstallPaths holds all filesystem paths to remove during uninstall.
+type UninstallPaths struct {
+	ConfigDir string // e.g. ~/.config/savecraft
+	CacheDir  string // e.g. ~/.cache/savecraft
+	DataDir   string // e.g. ~/.local/share/savecraft (plugin cache parent)
+	LogDir    string // e.g. ~/Library/Logs/savecraft (macOS only; empty on others)
+	Binary    string // path to the running binary
+}
+
 // Control dispatches a service management action to the platform backend.
-// Supported actions: "install", "uninstall", "start", "stop".
+// Supported actions: "install", "start", "stop", "restart".
 func Control(cfg Config, action string) error {
 	return control(cfg, action, defaultRunner)
+}
+
+// Uninstall completely removes the daemon: stops/removes the OS service,
+// deletes config/cache/data/log directories, and removes the binary itself.
+// Each step is best-effort — failures are printed but do not abort.
+func Uninstall(cfg Config, paths UninstallPaths, output io.Writer) error {
+	return doUninstall(cfg, paths, output, defaultRunner)
+}
+
+func doUninstall(cfg Config, paths UninstallPaths, output io.Writer, run commandRunner) error {
+	// Step 1: Remove OS service registration (best-effort).
+	if err := uninstall(cfg, run); err != nil {
+		fmt.Fprintf(output, "  warning: remove service: %v\n", err)
+	} else {
+		fmt.Fprintf(output, "  Removed OS service %s\n", cfg.Name)
+	}
+
+	// Step 2: Remove directories.
+	for _, dir := range []struct{ label, path string }{
+		{"config", paths.ConfigDir},
+		{"cache", paths.CacheDir},
+		{"data", paths.DataDir},
+		{"log", paths.LogDir},
+	} {
+		if dir.path == "" {
+			continue
+		}
+
+		if err := os.RemoveAll(dir.path); err != nil {
+			fmt.Fprintf(output, "  warning: remove %s dir: %v\n", dir.label, err)
+		} else {
+			fmt.Fprintf(output, "  Removed %s\n", dir.path)
+		}
+	}
+
+	// Step 3: Remove binary (last — we're running from it).
+	if paths.Binary != "" {
+		if err := os.Remove(paths.Binary); err != nil && !os.IsNotExist(err) {
+			fmt.Fprintf(output, "  warning: remove binary: %v\n", err)
+		} else if err == nil {
+			fmt.Fprintf(output, "  Removed %s\n", paths.Binary)
+		}
+	}
+
+	return nil
 }
 
 func control(cfg Config, action string, run commandRunner) error {
@@ -136,8 +191,6 @@ func control(cfg Config, action string, run commandRunner) error {
 		}
 
 		return install(cfg, exePath, run)
-	case "uninstall":
-		return uninstall(cfg, run)
 	case "start":
 		return serviceStart(cfg, run)
 	case "stop":
