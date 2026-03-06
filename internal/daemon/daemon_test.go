@@ -1353,9 +1353,6 @@ func TestRun_LifecycleEvents(t *testing.T) {
 	}
 
 	online := ws.sentEvent("sourceOnline", 0)
-	if online["sourceId"] != "steam-deck" {
-		t.Errorf("sourceOnline sourceId = %v", online["sourceId"])
-	}
 	if online["version"] != "0.1.0" {
 		t.Errorf("sourceOnline version = %v", online["version"])
 	}
@@ -2367,14 +2364,14 @@ func TestRun_ReconnectReannounces(t *testing.T) {
 		return count > initialCount
 	})
 
-	// Verify re-announced with correct sourceId.
-	// The second sourceOnline should have the same sourceId.
+	// Verify re-announced after reconnect.
+	// The second sourceOnline should have version and platform but no sourceId.
 	onlineEvent := ws.sentEvent("sourceOnline", 1)
 	if onlineEvent == nil {
 		t.Fatal("second sourceOnline event not found")
 	}
-	if onlineEvent["sourceId"] != "deck" {
-		t.Errorf("reconnect sourceOnline sourceId = %v, want deck", onlineEvent["sourceId"])
+	if onlineEvent["version"] != "0.1.0" {
+		t.Errorf("reconnect sourceOnline version = %v, want 0.1.0", onlineEvent["version"])
 	}
 
 	// Verify full announceOnline sequence was re-sent: gamesDiscovered, watching, pushCompleted.

@@ -335,9 +335,7 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 		select {
 		case <-ctx.Done():
 			d.log.InfoContext(ctx, "daemon shutting down")
-			d.sendEvent(ctx, "sourceOffline", map[string]any{
-				"sourceId": d.cfg.SourceID,
-			})
+			d.sendEvent(ctx, "sourceOffline", map[string]any{})
 			return nil
 		case ev := <-d.watcher.Events():
 			d.handleFileEvent(ctx, ev)
@@ -360,7 +358,6 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 // Called on initial connect and after each reconnect.
 func (d *Daemon) announceOnline(ctx context.Context) {
 	d.sendEvent(ctx, "sourceOnline", map[string]any{
-		"sourceId": d.cfg.SourceID,
 		"version":  d.cfg.Version,
 		"platform": runtime.GOOS + "-" + runtime.GOARCH,
 	})
@@ -412,9 +409,7 @@ func (d *Daemon) applyDaemonUpdate(ctx context.Context, info *UpdateInfo) {
 		})
 		return
 	}
-	d.sendEvent(ctx, "sourceOffline", map[string]any{
-		"sourceId": d.cfg.SourceID,
-	})
+	d.sendEvent(ctx, "sourceOffline", map[string]any{})
 	d.exitFunc(0)
 }
 

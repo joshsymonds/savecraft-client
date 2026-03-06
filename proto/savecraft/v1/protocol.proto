@@ -65,16 +65,18 @@ message Message {
 // --- Source lifecycle ---
 
 // Source connected to the server (daemon started, mod loaded, etc.).
+// Identity is resolved server-side from the WebSocket connection, not self-reported.
 message SourceOnline {
-  string source_id = 1;
+  reserved 1; // was source_id — identity comes from the WS connection, not self-report
   string version = 2;
   google.protobuf.Timestamp timestamp = 3;
   string platform = 4;
 }
 
 // Source disconnecting gracefully.
+// Identity is resolved server-side from the WebSocket connection, not self-reported.
 message SourceOffline {
-  string source_id = 1;
+  reserved 1; // was source_id — identity comes from the WS connection, not self-report
   google.protobuf.Timestamp timestamp = 2;
 }
 

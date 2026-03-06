@@ -645,9 +645,9 @@ func (*Message_TestPath) isMessage_Payload() {}
 func (*Message_TestPathResult) isMessage_Payload() {}
 
 // Source connected to the server (daemon started, mod loaded, etc.).
+// Identity is resolved server-side from the WebSocket connection, not self-reported.
 type SourceOnline struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	SourceId      string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
 	Version       string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
 	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	Platform      string                 `protobuf:"bytes,4,opt,name=platform,proto3" json:"platform,omitempty"`
@@ -685,13 +685,6 @@ func (*SourceOnline) Descriptor() ([]byte, []int) {
 	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *SourceOnline) GetSourceId() string {
-	if x != nil {
-		return x.SourceId
-	}
-	return ""
-}
-
 func (x *SourceOnline) GetVersion() string {
 	if x != nil {
 		return x.Version
@@ -714,9 +707,9 @@ func (x *SourceOnline) GetPlatform() string {
 }
 
 // Source disconnecting gracefully.
+// Identity is resolved server-side from the WebSocket connection, not self-reported.
 type SourceOffline struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	SourceId      string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
 	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -750,13 +743,6 @@ func (x *SourceOffline) ProtoReflect() protoreflect.Message {
 // Deprecated: Use SourceOffline.ProtoReflect.Descriptor instead.
 func (*SourceOffline) Descriptor() ([]byte, []int) {
 	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *SourceOffline) GetSourceId() string {
-	if x != nil {
-		return x.SourceId
-	}
-	return ""
 }
 
 func (x *SourceOffline) GetTimestamp() *timestamppb.Timestamp {
@@ -2775,15 +2761,13 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\fsource_state\x18< \x01(\v2\x19.savecraft.v1.SourceStateH\x00R\vsourceState\x125\n" +
 	"\ttest_path\x18F \x01(\v2\x16.savecraft.v1.TestPathH\x00R\btestPath\x12H\n" +
 	"\x10test_path_result\x18G \x01(\v2\x1c.savecraft.v1.TestPathResultH\x00R\x0etestPathResultB\t\n" +
-	"\apayload\"\x9b\x01\n" +
-	"\fSourceOnline\x12\x1b\n" +
-	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\x18\n" +
+	"\apayload\"\x84\x01\n" +
+	"\fSourceOnline\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x128\n" +
 	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x1a\n" +
-	"\bplatform\x18\x04 \x01(\tR\bplatform\"f\n" +
-	"\rSourceOffline\x12\x1b\n" +
-	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x128\n" +
-	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\x11\n" +
+	"\bplatform\x18\x04 \x01(\tR\bplatformJ\x04\b\x01\x10\x02\"O\n" +
+	"\rSourceOffline\x128\n" +
+	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestampJ\x04\b\x01\x10\x02\"\x11\n" +
 	"\x0fSourceHeartbeat\":\n" +
 	"\vScanStarted\x12\x17\n" +
 	"\agame_id\x18\x01 \x01(\tR\x06gameId\x12\x12\n" +
