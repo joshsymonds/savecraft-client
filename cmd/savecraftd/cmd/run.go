@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -133,7 +134,7 @@ func ensureLinked(
 		return handleNewRegistration(ctx, cfg, frontendURL, api, regResult, logger)
 	}
 
-	return handleExistingSource(ctx, cfg, frontendURL, api, logger)
+	return handleExistingSource(ctx, cfg, appName, frontendURL, api, logger)
 }
 
 // handleNewRegistration handles the first-boot case where the source was just registered.
@@ -169,13 +170,17 @@ func handleNewRegistration(
 func handleExistingSource(
 	ctx context.Context,
 	cfg *appConfig,
-	frontendURL string,
+	appName, frontendURL string,
 	api *localapi.Server,
 	logger *slog.Logger,
 ) error {
 	status, statusErr := regclient.Status(ctx, cfg.ServerURL, cfg.AuthToken)
 
 	switch {
+	case errors.Is(statusErr, regclient.ErrSourceNotFound):
+		logger.WarnContext(ctx, "source not found on server, re-registering")
+
+		return reRegister(ctx, cfg, appName, frontendURL, api, logger)
 	case statusErr != nil:
 		logger.WarnContext(ctx, "could not check source status, assuming linked",
 			slog.String("error", statusErr.Error()))
@@ -189,6 +194,34 @@ func handleExistingSource(
 	}
 
 	return nil
+}
+
+// reRegister clears stale credentials and performs a fresh registration.
+// This handles the case where the server-side database was reset.
+func reRegister(
+	ctx context.Context,
+	cfg *appConfig,
+	appName, frontendURL string,
+	api *localapi.Server,
+	logger *slog.Logger,
+) error {
+	cfg.AuthToken = ""
+	cfg.Daemon.AuthToken = ""
+
+	envPath := envfile.EnvFilePath(appName)
+	regResult, registered, regErr := autoRegister(ctx, cfg, envPath)
+
+	if regErr != nil {
+		api.SetError(regErr.Error())
+
+		return fmt.Errorf("re-register after source-not-found: %w", regErr)
+	}
+
+	if !registered {
+		return fmt.Errorf("re-register: expected registration but token was still set")
+	}
+
+	return handleNewRegistration(ctx, cfg, frontendURL, api, regResult, logger)
 }
 
 // handleUnlinkedSource enters the wait-for-link flow for an existing but unlinked source.

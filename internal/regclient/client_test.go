@@ -3,6 +3,7 @@ package regclient_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -183,6 +184,22 @@ func TestStatus(t *testing.T) {
 		}
 	})
 
+	t.Run("404 returns ErrSourceNotFound", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+			rw.Header().Set("Content-Type", "application/json")
+			rw.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(rw).Encode(map[string]string{"error": "Source not found"})
+		}))
+		defer srv.Close()
+
+		_, err := regclient.Status(context.Background(), srv.URL, "sct_testtoken")
+		if !errors.Is(err, regclient.ErrSourceNotFound) {
+			t.Errorf("expected ErrSourceNotFound, got %v", err)
+		}
+	})
+
 	t.Run("server error returns wrapped error", func(t *testing.T) {
 		t.Parallel()
 
@@ -194,6 +211,10 @@ func TestStatus(t *testing.T) {
 		_, err := regclient.Status(context.Background(), srv.URL, "sct_testtoken")
 		if err == nil {
 			t.Fatal("expected error, got nil")
+		}
+
+		if errors.Is(err, regclient.ErrSourceNotFound) {
+			t.Error("500 should not be ErrSourceNotFound")
 		}
 	})
 }

@@ -5,9 +5,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 )
+
+// ErrSourceNotFound is returned when the server reports that the source
+// does not exist (HTTP 404). This typically means the database was reset
+// and the locally-stored credentials are stale.
+var ErrSourceNotFound = errors.New("source not found")
 
 // RegisterResult holds the response from a successful source registration.
 // JSON tags use snake_case to match the server API wire format.
@@ -47,6 +53,10 @@ func Status(ctx context.Context, baseURL, authToken string) (*StatusResult, erro
 		return nil, fmt.Errorf("status request: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrSourceNotFound
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("status request failed with status %d", resp.StatusCode)

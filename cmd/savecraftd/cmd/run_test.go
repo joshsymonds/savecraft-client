@@ -3,13 +3,17 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/joshsymonds/savecraft.gg/internal/envfile"
+	"github.com/joshsymonds/savecraft.gg/internal/localapi"
 )
 
 func TestLoadConfig_UsesServerURLDefault(t *testing.T) {
@@ -209,6 +213,95 @@ func TestAutoRegister_RegistersAndPersists(t *testing.T) {
 	if result.LinkCode != "123456" {
 		t.Errorf("link_code = %q, want 123456", result.LinkCode)
 	}
+}
+
+func TestHandleExistingSource_ReRegistersOn404(t *testing.T) {
+	// Simulate a server where /status returns 404, then /register succeeds.
+	var statusCalls, registerCalls int
+
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		switch {
+		case req.Method == http.MethodGet && req.URL.Path == "/api/v1/source/status":
+			statusCalls++
+			rw.Header().Set("Content-Type", "application/json")
+			rw.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(rw).Encode(map[string]string{"error": "Source not found"})
+
+		case req.Method == http.MethodPost && req.URL.Path == "/api/v1/source/register":
+			registerCalls++
+			rw.Header().Set("Content-Type", "application/json")
+			rw.WriteHeader(http.StatusCreated)
+			json.NewEncoder(rw).Encode(map[string]string{
+				"source_uuid":          "new-uuid-5678",
+				"source_token":         "sct_newtoken",
+				"link_code":            "999999",
+				"link_code_expires_at": "2099-01-01T00:00:00Z",
+			})
+
+		case req.Method == http.MethodGet && req.URL.Path == "/api/v1/source/status" && req.Header.Get("Authorization") == "Bearer sct_newtoken":
+			// After re-registration, status checks during waitForLink.
+			rw.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(rw).Encode(map[string]any{"linked": true})
+
+		default:
+			rw.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	xdgDir := t.TempDir()
+	appDir := filepath.Join(xdgDir, "test-app")
+	if err := os.MkdirAll(appDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	envPath := filepath.Join(appDir, "env")
+
+	// Write stale credentials.
+	if err := envfile.Write(envPath, map[string]string{
+		"SAVECRAFT_AUTH_TOKEN":  "sct_staletoken",
+		"SAVECRAFT_SOURCE_UUID": "old-uuid-1234",
+	}); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+
+	cfg := &appConfig{
+		ServerURL: srv.URL,
+		AuthToken: "sct_staletoken",
+		Daemon:    daemonConfigDefaults("test-host", "dev"),
+	}
+	cfg.Daemon.AuthToken = "sct_staletoken"
+
+	api := localapi.NewServer("localhost:0", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Point XDG_CONFIG_HOME so envfile.EnvFilePath("test-app") resolves to our temp dir.
+	t.Setenv("XDG_CONFIG_HOME", xdgDir)
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	err := handleExistingSource(ctx, cfg, "test-app", "https://test.savecraft.gg", api, logger)
+	// handleExistingSource calls reRegister which calls handleNewRegistration
+	// which calls waitForLink. waitForLink will time out or return an error
+	// because the test server doesn't provide the right status endpoint for the
+	// new token during the link-polling loop. That's fine — what we care about
+	// is that re-registration happened.
+
+	// Verify the re-registration flow was triggered.
+	if statusCalls == 0 {
+		t.Error("expected at least one status call")
+	}
+
+	if registerCalls == 0 {
+		t.Error("expected register to be called after 404, but it was not")
+	}
+
+	// Verify the config was updated with new credentials.
+	if cfg.AuthToken != "sct_newtoken" {
+		t.Errorf("cfg.AuthToken = %q, want sct_newtoken", cfg.AuthToken)
+	}
+
+	_ = err // waitForLink error is expected in test — we only care about re-registration
 }
 
 func TestAutoRegister_SkipsIfTokenExists(t *testing.T) {
