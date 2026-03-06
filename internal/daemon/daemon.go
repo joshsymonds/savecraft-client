@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -237,6 +238,10 @@ type Daemon struct {
 	// Maps watched directory -> game ID.
 	watchedDirs map[string]string
 
+	// configDir is the directory for persisting config cache.
+	// Defaults to os.UserConfigDir()/savecraft; empty disables caching.
+	configDir string
+
 	startTime time.Time
 }
 
@@ -268,6 +273,7 @@ func New(
 		log:         log,
 		exitFunc:    os.Exit,
 		watchedDirs: make(map[string]string),
+		configDir:   defaultConfigDir(),
 	}
 }
 
@@ -275,6 +281,15 @@ func New(
 // It blocks until ctx is canceled.
 func (d *Daemon) Run(ctx context.Context) (runErr error) {
 	d.startTime = time.Now()
+
+	// Load cached config for offline startup.
+	if len(d.cfg.Games) == 0 {
+		if cached, _ := loadConfigCache(d.configDir); len(cached) > 0 {
+			d.log.InfoContext(ctx, "loaded config from cache", slog.Int("game_count", len(cached)))
+			d.cfg.Games = cached
+		}
+	}
+
 	d.log.InfoContext(ctx, "daemon starting",
 		slog.String("source_id", d.cfg.SourceID),
 		slog.String("version", d.cfg.Version),
@@ -889,6 +904,8 @@ func (d *Daemon) handleConfigUpdate(
 
 	d.removeStaleGames(ctx, update.Games)
 
+	results := make(map[string]configGameResult, len(update.Games))
+
 	for gameID, newGame := range update.Games {
 		gameCfg := GameConfig{
 			SavePath:       newGame.SavePath,
@@ -901,12 +918,15 @@ func (d *Daemon) handleConfigUpdate(
 		d.cfg.Games[gameID] = gameCfg
 		d.mu.Unlock()
 
+		resolvedPath := expandPath(newGame.SavePath)
+
 		switch {
 		case !newGame.Enabled:
 			d.log.InfoContext(ctx, "game disabled", slog.String("game_id", gameID))
 			if existed {
 				d.unwatchGame(ctx, oldCfg.SavePath)
 			}
+			results[gameID] = configGameResult{Success: true}
 		case !existed || !oldCfg.Enabled:
 			d.log.InfoContext(
 				ctx,
@@ -919,9 +939,11 @@ func (d *Daemon) handleConfigUpdate(
 				d.mu.Lock()
 				delete(d.cfg.Games, gameID)
 				d.mu.Unlock()
+				results[gameID] = configGameResult{Error: "plugin download failed", ResolvedPath: resolvedPath}
 				continue
 			}
 			d.scanGame(ctx, gameID, gameCfg)
+			results[gameID] = d.buildGameResult(resolvedPath)
 		case oldCfg.SavePath != newGame.SavePath:
 			d.log.InfoContext(
 				ctx,
@@ -935,11 +957,47 @@ func (d *Daemon) handleConfigUpdate(
 				d.mu.Lock()
 				delete(d.cfg.Games, gameID)
 				d.mu.Unlock()
+				results[gameID] = configGameResult{Error: "plugin download failed", ResolvedPath: resolvedPath}
 				continue
 			}
 			d.scanGame(ctx, gameID, gameCfg)
+			results[gameID] = d.buildGameResult(resolvedPath)
+		default:
+			// No change needed — game already configured with same path.
+			results[gameID] = configGameResult{Success: true, ResolvedPath: resolvedPath}
 		}
 	}
+
+	d.sendEvent(ctx, "configResult", map[string]any{
+		"results": results,
+	})
+
+	d.mu.RLock()
+	games := make(map[string]GameConfig, len(d.cfg.Games))
+	maps.Copy(games, d.cfg.Games)
+	d.mu.RUnlock()
+	if err := saveConfigCache(d.configDir, games); err != nil {
+		d.log.WarnContext(ctx, "failed to save config cache", slog.String("error", err.Error()))
+	}
+}
+
+// configGameResult is the per-game result of applying a ConfigUpdate.
+type configGameResult struct {
+	Success      bool   `json:"success"`
+	Error        string `json:"error"`
+	ResolvedPath string `json:"resolvedPath"`
+}
+
+// buildGameResult checks if a resolved path is a valid directory.
+func (d *Daemon) buildGameResult(resolvedPath string) configGameResult {
+	info, err := d.fs.Stat(resolvedPath)
+	if err != nil {
+		return configGameResult{Error: fmt.Sprintf("path not found: %s", resolvedPath), ResolvedPath: resolvedPath}
+	}
+	if !info.IsDir() {
+		return configGameResult{Error: fmt.Sprintf("path is not a directory: %s", resolvedPath), ResolvedPath: resolvedPath}
+	}
+	return configGameResult{Success: true, ResolvedPath: resolvedPath}
 }
 
 func (d *Daemon) removeStaleGames(ctx context.Context, newGames map[string]struct {

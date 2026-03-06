@@ -44,6 +44,9 @@ message Message {
     SourceUpdateStarted source_update_started = 42;
     SourceUpdateFailed source_update_failed = 43;
 
+    // Config results: source → server (54-55)
+    ConfigResult config_result = 54;
+
     // Commands: server → source (50-59)
     ConfigUpdate config_update = 50;
     RescanGame rescan_game = 51;
@@ -212,6 +215,17 @@ message GameConfig {
   string save_path = 1;
   bool enabled = 2;
   repeated string file_extensions = 3;
+}
+
+// Per-game result of applying a ConfigUpdate. Sent by daemon after processing.
+message ConfigResult {
+  map<string, GameConfigResult> results = 1;
+}
+
+message GameConfigResult {
+  bool success = 1;
+  string error = 2;        // empty on success
+  string resolved_path = 3; // actual path being watched (after ~ expansion etc.)
 }
 
 // Request the source to rescan a game's save directory.

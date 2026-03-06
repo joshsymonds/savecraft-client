@@ -1597,6 +1597,165 @@ func TestConfigUpdate_PathChange_PluginFailure_RemovesFromConfig(t *testing.T) {
 	}
 }
 
+// --- Tests: ConfigResult ---
+
+func TestConfigResult_ValidPath(t *testing.T) {
+	ws := newFakeWSClient()
+	cfg := Config{SourceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
+
+	d := New(cfg, d2rFS(), newFakeWatcher(), d2rRunner(), &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+
+	cmd, _ := json.Marshal(map[string]any{
+		"configUpdate": map[string]any{
+			"games": map[string]any{
+				"d2r": map[string]any{
+					"savePath":       "/saves/d2r",
+					"enabled":        true,
+					"fileExtensions": []string{".d2s"},
+				},
+			},
+		},
+	})
+	d.handleCommand(context.Background(), cmd)
+
+	event := ws.sentEvent("configResult", 0)
+	if event == nil {
+		t.Fatal("missing configResult event")
+	}
+
+	results, ok := event["results"].(map[string]any)
+	if !ok {
+		t.Fatalf("results not a map: %T", event["results"])
+	}
+	d2rResult, ok := results["d2r"].(map[string]any)
+	if !ok {
+		t.Fatalf("d2r result not a map: %T", results["d2r"])
+	}
+	if d2rResult["success"] != true {
+		t.Errorf("success = %v, want true", d2rResult["success"])
+	}
+	if d2rResult["resolvedPath"] != "/saves/d2r" {
+		t.Errorf("resolvedPath = %v, want /saves/d2r", d2rResult["resolvedPath"])
+	}
+	if d2rResult["error"] != "" {
+		t.Errorf("error = %v, want empty", d2rResult["error"])
+	}
+}
+
+func TestConfigResult_InvalidPath(t *testing.T) {
+	ws := newFakeWSClient()
+	// FS with no directories — path won't exist
+	fsys := &fakeFS{dirs: map[string][]string{}, files: map[string][]byte{}}
+	cfg := Config{SourceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
+
+	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+
+	cmd, _ := json.Marshal(map[string]any{
+		"configUpdate": map[string]any{
+			"games": map[string]any{
+				"d2r": map[string]any{
+					"savePath":       "/nonexistent/path",
+					"enabled":        true,
+					"fileExtensions": []string{".d2s"},
+				},
+			},
+		},
+	})
+	d.handleCommand(context.Background(), cmd)
+
+	event := ws.sentEvent("configResult", 0)
+	if event == nil {
+		t.Fatal("missing configResult event")
+	}
+
+	results := event["results"].(map[string]any)
+	d2rResult := results["d2r"].(map[string]any)
+	if d2rResult["success"] != false {
+		t.Errorf("success = %v, want false", d2rResult["success"])
+	}
+	if d2rResult["error"] == "" {
+		t.Error("error should be non-empty for invalid path")
+	}
+}
+
+func TestConfigResult_DisabledGame(t *testing.T) {
+	ws := newFakeWSClient()
+	cfg := d2rConfig()
+
+	d := New(cfg, d2rFS(), newFakeWatcher(), d2rRunner(), &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	d.watchedDirs["/saves/d2r"] = "d2r"
+
+	cmd, _ := json.Marshal(map[string]any{
+		"configUpdate": map[string]any{
+			"games": map[string]any{
+				"d2r": map[string]any{
+					"savePath":       "/saves/d2r",
+					"enabled":        false,
+					"fileExtensions": []string{".d2s"},
+				},
+			},
+		},
+	})
+	d.handleCommand(context.Background(), cmd)
+
+	event := ws.sentEvent("configResult", 0)
+	if event == nil {
+		t.Fatal("missing configResult event")
+	}
+
+	results := event["results"].(map[string]any)
+	d2rResult := results["d2r"].(map[string]any)
+	if d2rResult["success"] != true {
+		t.Errorf("success = %v, want true for disabled game", d2rResult["success"])
+	}
+}
+
+func TestConfigResult_MultipleGames(t *testing.T) {
+	ws := newFakeWSClient()
+	fsys := &fakeFS{
+		dirs:  map[string][]string{"/saves/d2r": {"Hammerdin.d2s"}},
+		files: map[string][]byte{"/saves/d2r/Hammerdin.d2s": []byte("fake")},
+	}
+	cfg := Config{SourceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
+
+	d := New(cfg, fsys, newFakeWatcher(), d2rRunner(), &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+
+	cmd, _ := json.Marshal(map[string]any{
+		"configUpdate": map[string]any{
+			"games": map[string]any{
+				"d2r": map[string]any{
+					"savePath":       "/saves/d2r",
+					"enabled":        true,
+					"fileExtensions": []string{".d2s"},
+				},
+				"sdv": map[string]any{
+					"savePath":       "/nonexistent/sdv",
+					"enabled":        true,
+					"fileExtensions": []string{".xml"},
+				},
+			},
+		},
+	})
+	d.handleCommand(context.Background(), cmd)
+
+	event := ws.sentEvent("configResult", 0)
+	if event == nil {
+		t.Fatal("missing configResult event")
+	}
+
+	results := event["results"].(map[string]any)
+
+	d2rResult := results["d2r"].(map[string]any)
+	if d2rResult["success"] != true {
+		t.Errorf("d2r success = %v, want true", d2rResult["success"])
+	}
+
+	sdvResult := results["sdv"].(map[string]any)
+	if sdvResult["success"] != false {
+		t.Errorf("sdv success = %v, want false", sdvResult["success"])
+	}
+}
+
 // --- Tests: discoverGames ---
 
 func TestDiscoverGames_FindsGame(t *testing.T) {
