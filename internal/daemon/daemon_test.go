@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
+	pb "github.com/joshsymonds/savecraft.gg/internal/proto/savecraft/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 func testLogger() *slog.Logger {
@@ -2289,7 +2291,7 @@ func TestSendEvent_HeartbeatWireFormat(t *testing.T) {
 		&fakePushClient{}, ws, nil, nil, testLogger(),
 	)
 
-	d.sendEvent(context.Background(), "sourceHeartbeat", map[string]any{})
+	d.sendMessage(context.Background(), &pb.Message{Payload: &pb.Message_SourceHeartbeat{SourceHeartbeat: &pb.SourceHeartbeat{}}})
 
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -2297,17 +2299,14 @@ func TestSendEvent_HeartbeatWireFormat(t *testing.T) {
 		t.Fatalf("sent %d messages, want 1", len(ws.sent))
 	}
 
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(ws.sent[0], &raw); err != nil {
+	var msg pb.Message
+	if err := proto.Unmarshal(ws.sent[0], &msg); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	hb, ok := raw["sourceHeartbeat"]
+	hb := msg.GetSourceHeartbeat()
+	ok := hb != nil
 	if !ok {
-		t.Fatal("missing sourceHeartbeat key")
-	}
-	// Must be {} not null — null causes isSet() to return false on the hub
-	if string(hb) != "{}" {
-		t.Errorf("sourceHeartbeat payload = %s, want {}", string(hb))
+		t.Fatal("missing sourceHeartbeat payload")
 	}
 }
 

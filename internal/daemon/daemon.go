@@ -17,7 +17,12 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
+	pb "github.com/joshsymonds/savecraft.gg/internal/proto/savecraft/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 const pluginUpdateInterval = 24 * time.Hour
@@ -38,17 +43,6 @@ type Identity struct {
 	SaveName string         `json:"saveName,omitempty"`
 	GameID   string         `json:"gameId"`
 	Extra    map[string]any `json:"extra,omitempty"`
-}
-
-// toWire returns Identity as a map matching proto SaveIdentity JSON field names.
-// The proto uses "name" (not "saveName"), so we can't marshal Identity directly
-// into WebSocket events that the hub parses via Message.fromJSON().
-func (id Identity) toWire() map[string]any {
-	m := map[string]any{"name": id.SaveName}
-	if len(id.Extra) > 0 {
-		m["extra"] = id.Extra
-	}
-	return m
 }
 
 // Section is a named block of game state data.
@@ -207,10 +201,11 @@ type UpdateInfo struct {
 
 // DiscoveredGame represents a game whose save directory was found on disk.
 type DiscoveredGame struct {
-	GameID    string `json:"gameId"`
-	Name      string `json:"name"`
-	Path      string `json:"path"`
-	FileCount int    `json:"fileCount"`
+	GameID         string   `json:"gameId"`
+	Name           string   `json:"name"`
+	Path           string   `json:"path"`
+	FileCount      int      `json:"fileCount"`
+	FileExtensions []string `json:"fileExtensions"`
 }
 
 // --- Daemon ---
@@ -335,7 +330,9 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 		select {
 		case <-ctx.Done():
 			d.log.InfoContext(ctx, "daemon shutting down")
-			d.sendEvent(ctx, "sourceOffline", map[string]any{})
+			d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_SourceOffline{SourceOffline: &pb.SourceOffline{
+				Timestamp: timestamppb.Now(),
+			}}})
 			return nil
 		case ev := <-d.watcher.Events():
 			d.handleFileEvent(ctx, ev)
@@ -346,7 +343,7 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 		case <-selfUpdateCh:
 			d.checkSelfUpdate(ctx)
 		case <-heartbeatTicker.C:
-			d.sendEvent(ctx, "sourceHeartbeat", map[string]any{})
+			d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_SourceHeartbeat{SourceHeartbeat: &pb.SourceHeartbeat{}}})
 		case <-d.ws.Reconnected():
 			d.log.InfoContext(ctx, "websocket reconnected, re-announcing")
 			d.announceOnline(ctx)
@@ -357,10 +354,13 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 // announceOnline sends the sourceOnline event and full game state.
 // Called on initial connect and after each reconnect.
 func (d *Daemon) announceOnline(ctx context.Context) {
-	d.sendEvent(ctx, "sourceOnline", map[string]any{
-		"version":  d.cfg.Version,
-		"platform": runtime.GOOS + "-" + runtime.GOARCH,
-	})
+	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_SourceOnline{SourceOnline: &pb.SourceOnline{
+		Version:   d.cfg.Version,
+		Platform:  runtime.GOOS + "-" + runtime.GOARCH,
+		Os:        runtime.GOOS,
+		Arch:      runtime.GOARCH,
+		Timestamp: timestamppb.Now(),
+	}}})
 
 	d.discoverGames(ctx)
 
@@ -399,33 +399,35 @@ func (d *Daemon) applyDaemonUpdate(ctx context.Context, info *UpdateInfo) {
 	if d.updater == nil {
 		return
 	}
-	d.sendEvent(ctx, "sourceUpdateStarted", map[string]any{
-		"version": info.Version,
-	})
+	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_SourceUpdateStarted{SourceUpdateStarted: &pb.SourceUpdateStarted{
+		Version: info.Version,
+	}}})
 	if err := d.updater.Apply(ctx, info, d.cfg.BinaryPath); err != nil {
-		d.sendEvent(ctx, "sourceUpdateFailed", map[string]any{
-			"version": info.Version,
-			"message": err.Error(),
-		})
+		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_SourceUpdateFailed{SourceUpdateFailed: &pb.SourceUpdateFailed{
+			Version: info.Version,
+			Message: err.Error(),
+		}}})
 		return
 	}
-	d.sendEvent(ctx, "sourceOffline", map[string]any{})
+	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_SourceOffline{SourceOffline: &pb.SourceOffline{
+		Timestamp: timestamppb.Now(),
+	}}})
 	d.exitFunc(0)
 }
 
 func (d *Daemon) checkPluginUpdates(ctx context.Context) {
 	updated, err := d.plugins.CheckForUpdates(ctx)
 	if err != nil {
-		d.sendEvent(ctx, "pluginUpdateCheckFailed", map[string]any{
-			"message": err.Error(),
-		})
+		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PluginUpdateCheckFailed{PluginUpdateCheckFailed: &pb.PluginUpdateCheckFailed{
+			Message: err.Error(),
+		}}})
 		return
 	}
 	for _, gameID := range updated {
 		d.log.InfoContext(ctx, "plugin updated", slog.String("game_id", gameID))
-		d.sendEvent(ctx, "pluginUpdated", map[string]any{
-			"gameId": gameID,
-		})
+		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PluginUpdated{PluginUpdated: &pb.PluginUpdated{
+			GameId: gameID,
+		}}})
 	}
 }
 
@@ -445,10 +447,10 @@ func (d *Daemon) ensurePluginReady(
 			slog.String("game_id", gameID),
 			slog.String("error", ensureErr.Error()),
 		)
-		d.sendEvent(ctx, "pluginDownloadFailed", map[string]any{
-			"gameId":  gameID,
-			"message": ensureErr.Error(),
-		})
+		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PluginDownloadFailed{PluginDownloadFailed: &pb.PluginDownloadFailed{
+			GameId:  gameID,
+			Message: ensureErr.Error(),
+		}}})
 		return false
 	}
 	return true
@@ -491,26 +493,37 @@ func (d *Daemon) discoverGames(ctx context.Context) {
 			slog.Int("file_count", len(matching)),
 		)
 		discovered = append(discovered, DiscoveredGame{
-			GameID:    gameID,
-			Name:      info.Name,
-			Path:      path,
-			FileCount: len(matching),
+			GameID:         gameID,
+			Name:           info.Name,
+			Path:           path,
+			FileCount:      len(matching),
+			FileExtensions: info.FileExtensions,
 		})
 	}
 
-	d.sendEvent(ctx, "gamesDiscovered", map[string]any{
-		"games": discovered,
-	})
+	pbGames := make([]*pb.DiscoveredGame, len(discovered))
+	for i, g := range discovered {
+		pbGames[i] = &pb.DiscoveredGame{
+			GameId:         g.GameID,
+			Name:           g.Name,
+			Path:           g.Path,
+			FileCount:      int32(g.FileCount),
+			FileExtensions: g.FileExtensions,
+		}
+	}
+	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_GamesDiscovered{GamesDiscovered: &pb.GamesDiscovered{
+		Games: pbGames,
+	}}})
 }
 
 func (d *Daemon) scanGame(
 	ctx context.Context, gameID string, cfg GameConfig,
 ) {
 	d.log.InfoContext(ctx, "scanning game directory", slog.String("game_id", gameID), slog.String("path", cfg.SavePath))
-	d.sendEvent(ctx, "scanStarted", map[string]any{
-		"gameId": gameID,
-		"path":   cfg.SavePath,
-	})
+	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ScanStarted{ScanStarted: &pb.ScanStarted{
+		GameId: gameID,
+		Path:   cfg.SavePath,
+	}}})
 
 	info, err := d.fs.Stat(cfg.SavePath)
 	if err != nil || !info.IsDir() {
@@ -520,19 +533,19 @@ func (d *Daemon) scanGame(
 			slog.String("game_id", gameID),
 			slog.String("path", cfg.SavePath),
 		)
-		d.sendEvent(ctx, "gameNotFound", map[string]any{
-			"gameId":       gameID,
-			"pathsChecked": []string{cfg.SavePath},
-		})
+		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_GameNotFound{GameNotFound: &pb.GameNotFound{
+			GameId:       gameID,
+			PathsChecked: []string{cfg.SavePath},
+		}}})
 		return
 	}
 
 	entries, err := d.fs.ReadDir(cfg.SavePath)
 	if err != nil {
-		d.sendEvent(ctx, "gameNotFound", map[string]any{
-			"gameId":       gameID,
-			"pathsChecked": []string{cfg.SavePath},
-		})
+		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_GameNotFound{GameNotFound: &pb.GameNotFound{
+			GameId:       gameID,
+			PathsChecked: []string{cfg.SavePath},
+		}}})
 		return
 	}
 
@@ -543,26 +556,26 @@ func (d *Daemon) scanGame(
 		slog.String("path", cfg.SavePath),
 	)
 
-	d.sendEvent(ctx, "scanCompleted", map[string]any{
-		"gameId":     gameID,
-		"path":       cfg.SavePath,
-		"filesFound": len(matchingFiles),
-		"fileNames":  matchingFiles,
-	})
+	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ScanCompleted{ScanCompleted: &pb.ScanCompleted{
+		GameId:     gameID,
+		Path:       cfg.SavePath,
+		FilesFound: int32(len(matchingFiles)),
+		FileNames:  matchingFiles,
+	}}})
 
 	if len(matchingFiles) == 0 {
-		d.sendEvent(ctx, "gameNotFound", map[string]any{
-			"gameId":       gameID,
-			"pathsChecked": []string{cfg.SavePath},
-		})
+		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_GameNotFound{GameNotFound: &pb.GameNotFound{
+			GameId:       gameID,
+			PathsChecked: []string{cfg.SavePath},
+		}}})
 		return
 	}
 
-	d.sendEvent(ctx, "gameDetected", map[string]any{
-		"gameId":    gameID,
-		"path":      cfg.SavePath,
-		"saveCount": len(matchingFiles),
-	})
+	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_GameDetected{GameDetected: &pb.GameDetected{
+		GameId:    gameID,
+		Path:      cfg.SavePath,
+		SaveCount: int32(len(matchingFiles)),
+	}}})
 
 	if watchErr := d.watcher.Add(cfg.SavePath); watchErr != nil {
 		return
@@ -578,11 +591,11 @@ func (d *Daemon) scanGame(
 		slog.String("path", cfg.SavePath),
 		slog.Int("file_count", len(matchingFiles)),
 	)
-	d.sendEvent(ctx, "watching", map[string]any{
-		"gameId":         gameID,
-		"path":           cfg.SavePath,
-		"filesMonitored": len(matchingFiles),
-	})
+	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_Watching{Watching: &pb.Watching{
+		GameId:         gameID,
+		Path:           cfg.SavePath,
+		FilesMonitored: int32(len(matchingFiles)),
+	}}})
 
 	for _, fileName := range matchingFiles {
 		fullPath := filepath.Join(cfg.SavePath, fileName)
@@ -630,10 +643,10 @@ func (d *Daemon) parseAndPush(
 	preloadedData []byte,
 ) {
 	d.log.DebugContext(ctx, "parsing save file", slog.String("game_id", gameID), slog.String("file_name", fileName))
-	d.sendEvent(ctx, "parseStarted", map[string]any{
-		"gameId":   gameID,
-		"fileName": fileName,
-	})
+	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ParseStarted{ParseStarted: &pb.ParseStarted{
+		GameId:   gameID,
+		FileName: fileName,
+	}}})
 
 	saveBytes := preloadedData
 	if saveBytes == nil {
@@ -647,22 +660,22 @@ func (d *Daemon) parseAndPush(
 				slog.String("file_name", fileName),
 				slog.String("error", err.Error()),
 			)
-			d.sendEvent(ctx, "parseFailed", map[string]any{
-				"gameId":    gameID,
-				"fileName":  fileName,
-				"errorType": "PARSE_ERROR_TYPE_PARSE_ERROR",
-				"message":   fmt.Sprintf("read file: %v", err),
-			})
+			d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ParseFailed{ParseFailed: &pb.ParseFailed{
+				GameId:    gameID,
+				FileName:  fileName,
+				ErrorType: pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR,
+				Message:   fmt.Sprintf("read file: %v", err),
+			}}})
 			return
 		}
 	}
 
 	onStatus := func(message string) {
-		d.sendEvent(ctx, "pluginStatus", map[string]any{
-			"gameId":   gameID,
-			"fileName": fileName,
-			"message":  message,
-		})
+		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PluginStatus{PluginStatus: &pb.PluginStatus{
+			GameId:   gameID,
+			FileName: fileName,
+			Message:  message,
+		}}})
 	}
 
 	state, err := d.runner.Run(ctx, gameID, saveBytes, onStatus)
@@ -679,12 +692,12 @@ func (d *Daemon) parseAndPush(
 			slog.String("error_type", errorType),
 			slog.String("error", err.Error()),
 		)
-		d.sendEvent(ctx, "parseFailed", map[string]any{
-			"gameId":    gameID,
-			"fileName":  fileName,
-			"errorType": errorType,
-			"message":   err.Error(),
-		})
+		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ParseFailed{ParseFailed: &pb.ParseFailed{
+			GameId:    gameID,
+			FileName:  fileName,
+			ErrorType: toParseErrorType(errorType),
+			Message:   err.Error(),
+		}}})
 		return
 	}
 
@@ -696,12 +709,12 @@ func (d *Daemon) parseAndPush(
 			slog.String("game_id", gameID),
 			slog.String("error", marshalErr.Error()),
 		)
-		d.sendEvent(ctx, "parseFailed", map[string]any{
-			"gameId":    gameID,
-			"fileName":  fileName,
-			"errorType": "PARSE_ERROR_TYPE_PARSE_ERROR",
-			"message":   fmt.Sprintf("marshal state: %v", marshalErr),
-		})
+		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ParseFailed{ParseFailed: &pb.ParseFailed{
+			GameId:    gameID,
+			FileName:  fileName,
+			ErrorType: pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR,
+			Message:   fmt.Sprintf("marshal state: %v", marshalErr),
+		}}})
 		return
 	}
 
@@ -713,14 +726,14 @@ func (d *Daemon) parseAndPush(
 		slog.String("summary", state.Summary),
 		slog.Int("size_bytes", len(stateJSON)),
 	)
-	d.sendEvent(ctx, "parseCompleted", map[string]any{
-		"gameId":        gameID,
-		"fileName":      fileName,
-		"identity":      state.Identity.toWire(),
-		"summary":       state.Summary,
-		"sectionsCount": len(state.Sections),
-		"sizeBytes":     len(stateJSON),
-	})
+	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ParseCompleted{ParseCompleted: &pb.ParseCompleted{
+		GameId:        gameID,
+		FileName:      fileName,
+		Identity:      toProtoIdentity(state.Identity),
+		Summary:       state.Summary,
+		SectionsCount: int32(len(state.Sections)),
+		SizeBytes:     int64(len(stateJSON)),
+	}}})
 
 	d.pushState(ctx, gameID, state, stateJSON)
 }
@@ -728,11 +741,11 @@ func (d *Daemon) parseAndPush(
 func (d *Daemon) pushState(
 	ctx context.Context, gameID string, state *GameState, stateJSON []byte,
 ) {
-	d.sendEvent(ctx, "pushStarted", map[string]any{
-		"gameId":    gameID,
-		"summary":   state.Summary,
-		"sizeBytes": len(stateJSON),
-	})
+	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PushStarted{PushStarted: &pb.PushStarted{
+		GameId:    gameID,
+		Summary:   state.Summary,
+		SizeBytes: int64(len(stateJSON)),
+	}}})
 
 	parsedAt := time.Now().UTC()
 	result, err := d.pushWithRetry(ctx, gameID, state.Summary, parsedAt, stateJSON)
@@ -746,23 +759,23 @@ func (d *Daemon) pushState(
 				slog.String("game_id", gameID),
 				slog.String("error", err.Error()),
 			)
-			d.sendEvent(ctx, "pushFailed", map[string]any{
-				"gameId":    gameID,
-				"message":   err.Error(),
-				"willRetry": false,
-			})
+			d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PushFailed{PushFailed: &pb.PushFailed{
+				GameId:    gameID,
+				Message:   err.Error(),
+				WillRetry: false,
+			}}})
 		}
 		return
 	}
 
 	d.log.InfoContext(ctx, "push completed", slog.String("game_id", gameID), slog.String("save_uuid", result.SaveUUID))
-	d.sendEvent(ctx, "pushCompleted", map[string]any{
-		"gameId":            gameID,
-		"saveUuid":          result.SaveUUID,
-		"summary":           state.Summary,
-		"snapshotSizeBytes": len(stateJSON),
-		"identity":          state.Identity.toWire(),
-	})
+	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PushCompleted{PushCompleted: &pb.PushCompleted{
+		GameId:            gameID,
+		SaveUuid:          result.SaveUUID,
+		Summary:           state.Summary,
+		SnapshotSizeBytes: int64(len(stateJSON)),
+		Identity:          toProtoIdentity(state.Identity),
+	}}})
 }
 
 // isPushRetryable returns true for errors that may succeed on retry.
@@ -802,11 +815,11 @@ func (d *Daemon) pushWithRetry(
 			case <-time.After(delay):
 			}
 			// Re-emit pushStarted on retry.
-			d.sendEvent(ctx, "pushStarted", map[string]any{
-				"gameId":    gameID,
-				"summary":   summary,
-				"sizeBytes": len(stateJSON),
-			})
+			d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PushStarted{PushStarted: &pb.PushStarted{
+				GameId:    gameID,
+				Summary:   summary,
+				SizeBytes: int64(len(stateJSON)),
+			}}})
 		}
 
 		d.log.DebugContext(
@@ -827,59 +840,44 @@ func (d *Daemon) pushWithRetry(
 		}
 
 		willRetry := attempt < maxAttempts-1
-		d.sendEvent(ctx, "pushFailed", map[string]any{
-			"gameId":    gameID,
-			"message":   pushErr.Error(),
-			"willRetry": willRetry,
-		})
+		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PushFailed{PushFailed: &pb.PushFailed{
+			GameId:    gameID,
+			Message:   pushErr.Error(),
+			WillRetry: willRetry,
+		}}})
 	}
 	return nil, lastErr
 }
 
 func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
-	cmdType, payload, parseErr := parseMessage(data)
-	if parseErr != nil {
-		d.log.WarnContext(ctx, "failed to parse command", slog.String("error", parseErr.Error()))
+	var msg pb.Message
+	if err := proto.Unmarshal(data, &msg); err != nil {
+		d.log.WarnContext(ctx, "failed to unmarshal command", slog.String("error", err.Error()))
 		return
 	}
-	d.log.DebugContext(ctx, "received command", slog.String("type", cmdType))
 
-	switch cmdType {
-	case "configUpdate":
-		d.handleConfigUpdate(ctx, payload)
-	case "rescanGame":
-		var cmd struct {
-			GameID string `json:"gameId"`
-		}
-		if err := json.Unmarshal(payload, &cmd); err != nil {
-			d.log.WarnContext(ctx, "failed to unmarshal rescanGame", slog.String("error", err.Error()))
-			return
-		}
+	switch cmd := msg.Payload.(type) {
+	case *pb.Message_ConfigUpdate:
+		d.handleConfigUpdate(ctx, cmd.ConfigUpdate)
+	case *pb.Message_RescanGame:
 		d.mu.RLock()
-		gameCfg, ok := d.cfg.Games[cmd.GameID]
+		gameCfg, ok := d.cfg.Games[cmd.RescanGame.GameId]
 		d.mu.RUnlock()
 		if ok {
-			d.scanGame(ctx, cmd.GameID, gameCfg)
+			d.scanGame(ctx, cmd.RescanGame.GameId, gameCfg)
 		}
-	case "testPath":
-		var cmd struct {
-			GameID string `json:"gameId"`
-			Path   string `json:"path"`
-		}
-		if err := json.Unmarshal(payload, &cmd); err != nil {
-			d.log.WarnContext(ctx, "failed to unmarshal testPath", slog.String("error", err.Error()))
-			return
-		}
-		d.handleTestPath(ctx, cmd.GameID, cmd.Path)
-	case "discoverGames":
+	case *pb.Message_TestPath:
+		d.handleTestPath(ctx, cmd.TestPath.GameId, cmd.TestPath.Path)
+	case *pb.Message_DiscoverGames:
 		d.discoverGames(ctx)
-	case "daemonUpdateAvailable":
-		var info UpdateInfo
-		if err := json.Unmarshal(payload, &info); err != nil {
-			d.log.WarnContext(ctx, "failed to unmarshal daemonUpdateAvailable", slog.String("error", err.Error()))
-			return
+	case *pb.Message_SourceUpdateAvailable:
+		info := &UpdateInfo{
+			Version:      cmd.SourceUpdateAvailable.Version,
+			URL:          cmd.SourceUpdateAvailable.Url,
+			SignatureURL: cmd.SourceUpdateAvailable.SignatureUrl,
+			SHA256:       cmd.SourceUpdateAvailable.Sha256,
 		}
-		d.applyDaemonUpdate(ctx, &info)
+		d.applyDaemonUpdate(ctx, info)
 	}
 }
 
@@ -906,20 +904,8 @@ func (d *Daemon) buildGameResult(resolvedPath string) configGameResult {
 }
 
 func (d *Daemon) handleConfigUpdate(
-	ctx context.Context, payload json.RawMessage,
+	ctx context.Context, update *pb.ConfigUpdate,
 ) {
-	var update struct {
-		Games map[string]struct {
-			SavePath       string   `json:"savePath"`
-			Enabled        bool     `json:"enabled"`
-			FileExtensions []string `json:"fileExtensions"`
-		} `json:"games"`
-	}
-	if err := json.Unmarshal(payload, &update); err != nil {
-		d.log.WarnContext(ctx, "failed to unmarshal configUpdate", slog.String("error", err.Error()))
-		return
-	}
-
 	d.log.InfoContext(ctx, "config update received", slog.Int("game_count", len(update.Games)))
 
 	d.removeStaleGames(ctx, update.Games)
@@ -987,9 +973,17 @@ func (d *Daemon) handleConfigUpdate(
 		}
 	}
 
-	d.sendEvent(ctx, "configResult", map[string]any{
-		"results": results,
-	})
+	pbResults := make(map[string]*pb.GameConfigResult, len(results))
+	for gameID, r := range results {
+		pbResults[gameID] = &pb.GameConfigResult{
+			Success:      r.Success,
+			Error:        r.Error,
+			ResolvedPath: r.ResolvedPath,
+		}
+	}
+	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ConfigResult{ConfigResult: &pb.ConfigResult{
+		Results: pbResults,
+	}}})
 
 	d.mu.RLock()
 	games := make(map[string]GameConfig, len(d.cfg.Games))
@@ -1000,12 +994,7 @@ func (d *Daemon) handleConfigUpdate(
 	}
 }
 
-func (d *Daemon) removeStaleGames(ctx context.Context, newGames map[string]struct {
-	SavePath       string   `json:"savePath"`
-	Enabled        bool     `json:"enabled"`
-	FileExtensions []string `json:"fileExtensions"`
-},
-) {
+func (d *Daemon) removeStaleGames(ctx context.Context, newGames map[string]*pb.GameConfig) {
 	newGameIDs := make(map[string]bool, len(newGames))
 	for gameID := range newGames {
 		newGameIDs[gameID] = true
@@ -1057,23 +1046,19 @@ func (d *Daemon) unwatchGame(ctx context.Context, savePath string) {
 func (d *Daemon) handleTestPath(ctx context.Context, gameID, path string) {
 	info, err := d.fs.Stat(path)
 	if err != nil || !info.IsDir() {
-		d.sendEvent(ctx, "testPathResult", map[string]any{
-			"gameId":     gameID,
-			"path":       path,
-			"valid":      false,
-			"filesFound": 0,
-		})
+		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_TestPathResult{TestPathResult: &pb.TestPathResult{
+			GameId: gameID,
+			Path:   path,
+		}}})
 		return
 	}
 
 	entries, err := d.fs.ReadDir(path)
 	if err != nil {
-		d.sendEvent(ctx, "testPathResult", map[string]any{
-			"gameId":     gameID,
-			"path":       path,
-			"valid":      false,
-			"filesFound": 0,
-		})
+		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_TestPathResult{TestPathResult: &pb.TestPathResult{
+			GameId: gameID,
+			Path:   path,
+		}}})
 		return
 	}
 
@@ -1082,13 +1067,13 @@ func (d *Daemon) handleTestPath(ctx context.Context, gameID, path string) {
 	d.mu.RUnlock()
 	fileNames := d.filterByExtension(entries, gameCfg.FileExtensions)
 
-	d.sendEvent(ctx, "testPathResult", map[string]any{
-		"gameId":     gameID,
-		"path":       path,
-		"valid":      len(fileNames) > 0,
-		"filesFound": len(fileNames),
-		"fileNames":  fileNames,
-	})
+	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_TestPathResult{TestPathResult: &pb.TestPathResult{
+		GameId:     gameID,
+		Path:       path,
+		Valid:      len(fileNames) > 0,
+		FilesFound: int32(len(fileNames)),
+		FileNames:  fileNames,
+	}}})
 }
 
 func (d *Daemon) filterByExtension(
@@ -1116,41 +1101,31 @@ func matchesExtension(ext string, extensions []string) bool {
 	return false
 }
 
-func (d *Daemon) sendEvent(ctx context.Context, eventType string, payload any) {
-	d.log.DebugContext(ctx, "sending ws event", slog.String("event_type", eventType))
-	msg := map[string]any{eventType: payload}
-	data, err := json.Marshal(msg)
+func (d *Daemon) sendMessage(ctx context.Context, msg *pb.Message) {
+	data, err := proto.Marshal(msg)
 	if err != nil {
-		d.log.ErrorContext(
-			ctx,
-			"failed to marshal event",
-			slog.String("event_type", eventType),
-			slog.String("error", err.Error()),
-		)
+		d.log.ErrorContext(ctx, "failed to marshal proto message", slog.String("error", err.Error()))
 		return
 	}
 	if sendErr := d.ws.Send(data); sendErr != nil {
-		d.log.WarnContext(
-			ctx,
-			"failed to send event",
-			slog.String("event_type", eventType),
-			slog.String("error", sendErr.Error()),
-		)
-		return
+		d.log.WarnContext(ctx, "failed to send message", slog.String("error", sendErr.Error()))
 	}
 }
 
-func parseMessage(
-	data []byte,
-) (string, json.RawMessage, error) {
-	var envelope map[string]json.RawMessage
-	if err := json.Unmarshal(data, &envelope); err != nil {
-		return "", nil, fmt.Errorf(
-			"unmarshal message envelope: %w", err,
-		)
+// toParseErrorType converts a string error type to the proto enum.
+func toParseErrorType(s string) pb.ParseErrorType {
+	if v, ok := pb.ParseErrorType_value[s]; ok {
+		return pb.ParseErrorType(v)
 	}
-	for key, val := range envelope {
-		return key, val, nil
-	}
-	return "", nil, fmt.Errorf("empty message")
+	return pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR
 }
+
+// toProtoIdentity converts a daemon Identity to a proto SaveIdentity.
+func toProtoIdentity(id Identity) *pb.SaveIdentity {
+	si := &pb.SaveIdentity{Name: id.SaveName}
+	if len(id.Extra) > 0 {
+		si.Extra, _ = structpb.NewStruct(id.Extra)
+	}
+	return si
+}
+

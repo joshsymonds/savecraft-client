@@ -122,7 +122,7 @@ func (c *Client) Send(msg []byte) error {
 	ctx, cancel := context.WithTimeout(context.Background(), c.writeTimeout)
 	defer cancel()
 
-	if err := conn.Write(ctx, websocket.MessageText, msg); err != nil {
+	if err := conn.Write(ctx, websocket.MessageBinary, msg); err != nil {
 		return fmt.Errorf("ws write: %w", err)
 	}
 	return nil

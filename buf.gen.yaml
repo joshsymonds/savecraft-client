@@ -10,3 +10,9 @@ plugins:
       - esModuleInterop=true
       - outputJsonMethods=true
       - oneof=unions
+  - remote: buf.build/community/stephenh-ts-proto
+    out: web/src/lib/proto
+    opt:
+      - esModuleInterop=true
+      - outputJsonMethods=true
+      - oneof=unions

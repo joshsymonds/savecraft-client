@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	pb "github.com/joshsymonds/savecraft.gg/internal/proto/savecraft/v1"
 )
 
 func TestStatus_ReturnsSnapshot(t *testing.T) {
@@ -145,7 +147,7 @@ func TestNew_NilLogger(t *testing.T) {
 	)
 
 	// Using the daemon should not panic — nil logger replaced with no-op.
-	d.sendEvent(context.Background(), "test", map[string]any{"key": "value"})
+	d.sendMessage(context.Background(), &pb.Message{Payload: &pb.Message_SourceHeartbeat{SourceHeartbeat: &pb.SourceHeartbeat{}}})
 	status := d.Status()
 	if status.Version != "0.1.0" {
 		t.Errorf("version = %q, want %q", status.Version, "0.1.0")
