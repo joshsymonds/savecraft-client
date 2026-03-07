@@ -2,13 +2,13 @@
 
 ## Architecture: Interface-Driven with Fakes
 
-The daemon orchestrator (`internal/daemon/`) defines interfaces for all external dependencies: `Watcher`, `Runner`, `PushClient`, `WSClient`, `FS`, `PluginManager`. Tests inject hand-written fakes. Real implementations live in separate packages (`internal/runner/`, `internal/watcher/`, etc.) and satisfy the interfaces implicitly.
+The daemon orchestrator (`internal/daemon/`) defines interfaces for all external dependencies: `Watcher`, `Runner`, `WSClient`, `FS`, `PluginManager`. Tests inject hand-written fakes. Real implementations live in separate packages (`internal/runner/`, `internal/watcher/`, etc.) and satisfy the interfaces implicitly.
 
 The `Daemon.Run()` loop: register source (if first boot) → connect WebSocket → send `SourceOnline` → scan configured games → enter event loop (file events, WS commands, context cancellation). On shutdown, send `SourceOffline`.
 
 ## First-Boot Source Registration
 
-On first boot, the daemon has no source token. It self-registers as a source by calling `POST /api/v1/source/register` (unauthenticated). The server returns a `sct_*` source token, source UUID, and a 6-digit link code (20-minute TTL).
+On first boot, the daemon has no source token. It self-registers by connecting to `/ws/register` (an unauthenticated WebSocket endpoint), sending a `Register` proto message with hostname, OS, and architecture. The server responds with a `RegisterResult` containing a `sct_*` source token, source UUID, a 6-digit link code (20-minute TTL), and the link code expiration time. The daemon then closes the registration WebSocket.
 
 The daemon:
 1. Persists the source token and UUID to local config (`~/.config/savecraft/env`)
@@ -16,7 +16,7 @@ The daemon:
 3. Polls `GET /api/v1/source/status` periodically to check if the user has linked the source
 4. If the link code expires before linking, calls `POST /api/v1/source/link-code` to get a fresh code
 
-On subsequent boots, the daemon reads the persisted token and skips registration. The push API and WebSocket both authenticate with this source token.
+On subsequent boots, the daemon reads the persisted token and skips registration. It connects to `/ws/daemon` with the source token for all subsequent communication.
 
 ## Filesystem Watching
 
@@ -29,7 +29,7 @@ The daemon uses fsnotify to watch save file directories.
 3. When timer expires, SHA-256 the file.
 4. If hash matches last successfully parsed hash, skip (no change).
 5. If hash differs, read file bytes and feed to WASM plugin.
-6. If plugin returns success (exit 0), push JSON to cloud API. Store hash as last-known-good.
+6. If plugin returns success (exit 0), send `PushSave` proto message over WebSocket. Store hash as last-known-good.
 7. If plugin returns error (exit 1), log the error and wait for next event. The game probably hasn't finished writing yet.
 
 This handles:
@@ -63,17 +63,17 @@ This handles:
 
 ## WebSocket Client (Go)
 
-Uses `nhooyr.io/websocket` for context-aware WebSocket with clean shutdown. All messages are binary protobuf (`websocket.MessageBinary`). The daemon constructs typed `proto.Message` structs and calls `proto.Marshal` to send; incoming commands are decoded with `proto.Unmarshal` and dispatched via a type switch on the `Message.Payload` oneof.
+Uses `nhooyr.io/websocket` for context-aware WebSocket with clean shutdown. All messages are binary protobuf (`websocket.MessageBinary`). The daemon constructs typed `proto.Message` structs and calls `proto.Marshal` to send; incoming commands are decoded with `proto.Unmarshal` and dispatched via a type switch on the `Message.Payload` oneof. Both save data (`PushSave`) and status events flow over this single connection.
 
 **Connection lifecycle:**
-1. On startup, connect to `wss://api.savecraft.gg/ws/daemon` (or `wss://staging-api.savecraft.gg/ws/daemon` for staging) with bearer token in header. The WebSocket connection is authenticated via source token and routed to a per-source SourceHub DO (keyed by source UUID). The SourceHub forwards events to the user's UserHub DO for UI broadcast. (Push API uses the same source token `sct_*` separately.)
+1. On startup, connect to `wss://api.savecraft.gg/ws/daemon` (or `wss://staging-api.savecraft.gg/ws/daemon` for staging) with bearer token in header. The WebSocket connection is authenticated via source token and routed to a per-source SourceHub DO (keyed by source UUID). The SourceHub forwards events to the user's UserHub DO for UI broadcast.
 2. On connect success, send `SourceOnline` message (includes version, platform, os, arch).
 3. Listen for incoming binary proto messages (config updates, rescan commands, source updates) in a goroutine. Dispatch via `proto.Unmarshal` + type switch on `Message.Payload`.
 4. Send status events as typed proto messages (parse results, errors, game detection).
 5. On disconnect, reconnect with exponential backoff: 1s → 2s → 4s → 8s → ... → 60s cap.
 6. On graceful shutdown (SIGTERM), send `SourceOffline` message, close connection.
 
-**Graceful degradation:** If the WebSocket is down, the daemon continues operating locally — watching files, parsing saves, queuing push API calls. Status events are dropped (not queued) during disconnection. The push API (HTTP POST) is independent of the WebSocket; save data always reaches R2 even if the real-time channel is down.
+**Graceful degradation:** If the WebSocket is down, the daemon continues operating locally — watching files, parsing saves. Save pushes and status events are dropped during disconnection. On reconnect, the daemon sends `SourceOnline` and rescans to push any saves that changed while offline.
 
 ## Local API (`internal/localapi`)
 

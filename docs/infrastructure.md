@@ -4,11 +4,10 @@
 
 | Service | Purpose | Free Tier |
 |---------|---------|-----------|
-| Workers | MCP server, push API, auth endpoints | 100K requests/day |
-| Durable Objects | Per-user WebSocket hub for daemon ↔ web UI real-time communication | Requires Workers Paid ($5/mo); $0.15/M requests, $12.50/M GB-s duration |
-| R2 (`savecraft-saves`) | User save snapshots | 10M reads, 1M writes/month |
-| R2 (`savecraft-plugins`) | Plugin binaries and manifests | (shared free tier) |
-| D1 | User accounts, source configs, source events, save UUID mapping, note content, FTS5 search index, plugin registry metadata | 5M rows read, 100K writes/day |
+| Workers | MCP server, auth endpoints | 100K requests/day |
+| Durable Objects | Per-source SourceHub + per-user UserHub for daemon ↔ web UI real-time communication and save push | Requires Workers Paid ($5/mo); $0.15/M requests, $12.50/M GB-s duration |
+| R2 (`savecraft-plugins`) | Plugin binaries and manifests | 10M reads, 1M writes/month |
+| D1 | User accounts, source configs, source events, save metadata, section data, note content, FTS5 search index, plugin registry metadata | 5M rows read, 100K writes/day |
 | Workers for Platforms | Dispatch namespace for reference plugin Workers (drop calculators, etc.) | $25/month flat (included in Workers Paid plan) |
 
 **Cost projections:**
@@ -26,14 +25,14 @@
 
 ### Principle: R2 is Private, Server Mediates All Access
 
-Neither R2 bucket has public access. The Worker (with R2 bindings) is the only reader/writer. Save access is scoped to the authenticated source's `sources/{source_uuid}/` prefix. Plugin access is unauthenticated but read-only via the manifest API endpoint.
+The R2 plugins bucket has no public access. The Worker (with R2 bindings) is the only reader/writer. Plugin access is unauthenticated but read-only via the manifest API endpoint.
 
 ### Daemon → Cloud Push
 
 - Daemon authenticates with source token (`sct_*`), verified via SHA-256 hash lookup in D1.
-- Server validates: well-formed JSON, under 5MB, expected top-level structure.
-- Write scoped to source's R2 prefix only (`sources/{source_uuid}/`).
-- Source token is issued at registration (`POST /api/v1/source/register`) and persisted locally by the daemon.
+- Save data sent as binary protobuf `PushSave` messages over authenticated WebSocket.
+- SourceHub DO writes save metadata and sections to D1 via `storePush`.
+- Source token is issued at registration (`/ws/register` WebSocket) and persisted locally by the daemon.
 
 ### WASM Plugin Security
 
@@ -110,7 +109,7 @@ The install script:
 4. Verifies Ed25519 signatures against baked-in public key
 5. Delegates service registration to `savecraftd install` (generates systemd unit with sandboxing)
 6. Starts the service via `savecraftd start`
-7. Daemon self-registers on first boot (`POST /api/v1/source/register`), receives a source token and 6-digit link code
+7. Daemon self-registers on first boot (connects to `/ws/register` WebSocket, sends `Register` proto), receives a source token and 6-digit link code
 8. Prints link URL — user visits it to link the source to their account
 
 **No root required.** Everything installs in `~/.local/bin/` and `~/.config/`. The daemon runs as a systemd user service under the current user. The tray binary is standalone — users can add it to their desktop environment's autostart (XDG autostart, GNOME Tweaks, etc.) if desired. `inotify` (used by fsnotify) only needs read permission on watched directories.
@@ -123,7 +122,7 @@ The install script:
 
 The WebSocket protocol is defined in `proto/protocol.proto`. `buf generate` produces Go types (`internal/proto/`) and TypeScript types (`worker/src/proto/`) from the same source. No mirrored types, no drift.
 
-GameState types (what plugins emit, what R2 stores, what MCP serves) are **not** in protobuf. Section data is arbitrary JSON per game — protobuf's `Struct` type is an awkward fit. GameState types are hand-written Go structs in `internal/daemon/` and TypeScript interfaces in `worker/src/types/`. The envelope is small and stable enough (4 fields) that the duplication is acceptable.
+GameState types (what plugins emit, what D1 stores, what MCP serves) use `google.protobuf.Struct` for section data in the proto wire format. Plugin output (JSON) converts to `structpb.NewStruct()` in Go, flows as binary proto over WebSocket, and the Worker converts to JSON for D1 storage via `Struct.toJSON()`.
 
 ### just
 
@@ -132,7 +131,7 @@ GameState types (what plugins emit, what R2 stores, what MCP serves) are **not**
 ### Testing Strategy
 
 **Unit tests (fast, run on every change):**
-- Go: all external dependencies behind interfaces. Hand-written fakes for filesystem, WASM runtime, WebSocket client, HTTP push client. No mock libraries.
+- Go: all external dependencies behind interfaces. Hand-written fakes for filesystem, WASM runtime, WebSocket client. No mock libraries.
 - Worker: Vitest + Miniflare for local D1, R2, Durable Objects, WebSocket.
 - Svelte: component tests with mock WebSocket and API responses.
 
@@ -162,7 +161,7 @@ Runs on every push to `main` and every PR. Uses `dorny/paths-filter` to skip job
 A web-only PR skips Go and Worker checks entirely. Deploy jobs run only on `main` push and only if the relevant paths changed.
 
 **Staging environments:**
-- Worker: `staging-api.savecraft.gg` (D1: `savecraft-staging`, R2: `savecraft-saves-staging`)
+- Worker: `staging-api.savecraft.gg` (D1: `savecraft-staging`)
 - Web: `staging.savecraft.gg` (Cloudflare Pages `staging` branch)
 - Plugins: `savecraft-plugins-staging` R2 bucket (unsigned, for testing)
 
