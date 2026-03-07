@@ -17,12 +17,12 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
 	pb "github.com/joshsymonds/savecraft.gg/internal/proto/savecraft/v1"
-	"google.golang.org/protobuf/proto"
 )
 
 const pluginUpdateInterval = 24 * time.Hour
@@ -343,7 +343,10 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 		case <-selfUpdateCh:
 			d.checkSelfUpdate(ctx)
 		case <-heartbeatTicker.C:
-			d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_SourceHeartbeat{SourceHeartbeat: &pb.SourceHeartbeat{}}})
+			d.sendMessage(
+				ctx,
+				&pb.Message{Payload: &pb.Message_SourceHeartbeat{SourceHeartbeat: &pb.SourceHeartbeat{}}},
+			)
 		case <-d.ws.Reconnected():
 			d.log.InfoContext(ctx, "websocket reconnected, re-announcing")
 			d.announceOnline(ctx)
@@ -399,14 +402,20 @@ func (d *Daemon) applyDaemonUpdate(ctx context.Context, info *UpdateInfo) {
 	if d.updater == nil {
 		return
 	}
-	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_SourceUpdateStarted{SourceUpdateStarted: &pb.SourceUpdateStarted{
-		Version: info.Version,
-	}}})
-	if err := d.updater.Apply(ctx, info, d.cfg.BinaryPath); err != nil {
-		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_SourceUpdateFailed{SourceUpdateFailed: &pb.SourceUpdateFailed{
+	d.sendMessage(
+		ctx,
+		&pb.Message{Payload: &pb.Message_SourceUpdateStarted{SourceUpdateStarted: &pb.SourceUpdateStarted{
 			Version: info.Version,
-			Message: err.Error(),
-		}}})
+		}}},
+	)
+	if err := d.updater.Apply(ctx, info, d.cfg.BinaryPath); err != nil {
+		d.sendMessage(
+			ctx,
+			&pb.Message{Payload: &pb.Message_SourceUpdateFailed{SourceUpdateFailed: &pb.SourceUpdateFailed{
+				Version: info.Version,
+				Message: err.Error(),
+			}}},
+		)
 		return
 	}
 	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_SourceOffline{SourceOffline: &pb.SourceOffline{
@@ -418,9 +427,14 @@ func (d *Daemon) applyDaemonUpdate(ctx context.Context, info *UpdateInfo) {
 func (d *Daemon) checkPluginUpdates(ctx context.Context) {
 	updated, err := d.plugins.CheckForUpdates(ctx)
 	if err != nil {
-		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PluginUpdateCheckFailed{PluginUpdateCheckFailed: &pb.PluginUpdateCheckFailed{
-			Message: err.Error(),
-		}}})
+		d.sendMessage(
+			ctx,
+			&pb.Message{
+				Payload: &pb.Message_PluginUpdateCheckFailed{PluginUpdateCheckFailed: &pb.PluginUpdateCheckFailed{
+					Message: err.Error(),
+				}},
+			},
+		)
 		return
 	}
 	for _, gameID := range updated {
@@ -447,10 +461,13 @@ func (d *Daemon) ensurePluginReady(
 			slog.String("game_id", gameID),
 			slog.String("error", ensureErr.Error()),
 		)
-		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PluginDownloadFailed{PluginDownloadFailed: &pb.PluginDownloadFailed{
-			GameId:  gameID,
-			Message: ensureErr.Error(),
-		}}})
+		d.sendMessage(
+			ctx,
+			&pb.Message{Payload: &pb.Message_PluginDownloadFailed{PluginDownloadFailed: &pb.PluginDownloadFailed{
+				GameId:  gameID,
+				Message: ensureErr.Error(),
+			}}},
+		)
 		return false
 	}
 	return true
@@ -502,13 +519,13 @@ func (d *Daemon) discoverGames(ctx context.Context) {
 	}
 
 	pbGames := make([]*pb.DiscoveredGame, len(discovered))
-	for i, g := range discovered {
+	for i, game := range discovered {
 		pbGames[i] = &pb.DiscoveredGame{
-			GameId:         g.GameID,
-			Name:           g.Name,
-			Path:           g.Path,
-			FileCount:      int32(g.FileCount),
-			FileExtensions: g.FileExtensions,
+			GameId:         game.GameID,
+			Name:           game.Name,
+			Path:           game.Path,
+			FileCount:      int32(game.FileCount), // #nosec G115 -- bounded by filesystem limits
+			FileExtensions: game.FileExtensions,
 		}
 	}
 	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_GamesDiscovered{GamesDiscovered: &pb.GamesDiscovered{
@@ -559,7 +576,7 @@ func (d *Daemon) scanGame(
 	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ScanCompleted{ScanCompleted: &pb.ScanCompleted{
 		GameId:     gameID,
 		Path:       cfg.SavePath,
-		FilesFound: int32(len(matchingFiles)),
+		FilesFound: int32(len(matchingFiles)), // #nosec G115 -- bounded by filesystem limits
 		FileNames:  matchingFiles,
 	}}})
 
@@ -574,7 +591,7 @@ func (d *Daemon) scanGame(
 	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_GameDetected{GameDetected: &pb.GameDetected{
 		GameId:    gameID,
 		Path:      cfg.SavePath,
-		SaveCount: int32(len(matchingFiles)),
+		SaveCount: int32(len(matchingFiles)), // #nosec G115 -- bounded by filesystem limits
 	}}})
 
 	if watchErr := d.watcher.Add(cfg.SavePath); watchErr != nil {
@@ -594,7 +611,7 @@ func (d *Daemon) scanGame(
 	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_Watching{Watching: &pb.Watching{
 		GameId:         gameID,
 		Path:           cfg.SavePath,
-		FilesMonitored: int32(len(matchingFiles)),
+		FilesMonitored: int32(len(matchingFiles)), // #nosec G115 -- bounded by filesystem limits
 	}}})
 
 	for _, fileName := range matchingFiles {
@@ -731,7 +748,7 @@ func (d *Daemon) parseAndPush(
 		FileName:      fileName,
 		Identity:      toProtoIdentity(state.Identity),
 		Summary:       state.Summary,
-		SectionsCount: int32(len(state.Sections)),
+		SectionsCount: int32(len(state.Sections)), // #nosec G115 -- bounded by game limits
 		SizeBytes:     int64(len(stateJSON)),
 	}}})
 
@@ -1071,7 +1088,7 @@ func (d *Daemon) handleTestPath(ctx context.Context, gameID, path string) {
 		GameId:     gameID,
 		Path:       path,
 		Valid:      len(fileNames) > 0,
-		FilesFound: int32(len(fileNames)),
+		FilesFound: int32(len(fileNames)), // #nosec G115 -- bounded by filesystem limits
 		FileNames:  fileNames,
 	}}})
 }
@@ -1124,8 +1141,10 @@ func toParseErrorType(s string) pb.ParseErrorType {
 func toProtoIdentity(id Identity) *pb.SaveIdentity {
 	si := &pb.SaveIdentity{Name: id.SaveName}
 	if len(id.Extra) > 0 {
-		si.Extra, _ = structpb.NewStruct(id.Extra)
+		extra, err := structpb.NewStruct(id.Extra)
+		if err == nil {
+			si.Extra = extra
+		}
 	}
 	return si
 }
-

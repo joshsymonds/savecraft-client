@@ -15,9 +15,10 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
 	pb "github.com/joshsymonds/savecraft.gg/internal/proto/savecraft/v1"
-	"google.golang.org/protobuf/proto"
 )
 
 func testLogger() *slog.Logger {
@@ -366,20 +367,6 @@ func (ws *fakeWSClient) sentEventTypes() []string {
 	return types
 }
 
-// sentMessages returns all decoded proto messages.
-func (ws *fakeWSClient) sentMessages() []*pb.Message {
-	ws.mu.Lock()
-	defer ws.mu.Unlock()
-	var msgs []*pb.Message
-	for _, data := range ws.sent {
-		var msg pb.Message
-		if proto.Unmarshal(data, &msg) == nil {
-			msgs = append(msgs, proto.Clone(&msg).(*pb.Message))
-		}
-	}
-	return msgs
-}
-
 // sentProto returns the nth proto Message matching the given type name.
 func (ws *fakeWSClient) sentProto(eventType string, index int) *pb.Message {
 	ws.mu.Lock()
@@ -394,7 +381,10 @@ func (ws *fakeWSClient) sentProto(eventType string, index int) *pb.Message {
 			continue
 		}
 		if count == index {
-			return proto.Clone(&msg).(*pb.Message)
+			if cloned, ok := proto.Clone(&msg).(*pb.Message); ok {
+				return cloned
+			}
+			return nil
 		}
 		count++
 	}
@@ -2127,12 +2117,14 @@ func TestHandleCommand_DaemonUpdateAvailable(t *testing.T) {
 	var exitCode int
 	d.exitFunc = func(code int) { exitCode = code }
 
-	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_SourceUpdateAvailable{SourceUpdateAvailable: &pb.SourceUpdateAvailable{
-		Version:      "0.2.0",
-		Url:          "https://example.com/daemon",
-		SignatureUrl: "https://example.com/daemon.sig",
-		Sha256:       "abc123",
-	}}})
+	cmd, _ := proto.Marshal(
+		&pb.Message{Payload: &pb.Message_SourceUpdateAvailable{SourceUpdateAvailable: &pb.SourceUpdateAvailable{
+			Version:      "0.2.0",
+			Url:          "https://example.com/daemon",
+			SignatureUrl: "https://example.com/daemon.sig",
+			Sha256:       "abc123",
+		}}},
+	)
 	d.handleCommand(context.Background(), cmd)
 
 	if !slices.Contains(ws.sentEventTypes(), "sourceUpdateStarted") {
@@ -2181,12 +2173,14 @@ func TestHandleCommand_DaemonUpdateFailed(t *testing.T) {
 		testLogger(),
 	)
 
-	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_SourceUpdateAvailable{SourceUpdateAvailable: &pb.SourceUpdateAvailable{
-		Version:      "0.2.0",
-		Url:          "https://example.com/daemon",
-		SignatureUrl: "https://example.com/daemon.sig",
-		Sha256:       "abc123",
-	}}})
+	cmd, _ := proto.Marshal(
+		&pb.Message{Payload: &pb.Message_SourceUpdateAvailable{SourceUpdateAvailable: &pb.SourceUpdateAvailable{
+			Version:      "0.2.0",
+			Url:          "https://example.com/daemon",
+			SignatureUrl: "https://example.com/daemon.sig",
+			Sha256:       "abc123",
+		}}},
+	)
 	d.handleCommand(context.Background(), cmd)
 
 	if !slices.Contains(ws.sentEventTypes(), "sourceUpdateStarted") {
@@ -2222,11 +2216,13 @@ func TestHandleCommand_DaemonUpdateAvailable_NilUpdater(t *testing.T) {
 		testLogger(),
 	)
 
-	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_SourceUpdateAvailable{SourceUpdateAvailable: &pb.SourceUpdateAvailable{
-		Version: "0.2.0",
-		Url:     "https://example.com/daemon",
-		Sha256:  "abc123",
-	}}})
+	cmd, _ := proto.Marshal(
+		&pb.Message{Payload: &pb.Message_SourceUpdateAvailable{SourceUpdateAvailable: &pb.SourceUpdateAvailable{
+			Version: "0.2.0",
+			Url:     "https://example.com/daemon",
+			Sha256:  "abc123",
+		}}},
+	)
 	d.handleCommand(context.Background(), cmd)
 
 	// Should not crash, should not send any update events
@@ -2380,7 +2376,10 @@ func TestSendEvent_HeartbeatWireFormat(t *testing.T) {
 		&fakePushClient{}, ws, nil, nil, testLogger(),
 	)
 
-	d.sendMessage(context.Background(), &pb.Message{Payload: &pb.Message_SourceHeartbeat{SourceHeartbeat: &pb.SourceHeartbeat{}}})
+	d.sendMessage(
+		context.Background(),
+		&pb.Message{Payload: &pb.Message_SourceHeartbeat{SourceHeartbeat: &pb.SourceHeartbeat{}}},
+	)
 
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
