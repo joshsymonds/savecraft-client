@@ -63,6 +63,14 @@ message Message {
     // User actions: UI → server → source (70-79)
     TestPath test_path = 70;
     TestPathResult test_path_result = 71;
+
+    // Registration: unauthenticated source → server (80-89)
+    Register register = 80;
+    RegisterResult register_result = 81;
+
+    // Save data: source → server → source (90-99)
+    PushSave push_save = 90;
+    PushSaveResult push_save_result = 91;
   }
 }
 
@@ -354,6 +362,49 @@ message SourceUpdateStarted {
 message SourceUpdateFailed {
   string version = 1;
   string message = 2;
+}
+
+// --- Registration ---
+
+// New source requesting credentials. Sent over unauthenticated /ws/register.
+message Register {
+  string hostname = 1;
+  string os = 2;
+  string arch = 3;
+}
+
+// Server response to Register with credentials and initial link code.
+message RegisterResult {
+  string source_uuid = 1;
+  string source_token = 2;
+  string link_code = 3;
+  google.protobuf.Timestamp link_code_expires_at = 4;
+}
+
+// --- Save data ---
+
+// A single named section of parsed game state.
+// Section data is arbitrary per-game JSON represented as Struct.
+message GameSection {
+  string name = 1;
+  string description = 2;
+  google.protobuf.Struct data = 3;
+}
+
+// Source pushing parsed save data to the server over WebSocket.
+// Replaces the former HTTP POST /api/v1/push endpoint.
+message PushSave {
+  SaveIdentity identity = 1;
+  string summary = 2;
+  repeated GameSection sections = 3;
+  google.protobuf.Timestamp parsed_at = 4;
+  string game_id = 5;
+}
+
+// Server response to PushSave with the resolved save UUID.
+message PushSaveResult {
+  string save_uuid = 1;
+  google.protobuf.Timestamp snapshot_timestamp = 2;
 }
 
 // --- Shared types ---
