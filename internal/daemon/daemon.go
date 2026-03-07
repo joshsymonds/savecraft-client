@@ -786,7 +786,7 @@ func (d *Daemon) pushWithRetry(
 	var lastErr error
 	for attempt := range maxAttempts {
 		if attempt > 0 {
-			shift := uint(min(attempt-1, maxBitShift)) //nolint:gosec // attempt is always small
+			shift := uint(min(attempt-1, maxBitShift)) //nolint:gosec // G115: attempt is bounded by maxAttempts
 			delay := min(d.cfg.Retry.BaseDelay<<shift, d.cfg.Retry.MaxDelay)
 			d.log.WarnContext(
 				ctx,
