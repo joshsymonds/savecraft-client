@@ -63,15 +63,15 @@ This handles:
 
 ## WebSocket Client (Go)
 
-Uses `nhooyr.io/websocket` for context-aware WebSocket with clean shutdown.
+Uses `nhooyr.io/websocket` for context-aware WebSocket with clean shutdown. All messages are binary protobuf (`websocket.MessageBinary`). The daemon constructs typed `proto.Message` structs and calls `proto.Marshal` to send; incoming commands are decoded with `proto.Unmarshal` and dispatched via a type switch on the `Message.Payload` oneof.
 
 **Connection lifecycle:**
 1. On startup, connect to `wss://api.savecraft.gg/ws/daemon` (or `wss://staging-api.savecraft.gg/ws/daemon` for staging) with bearer token in header. The WebSocket connection is authenticated via source token and routed to a per-source SourceHub DO (keyed by source UUID). The SourceHub forwards events to the user's UserHub DO for UI broadcast. (Push API uses the same source token `sct_*` separately.)
-2. On connect success, send `source_online` event.
-3. Listen for incoming messages (config updates, rescan commands) in a goroutine.
-4. Send status events as they occur (parse results, errors, game detection).
+2. On connect success, send `SourceOnline` message (includes version, platform, os, arch).
+3. Listen for incoming binary proto messages (config updates, rescan commands, source updates) in a goroutine. Dispatch via `proto.Unmarshal` + type switch on `Message.Payload`.
+4. Send status events as typed proto messages (parse results, errors, game detection).
 5. On disconnect, reconnect with exponential backoff: 1s → 2s → 4s → 8s → ... → 60s cap.
-6. On graceful shutdown (SIGTERM), send `source_offline` event, close connection.
+6. On graceful shutdown (SIGTERM), send `SourceOffline` message, close connection.
 
 **Graceful degradation:** If the WebSocket is down, the daemon continues operating locally — watching files, parsing saves, queuing push API calls. Status events are dropped (not queued) during disconnection. The push API (HTTP POST) is independent of the WebSocket; save data always reaches R2 even if the real-time channel is down.
 

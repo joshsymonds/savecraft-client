@@ -7,8 +7,8 @@ option go_package = "github.com/joshsymonds/savecraft.gg/internal/proto";
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/struct.proto";
 
-// Message is the top-level WebSocket envelope.
-// All messages on the source↔server↔UI channel use this wrapper.
+// Message is the top-level WebSocket envelope for daemon↔server communication.
+// Also used inside RelayedMessage for server→UI relay.
 // The oneof field numbers are grouped by category with gaps for future additions.
 message Message {
   oneof payload {
@@ -36,7 +36,7 @@ message Message {
     PushCompleted push_completed = 31;
     PushFailed push_failed = 32;
 
-    // Plugin management (40-49)
+    // Plugin management (40)
     PluginUpdated plugin_updated = 40;
 
     // Source update management (41-43)
@@ -48,14 +48,14 @@ message Message {
     PluginUpdateCheckFailed plugin_update_check_failed = 44;
     PluginDownloadFailed plugin_download_failed = 45;
 
-    // Config results: source → server (54-55)
-    ConfigResult config_result = 54;
-
-    // Commands: server → source (50-59)
+    // Commands: server → source (50-53)
     ConfigUpdate config_update = 50;
     RescanGame rescan_game = 51;
     PluginAvailable plugin_available = 52;
     DiscoverGames discover_games = 53;
+
+    // Config results: source → server (54)
+    ConfigResult config_result = 54;
 
     // State: server → UI (60-69)
     SourceState source_state = 60;
@@ -64,6 +64,15 @@ message Message {
     TestPath test_path = 70;
     TestPathResult test_path_result = 71;
   }
+}
+
+// RelayedMessage is the server→browser WebSocket envelope.
+// Wraps a Message with server-stamped metadata for event attribution.
+// UserHub constructs this when forwarding events and state to UI clients.
+message RelayedMessage {
+  string source_id = 1;
+  google.protobuf.Timestamp server_timestamp = 2;
+  Message message = 3;
 }
 
 // --- Source lifecycle ---

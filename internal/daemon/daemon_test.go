@@ -287,39 +287,114 @@ func (ws *fakeWSClient) Reconnected() <-chan struct{} { return ws.reconnected }
 func (ws *fakeWSClient) Close() error                 { return nil }
 func (ws *fakeWSClient) Connected() bool              { return ws.connected }
 
+// protoTypeName returns the oneof case name for a proto Message (e.g. "sourceOnline").
+func protoTypeName(msg *pb.Message) string {
+	switch msg.Payload.(type) {
+	case *pb.Message_SourceOnline:
+		return "sourceOnline"
+	case *pb.Message_SourceOffline:
+		return "sourceOffline"
+	case *pb.Message_SourceHeartbeat:
+		return "sourceHeartbeat"
+	case *pb.Message_ScanStarted:
+		return "scanStarted"
+	case *pb.Message_ScanCompleted:
+		return "scanCompleted"
+	case *pb.Message_GameDetected:
+		return "gameDetected"
+	case *pb.Message_GameNotFound:
+		return "gameNotFound"
+	case *pb.Message_Watching:
+		return "watching"
+	case *pb.Message_GamesDiscovered:
+		return "gamesDiscovered"
+	case *pb.Message_ParseStarted:
+		return "parseStarted"
+	case *pb.Message_PluginStatus:
+		return "pluginStatus"
+	case *pb.Message_ParseCompleted:
+		return "parseCompleted"
+	case *pb.Message_ParseFailed:
+		return "parseFailed"
+	case *pb.Message_PushStarted:
+		return "pushStarted"
+	case *pb.Message_PushCompleted:
+		return "pushCompleted"
+	case *pb.Message_PushFailed:
+		return "pushFailed"
+	case *pb.Message_PluginUpdated:
+		return "pluginUpdated"
+	case *pb.Message_PluginUpdateCheckFailed:
+		return "pluginUpdateCheckFailed"
+	case *pb.Message_PluginDownloadFailed:
+		return "pluginDownloadFailed"
+	case *pb.Message_SourceUpdateStarted:
+		return "sourceUpdateStarted"
+	case *pb.Message_SourceUpdateFailed:
+		return "sourceUpdateFailed"
+	case *pb.Message_SourceUpdateAvailable:
+		return "sourceUpdateAvailable"
+	case *pb.Message_ConfigUpdate:
+		return "configUpdate"
+	case *pb.Message_ConfigResult:
+		return "configResult"
+	case *pb.Message_RescanGame:
+		return "rescanGame"
+	case *pb.Message_TestPath:
+		return "testPath"
+	case *pb.Message_TestPathResult:
+		return "testPathResult"
+	case *pb.Message_DiscoverGames:
+		return "discoverGames"
+	case *pb.Message_SourceState:
+		return "sourceState"
+	default:
+		return "unknown"
+	}
+}
+
 func (ws *fakeWSClient) sentEventTypes() []string {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 	var types []string
 	for _, data := range ws.sent {
-		var m map[string]json.RawMessage
-		if json.Unmarshal(data, &m) == nil {
-			for key := range m {
-				types = append(types, key)
-			}
+		var msg pb.Message
+		if proto.Unmarshal(data, &msg) == nil {
+			types = append(types, protoTypeName(&msg))
 		}
 	}
 	return types
 }
 
-// sentEvent returns the payload of the nth event matching eventType.
-func (ws *fakeWSClient) sentEvent(eventType string, index int) map[string]any {
+// sentMessages returns all decoded proto messages.
+func (ws *fakeWSClient) sentMessages() []*pb.Message {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	var msgs []*pb.Message
+	for _, data := range ws.sent {
+		var msg pb.Message
+		if proto.Unmarshal(data, &msg) == nil {
+			msgs = append(msgs, proto.Clone(&msg).(*pb.Message))
+		}
+	}
+	return msgs
+}
+
+// sentProto returns the nth proto Message matching the given type name.
+func (ws *fakeWSClient) sentProto(eventType string, index int) *pb.Message {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 	count := 0
 	for _, data := range ws.sent {
-		var m map[string]json.RawMessage
-		if json.Unmarshal(data, &m) != nil {
+		var msg pb.Message
+		if proto.Unmarshal(data, &msg) != nil {
 			continue
 		}
-		raw, ok := m[eventType]
-		if !ok {
+		if protoTypeName(&msg) != eventType {
 			continue
 		}
 		if count == index {
-			var payload map[string]any
-			json.Unmarshal(raw, &payload)
-			return payload
+			return proto.Clone(&msg).(*pb.Message)
 		}
 		count++
 	}
@@ -492,12 +567,15 @@ func TestParseAndPush_GameScopedSave(t *testing.T) {
 	}
 
 	// Identity in parseCompleted should have empty name for game-scoped saves.
-	completed := ws.sentEvent("parseCompleted", 0)
-	identity, ok := completed["identity"].(map[string]any)
-	if !ok {
+	msg := ws.sentProto("parseCompleted", 0)
+	if msg == nil {
+		t.Fatal("missing parseCompleted")
+	}
+	pc := msg.GetParseCompleted()
+	if pc.Identity == nil {
 		t.Fatal("parseCompleted missing identity")
 	}
-	if _, hasCharName := identity["saveName"]; hasCharName {
+	if pc.Identity.Name != "" {
 		t.Error("game-scoped parseCompleted should not have saveName")
 	}
 
@@ -537,18 +615,26 @@ func TestScanGame_DetectsGame(t *testing.T) {
 		}
 	}
 
-	detected := ws.sentEvent("gameDetected", 0)
-	if detected["gameId"] != "d2r" {
-		t.Errorf("gameDetected gameId = %v, want d2r", detected["gameId"])
+	msg := ws.sentProto("gameDetected", 0)
+	if msg == nil {
+		t.Fatal("missing gameDetected")
 	}
-	if detected["saveCount"] != float64(1) {
-		t.Errorf("gameDetected saveCount = %v, want 1", detected["saveCount"])
+	detected := msg.GetGameDetected()
+	if detected.GameId != "d2r" {
+		t.Errorf("gameDetected gameId = %v, want d2r", detected.GameId)
+	}
+	if detected.SaveCount != 1 {
+		t.Errorf("gameDetected saveCount = %v, want 1", detected.SaveCount)
 	}
 
 	// Only .d2s matched, not .txt
-	completed := ws.sentEvent("scanCompleted", 0)
-	if completed["filesFound"] != float64(1) {
-		t.Errorf("scanCompleted filesFound = %v, want 1", completed["filesFound"])
+	scMsg := ws.sentProto("scanCompleted", 0)
+	if scMsg == nil {
+		t.Fatal("missing scanCompleted")
+	}
+	completed := scMsg.GetScanCompleted()
+	if completed.FilesFound != 1 {
+		t.Errorf("scanCompleted filesFound = %v, want 1", completed.FilesFound)
 	}
 
 	if len(runner.calls) != 1 {
@@ -768,9 +854,14 @@ func TestParseAndPush_PluginError(t *testing.T) {
 		t.Error("unexpected pushStarted after parse failure")
 	}
 
-	failed := ws.sentEvent("parseFailed", 0)
-	if failed["errorType"] != "corrupt_file" {
-		t.Errorf("parseFailed errorType = %v, want corrupt_file", failed["errorType"])
+	msg := ws.sentProto("parseFailed", 0)
+	if msg == nil {
+		t.Fatal("missing parseFailed")
+	}
+	failed := msg.GetParseFailed()
+	// "corrupt_file" doesn't match proto enum names, so toParseErrorType falls back to PARSE_ERROR.
+	if failed.ErrorType != pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR {
+		t.Errorf("parseFailed errorType = %v, want PARSE_ERROR_TYPE_PARSE_ERROR", failed.ErrorType)
 	}
 }
 
@@ -813,9 +904,13 @@ func TestParseAndPush_PushError(t *testing.T) {
 		t.Error("unexpected pushCompleted after push failure")
 	}
 
-	failed := ws.sentEvent("pushFailed", 0)
-	if failed["willRetry"] != false {
-		t.Errorf("willRetry = %v, want false for 400 error", failed["willRetry"])
+	msg := ws.sentProto("pushFailed", 0)
+	if msg == nil {
+		t.Fatal("missing pushFailed")
+	}
+	failed := msg.GetPushFailed()
+	if failed.WillRetry != false {
+		t.Errorf("willRetry = %v, want false for 400 error", failed.WillRetry)
 	}
 }
 
@@ -843,13 +938,21 @@ func TestParseAndPush_ForwardsPluginStatus(t *testing.T) {
 		t.Errorf("got %d pluginStatus events, want 2", statusCount)
 	}
 
-	s1 := ws.sentEvent("pluginStatus", 0)
-	if s1["message"] != "Decoding header" {
-		t.Errorf("status 0 message = %v", s1["message"])
+	s1msg := ws.sentProto("pluginStatus", 0)
+	if s1msg == nil {
+		t.Fatal("missing pluginStatus 0")
 	}
-	s2 := ws.sentEvent("pluginStatus", 1)
-	if s2["message"] != "Parsing inventory (247 items)" {
-		t.Errorf("status 1 message = %v", s2["message"])
+	s1 := s1msg.GetPluginStatus()
+	if s1.Message != "Decoding header" {
+		t.Errorf("status 0 message = %v", s1.Message)
+	}
+	s2msg := ws.sentProto("pluginStatus", 1)
+	if s2msg == nil {
+		t.Fatal("missing pluginStatus 1")
+	}
+	s2 := s2msg.GetPluginStatus()
+	if s2.Message != "Parsing inventory (247 items)" {
+		t.Errorf("status 1 message = %v", s2.Message)
 	}
 }
 
@@ -881,12 +984,13 @@ func TestPushWithRetry_TransientThenSuccess(t *testing.T) {
 	}
 
 	// Should have emitted pushFailed with willRetry=true for the transient failure.
-	failed := ws.sentEvent("pushFailed", 0)
-	if failed == nil {
+	msg := ws.sentProto("pushFailed", 0)
+	if msg == nil {
 		t.Fatal("missing pushFailed for transient error")
 	}
-	if failed["willRetry"] != true {
-		t.Errorf("willRetry = %v, want true", failed["willRetry"])
+	failed := msg.GetPushFailed()
+	if failed.WillRetry != true {
+		t.Errorf("willRetry = %v, want true", failed.WillRetry)
 	}
 
 	// Should have 2 push calls.
@@ -951,15 +1055,23 @@ func TestPushWithRetry_MaxRetriesExhausted(t *testing.T) {
 	}
 
 	// Last failure should have willRetry=false.
-	lastFailed := ws.sentEvent("pushFailed", pushFailedCount-1)
-	if lastFailed["willRetry"] != false {
-		t.Errorf("last pushFailed willRetry = %v, want false", lastFailed["willRetry"])
+	lastMsg := ws.sentProto("pushFailed", pushFailedCount-1)
+	if lastMsg == nil {
+		t.Fatal("missing last pushFailed")
+	}
+	lastFailed := lastMsg.GetPushFailed()
+	if lastFailed.WillRetry != false {
+		t.Errorf("last pushFailed willRetry = %v, want false", lastFailed.WillRetry)
 	}
 
 	// First failure should have willRetry=true.
-	firstFailed := ws.sentEvent("pushFailed", 0)
-	if firstFailed["willRetry"] != true {
-		t.Errorf("first pushFailed willRetry = %v, want true", firstFailed["willRetry"])
+	firstMsg := ws.sentProto("pushFailed", 0)
+	if firstMsg == nil {
+		t.Fatal("missing first pushFailed")
+	}
+	firstFailed := firstMsg.GetPushFailed()
+	if firstFailed.WillRetry != true {
+		t.Errorf("first pushFailed willRetry = %v, want true", firstFailed.WillRetry)
 	}
 }
 
@@ -996,9 +1108,13 @@ func TestPushWithRetry_PermanentFailureNoRetry(t *testing.T) {
 		t.Error("unexpected pushCompleted")
 	}
 
-	failed := ws.sentEvent("pushFailed", 0)
-	if failed["willRetry"] != false {
-		t.Errorf("willRetry = %v, want false for permanent failure", failed["willRetry"])
+	msg := ws.sentProto("pushFailed", 0)
+	if msg == nil {
+		t.Fatal("missing pushFailed")
+	}
+	failed := msg.GetPushFailed()
+	if failed.WillRetry != false {
+		t.Errorf("willRetry = %v, want false for permanent failure", failed.WillRetry)
 	}
 }
 
@@ -1058,9 +1174,9 @@ func TestHandleCommand_RescanGame(t *testing.T) {
 
 	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
 
-	cmd, _ := json.Marshal(map[string]any{
-		"rescanGame": map[string]any{"gameId": "d2r"},
-	})
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_RescanGame{RescanGame: &pb.RescanGame{
+		GameId: "d2r",
+	}}})
 	d.handleCommand(context.Background(), cmd)
 
 	if !slices.Contains(ws.sentEventTypes(), "scanStarted") {
@@ -1077,20 +1193,22 @@ func TestHandleCommand_TestPath_Valid(t *testing.T) {
 
 	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
 
-	cmd, _ := json.Marshal(map[string]any{
-		"testPath": map[string]any{"gameId": "d2r", "path": "/custom/path"},
-	})
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_TestPath{TestPath: &pb.TestPath{
+		GameId: "d2r",
+		Path:   "/custom/path",
+	}}})
 	d.handleCommand(context.Background(), cmd)
 
-	result := ws.sentEvent("testPathResult", 0)
-	if result == nil {
+	msg := ws.sentProto("testPathResult", 0)
+	if msg == nil {
 		t.Fatal("missing testPathResult")
 	}
-	if result["valid"] != true {
-		t.Errorf("valid = %v, want true", result["valid"])
+	result := msg.GetTestPathResult()
+	if result.Valid != true {
+		t.Errorf("valid = %v, want true", result.Valid)
 	}
-	if result["filesFound"] != float64(2) {
-		t.Errorf("filesFound = %v, want 2", result["filesFound"])
+	if result.FilesFound != 2 {
+		t.Errorf("filesFound = %v, want 2", result.FilesFound)
 	}
 }
 
@@ -1101,17 +1219,19 @@ func TestHandleCommand_TestPath_Invalid(t *testing.T) {
 
 	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
 
-	cmd, _ := json.Marshal(map[string]any{
-		"testPath": map[string]any{"gameId": "d2r", "path": "/nonexistent"},
-	})
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_TestPath{TestPath: &pb.TestPath{
+		GameId: "d2r",
+		Path:   "/nonexistent",
+	}}})
 	d.handleCommand(context.Background(), cmd)
 
-	result := ws.sentEvent("testPathResult", 0)
-	if result == nil {
+	msg := ws.sentProto("testPathResult", 0)
+	if msg == nil {
 		t.Fatal("missing testPathResult")
 	}
-	if result["valid"] != false {
-		t.Errorf("valid = %v, want false", result["valid"])
+	result := msg.GetTestPathResult()
+	if result.Valid != false {
+		t.Errorf("valid = %v, want false", result.Valid)
 	}
 }
 
@@ -1126,17 +1246,15 @@ func TestConfigUpdate_AddsNewGame(t *testing.T) {
 
 	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
 
-	cmd, _ := json.Marshal(map[string]any{
-		"configUpdate": map[string]any{
-			"games": map[string]any{
-				"d2r": map[string]any{
-					"savePath":       "/saves/d2r",
-					"enabled":        true,
-					"fileExtensions": []string{".d2s"},
-				},
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
+		Games: map[string]*pb.GameConfig{
+			"d2r": {
+				SavePath:       "/saves/d2r",
+				Enabled:        true,
+				FileExtensions: []string{".d2s"},
 			},
 		},
-	})
+	}}})
 	d.handleCommand(context.Background(), cmd)
 
 	// Should have scanned the new game.
@@ -1173,17 +1291,15 @@ func TestConfigUpdate_DisablesGame(t *testing.T) {
 	d := New(cfg, d2rFS(), watcher, d2rRunner(), &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
-	cmd, _ := json.Marshal(map[string]any{
-		"configUpdate": map[string]any{
-			"games": map[string]any{
-				"d2r": map[string]any{
-					"savePath":       "/saves/d2r",
-					"enabled":        false,
-					"fileExtensions": []string{".d2s"},
-				},
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
+		Games: map[string]*pb.GameConfig{
+			"d2r": {
+				SavePath:       "/saves/d2r",
+				Enabled:        false,
+				FileExtensions: []string{".d2s"},
 			},
 		},
-	})
+	}}})
 	d.handleCommand(context.Background(), cmd)
 
 	// Watcher should have removed the directory.
@@ -1209,11 +1325,9 @@ func TestConfigUpdate_RemovesGame(t *testing.T) {
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	// Send empty config -- d2r is no longer present.
-	cmd, _ := json.Marshal(map[string]any{
-		"configUpdate": map[string]any{
-			"games": map[string]any{},
-		},
-	})
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
+		Games: map[string]*pb.GameConfig{},
+	}}})
 	d.handleCommand(context.Background(), cmd)
 
 	// Watcher should have removed the directory.
@@ -1243,17 +1357,15 @@ func TestConfigUpdate_ChangesPath(t *testing.T) {
 	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
-	cmd, _ := json.Marshal(map[string]any{
-		"configUpdate": map[string]any{
-			"games": map[string]any{
-				"d2r": map[string]any{
-					"savePath":       "/new/path",
-					"enabled":        true,
-					"fileExtensions": []string{".d2s"},
-				},
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
+		Games: map[string]*pb.GameConfig{
+			"d2r": {
+				SavePath:       "/new/path",
+				Enabled:        true,
+				FileExtensions: []string{".d2s"},
 			},
 		},
-	})
+	}}})
 	d.handleCommand(context.Background(), cmd)
 
 	// Should have removed old path.
@@ -1291,17 +1403,15 @@ func TestConfigUpdate_ReenablesGame(t *testing.T) {
 
 	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
 
-	cmd, _ := json.Marshal(map[string]any{
-		"configUpdate": map[string]any{
-			"games": map[string]any{
-				"d2r": map[string]any{
-					"savePath":       "/saves/d2r",
-					"enabled":        true,
-					"fileExtensions": []string{".d2s"},
-				},
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
+		Games: map[string]*pb.GameConfig{
+			"d2r": {
+				SavePath:       "/saves/d2r",
+				Enabled:        true,
+				FileExtensions: []string{".d2s"},
 			},
 		},
-	})
+	}}})
 	d.handleCommand(context.Background(), cmd)
 
 	// Should scan the re-enabled game.
@@ -1354,9 +1464,13 @@ func TestRun_LifecycleEvents(t *testing.T) {
 		t.Errorf("last event = %v, want sourceOffline", types[len(types)-1])
 	}
 
-	online := ws.sentEvent("sourceOnline", 0)
-	if online["version"] != "0.1.0" {
-		t.Errorf("sourceOnline version = %v", online["version"])
+	msg := ws.sentProto("sourceOnline", 0)
+	if msg == nil {
+		t.Fatal("missing sourceOnline")
+	}
+	online := msg.GetSourceOnline()
+	if online.Version != "0.1.0" {
+		t.Errorf("sourceOnline version = %v", online.Version)
 	}
 }
 
@@ -1432,9 +1546,9 @@ func TestRun_WSCommandHandled(t *testing.T) {
 	ws.sent = nil
 	ws.mu.Unlock()
 
-	cmd, _ := json.Marshal(map[string]any{
-		"rescanGame": map[string]any{"gameId": "d2r"},
-	})
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_RescanGame{RescanGame: &pb.RescanGame{
+		GameId: "d2r",
+	}}})
 	ws.messages <- cmd
 
 	waitFor(t, func() bool {
@@ -1459,17 +1573,15 @@ func TestConfigUpdate_EnsurePluginFailed_SkipsGame(t *testing.T) {
 
 	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, pm, nil, testLogger())
 
-	cmd, _ := json.Marshal(map[string]any{
-		"configUpdate": map[string]any{
-			"games": map[string]any{
-				"d2r": map[string]any{
-					"savePath":       "/saves/d2r",
-					"enabled":        true,
-					"fileExtensions": []string{".d2s"},
-				},
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
+		Games: map[string]*pb.GameConfig{
+			"d2r": {
+				SavePath:       "/saves/d2r",
+				Enabled:        true,
+				FileExtensions: []string{".d2s"},
 			},
 		},
-	})
+	}}})
 	d.handleCommand(context.Background(), cmd)
 
 	types := ws.sentEventTypes()
@@ -1480,9 +1592,13 @@ func TestConfigUpdate_EnsurePluginFailed_SkipsGame(t *testing.T) {
 		t.Error("should not scan when plugin download fails")
 	}
 
-	failed := ws.sentEvent("pluginDownloadFailed", 0)
-	if failed["gameId"] != "d2r" {
-		t.Errorf("pluginDownloadFailed gameId = %v, want d2r", failed["gameId"])
+	msg := ws.sentProto("pluginDownloadFailed", 0)
+	if msg == nil {
+		t.Fatal("missing pluginDownloadFailed")
+	}
+	failed := msg.GetPluginDownloadFailed()
+	if failed.GameId != "d2r" {
+		t.Errorf("pluginDownloadFailed gameId = %v, want d2r", failed.GameId)
 	}
 }
 
@@ -1530,17 +1646,15 @@ func TestConfigUpdate_NewGame_PluginFailure_RemovesFromConfig(t *testing.T) {
 
 	d := New(cfg, fsys, newFakeWatcher(), d2rRunner(), &fakePushClient{}, ws, pm, nil, testLogger())
 
-	cmd, _ := json.Marshal(map[string]any{
-		"configUpdate": map[string]any{
-			"games": map[string]any{
-				"d2r": map[string]any{
-					"savePath":       "/saves/d2r",
-					"enabled":        true,
-					"fileExtensions": []string{".d2s"},
-				},
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
+		Games: map[string]*pb.GameConfig{
+			"d2r": {
+				SavePath:       "/saves/d2r",
+				Enabled:        true,
+				FileExtensions: []string{".d2s"},
 			},
 		},
-	})
+	}}})
 	d.handleCommand(context.Background(), cmd)
 
 	// Game should be removed from config after plugin failure.
@@ -1569,17 +1683,15 @@ func TestConfigUpdate_PathChange_PluginFailure_RemovesFromConfig(t *testing.T) {
 	d := New(cfg, fsys, watcher, d2rRunner(), &fakePushClient{}, ws, pm, nil, testLogger())
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
-	cmd, _ := json.Marshal(map[string]any{
-		"configUpdate": map[string]any{
-			"games": map[string]any{
-				"d2r": map[string]any{
-					"savePath":       "/new/path",
-					"enabled":        true,
-					"fileExtensions": []string{".d2s"},
-				},
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
+		Games: map[string]*pb.GameConfig{
+			"d2r": {
+				SavePath:       "/new/path",
+				Enabled:        true,
+				FileExtensions: []string{".d2s"},
 			},
 		},
-	})
+	}}})
 	d.handleCommand(context.Background(), cmd)
 
 	// Game should be removed from config after plugin failure on path change.
@@ -1598,20 +1710,20 @@ func TestConfigUpdate_PathChange_PluginFailure_RemovesFromConfig(t *testing.T) {
 
 // --- Tests: ConfigResult ---
 
-// configResultGame extracts a per-game result map from a configResult event.
-func configResultGame(t *testing.T, ws *fakeWSClient, gameID string) map[string]any {
+// configResultGame extracts a per-game GameConfigResult from a configResult event.
+func configResultGame(t *testing.T, ws *fakeWSClient, gameID string) *pb.GameConfigResult {
 	t.Helper()
-	event := ws.sentEvent("configResult", 0)
-	if event == nil {
+	msg := ws.sentProto("configResult", 0)
+	if msg == nil {
 		t.Fatal("missing configResult event")
 	}
-	results, ok := event["results"].(map[string]any)
-	if !ok {
-		t.Fatalf("results not a map: %T", event["results"])
+	cr := msg.GetConfigResult()
+	if cr == nil {
+		t.Fatal("configResult payload is nil")
 	}
-	game, ok := results[gameID].(map[string]any)
+	game, ok := cr.Results[gameID]
 	if !ok {
-		t.Fatalf("%s result not a map: %T", gameID, results[gameID])
+		t.Fatalf("%s result not found in configResult", gameID)
 	}
 	return game
 }
@@ -1625,28 +1737,26 @@ func TestConfigResult_ValidPath(t *testing.T) {
 		&fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger(),
 	)
 
-	cmd, _ := json.Marshal(map[string]any{
-		"configUpdate": map[string]any{
-			"games": map[string]any{
-				"d2r": map[string]any{
-					"savePath":       "/saves/d2r",
-					"enabled":        true,
-					"fileExtensions": []string{".d2s"},
-				},
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
+		Games: map[string]*pb.GameConfig{
+			"d2r": {
+				SavePath:       "/saves/d2r",
+				Enabled:        true,
+				FileExtensions: []string{".d2s"},
 			},
 		},
-	})
+	}}})
 	d.handleCommand(context.Background(), cmd)
 
 	d2rResult := configResultGame(t, ws, "d2r")
-	if d2rResult["success"] != true {
-		t.Errorf("success = %v, want true", d2rResult["success"])
+	if d2rResult.Success != true {
+		t.Errorf("success = %v, want true", d2rResult.Success)
 	}
-	if d2rResult["resolvedPath"] != "/saves/d2r" {
-		t.Errorf("resolvedPath = %v, want /saves/d2r", d2rResult["resolvedPath"])
+	if d2rResult.ResolvedPath != "/saves/d2r" {
+		t.Errorf("resolvedPath = %v, want /saves/d2r", d2rResult.ResolvedPath)
 	}
-	if d2rResult["error"] != "" {
-		t.Errorf("error = %v, want empty", d2rResult["error"])
+	if d2rResult.Error != "" {
+		t.Errorf("error = %v, want empty", d2rResult.Error)
 	}
 }
 
@@ -1660,24 +1770,22 @@ func TestConfigResult_InvalidPath(t *testing.T) {
 		&fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger(),
 	)
 
-	cmd, _ := json.Marshal(map[string]any{
-		"configUpdate": map[string]any{
-			"games": map[string]any{
-				"d2r": map[string]any{
-					"savePath":       "/nonexistent/path",
-					"enabled":        true,
-					"fileExtensions": []string{".d2s"},
-				},
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
+		Games: map[string]*pb.GameConfig{
+			"d2r": {
+				SavePath:       "/nonexistent/path",
+				Enabled:        true,
+				FileExtensions: []string{".d2s"},
 			},
 		},
-	})
+	}}})
 	d.handleCommand(context.Background(), cmd)
 
 	d2rResult := configResultGame(t, ws, "d2r")
-	if d2rResult["success"] != false {
-		t.Errorf("success = %v, want false", d2rResult["success"])
+	if d2rResult.Success != false {
+		t.Errorf("success = %v, want false", d2rResult.Success)
 	}
-	if d2rResult["error"] == "" {
+	if d2rResult.Error == "" {
 		t.Error("error should be non-empty for invalid path")
 	}
 }
@@ -1692,22 +1800,20 @@ func TestConfigResult_DisabledGame(t *testing.T) {
 	)
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
-	cmd, _ := json.Marshal(map[string]any{
-		"configUpdate": map[string]any{
-			"games": map[string]any{
-				"d2r": map[string]any{
-					"savePath":       "/saves/d2r",
-					"enabled":        false,
-					"fileExtensions": []string{".d2s"},
-				},
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
+		Games: map[string]*pb.GameConfig{
+			"d2r": {
+				SavePath:       "/saves/d2r",
+				Enabled:        false,
+				FileExtensions: []string{".d2s"},
 			},
 		},
-	})
+	}}})
 	d.handleCommand(context.Background(), cmd)
 
 	d2rResult := configResultGame(t, ws, "d2r")
-	if d2rResult["success"] != true {
-		t.Errorf("success = %v, want true for disabled game", d2rResult["success"])
+	if d2rResult.Success != true {
+		t.Errorf("success = %v, want true for disabled game", d2rResult.Success)
 	}
 }
 
@@ -1724,32 +1830,30 @@ func TestConfigResult_MultipleGames(t *testing.T) {
 		&fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger(),
 	)
 
-	cmd, _ := json.Marshal(map[string]any{
-		"configUpdate": map[string]any{
-			"games": map[string]any{
-				"d2r": map[string]any{
-					"savePath":       "/saves/d2r",
-					"enabled":        true,
-					"fileExtensions": []string{".d2s"},
-				},
-				"sdv": map[string]any{
-					"savePath":       "/nonexistent/sdv",
-					"enabled":        true,
-					"fileExtensions": []string{".xml"},
-				},
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
+		Games: map[string]*pb.GameConfig{
+			"d2r": {
+				SavePath:       "/saves/d2r",
+				Enabled:        true,
+				FileExtensions: []string{".d2s"},
+			},
+			"sdv": {
+				SavePath:       "/nonexistent/sdv",
+				Enabled:        true,
+				FileExtensions: []string{".xml"},
 			},
 		},
-	})
+	}}})
 	d.handleCommand(context.Background(), cmd)
 
 	d2rResult := configResultGame(t, ws, "d2r")
-	if d2rResult["success"] != true {
-		t.Errorf("d2r success = %v, want true", d2rResult["success"])
+	if d2rResult.Success != true {
+		t.Errorf("d2r success = %v, want true", d2rResult.Success)
 	}
 
 	sdvResult := configResultGame(t, ws, "sdv")
-	if sdvResult["success"] != false {
-		t.Errorf("sdv success = %v, want false", sdvResult["success"])
+	if sdvResult.Success != false {
+		t.Errorf("sdv success = %v, want false", sdvResult.Success)
 	}
 }
 
@@ -1772,25 +1876,23 @@ func TestConfigResult_ExpandsTildePath(t *testing.T) {
 		&fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger(),
 	)
 
-	cmd, _ := json.Marshal(map[string]any{
-		"configUpdate": map[string]any{
-			"games": map[string]any{
-				"d2r": map[string]any{
-					"savePath":       "~/saves/d2r",
-					"enabled":        true,
-					"fileExtensions": []string{".d2s"},
-				},
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
+		Games: map[string]*pb.GameConfig{
+			"d2r": {
+				SavePath:       "~/saves/d2r",
+				Enabled:        true,
+				FileExtensions: []string{".d2s"},
 			},
 		},
-	})
+	}}})
 	d.handleCommand(context.Background(), cmd)
 
 	d2rResult := configResultGame(t, ws, "d2r")
-	if d2rResult["success"] != true {
-		t.Errorf("success = %v, want true", d2rResult["success"])
+	if d2rResult.Success != true {
+		t.Errorf("success = %v, want true", d2rResult.Success)
 	}
-	if d2rResult["resolvedPath"] != expandedPath {
-		t.Errorf("resolvedPath = %v, want %s", d2rResult["resolvedPath"], expandedPath)
+	if d2rResult.ResolvedPath != expandedPath {
+		t.Errorf("resolvedPath = %v, want %s", d2rResult.ResolvedPath, expandedPath)
 	}
 
 	d.mu.RLock()
@@ -1827,31 +1929,28 @@ func TestDiscoverGames_FindsGame(t *testing.T) {
 	)
 	d.discoverGames(context.Background())
 
-	event := ws.sentEvent("gamesDiscovered", 0)
-	if event == nil {
+	msg := ws.sentProto("gamesDiscovered", 0)
+	if msg == nil {
 		t.Fatal("missing gamesDiscovered event")
 	}
 
-	games, ok := event["games"].([]any)
-	if !ok || len(games) != 1 {
-		t.Fatalf("games = %v, want 1 game", event["games"])
+	gd := msg.GetGamesDiscovered()
+	if len(gd.Games) != 1 {
+		t.Fatalf("games count = %d, want 1", len(gd.Games))
 	}
 
-	game, ok2 := games[0].(map[string]any)
-	if !ok2 {
-		t.Fatal("game is not a map")
+	game := gd.Games[0]
+	if game.GameId != "d2r" {
+		t.Errorf("gameId = %v, want d2r", game.GameId)
 	}
-	if game["gameId"] != "d2r" {
-		t.Errorf("gameId = %v, want d2r", game["gameId"])
+	if game.Name != "Diablo II: Resurrected" {
+		t.Errorf("name = %v", game.Name)
 	}
-	if game["name"] != "Diablo II: Resurrected" {
-		t.Errorf("name = %v", game["name"])
+	if game.Path != "/home/user/saves/d2r" {
+		t.Errorf("path = %v", game.Path)
 	}
-	if game["path"] != "/home/user/saves/d2r" {
-		t.Errorf("path = %v", game["path"])
-	}
-	if game["fileCount"] != float64(1) {
-		t.Errorf("fileCount = %v, want 1", game["fileCount"])
+	if game.FileCount != 1 {
+		t.Errorf("fileCount = %v, want 1", game.FileCount)
 	}
 }
 
@@ -1893,17 +1992,15 @@ func TestDiscoverGames_NoMatchingPaths(t *testing.T) {
 	)
 	d.discoverGames(context.Background())
 
-	event := ws.sentEvent("gamesDiscovered", 0)
-	if event == nil {
+	msg := ws.sentProto("gamesDiscovered", 0)
+	if msg == nil {
 		t.Fatal("missing gamesDiscovered event")
 	}
 
+	gd := msg.GetGamesDiscovered()
 	// games should be nil/empty since path doesn't exist.
-	if event["games"] != nil {
-		games, ok := event["games"].([]any)
-		if ok && len(games) != 0 {
-			t.Errorf("games = %v, want empty", event["games"])
-		}
+	if len(gd.Games) != 0 {
+		t.Errorf("games = %v, want empty", gd.Games)
 	}
 }
 
@@ -1939,22 +2036,18 @@ func TestDiscoverGames_MixedResults(t *testing.T) {
 	)
 	d.discoverGames(context.Background())
 
-	event := ws.sentEvent("gamesDiscovered", 0)
-	if event == nil {
+	msg := ws.sentProto("gamesDiscovered", 0)
+	if msg == nil {
 		t.Fatal("missing gamesDiscovered event")
 	}
 
-	games, ok := event["games"].([]any)
-	if !ok || len(games) != 1 {
-		t.Fatalf("games len = %v, want 1 (only d2r found)", event["games"])
+	gd := msg.GetGamesDiscovered()
+	if len(gd.Games) != 1 {
+		t.Fatalf("games len = %d, want 1 (only d2r found)", len(gd.Games))
 	}
 
-	game, ok2 := games[0].(map[string]any)
-	if !ok2 {
-		t.Fatal("game is not a map")
-	}
-	if game["gameId"] != "d2r" {
-		t.Errorf("found game = %v, want d2r", game["gameId"])
+	if gd.Games[0].GameId != "d2r" {
+		t.Errorf("found game = %v, want d2r", gd.Games[0].GameId)
 	}
 }
 
@@ -2000,9 +2093,7 @@ func TestHandleCommand_DiscoverGames(t *testing.T) {
 		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm, nil, testLogger(),
 	)
 
-	cmd, _ := json.Marshal(map[string]any{
-		"discoverGames": map[string]any{},
-	})
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_DiscoverGames{DiscoverGames: &pb.DiscoverGames{}}})
 	d.handleCommand(context.Background(), cmd)
 
 	if !slices.Contains(ws.sentEventTypes(), "gamesDiscovered") {
@@ -2036,14 +2127,12 @@ func TestHandleCommand_DaemonUpdateAvailable(t *testing.T) {
 	var exitCode int
 	d.exitFunc = func(code int) { exitCode = code }
 
-	cmd, _ := json.Marshal(map[string]any{
-		"daemonUpdateAvailable": map[string]any{
-			"version":      "0.2.0",
-			"url":          "https://example.com/daemon",
-			"signatureUrl": "https://example.com/daemon.sig",
-			"sha256":       "abc123",
-		},
-	})
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_SourceUpdateAvailable{SourceUpdateAvailable: &pb.SourceUpdateAvailable{
+		Version:      "0.2.0",
+		Url:          "https://example.com/daemon",
+		SignatureUrl: "https://example.com/daemon.sig",
+		Sha256:       "abc123",
+	}}})
 	d.handleCommand(context.Background(), cmd)
 
 	if !slices.Contains(ws.sentEventTypes(), "sourceUpdateStarted") {
@@ -2092,14 +2181,12 @@ func TestHandleCommand_DaemonUpdateFailed(t *testing.T) {
 		testLogger(),
 	)
 
-	cmd, _ := json.Marshal(map[string]any{
-		"daemonUpdateAvailable": map[string]any{
-			"version":      "0.2.0",
-			"url":          "https://example.com/daemon",
-			"signatureUrl": "https://example.com/daemon.sig",
-			"sha256":       "abc123",
-		},
-	})
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_SourceUpdateAvailable{SourceUpdateAvailable: &pb.SourceUpdateAvailable{
+		Version:      "0.2.0",
+		Url:          "https://example.com/daemon",
+		SignatureUrl: "https://example.com/daemon.sig",
+		Sha256:       "abc123",
+	}}})
 	d.handleCommand(context.Background(), cmd)
 
 	if !slices.Contains(ws.sentEventTypes(), "sourceUpdateStarted") {
@@ -2109,9 +2196,13 @@ func TestHandleCommand_DaemonUpdateFailed(t *testing.T) {
 		t.Error("missing sourceUpdateFailed event")
 	}
 
-	failed := ws.sentEvent("sourceUpdateFailed", 0)
-	if failed["message"] != "disk full" {
-		t.Errorf("message = %v, want 'disk full'", failed["message"])
+	msg := ws.sentProto("sourceUpdateFailed", 0)
+	if msg == nil {
+		t.Fatal("missing sourceUpdateFailed")
+	}
+	failed := msg.GetSourceUpdateFailed()
+	if failed.Message != "disk full" {
+		t.Errorf("message = %v, want 'disk full'", failed.Message)
 	}
 }
 
@@ -2131,13 +2222,11 @@ func TestHandleCommand_DaemonUpdateAvailable_NilUpdater(t *testing.T) {
 		testLogger(),
 	)
 
-	cmd, _ := json.Marshal(map[string]any{
-		"daemonUpdateAvailable": map[string]any{
-			"version": "0.2.0",
-			"url":     "https://example.com/daemon",
-			"sha256":  "abc123",
-		},
-	})
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_SourceUpdateAvailable{SourceUpdateAvailable: &pb.SourceUpdateAvailable{
+		Version: "0.2.0",
+		Url:     "https://example.com/daemon",
+		Sha256:  "abc123",
+	}}})
 	d.handleCommand(context.Background(), cmd)
 
 	// Should not crash, should not send any update events
@@ -2365,12 +2454,13 @@ func TestRun_ReconnectReannounces(t *testing.T) {
 
 	// Verify re-announced after reconnect.
 	// The second sourceOnline should have version and platform but no sourceId.
-	onlineEvent := ws.sentEvent("sourceOnline", 1)
-	if onlineEvent == nil {
+	onlineMsg := ws.sentProto("sourceOnline", 1)
+	if onlineMsg == nil {
 		t.Fatal("second sourceOnline event not found")
 	}
-	if onlineEvent["version"] != "0.1.0" {
-		t.Errorf("reconnect sourceOnline version = %v, want 0.1.0", onlineEvent["version"])
+	online := onlineMsg.GetSourceOnline()
+	if online.Version != "0.1.0" {
+		t.Errorf("reconnect sourceOnline version = %v, want 0.1.0", online.Version)
 	}
 
 	// Verify full announceOnline sequence was re-sent: gamesDiscovered, watching, pushCompleted.
