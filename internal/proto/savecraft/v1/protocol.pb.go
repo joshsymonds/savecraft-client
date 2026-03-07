@@ -1654,7 +1654,7 @@ func (x *ParseFailed) GetMessage() string {
 	return ""
 }
 
-// Source is uploading parsed game state to the server via HTTP POST.
+// Source is uploading parsed game state to the server via WebSocket.
 type PushStarted struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	GameId        string                 `protobuf:"bytes,1,opt,name=game_id,json=gameId,proto3" json:"game_id,omitempty"`

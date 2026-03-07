@@ -71,8 +71,7 @@ Same tools, same data. The conversation goes wherever you take it.
 |------|-------------|
 | `list_games` | All games with saves, note titles, and reference modules with parameter schemas |
 | `get_save` | Summary, overview, sections, and notes for a save |
-| `get_section` | Section data (optional historical timestamp) |
-| `get_section_diff` | Changes between two snapshots |
+| `get_section` | Section data from D1 |
 | `refresh_save` | Request fresh data (daemon-backed or API-backed) |
 | `search_saves` | Full-text search across all saves and notes |
 | `get_note` | Full content of a user-attached note |

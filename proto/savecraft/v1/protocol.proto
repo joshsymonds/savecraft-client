@@ -198,7 +198,7 @@ enum ParseErrorType {
 
 // --- Push lifecycle ---
 
-// Source is uploading parsed game state to the server via HTTP POST.
+// Source is uploading parsed game state to the server via WebSocket.
 message PushStarted {
   string game_id = 1;
   string summary = 2;
