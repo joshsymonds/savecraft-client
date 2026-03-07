@@ -174,9 +174,52 @@ create_env_template() {
 }
 
 # ---------------------------------------------------------------------------
+# is_token_expired — check if an RFC3339 expiresAt timestamp is in the past
+#   $1  expiresAt string (e.g. "2026-03-03T12:20:00Z")
+#   Returns 0 if expired or unparseable, 1 if still valid.
+# ---------------------------------------------------------------------------
+is_token_expired() {
+    local expires_at="$1"
+    if [[ -z "${expires_at}" ]]; then
+        return 0
+    fi
+
+    local expires_epoch now_epoch
+    expires_epoch="$(date -d "${expires_at}" +%s 2>/dev/null || true)"
+    if [[ -z "${expires_epoch}" ]]; then
+        # Can't parse — treat as expired to be safe.
+        return 0
+    fi
+    now_epoch="$(date +%s)"
+    if [[ ${now_epoch} -ge ${expires_epoch} ]]; then
+        return 0
+    fi
+    return 1
+}
+
+# ---------------------------------------------------------------------------
+# repair_link — call POST /repair to get a fresh pairing token
+#   $1  base URL (e.g. http://localhost:9182)
+#   Prints the new link URL on success, empty string on failure.
+# ---------------------------------------------------------------------------
+repair_link() {
+    local base_url="$1"
+    local response
+    response="$(curl -sf -X POST "${base_url}/repair" 2>/dev/null || true)"
+    if [[ -n "${response}" ]]; then
+        local link_url
+        link_url="$(echo "${response}" | sed -n 's/.*"linkUrl"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+        if [[ -n "${link_url}" ]]; then
+            echo "${link_url}"
+        fi
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # wait_for_link — poll the daemon's /link endpoint for the link URL
 #   $1  base URL (e.g. http://localhost:9182)
-#   Prints the link URL on success, empty string on timeout/failure.
+#   Prints "paired" if already linked, the link URL on success, or empty
+#   string on timeout/failure.
 # ---------------------------------------------------------------------------
 wait_for_link() {
     local base_url="$1"
@@ -185,14 +228,41 @@ wait_for_link() {
 
     info "Waiting for daemon to register..." >&2
     while [[ ${waited} -lt ${max_wait} ]]; do
-        local response
-        response="$(curl -sf "${base_url}/link" 2>/dev/null || true)"
+        local http_code response
+        # Capture both body and HTTP status code (-s without -f so we get error bodies).
+        response="$(curl -s -w '\n%{http_code}' "${base_url}/link" 2>/dev/null || true)"
         if [[ -n "${response}" ]]; then
-            local link_url
-            link_url="$(echo "${response}" | sed -n 's/.*"linkUrl"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
-            if [[ -n "${link_url}" ]]; then
-                echo "${link_url}"
+            http_code="$(echo "${response}" | tail -1)"
+            local body
+            body="$(echo "${response}" | sed '$d')"
+
+            # 404 = already paired, no link code needed
+            if [[ "${http_code}" == "404" ]]; then
+                echo "paired"
                 return
+            fi
+
+            if [[ "${http_code}" == "200" ]] && [[ -n "${body}" ]]; then
+                local link_url expires_at
+                link_url="$(echo "${body}" | sed -n 's/.*"linkUrl"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+                expires_at="$(echo "${body}" | sed -n 's/.*"expiresAt"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+
+                if [[ -n "${link_url}" ]]; then
+                    # Check if the token is stale and needs refreshing.
+                    if is_token_expired "${expires_at}"; then
+                        info "Pairing token expired, requesting a fresh one..." >&2
+                        local fresh_url
+                        fresh_url="$(repair_link "${base_url}")"
+                        if [[ -n "${fresh_url}" ]]; then
+                            echo "${fresh_url}"
+                            return
+                        fi
+                        # Repair failed — fall through to keep polling.
+                    else
+                        echo "${link_url}"
+                        return
+                    fi
+                fi
             fi
         fi
         sleep 1
@@ -324,7 +394,11 @@ main() {
         local link_url=""
         link_url="$(wait_for_link "http://localhost:${status_port}")"
 
-        if [[ -n "${link_url}" ]]; then
+        if [[ "${link_url}" == "paired" ]]; then
+            echo ""
+            ok "Device is already linked to your account."
+            echo ""
+        elif [[ -n "${link_url}" ]]; then
             echo ""
             ok "Device registered. Link it to your account:"
             echo ""
