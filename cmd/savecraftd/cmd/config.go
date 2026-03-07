@@ -19,7 +19,6 @@ import (
 	"github.com/joshsymonds/savecraft.gg/internal/osfs"
 	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
 	pb "github.com/joshsymonds/savecraft.gg/internal/proto/savecraft/v1"
-	"github.com/joshsymonds/savecraft.gg/internal/regclient"
 	"github.com/joshsymonds/savecraft.gg/internal/runner"
 	"github.com/joshsymonds/savecraft.gg/internal/selfupdate"
 	"github.com/joshsymonds/savecraft.gg/internal/signing"
@@ -100,6 +99,14 @@ func createSubsystems(ctx context.Context, cfg *appConfig, appName string, logge
 	}, nil
 }
 
+// registerResult holds credentials returned by WS registration.
+type registerResult struct {
+	SourceUUID        string
+	Token             string
+	LinkCode          string
+	LinkCodeExpiresAt string
+}
+
 // appConfig holds bootstrap configuration loaded from the environment.
 type appConfig struct {
 	ServerURL  string
@@ -177,7 +184,7 @@ func daemonConfigDefaults(sourceID, version string) daemon.Config {
 // credentials to the env file and updates config in place. Returns
 // (result, true, nil) if registration happened, or (nil, false, nil) if
 // credentials already exist.
-func autoRegister(ctx context.Context, cfg *appConfig, envPath string) (*regclient.RegisterResult, bool, error) {
+func autoRegister(ctx context.Context, cfg *appConfig, envPath string) (*registerResult, bool, error) {
 	if cfg.AuthToken != "" {
 		return nil, false, nil
 	}
@@ -206,7 +213,7 @@ func autoRegister(ctx context.Context, cfg *appConfig, envPath string) (*regclie
 
 // wsRegister connects to /ws/register and performs source registration over
 // WebSocket + protobuf, replacing the former HTTP POST /api/v1/source/register.
-func wsRegister(ctx context.Context, serverURL, hostname string) (*regclient.RegisterResult, error) {
+func wsRegister(ctx context.Context, serverURL, hostname string) (*registerResult, error) {
 	wsURL := strings.Replace(serverURL, "http://", "ws://", 1)
 	wsURL = strings.Replace(wsURL, "https://", "wss://", 1)
 	wsURL += "/ws/register"
@@ -260,7 +267,7 @@ func wsRegister(ctx context.Context, serverURL, hostname string) (*regclient.Reg
 
 	conn.Close(websocket.StatusNormalClosure, "registered")
 
-	return &regclient.RegisterResult{
+	return &registerResult{
 		SourceUUID:        result.SourceUuid,
 		Token:             result.SourceToken,
 		LinkCode:          result.LinkCode,

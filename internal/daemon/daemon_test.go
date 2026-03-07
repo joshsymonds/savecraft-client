@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
 	pb "github.com/joshsymonds/savecraft.gg/internal/proto/savecraft/v1"
@@ -271,6 +272,12 @@ func protoTypeName(msg *pb.Message) string {
 		return "discoverGames"
 	case *pb.Message_SourceState:
 		return "sourceState"
+	case *pb.Message_RefreshLinkCode:
+		return "refreshLinkCode"
+	case *pb.Message_UnlinkSource:
+		return "unlinkSource"
+	case *pb.Message_DeregisterSource:
+		return "deregisterSource"
 	default:
 		return "unknown"
 	}
@@ -2128,4 +2135,187 @@ func TestRun_ReconnectReannounces(t *testing.T) {
 
 	cancel()
 	<-done
+}
+
+// --- Tests: link state ---
+
+func TestHandleSourceLinked_SetsLinkedAndCallsBack(t *testing.T) {
+	ws := newFakeWSClient()
+	d := New(d2rConfig(), d2rFS(), newFakeWatcher(), d2rRunner(), ws, &fakePluginManager{}, nil, testLogger())
+
+	var called bool
+	d.SetLinkCallbacks(LinkCallbacks{
+		OnLinked: func() { called = true },
+	})
+	d.SetInitialLinkCode("123456", time.Now().Add(20*time.Minute))
+
+	msg := &pb.Message{Payload: &pb.Message_SourceLinked{SourceLinked: &pb.SourceLinked{}}}
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.handleCommand(context.Background(), data)
+
+	if !d.linked {
+		t.Error("expected linked=true after SourceLinked")
+	}
+	if d.linkCode != "" {
+		t.Errorf("expected linkCode cleared, got %q", d.linkCode)
+	}
+	if !called {
+		t.Error("expected OnLinked callback to be called")
+	}
+}
+
+func TestHandleRefreshLinkCodeResult_UpdatesCodeAndCallsBack(t *testing.T) {
+	ws := newFakeWSClient()
+	d := New(d2rConfig(), d2rFS(), newFakeWatcher(), d2rRunner(), ws, &fakePluginManager{}, nil, testLogger())
+
+	var gotCode string
+	var gotExpiry time.Time
+	d.SetLinkCallbacks(LinkCallbacks{
+		OnLinkCode: func(code string, expiresAt time.Time) {
+			gotCode = code
+			gotExpiry = expiresAt
+		},
+	})
+
+	expiry := time.Now().Add(20 * time.Minute).Truncate(time.Second)
+	msg := &pb.Message{Payload: &pb.Message_RefreshLinkCodeResult{RefreshLinkCodeResult: &pb.RefreshLinkCodeResult{
+		LinkCode:  "654321",
+		ExpiresAt: timestamppb.New(expiry),
+	}}}
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.handleCommand(context.Background(), data)
+
+	if d.linkCode != "654321" {
+		t.Errorf("linkCode = %q, want 654321", d.linkCode)
+	}
+	if gotCode != "654321" {
+		t.Errorf("callback code = %q, want 654321", gotCode)
+	}
+	if !gotExpiry.Equal(expiry) {
+		t.Errorf("callback expiry = %v, want %v", gotExpiry, expiry)
+	}
+}
+
+func TestRefreshLinkCodeResult_DeliversToPendingChannel(t *testing.T) {
+	ws := newFakeWSClient()
+	d := New(d2rConfig(), d2rFS(), newFakeWatcher(), d2rRunner(), ws, &fakePluginManager{}, nil, testLogger())
+
+	expiry := time.Now().Add(20 * time.Minute).Truncate(time.Second)
+	msg := &pb.Message{Payload: &pb.Message_RefreshLinkCodeResult{RefreshLinkCodeResult: &pb.RefreshLinkCodeResult{
+		LinkCode:  "111111",
+		ExpiresAt: timestamppb.New(expiry),
+	}}}
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.handleCommand(context.Background(), data)
+
+	select {
+	case result := <-d.pendingLinkCode:
+		if result.Code != "111111" {
+			t.Errorf("pending code = %q, want 111111", result.Code)
+		}
+	default:
+		t.Error("expected result on pendingLinkCode channel")
+	}
+}
+
+func TestMaybeRefreshLinkCode_SendsWhenNearExpiry(t *testing.T) {
+	ws := newFakeWSClient()
+	d := New(d2rConfig(), d2rFS(), newFakeWatcher(), d2rRunner(), ws, &fakePluginManager{}, nil, testLogger())
+
+	d.linkExpiry = time.Now().Add(30 * time.Second)
+
+	d.maybeRefreshLinkCode(context.Background())
+
+	types := ws.sentEventTypes()
+	if !slices.Contains(types, "refreshLinkCode") {
+		t.Errorf("expected refreshLinkCode sent, got %v", types)
+	}
+}
+
+func TestMaybeRefreshLinkCode_SkipsWhenLinked(t *testing.T) {
+	ws := newFakeWSClient()
+	d := New(d2rConfig(), d2rFS(), newFakeWatcher(), d2rRunner(), ws, &fakePluginManager{}, nil, testLogger())
+
+	d.linked = true
+	d.linkExpiry = time.Now().Add(30 * time.Second)
+
+	d.maybeRefreshLinkCode(context.Background())
+
+	types := ws.sentEventTypes()
+	if slices.Contains(types, "refreshLinkCode") {
+		t.Error("should not send refreshLinkCode when linked")
+	}
+}
+
+func TestMaybeRefreshLinkCode_SkipsWhenFarFromExpiry(t *testing.T) {
+	ws := newFakeWSClient()
+	d := New(d2rConfig(), d2rFS(), newFakeWatcher(), d2rRunner(), ws, &fakePluginManager{}, nil, testLogger())
+
+	d.linkExpiry = time.Now().Add(10 * time.Minute)
+
+	d.maybeRefreshLinkCode(context.Background())
+
+	types := ws.sentEventTypes()
+	if slices.Contains(types, "refreshLinkCode") {
+		t.Error("should not send refreshLinkCode when far from expiry")
+	}
+}
+
+func TestRequestUnlink_SendsAndBlocksForResult(t *testing.T) {
+	ws := newFakeWSClient()
+	d := New(d2rConfig(), d2rFS(), newFakeWatcher(), d2rRunner(), ws, &fakePluginManager{}, nil, testLogger())
+
+	ws.connected = true
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	expiry := time.Now().Add(20 * time.Minute).Truncate(time.Second)
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		d.pendingLinkCode <- linkCodeResult{Code: "999999", ExpiresAt: expiry}
+	}()
+
+	code, gotExpiry, err := d.RequestUnlink(ctx)
+	if err != nil {
+		t.Fatalf("RequestUnlink: %v", err)
+	}
+	if code != "999999" {
+		t.Errorf("code = %q, want 999999", code)
+	}
+	if !gotExpiry.Equal(expiry) {
+		t.Errorf("expiry = %v, want %v", gotExpiry, expiry)
+	}
+
+	types := ws.sentEventTypes()
+	if !slices.Contains(types, "unlinkSource") {
+		t.Errorf("expected unlinkSource sent, got %v", types)
+	}
+}
+
+func TestSetInitialLinkCode(t *testing.T) {
+	d := New(
+		d2rConfig(), d2rFS(), newFakeWatcher(), d2rRunner(),
+		newFakeWSClient(), &fakePluginManager{}, nil, testLogger(),
+	)
+
+	expiry := time.Now().Add(20 * time.Minute)
+	d.SetInitialLinkCode("ABCDEF", expiry)
+
+	if d.linkCode != "ABCDEF" {
+		t.Errorf("linkCode = %q, want ABCDEF", d.linkCode)
+	}
+	if !d.linkExpiry.Equal(expiry) {
+		t.Errorf("linkExpiry = %v, want %v", d.linkExpiry, expiry)
+	}
 }

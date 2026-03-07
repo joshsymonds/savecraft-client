@@ -169,6 +169,12 @@ type DiscoveredGame struct {
 
 // --- Daemon ---
 
+// LinkCallbacks lets the boot flow receive link state changes from the daemon.
+type LinkCallbacks struct {
+	OnLinked   func()
+	OnLinkCode func(code string, expiresAt time.Time)
+}
+
 // Daemon coordinates file watching, plugin execution, and server communication.
 type Daemon struct {
 	cfg     Config
@@ -184,8 +190,7 @@ type Daemon struct {
 	// the process. Defaults to os.Exit; overridden in tests.
 	exitFunc func(int)
 
-	// mu protects watchedDirs and cfg.Games from concurrent access
-	// (event loop goroutine vs. diagnostic HTTP handler).
+	// mu protects watchedDirs, cfg.Games, and link state from concurrent access.
 	mu sync.RWMutex
 
 	// Maps watched directory -> game ID.
@@ -196,6 +201,24 @@ type Daemon struct {
 	configDir string
 
 	startTime time.Time
+
+	// Link state: the daemon starts with unknown link state. The server
+	// pushes SourceLinked (if linked) or RefreshLinkCodeResult (if not)
+	// after the daemon sends SourceOnline.
+	linked     bool
+	linkCode   string
+	linkExpiry time.Time
+	linkCB     LinkCallbacks
+
+	// pendingLinkCode receives the result of an UnlinkSource or RefreshLinkCode
+	// request, allowing synchronous callers (like the repair endpoint) to block
+	// until the server responds.
+	pendingLinkCode chan linkCodeResult
+}
+
+type linkCodeResult struct {
+	Code      string
+	ExpiresAt time.Time
 }
 
 // New creates a Daemon with the given dependencies.
@@ -214,17 +237,50 @@ func New(
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	return &Daemon{
-		cfg:         cfg,
-		fs:          fsys,
-		watcher:     watcher,
-		runner:      runner,
-		ws:          ws,
-		plugins:     plugins,
-		updater:     updater,
-		log:         log,
-		exitFunc:    os.Exit,
-		watchedDirs: make(map[string]string),
-		configDir:   defaultConfigDir(),
+		cfg:             cfg,
+		fs:              fsys,
+		watcher:         watcher,
+		runner:          runner,
+		ws:              ws,
+		plugins:         plugins,
+		updater:         updater,
+		log:             log,
+		exitFunc:        os.Exit,
+		watchedDirs:     make(map[string]string),
+		configDir:       defaultConfigDir(),
+		pendingLinkCode: make(chan linkCodeResult, 1),
+	}
+}
+
+// SetLinkCallbacks registers callbacks for link state changes.
+// Must be called before Run.
+func (d *Daemon) SetLinkCallbacks(cb LinkCallbacks) {
+	d.linkCB = cb
+}
+
+// SetInitialLinkCode sets the initial link code from registration.
+// Called by the boot flow for newly registered sources.
+func (d *Daemon) SetInitialLinkCode(code string, expiresAt time.Time) {
+	d.linkCode = code
+	d.linkExpiry = expiresAt
+}
+
+// RequestUnlink sends UnlinkSource over WS and blocks until the server
+// responds with a new link code. Used by the repair endpoint.
+func (d *Daemon) RequestUnlink(ctx context.Context) (string, time.Time, error) {
+	// Drain any stale result.
+	select {
+	case <-d.pendingLinkCode:
+	default:
+	}
+
+	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_UnlinkSource{UnlinkSource: &pb.UnlinkSource{}}})
+
+	select {
+	case <-ctx.Done():
+		return "", time.Time{}, fmt.Errorf("unlink: %w", ctx.Err())
+	case result := <-d.pendingLinkCode:
+		return result.Code, result.ExpiresAt, nil
 	}
 }
 
@@ -303,6 +359,7 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 				ctx,
 				&pb.Message{Payload: &pb.Message_SourceHeartbeat{SourceHeartbeat: &pb.SourceHeartbeat{}}},
 			)
+			d.maybeRefreshLinkCode(ctx)
 		case <-d.ws.Reconnected():
 			d.log.InfoContext(ctx, "websocket reconnected, re-announcing")
 			d.announceOnline(ctx)
@@ -767,6 +824,68 @@ func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
 			SHA256:       cmd.SourceUpdateAvailable.Sha256,
 		}
 		d.applyDaemonUpdate(ctx, info)
+	case *pb.Message_SourceLinked:
+		d.handleSourceLinked(ctx)
+	case *pb.Message_RefreshLinkCodeResult:
+		d.handleRefreshLinkCodeResult(ctx, cmd.RefreshLinkCodeResult)
+	}
+}
+
+func (d *Daemon) handleSourceLinked(ctx context.Context) {
+	d.mu.Lock()
+	d.linked = true
+	d.linkCode = ""
+	d.linkExpiry = time.Time{}
+	d.mu.Unlock()
+
+	d.log.InfoContext(ctx, "source linked to user")
+	if d.linkCB.OnLinked != nil {
+		d.linkCB.OnLinked()
+	}
+}
+
+func (d *Daemon) handleRefreshLinkCodeResult(ctx context.Context, result *pb.RefreshLinkCodeResult) {
+	var expiresAt time.Time
+	if result.ExpiresAt != nil {
+		expiresAt = result.ExpiresAt.AsTime()
+	}
+
+	d.mu.Lock()
+	d.linkCode = result.LinkCode
+	d.linkExpiry = expiresAt
+	d.mu.Unlock()
+
+	d.log.InfoContext(ctx, "link code received",
+		slog.String("link_code", result.LinkCode),
+		slog.Time("expires_at", expiresAt),
+	)
+
+	if d.linkCB.OnLinkCode != nil {
+		d.linkCB.OnLinkCode(result.LinkCode, expiresAt)
+	}
+
+	// Deliver to any synchronous waiter (e.g. repair endpoint).
+	select {
+	case d.pendingLinkCode <- linkCodeResult{Code: result.LinkCode, ExpiresAt: expiresAt}:
+	default:
+	}
+}
+
+// refreshThreshold is how close to expiry we refresh the link code.
+const refreshThreshold = 2 * time.Minute
+
+func (d *Daemon) maybeRefreshLinkCode(ctx context.Context) {
+	d.mu.RLock()
+	linked := d.linked
+	expiry := d.linkExpiry
+	d.mu.RUnlock()
+
+	if linked || expiry.IsZero() {
+		return
+	}
+
+	if time.Until(expiry) < refreshThreshold {
+		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_RefreshLinkCode{RefreshLinkCode: &pb.RefreshLinkCode{}}})
 	}
 }
 
