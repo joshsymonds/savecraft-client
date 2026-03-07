@@ -399,7 +399,6 @@ message GameSection {
 }
 
 // Source pushing parsed save data to the server over WebSocket.
-// Replaces the former HTTP POST /api/v1/push endpoint.
 message PushSave {
   SaveIdentity identity = 1;
   string summary = 2;

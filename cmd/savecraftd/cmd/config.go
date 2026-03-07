@@ -212,7 +212,7 @@ func autoRegister(ctx context.Context, cfg *appConfig, envPath string) (*registe
 }
 
 // wsRegister connects to /ws/register and performs source registration over
-// WebSocket + protobuf, replacing the former HTTP POST /api/v1/source/register.
+// WebSocket + protobuf.
 func wsRegister(ctx context.Context, serverURL, hostname string) (*registerResult, error) {
 	wsURL := strings.Replace(serverURL, "http://", "ws://", 1)
 	wsURL = strings.Replace(wsURL, "https://", "wss://", 1)

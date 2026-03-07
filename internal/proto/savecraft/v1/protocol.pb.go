@@ -3250,7 +3250,6 @@ func (x *GameSection) GetData() *structpb.Struct {
 }
 
 // Source pushing parsed save data to the server over WebSocket.
-// Replaces the former HTTP POST /api/v1/push endpoint.
 type PushSave struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Identity      *SaveIdentity          `protobuf:"bytes,1,opt,name=identity,proto3" json:"identity,omitempty"`
