@@ -71,6 +71,13 @@ message Message {
     // Save data: source → server → source (90-99)
     PushSave push_save = 90;
     PushSaveResult push_save_result = 91;
+
+    // Source management: source ↔ server (100-109)
+    RefreshLinkCode refresh_link_code = 100;
+    RefreshLinkCodeResult refresh_link_code_result = 101;
+    SourceLinked source_linked = 102;
+    UnlinkSource unlink_source = 103;
+    DeregisterSource deregister_source = 104;
   }
 }
 
@@ -406,6 +413,29 @@ message PushSaveResult {
   string save_uuid = 1;
   google.protobuf.Timestamp snapshot_timestamp = 2;
 }
+
+// --- Source management ---
+
+// Source requests a new link code (replacing any existing one).
+message RefreshLinkCode {}
+
+// Server response with fresh link code and expiry.
+message RefreshLinkCodeResult {
+  string link_code = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+// Server notification: source has been linked to a user account.
+// Sent when a user enters the link code at the web UI.
+message SourceLinked {
+  string user_uuid = 1;
+}
+
+// Source requests to unlink from its current user. Generates a fresh link code.
+message UnlinkSource {}
+
+// Source requests permanent deletion (uninstall flow).
+message DeregisterSource {}
 
 // --- Shared types ---
 

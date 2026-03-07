@@ -174,6 +174,11 @@ type Message struct {
 	//	*Message_RegisterResult
 	//	*Message_PushSave
 	//	*Message_PushSaveResult
+	//	*Message_RefreshLinkCode
+	//	*Message_RefreshLinkCodeResult
+	//	*Message_SourceLinked
+	//	*Message_UnlinkSource
+	//	*Message_DeregisterSource
 	Payload       isMessage_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -522,6 +527,51 @@ func (x *Message) GetPushSaveResult() *PushSaveResult {
 	return nil
 }
 
+func (x *Message) GetRefreshLinkCode() *RefreshLinkCode {
+	if x != nil {
+		if x, ok := x.Payload.(*Message_RefreshLinkCode); ok {
+			return x.RefreshLinkCode
+		}
+	}
+	return nil
+}
+
+func (x *Message) GetRefreshLinkCodeResult() *RefreshLinkCodeResult {
+	if x != nil {
+		if x, ok := x.Payload.(*Message_RefreshLinkCodeResult); ok {
+			return x.RefreshLinkCodeResult
+		}
+	}
+	return nil
+}
+
+func (x *Message) GetSourceLinked() *SourceLinked {
+	if x != nil {
+		if x, ok := x.Payload.(*Message_SourceLinked); ok {
+			return x.SourceLinked
+		}
+	}
+	return nil
+}
+
+func (x *Message) GetUnlinkSource() *UnlinkSource {
+	if x != nil {
+		if x, ok := x.Payload.(*Message_UnlinkSource); ok {
+			return x.UnlinkSource
+		}
+	}
+	return nil
+}
+
+func (x *Message) GetDeregisterSource() *DeregisterSource {
+	if x != nil {
+		if x, ok := x.Payload.(*Message_DeregisterSource); ok {
+			return x.DeregisterSource
+		}
+	}
+	return nil
+}
+
 type isMessage_Payload interface {
 	isMessage_Payload()
 }
@@ -675,6 +725,27 @@ type Message_PushSaveResult struct {
 	PushSaveResult *PushSaveResult `protobuf:"bytes,91,opt,name=push_save_result,json=pushSaveResult,proto3,oneof"`
 }
 
+type Message_RefreshLinkCode struct {
+	// Source management: source ↔ server (100-109)
+	RefreshLinkCode *RefreshLinkCode `protobuf:"bytes,100,opt,name=refresh_link_code,json=refreshLinkCode,proto3,oneof"`
+}
+
+type Message_RefreshLinkCodeResult struct {
+	RefreshLinkCodeResult *RefreshLinkCodeResult `protobuf:"bytes,101,opt,name=refresh_link_code_result,json=refreshLinkCodeResult,proto3,oneof"`
+}
+
+type Message_SourceLinked struct {
+	SourceLinked *SourceLinked `protobuf:"bytes,102,opt,name=source_linked,json=sourceLinked,proto3,oneof"`
+}
+
+type Message_UnlinkSource struct {
+	UnlinkSource *UnlinkSource `protobuf:"bytes,103,opt,name=unlink_source,json=unlinkSource,proto3,oneof"`
+}
+
+type Message_DeregisterSource struct {
+	DeregisterSource *DeregisterSource `protobuf:"bytes,104,opt,name=deregister_source,json=deregisterSource,proto3,oneof"`
+}
+
 func (*Message_SourceOnline) isMessage_Payload() {}
 
 func (*Message_SourceOffline) isMessage_Payload() {}
@@ -742,6 +813,16 @@ func (*Message_RegisterResult) isMessage_Payload() {}
 func (*Message_PushSave) isMessage_Payload() {}
 
 func (*Message_PushSaveResult) isMessage_Payload() {}
+
+func (*Message_RefreshLinkCode) isMessage_Payload() {}
+
+func (*Message_RefreshLinkCodeResult) isMessage_Payload() {}
+
+func (*Message_SourceLinked) isMessage_Payload() {}
+
+func (*Message_UnlinkSource) isMessage_Payload() {}
+
+func (*Message_DeregisterSource) isMessage_Payload() {}
 
 // RelayedMessage is the server→browser WebSocket envelope.
 // Wraps a Message with server-stamped metadata for event attribution.
@@ -3299,6 +3380,216 @@ func (x *PushSaveResult) GetSnapshotTimestamp() *timestamppb.Timestamp {
 	return nil
 }
 
+// Source requests a new link code (replacing any existing one).
+type RefreshLinkCode struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RefreshLinkCode) Reset() {
+	*x = RefreshLinkCode{}
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RefreshLinkCode) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RefreshLinkCode) ProtoMessage() {}
+
+func (x *RefreshLinkCode) ProtoReflect() protoreflect.Message {
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RefreshLinkCode.ProtoReflect.Descriptor instead.
+func (*RefreshLinkCode) Descriptor() ([]byte, []int) {
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{43}
+}
+
+// Server response with fresh link code and expiry.
+type RefreshLinkCodeResult struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	LinkCode      string                 `protobuf:"bytes,1,opt,name=link_code,json=linkCode,proto3" json:"link_code,omitempty"`
+	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RefreshLinkCodeResult) Reset() {
+	*x = RefreshLinkCodeResult{}
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RefreshLinkCodeResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RefreshLinkCodeResult) ProtoMessage() {}
+
+func (x *RefreshLinkCodeResult) ProtoReflect() protoreflect.Message {
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RefreshLinkCodeResult.ProtoReflect.Descriptor instead.
+func (*RefreshLinkCodeResult) Descriptor() ([]byte, []int) {
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *RefreshLinkCodeResult) GetLinkCode() string {
+	if x != nil {
+		return x.LinkCode
+	}
+	return ""
+}
+
+func (x *RefreshLinkCodeResult) GetExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return nil
+}
+
+// Server notification: source has been linked to a user account.
+// Sent when a user enters the link code at the web UI.
+type SourceLinked struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserUuid      string                 `protobuf:"bytes,1,opt,name=user_uuid,json=userUuid,proto3" json:"user_uuid,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SourceLinked) Reset() {
+	*x = SourceLinked{}
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SourceLinked) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SourceLinked) ProtoMessage() {}
+
+func (x *SourceLinked) ProtoReflect() protoreflect.Message {
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SourceLinked.ProtoReflect.Descriptor instead.
+func (*SourceLinked) Descriptor() ([]byte, []int) {
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *SourceLinked) GetUserUuid() string {
+	if x != nil {
+		return x.UserUuid
+	}
+	return ""
+}
+
+// Source requests to unlink from its current user. Generates a fresh link code.
+type UnlinkSource struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnlinkSource) Reset() {
+	*x = UnlinkSource{}
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnlinkSource) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnlinkSource) ProtoMessage() {}
+
+func (x *UnlinkSource) ProtoReflect() protoreflect.Message {
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnlinkSource.ProtoReflect.Descriptor instead.
+func (*UnlinkSource) Descriptor() ([]byte, []int) {
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{46}
+}
+
+// Source requests permanent deletion (uninstall flow).
+type DeregisterSource struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeregisterSource) Reset() {
+	*x = DeregisterSource{}
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeregisterSource) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeregisterSource) ProtoMessage() {}
+
+func (x *DeregisterSource) ProtoReflect() protoreflect.Message {
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeregisterSource.ProtoReflect.Descriptor instead.
+func (*DeregisterSource) Descriptor() ([]byte, []int) {
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{47}
+}
+
 // Compact save identity for display in status events and UI.
 // Derived from the full GameState identity emitted by the plugin.
 type SaveIdentity struct {
@@ -3313,7 +3604,7 @@ type SaveIdentity struct {
 
 func (x *SaveIdentity) Reset() {
 	*x = SaveIdentity{}
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[43]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3325,7 +3616,7 @@ func (x *SaveIdentity) String() string {
 func (*SaveIdentity) ProtoMessage() {}
 
 func (x *SaveIdentity) ProtoReflect() protoreflect.Message {
-	mi := &file_savecraft_v1_protocol_proto_msgTypes[43]
+	mi := &file_savecraft_v1_protocol_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3338,7 +3629,7 @@ func (x *SaveIdentity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveIdentity.ProtoReflect.Descriptor instead.
 func (*SaveIdentity) Descriptor() ([]byte, []int) {
-	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{43}
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *SaveIdentity) GetName() string {
@@ -3359,7 +3650,7 @@ var File_savecraft_v1_protocol_proto protoreflect.FileDescriptor
 
 const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\n" +
-	"\x1bsavecraft/v1/protocol.proto\x12\fsavecraft.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xf6\x12\n" +
+	"\x1bsavecraft/v1/protocol.proto\x12\fsavecraft.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xf8\x15\n" +
 	"\aMessage\x12A\n" +
 	"\rsource_online\x18\x01 \x01(\v2\x1a.savecraft.v1.SourceOnlineH\x00R\fsourceOnline\x12D\n" +
 	"\x0esource_offline\x18\x02 \x01(\v2\x1b.savecraft.v1.SourceOfflineH\x00R\rsourceOffline\x12J\n" +
@@ -3397,7 +3688,12 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\bregister\x18P \x01(\v2\x16.savecraft.v1.RegisterH\x00R\bregister\x12G\n" +
 	"\x0fregister_result\x18Q \x01(\v2\x1c.savecraft.v1.RegisterResultH\x00R\x0eregisterResult\x125\n" +
 	"\tpush_save\x18Z \x01(\v2\x16.savecraft.v1.PushSaveH\x00R\bpushSave\x12H\n" +
-	"\x10push_save_result\x18[ \x01(\v2\x1c.savecraft.v1.PushSaveResultH\x00R\x0epushSaveResultB\t\n" +
+	"\x10push_save_result\x18[ \x01(\v2\x1c.savecraft.v1.PushSaveResultH\x00R\x0epushSaveResult\x12K\n" +
+	"\x11refresh_link_code\x18d \x01(\v2\x1d.savecraft.v1.RefreshLinkCodeH\x00R\x0frefreshLinkCode\x12^\n" +
+	"\x18refresh_link_code_result\x18e \x01(\v2#.savecraft.v1.RefreshLinkCodeResultH\x00R\x15refreshLinkCodeResult\x12A\n" +
+	"\rsource_linked\x18f \x01(\v2\x1a.savecraft.v1.SourceLinkedH\x00R\fsourceLinked\x12A\n" +
+	"\runlink_source\x18g \x01(\v2\x1a.savecraft.v1.UnlinkSourceH\x00R\funlinkSource\x12M\n" +
+	"\x11deregister_source\x18h \x01(\v2\x1e.savecraft.v1.DeregisterSourceH\x00R\x10deregisterSourceB\t\n" +
 	"\apayload\"\xa5\x01\n" +
 	"\x0eRelayedMessage\x12\x1b\n" +
 	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12E\n" +
@@ -3591,7 +3887,16 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\agame_id\x18\x05 \x01(\tR\x06gameId\"x\n" +
 	"\x0ePushSaveResult\x12\x1b\n" +
 	"\tsave_uuid\x18\x01 \x01(\tR\bsaveUuid\x12I\n" +
-	"\x12snapshot_timestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x11snapshotTimestamp\"Q\n" +
+	"\x12snapshot_timestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x11snapshotTimestamp\"\x11\n" +
+	"\x0fRefreshLinkCode\"o\n" +
+	"\x15RefreshLinkCodeResult\x12\x1b\n" +
+	"\tlink_code\x18\x01 \x01(\tR\blinkCode\x129\n" +
+	"\n" +
+	"expires_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"+\n" +
+	"\fSourceLinked\x12\x1b\n" +
+	"\tuser_uuid\x18\x01 \x01(\tR\buserUuid\"\x0e\n" +
+	"\fUnlinkSource\"\x12\n" +
+	"\x10DeregisterSource\"Q\n" +
 	"\fSaveIdentity\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12-\n" +
 	"\x05extra\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05extra*\xa1\x01\n" +
@@ -3621,7 +3926,7 @@ func file_savecraft_v1_protocol_proto_rawDescGZIP() []byte {
 }
 
 var file_savecraft_v1_protocol_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_savecraft_v1_protocol_proto_msgTypes = make([]protoimpl.MessageInfo, 46)
+var file_savecraft_v1_protocol_proto_msgTypes = make([]protoimpl.MessageInfo, 51)
 var file_savecraft_v1_protocol_proto_goTypes = []any{
 	(ParseErrorType)(0),             // 0: savecraft.v1.ParseErrorType
 	(GameStatusEnum)(0),             // 1: savecraft.v1.GameStatusEnum
@@ -3668,11 +3973,16 @@ var file_savecraft_v1_protocol_proto_goTypes = []any{
 	(*GameSection)(nil),             // 42: savecraft.v1.GameSection
 	(*PushSave)(nil),                // 43: savecraft.v1.PushSave
 	(*PushSaveResult)(nil),          // 44: savecraft.v1.PushSaveResult
-	(*SaveIdentity)(nil),            // 45: savecraft.v1.SaveIdentity
-	nil,                             // 46: savecraft.v1.ConfigUpdate.GamesEntry
-	nil,                             // 47: savecraft.v1.ConfigResult.ResultsEntry
-	(*timestamppb.Timestamp)(nil),   // 48: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),         // 49: google.protobuf.Struct
+	(*RefreshLinkCode)(nil),         // 45: savecraft.v1.RefreshLinkCode
+	(*RefreshLinkCodeResult)(nil),   // 46: savecraft.v1.RefreshLinkCodeResult
+	(*SourceLinked)(nil),            // 47: savecraft.v1.SourceLinked
+	(*UnlinkSource)(nil),            // 48: savecraft.v1.UnlinkSource
+	(*DeregisterSource)(nil),        // 49: savecraft.v1.DeregisterSource
+	(*SaveIdentity)(nil),            // 50: savecraft.v1.SaveIdentity
+	nil,                             // 51: savecraft.v1.ConfigUpdate.GamesEntry
+	nil,                             // 52: savecraft.v1.ConfigResult.ResultsEntry
+	(*timestamppb.Timestamp)(nil),   // 53: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),         // 54: google.protobuf.Struct
 }
 var file_savecraft_v1_protocol_proto_depIdxs = []int32{
 	4,  // 0: savecraft.v1.Message.source_online:type_name -> savecraft.v1.SourceOnline
@@ -3709,38 +4019,44 @@ var file_savecraft_v1_protocol_proto_depIdxs = []int32{
 	41, // 31: savecraft.v1.Message.register_result:type_name -> savecraft.v1.RegisterResult
 	43, // 32: savecraft.v1.Message.push_save:type_name -> savecraft.v1.PushSave
 	44, // 33: savecraft.v1.Message.push_save_result:type_name -> savecraft.v1.PushSaveResult
-	48, // 34: savecraft.v1.RelayedMessage.server_timestamp:type_name -> google.protobuf.Timestamp
-	2,  // 35: savecraft.v1.RelayedMessage.message:type_name -> savecraft.v1.Message
-	48, // 36: savecraft.v1.SourceOnline.timestamp:type_name -> google.protobuf.Timestamp
-	48, // 37: savecraft.v1.SourceOffline.timestamp:type_name -> google.protobuf.Timestamp
-	13, // 38: savecraft.v1.GamesDiscovered.games:type_name -> savecraft.v1.DiscoveredGame
-	45, // 39: savecraft.v1.ParseCompleted.identity:type_name -> savecraft.v1.SaveIdentity
-	0,  // 40: savecraft.v1.ParseFailed.error_type:type_name -> savecraft.v1.ParseErrorType
-	45, // 41: savecraft.v1.PushCompleted.identity:type_name -> savecraft.v1.SaveIdentity
-	46, // 42: savecraft.v1.ConfigUpdate.games:type_name -> savecraft.v1.ConfigUpdate.GamesEntry
-	47, // 43: savecraft.v1.ConfigResult.results:type_name -> savecraft.v1.ConfigResult.ResultsEntry
-	32, // 44: savecraft.v1.SourceState.sources:type_name -> savecraft.v1.SourceInfo
-	48, // 45: savecraft.v1.SourceInfo.last_seen:type_name -> google.protobuf.Timestamp
-	33, // 46: savecraft.v1.SourceInfo.games:type_name -> savecraft.v1.GameInfo
-	1,  // 47: savecraft.v1.GameInfo.status:type_name -> savecraft.v1.GameStatusEnum
-	34, // 48: savecraft.v1.GameInfo.saves:type_name -> savecraft.v1.SaveInfo
-	48, // 49: savecraft.v1.GameInfo.last_activity:type_name -> google.protobuf.Timestamp
-	45, // 50: savecraft.v1.SaveInfo.identity:type_name -> savecraft.v1.SaveIdentity
-	48, // 51: savecraft.v1.SaveInfo.last_updated:type_name -> google.protobuf.Timestamp
-	48, // 52: savecraft.v1.RegisterResult.link_code_expires_at:type_name -> google.protobuf.Timestamp
-	49, // 53: savecraft.v1.GameSection.data:type_name -> google.protobuf.Struct
-	45, // 54: savecraft.v1.PushSave.identity:type_name -> savecraft.v1.SaveIdentity
-	42, // 55: savecraft.v1.PushSave.sections:type_name -> savecraft.v1.GameSection
-	48, // 56: savecraft.v1.PushSave.parsed_at:type_name -> google.protobuf.Timestamp
-	48, // 57: savecraft.v1.PushSaveResult.snapshot_timestamp:type_name -> google.protobuf.Timestamp
-	49, // 58: savecraft.v1.SaveIdentity.extra:type_name -> google.protobuf.Struct
-	25, // 59: savecraft.v1.ConfigUpdate.GamesEntry.value:type_name -> savecraft.v1.GameConfig
-	27, // 60: savecraft.v1.ConfigResult.ResultsEntry.value:type_name -> savecraft.v1.GameConfigResult
-	61, // [61:61] is the sub-list for method output_type
-	61, // [61:61] is the sub-list for method input_type
-	61, // [61:61] is the sub-list for extension type_name
-	61, // [61:61] is the sub-list for extension extendee
-	0,  // [0:61] is the sub-list for field type_name
+	45, // 34: savecraft.v1.Message.refresh_link_code:type_name -> savecraft.v1.RefreshLinkCode
+	46, // 35: savecraft.v1.Message.refresh_link_code_result:type_name -> savecraft.v1.RefreshLinkCodeResult
+	47, // 36: savecraft.v1.Message.source_linked:type_name -> savecraft.v1.SourceLinked
+	48, // 37: savecraft.v1.Message.unlink_source:type_name -> savecraft.v1.UnlinkSource
+	49, // 38: savecraft.v1.Message.deregister_source:type_name -> savecraft.v1.DeregisterSource
+	53, // 39: savecraft.v1.RelayedMessage.server_timestamp:type_name -> google.protobuf.Timestamp
+	2,  // 40: savecraft.v1.RelayedMessage.message:type_name -> savecraft.v1.Message
+	53, // 41: savecraft.v1.SourceOnline.timestamp:type_name -> google.protobuf.Timestamp
+	53, // 42: savecraft.v1.SourceOffline.timestamp:type_name -> google.protobuf.Timestamp
+	13, // 43: savecraft.v1.GamesDiscovered.games:type_name -> savecraft.v1.DiscoveredGame
+	50, // 44: savecraft.v1.ParseCompleted.identity:type_name -> savecraft.v1.SaveIdentity
+	0,  // 45: savecraft.v1.ParseFailed.error_type:type_name -> savecraft.v1.ParseErrorType
+	50, // 46: savecraft.v1.PushCompleted.identity:type_name -> savecraft.v1.SaveIdentity
+	51, // 47: savecraft.v1.ConfigUpdate.games:type_name -> savecraft.v1.ConfigUpdate.GamesEntry
+	52, // 48: savecraft.v1.ConfigResult.results:type_name -> savecraft.v1.ConfigResult.ResultsEntry
+	32, // 49: savecraft.v1.SourceState.sources:type_name -> savecraft.v1.SourceInfo
+	53, // 50: savecraft.v1.SourceInfo.last_seen:type_name -> google.protobuf.Timestamp
+	33, // 51: savecraft.v1.SourceInfo.games:type_name -> savecraft.v1.GameInfo
+	1,  // 52: savecraft.v1.GameInfo.status:type_name -> savecraft.v1.GameStatusEnum
+	34, // 53: savecraft.v1.GameInfo.saves:type_name -> savecraft.v1.SaveInfo
+	53, // 54: savecraft.v1.GameInfo.last_activity:type_name -> google.protobuf.Timestamp
+	50, // 55: savecraft.v1.SaveInfo.identity:type_name -> savecraft.v1.SaveIdentity
+	53, // 56: savecraft.v1.SaveInfo.last_updated:type_name -> google.protobuf.Timestamp
+	53, // 57: savecraft.v1.RegisterResult.link_code_expires_at:type_name -> google.protobuf.Timestamp
+	54, // 58: savecraft.v1.GameSection.data:type_name -> google.protobuf.Struct
+	50, // 59: savecraft.v1.PushSave.identity:type_name -> savecraft.v1.SaveIdentity
+	42, // 60: savecraft.v1.PushSave.sections:type_name -> savecraft.v1.GameSection
+	53, // 61: savecraft.v1.PushSave.parsed_at:type_name -> google.protobuf.Timestamp
+	53, // 62: savecraft.v1.PushSaveResult.snapshot_timestamp:type_name -> google.protobuf.Timestamp
+	53, // 63: savecraft.v1.RefreshLinkCodeResult.expires_at:type_name -> google.protobuf.Timestamp
+	54, // 64: savecraft.v1.SaveIdentity.extra:type_name -> google.protobuf.Struct
+	25, // 65: savecraft.v1.ConfigUpdate.GamesEntry.value:type_name -> savecraft.v1.GameConfig
+	27, // 66: savecraft.v1.ConfigResult.ResultsEntry.value:type_name -> savecraft.v1.GameConfigResult
+	67, // [67:67] is the sub-list for method output_type
+	67, // [67:67] is the sub-list for method input_type
+	67, // [67:67] is the sub-list for extension type_name
+	67, // [67:67] is the sub-list for extension extendee
+	0,  // [0:67] is the sub-list for field type_name
 }
 
 func init() { file_savecraft_v1_protocol_proto_init() }
@@ -3783,6 +4099,11 @@ func file_savecraft_v1_protocol_proto_init() {
 		(*Message_RegisterResult)(nil),
 		(*Message_PushSave)(nil),
 		(*Message_PushSaveResult)(nil),
+		(*Message_RefreshLinkCode)(nil),
+		(*Message_RefreshLinkCodeResult)(nil),
+		(*Message_SourceLinked)(nil),
+		(*Message_UnlinkSource)(nil),
+		(*Message_DeregisterSource)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -3790,7 +4111,7 @@ func file_savecraft_v1_protocol_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_savecraft_v1_protocol_proto_rawDesc), len(file_savecraft_v1_protocol_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   46,
+			NumMessages:   51,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
