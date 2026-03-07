@@ -186,21 +186,28 @@ jobs:
           for game_id in $deploy_plugins; do
             echo "==> Processing plugin: ${game_id} v${VERSION}"
 
-            # Build WASM (produces parser.wasm, and reference.wasm if plugin has one)
+            # Generate manifest (works for both WASM and API plugins)
             just build-plugin "$game_id"
+            go run ./cmd/plugin-manifest/ --version "$VERSION" "plugins/${game_id}"
 
-            # Sign parser
+            # Detect plugin source type from plugin.toml
+            plugin_source=$(grep '^source' "plugins/${game_id}/plugin.toml" | sed 's/.*=.*"\(.*\)".*/\1/')
+
+            if [ "$plugin_source" = "api" ]; then
+              # API plugins have no WASM — upload manifest only
+              wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json" --remote
+              echo "    Published ${game_id} v${VERSION} (API adapter, manifest only)"
+              continue
+            fi
+
+            # WASM plugin: sign, upload parser + optional reference
             parser_file="plugins/${game_id}/parser.wasm"
             go run ./cmd/savecraft-sign/ "$parser_file" /tmp/signing_key.priv
 
-            # Sign reference if it exists
             ref_file="plugins/${game_id}/reference.wasm"
             if [ -f "$ref_file" ]; then
               go run ./cmd/savecraft-sign/ "$ref_file" /tmp/signing_key.priv
             fi
-
-            # Generate manifest with version from tag/computed
-            go run ./cmd/plugin-manifest/ --version "$VERSION" "plugins/${game_id}"
 
             # Upload to R2
             wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/parser.wasm" --file "$parser_file" --remote
