@@ -5,13 +5,20 @@ import (
 	"crypto/ed25519"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
+
+	"github.com/coder/websocket"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/joshsymonds/savecraft.gg/internal/daemon"
 	"github.com/joshsymonds/savecraft.gg/internal/envfile"
 	"github.com/joshsymonds/savecraft.gg/internal/osfs"
 	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
+	pb "github.com/joshsymonds/savecraft.gg/internal/proto/savecraft/v1"
 	"github.com/joshsymonds/savecraft.gg/internal/regclient"
 	"github.com/joshsymonds/savecraft.gg/internal/runner"
 	"github.com/joshsymonds/savecraft.gg/internal/selfupdate"
@@ -165,16 +172,17 @@ func daemonConfigDefaults(sourceID, version string) daemon.Config {
 	}
 }
 
-// autoRegister checks if the daemon has credentials. If not, it calls the
-// source registration endpoint, persists the credentials to the env file,
-// and updates the config in place. Returns (result, true, nil) if registration
-// happened, or (nil, false, nil) if credentials already exist.
+// autoRegister checks if the daemon has credentials. If not, it connects to
+// /ws/register and sends a Register proto to create a new source. Persists
+// credentials to the env file and updates config in place. Returns
+// (result, true, nil) if registration happened, or (nil, false, nil) if
+// credentials already exist.
 func autoRegister(ctx context.Context, cfg *appConfig, envPath string) (*regclient.RegisterResult, bool, error) {
 	if cfg.AuthToken != "" {
 		return nil, false, nil
 	}
 
-	result, err := regclient.Register(ctx, cfg.ServerURL, cfg.Daemon.SourceID)
+	result, err := wsRegister(ctx, cfg.ServerURL, cfg.Daemon.SourceID)
 	if err != nil {
 		return nil, false, fmt.Errorf("source registration: %w", err)
 	}
@@ -194,6 +202,70 @@ func autoRegister(ctx context.Context, cfg *appConfig, envPath string) (*regclie
 	cfg.Daemon.SourceUUID = result.SourceUUID
 
 	return result, true, nil
+}
+
+// wsRegister connects to /ws/register and performs source registration over
+// WebSocket + protobuf, replacing the former HTTP POST /api/v1/source/register.
+func wsRegister(ctx context.Context, serverURL, hostname string) (*regclient.RegisterResult, error) {
+	wsURL := strings.Replace(serverURL, "http://", "ws://", 1)
+	wsURL = strings.Replace(wsURL, "https://", "wss://", 1)
+	wsURL += "/ws/register"
+
+	conn, resp, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
+		HTTPHeader: http.Header{},
+	})
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("dial %s: %w", wsURL, err)
+	}
+	defer conn.CloseNow()
+
+	// Send Register message.
+	registerMsg := &pb.Message{Payload: &pb.Message_Register{Register: &pb.Register{
+		Hostname: hostname,
+		Os:       runtime.GOOS,
+		Arch:     runtime.GOARCH,
+	}}}
+	data, marshalErr := proto.Marshal(registerMsg)
+	if marshalErr != nil {
+		return nil, fmt.Errorf("marshal register: %w", marshalErr)
+	}
+	if writeErr := conn.Write(ctx, websocket.MessageBinary, data); writeErr != nil {
+		return nil, fmt.Errorf("send register: %w", writeErr)
+	}
+
+	// Read RegisterResult response.
+	_, respData, readErr := conn.Read(ctx)
+	if readErr != nil {
+		return nil, fmt.Errorf("read register result: %w", readErr)
+	}
+
+	var respMsg pb.Message
+	if unmarshalErr := proto.Unmarshal(respData, &respMsg); unmarshalErr != nil {
+		return nil, fmt.Errorf("unmarshal register result: %w", unmarshalErr)
+	}
+
+	rr, ok := respMsg.Payload.(*pb.Message_RegisterResult)
+	if !ok {
+		return nil, fmt.Errorf("unexpected response type: %T", respMsg.Payload)
+	}
+
+	result := rr.RegisterResult
+	expiresAt := ""
+	if result.LinkCodeExpiresAt != nil {
+		expiresAt = result.LinkCodeExpiresAt.AsTime().Format("2006-01-02T15:04:05Z")
+	}
+
+	conn.Close(websocket.StatusNormalClosure, "registered")
+
+	return &regclient.RegisterResult{
+		SourceUUID:        result.SourceUuid,
+		Token:             result.SourceToken,
+		LinkCode:          result.LinkCode,
+		LinkCodeExpiresAt: expiresAt,
+	}, nil
 }
 
 // loadEnvFileDefaults reads the env file and sets environment variables
