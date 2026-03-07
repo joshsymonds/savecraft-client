@@ -44,6 +44,10 @@ message Message {
     SourceUpdateStarted source_update_started = 42;
     SourceUpdateFailed source_update_failed = 43;
 
+    // Plugin errors (44-45)
+    PluginUpdateCheckFailed plugin_update_check_failed = 44;
+    PluginDownloadFailed plugin_download_failed = 45;
+
     // Config results: source → server (54-55)
     ConfigResult config_result = 54;
 
@@ -71,6 +75,8 @@ message SourceOnline {
   string version = 2;
   google.protobuf.Timestamp timestamp = 3;
   string platform = 4;
+  string os = 5;
+  string arch = 6;
 }
 
 // Source disconnecting gracefully.
@@ -129,6 +135,7 @@ message DiscoveredGame {
   string name = 2;
   string path = 3;
   int32 file_count = 4;
+  repeated string file_extensions = 5;
 }
 
 // --- Parse lifecycle ---
@@ -206,6 +213,17 @@ message PluginUpdated {
   string version = 2;
 }
 
+// Failed to check for plugin updates (e.g. manifest fetch failed).
+message PluginUpdateCheckFailed {
+  string message = 1;
+}
+
+// Failed to download a plugin during game initialization.
+message PluginDownloadFailed {
+  string game_id = 1;
+  string message = 2;
+}
+
 // --- Commands: server → source ---
 
 // Full config push. Sent when user changes settings in the web UI.
@@ -262,6 +280,9 @@ message SourceInfo {
   string hostname = 6;
   bool can_rescan = 7;
   bool can_receive_config = 8;
+  string platform = 9;
+  string os = 10;
+  string arch = 11;
 }
 
 message GameInfo {
