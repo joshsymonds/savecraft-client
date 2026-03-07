@@ -114,10 +114,8 @@ savecraft.gg/
 │   ├── daemon/           # Orchestrator, domain types, interfaces
 │   ├── runner/           # WASM plugin execution (wazero)
 │   ├── watcher/          # Filesystem watcher (fsnotify + debounce)
-│   ├── push/             # HTTP push client
 │   ├── wsconn/           # WebSocket client (reconnecting)
 │   ├── pluginmgr/        # Plugin download, verification, caching
-│   ├── regclient/        # Device registration client
 │   ├── selfupdate/       # Daemon self-update mechanism
 │   └── signing/          # Ed25519 plugin signature verification
 ├── worker/               # Cloudflare Worker + Durable Object (TypeScript)

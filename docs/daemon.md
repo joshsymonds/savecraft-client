@@ -13,8 +13,8 @@ On first boot, the daemon has no source token. It self-registers by connecting t
 The daemon:
 1. Persists the source token and UUID to local config (`~/.config/savecraft/env`)
 2. Displays the 6-digit link code to the user (CLI output, tray notification, or terminal banner)
-3. Polls `GET /api/v1/source/status` periodically to check if the user has linked the source
-4. If the link code expires before linking, calls `POST /api/v1/source/link-code` to get a fresh code
+3. Connects to `/ws/daemon` with the source token. The server pushes link state (`SourceLinked` or `RefreshLinkCodeResult`) after `SourceOnline`, so the daemon never polls for link status.
+4. If the link code nears expiry, the daemon sends a `RefreshLinkCode` proto message to get a fresh code.
 
 On subsequent boots, the daemon reads the persisted token and skips registration. It connects to `/ws/daemon` with the source token for all subsequent communication.
 

@@ -856,7 +856,6 @@ func (d *Daemon) handleRefreshLinkCodeResult(ctx context.Context, result *pb.Ref
 	d.mu.Unlock()
 
 	d.log.InfoContext(ctx, "link code received",
-		slog.String("link_code", result.LinkCode),
 		slog.Time("expires_at", expiresAt),
 	)
 
@@ -865,6 +864,8 @@ func (d *Daemon) handleRefreshLinkCodeResult(ctx context.Context, result *pb.Ref
 	}
 
 	// Deliver to any synchronous waiter (e.g. repair endpoint).
+	// Non-blocking: pendingLinkCode is buffered(1) with a single consumer
+	// (RequestUnlink). If no waiter exists, the result is silently dropped.
 	select {
 	case d.pendingLinkCode <- linkCodeResult{Code: result.LinkCode, ExpiresAt: expiresAt}:
 	default:

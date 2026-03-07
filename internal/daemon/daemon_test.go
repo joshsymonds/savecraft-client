@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -2300,6 +2301,25 @@ func TestRequestUnlink_SendsAndBlocksForResult(t *testing.T) {
 	types := ws.sentEventTypes()
 	if !slices.Contains(types, "unlinkSource") {
 		t.Errorf("expected unlinkSource sent, got %v", types)
+	}
+}
+
+func TestRequestUnlink_TimesOut(t *testing.T) {
+	ws := newFakeWSClient()
+	d := New(d2rConfig(), d2rFS(), newFakeWatcher(), d2rRunner(), ws, &fakePluginManager{}, nil, testLogger())
+
+	ws.connected = true
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	// No goroutine delivers to pendingLinkCode — context should expire.
+	_, _, err := d.RequestUnlink(ctx)
+	if err == nil {
+		t.Fatal("expected error from RequestUnlink with expired context")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("err = %v, want context.DeadlineExceeded", err)
 	}
 }
 

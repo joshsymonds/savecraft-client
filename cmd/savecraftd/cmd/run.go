@@ -155,7 +155,6 @@ func runDaemonSubsystems(
 		api.SetRegistered(regResult.LinkCode, linkURL, regResult.LinkCodeExpiresAt)
 		logger.InfoContext(ctx, "source registered",
 			slog.String("source_uuid", regResult.SourceUUID),
-			slog.String("link_code", regResult.LinkCode),
 			slog.String("link_url", linkURL),
 		)
 		if svcmgr.Interactive() {
