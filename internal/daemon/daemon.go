@@ -3,7 +3,6 @@ package daemon
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -60,17 +59,6 @@ type PluginError struct {
 
 func (e *PluginError) Error() string { return e.Message }
 
-// PushStatusError is returned when the server returns an HTTP error.
-// It lives in the daemon package (not push) to avoid circular deps.
-type PushStatusError struct {
-	StatusCode int
-	Body       string
-}
-
-func (e *PushStatusError) Error() string {
-	return fmt.Sprintf("push returned status %d: %s", e.StatusCode, e.Body)
-}
-
 // --- Events and results ---
 
 // FileEvent represents a filesystem change notification.
@@ -92,25 +80,7 @@ const (
 	FileRemove
 )
 
-// PushResult is the server response after a successful save push.
-type PushResult struct {
-	SaveUUID          string `json:"saveUuid"`
-	SnapshotTimestamp string `json:"snapshotTimestamp"`
-}
-
 // --- Configuration ---
-
-// RetryConfig controls exponential backoff for push retries.
-type RetryConfig struct {
-	MaxRetries int
-	BaseDelay  time.Duration
-	MaxDelay   time.Duration
-}
-
-const (
-	httpStatusServer = 500
-	maxBitShift      = 62
-)
 
 // Config holds all daemon configuration.
 type Config struct {
@@ -120,7 +90,6 @@ type Config struct {
 	SourceUUID string
 	Version    string
 	BinaryPath string
-	Retry      RetryConfig
 	Games      map[string]GameConfig
 }
 
@@ -149,16 +118,6 @@ type Runner interface {
 		saveBytes []byte,
 		onStatus func(string),
 	) (*GameState, error)
-}
-
-// PushClient pushes parsed game state to the server.
-type PushClient interface {
-	Push(
-		ctx context.Context,
-		gameID string,
-		body []byte,
-		parsedAt time.Time,
-	) (*PushResult, error)
 }
 
 // WSClient handles WebSocket communication with the server.
@@ -216,7 +175,6 @@ type Daemon struct {
 	fs      FS
 	watcher Watcher
 	runner  Runner
-	pusher  PushClient
 	ws      WSClient
 	plugins PluginManager
 	updater Updater
@@ -247,7 +205,6 @@ func New(
 	fsys FS,
 	watcher Watcher,
 	runner Runner,
-	pusher PushClient,
 	ws WSClient,
 	plugins PluginManager,
 	updater Updater,
@@ -261,7 +218,6 @@ func New(
 		fs:          fsys,
 		watcher:     watcher,
 		runner:      runner,
-		pusher:      pusher,
 		ws:          ws,
 		plugins:     plugins,
 		updater:     updater,
@@ -718,30 +674,13 @@ func (d *Daemon) parseAndPush(
 		return
 	}
 
-	stateJSON, marshalErr := json.Marshal(state)
-	if marshalErr != nil {
-		d.log.ErrorContext(
-			ctx,
-			"failed to marshal state",
-			slog.String("game_id", gameID),
-			slog.String("error", marshalErr.Error()),
-		)
-		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ParseFailed{ParseFailed: &pb.ParseFailed{
-			GameId:    gameID,
-			FileName:  fileName,
-			ErrorType: pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR,
-			Message:   fmt.Sprintf("marshal state: %v", marshalErr),
-		}}})
-		return
-	}
-
 	d.log.InfoContext(
 		ctx,
 		"parse completed",
 		slog.String("game_id", gameID),
 		slog.String("file_name", fileName),
 		slog.String("summary", state.Summary),
-		slog.Int("size_bytes", len(stateJSON)),
+		slog.Int("sections_count", len(state.Sections)),
 	)
 	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ParseCompleted{ParseCompleted: &pb.ParseCompleted{
 		GameId:        gameID,
@@ -749,121 +688,49 @@ func (d *Daemon) parseAndPush(
 		Identity:      toProtoIdentity(state.Identity),
 		Summary:       state.Summary,
 		SectionsCount: int32(len(state.Sections)), // #nosec G115 -- bounded by game limits
-		SizeBytes:     int64(len(stateJSON)),
 	}}})
 
-	d.pushState(ctx, gameID, state, stateJSON)
+	d.pushState(ctx, gameID, state)
 }
 
 func (d *Daemon) pushState(
-	ctx context.Context, gameID string, state *GameState, stateJSON []byte,
+	ctx context.Context, gameID string, state *GameState,
 ) {
-	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PushStarted{PushStarted: &pb.PushStarted{
-		GameId:    gameID,
-		Summary:   state.Summary,
-		SizeBytes: int64(len(stateJSON)),
-	}}})
-
-	parsedAt := time.Now().UTC()
-	result, err := d.pushWithRetry(ctx, gameID, state.Summary, parsedAt, stateJSON)
-	if err != nil {
-		// pushWithRetry already emitted pushFailed for retryable errors.
-		// For non-retryable errors, emit pushFailed here.
-		if !isPushRetryable(err) {
-			d.log.ErrorContext(
-				ctx,
-				"push failed permanently",
-				slog.String("game_id", gameID),
-				slog.String("error", err.Error()),
-			)
-			d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PushFailed{PushFailed: &pb.PushFailed{
-				GameId:    gameID,
-				Message:   err.Error(),
-				WillRetry: false,
-			}}})
-		}
-		return
-	}
-
-	d.log.InfoContext(ctx, "push completed", slog.String("game_id", gameID), slog.String("save_uuid", result.SaveUUID))
-	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PushCompleted{PushCompleted: &pb.PushCompleted{
-		GameId:            gameID,
-		SaveUuid:          result.SaveUUID,
-		Summary:           state.Summary,
-		SnapshotSizeBytes: int64(len(stateJSON)),
-		Identity:          toProtoIdentity(state.Identity),
-	}}})
-}
-
-// isPushRetryable returns true for errors that may succeed on retry.
-func isPushRetryable(err error) bool {
-	if statusErr, ok := errors.AsType[*PushStatusError](err); ok {
-		return statusErr.StatusCode >= httpStatusServer
-	}
-	// Connection errors (no PushStatusError) are retryable.
-	return true
-}
-
-func (d *Daemon) pushWithRetry(
-	ctx context.Context,
-	gameID string,
-	summary string,
-	parsedAt time.Time,
-	stateJSON []byte,
-) (*PushResult, error) {
-	maxAttempts := max(d.cfg.Retry.MaxRetries+1, 1)
-
-	var lastErr error
-	for attempt := range maxAttempts {
-		if attempt > 0 {
-			shift := uint(min(attempt-1, maxBitShift)) //nolint:gosec // G115: attempt is bounded by maxAttempts
-			delay := min(d.cfg.Retry.BaseDelay<<shift, d.cfg.Retry.MaxDelay)
-			d.log.WarnContext(
-				ctx,
-				"push failed, retrying",
-				slog.String("game_id", gameID),
-				slog.Int("attempt", attempt),
-				slog.Duration("delay", delay),
-				slog.String("error", lastErr.Error()),
-			)
-			select {
-			case <-ctx.Done():
-				return nil, fmt.Errorf("push retry interrupted: %w", ctx.Err())
-			case <-time.After(delay):
+	sections := make([]*pb.GameSection, 0, len(state.Sections))
+	for name, section := range state.Sections {
+		var dataStruct *structpb.Struct
+		if dataMap, ok := section.Data.(map[string]any); ok {
+			var err error
+			dataStruct, err = structpb.NewStruct(dataMap)
+			if err != nil {
+				d.log.WarnContext(ctx, "failed to convert section data to struct",
+					slog.String("game_id", gameID),
+					slog.String("section", name),
+					slog.String("error", err.Error()),
+				)
+				continue
 			}
-			// Re-emit pushStarted on retry.
-			d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PushStarted{PushStarted: &pb.PushStarted{
-				GameId:    gameID,
-				Summary:   summary,
-				SizeBytes: int64(len(stateJSON)),
-			}}})
 		}
-
-		d.log.DebugContext(
-			ctx,
-			"pushing save data",
-			slog.String("game_id", gameID),
-			slog.Int("attempt", attempt),
-			slog.Int("size_bytes", len(stateJSON)),
-		)
-		result, pushErr := d.pusher.Push(ctx, gameID, stateJSON, parsedAt)
-		if pushErr == nil {
-			return result, nil
-		}
-		lastErr = pushErr
-
-		if !isPushRetryable(pushErr) {
-			return nil, fmt.Errorf("push: %w", pushErr)
-		}
-
-		willRetry := attempt < maxAttempts-1
-		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PushFailed{PushFailed: &pb.PushFailed{
-			GameId:    gameID,
-			Message:   pushErr.Error(),
-			WillRetry: willRetry,
-		}}})
+		sections = append(sections, &pb.GameSection{
+			Name:        name,
+			Description: section.Description,
+			Data:        dataStruct,
+		})
 	}
-	return nil, lastErr
+
+	d.log.InfoContext(ctx, "pushing save data",
+		slog.String("game_id", gameID),
+		slog.String("summary", state.Summary),
+		slog.Int("sections", len(sections)),
+	)
+
+	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PushSave{PushSave: &pb.PushSave{
+		Identity: toProtoIdentity(state.Identity),
+		Summary:  state.Summary,
+		Sections: sections,
+		ParsedAt: timestamppb.Now(),
+		GameId:   gameID,
+	}}})
 }
 
 func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
@@ -887,6 +754,11 @@ func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
 		d.handleTestPath(ctx, cmd.TestPath.GameId, cmd.TestPath.Path)
 	case *pb.Message_DiscoverGames:
 		d.discoverGames(ctx)
+	case *pb.Message_PushSaveResult:
+		result := cmd.PushSaveResult
+		d.log.InfoContext(ctx, "push acknowledged",
+			slog.String("save_uuid", result.SaveUuid),
+		)
 	case *pb.Message_SourceUpdateAvailable:
 		info := &UpdateInfo{
 			Version:      cmd.SourceUpdateAvailable.Version,

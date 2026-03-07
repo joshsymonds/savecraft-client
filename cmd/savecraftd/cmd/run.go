@@ -286,7 +286,7 @@ func runDaemonSubsystems(
 	defer subsystems.close(ctx, logger)
 
 	dmn := daemon.New(cfg.Daemon, subsystems.fsys, subsystems.watcher, subsystems.runner,
-		subsystems.pusher, subsystems.ws, subsystems.plugins, subsystems.updater, logger)
+		subsystems.ws, subsystems.plugins, subsystems.updater, logger)
 
 	api.Handle("/status", daemon.StatusHandler(dmn))
 	api.SetState(localapi.StateRunning)

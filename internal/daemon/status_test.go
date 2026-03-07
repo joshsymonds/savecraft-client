@@ -30,7 +30,7 @@ func TestStatus_ReturnsSnapshot(t *testing.T) {
 	}
 
 	d := New(
-		cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{},
+		cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{},
 		ws, &fakePluginManager{}, nil, testLogger(),
 	)
 	d.watchedDirs["/saves/d2r"] = "d2r"
@@ -75,7 +75,7 @@ func TestStatus_WSConnected(t *testing.T) {
 		Games:    map[string]GameConfig{},
 	}
 	d := New(
-		cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{},
+		cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{},
 		ws, &fakePluginManager{}, nil, testLogger(),
 	)
 
@@ -104,7 +104,7 @@ func TestStatusHandler_ReturnsJSON(t *testing.T) {
 		},
 	}
 	d := New(
-		cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{},
+		cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{},
 		ws, &fakePluginManager{}, nil, testLogger(),
 	)
 
@@ -142,7 +142,7 @@ func TestNew_NilLogger(t *testing.T) {
 
 	// Passing nil logger should not panic.
 	d := New(
-		cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{},
+		cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{},
 		ws, &fakePluginManager{}, nil, nil,
 	)
 

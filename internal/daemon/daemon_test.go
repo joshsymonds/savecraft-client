@@ -178,82 +178,6 @@ func (r *fakeRunner) Run(
 	return nil, fmt.Errorf("no result configured for game %s", gameID)
 }
 
-type fakePushClient struct {
-	results   map[string]*PushResult
-	errors    map[string]error
-	errorSeqs map[string][]error // per-call error sequence (pops front each call)
-	calls     []pushCall
-	mu        sync.Mutex
-}
-
-type pushCall struct {
-	GameID string
-	Body   []byte
-}
-
-func (p *fakePushClient) Push(
-	_ context.Context,
-	gameID string,
-	body []byte,
-	_ time.Time,
-) (*PushResult, error) {
-	p.mu.Lock()
-	p.calls = append(p.calls, pushCall{GameID: gameID, Body: body})
-
-	// Check errorSeqs first (per-call sequencing).
-	seq := p.popSeqError(gameID)
-	p.mu.Unlock()
-
-	if seq.found {
-		if seq.err != nil {
-			return nil, seq.err
-		}
-		return p.defaultResult(gameID), nil
-	}
-
-	if p.errors != nil {
-		if err, ok := p.errors[gameID]; ok {
-			return nil, err
-		}
-	}
-	if p.results != nil {
-		if result, ok := p.results[gameID]; ok {
-			return result, nil
-		}
-	}
-	return &PushResult{SaveUUID: "test-uuid", SnapshotTimestamp: "2026-02-25T21:30:00Z"}, nil
-}
-
-// seqResult holds the result of popping from errorSeqs.
-type seqResult struct {
-	err   error
-	found bool
-}
-
-// popSeqError returns the next error from errorSeqs for gameID.
-// Must be called with p.mu held.
-func (p *fakePushClient) popSeqError(gameID string) seqResult {
-	if p.errorSeqs == nil {
-		return seqResult{}
-	}
-	seq, ok := p.errorSeqs[gameID]
-	if !ok || len(seq) == 0 {
-		return seqResult{}
-	}
-	err := seq[0]
-	p.errorSeqs[gameID] = seq[1:]
-	return seqResult{err: err, found: true}
-}
-
-func (p *fakePushClient) defaultResult(gameID string) *PushResult {
-	if p.results != nil {
-		if r, ok := p.results[gameID]; ok {
-			return r
-		}
-	}
-	return &PushResult{SaveUUID: "test-uuid", SnapshotTimestamp: "2026-02-25T21:30:00Z"}
-}
-
 type fakeWSClient struct {
 	messages    chan []byte
 	reconnected chan struct{}
@@ -317,12 +241,10 @@ func protoTypeName(msg *pb.Message) string {
 		return "parseCompleted"
 	case *pb.Message_ParseFailed:
 		return "parseFailed"
-	case *pb.Message_PushStarted:
-		return "pushStarted"
-	case *pb.Message_PushCompleted:
-		return "pushCompleted"
-	case *pb.Message_PushFailed:
-		return "pushFailed"
+	case *pb.Message_PushSave:
+		return "pushSave"
+	case *pb.Message_PushSaveResult:
+		return "pushSaveResult"
 	case *pb.Message_PluginUpdated:
 		return "pluginUpdated"
 	case *pb.Message_PluginUpdateCheckFailed:
@@ -536,7 +458,6 @@ func TestGameScopedIdentity_OmitsSaveName(t *testing.T) {
 func TestParseAndPush_GameScopedSave(t *testing.T) {
 	ws := newFakeWSClient()
 	runner := &fakeRunner{results: map[string]*GameState{"d2r": newStashState()}}
-	pusher := &fakePushClient{}
 	fsys := &fakeFS{
 		files: map[string][]byte{"/saves/d2r/SharedStash.d2i": []byte("stash data")},
 	}
@@ -548,12 +469,12 @@ func TestParseAndPush_GameScopedSave(t *testing.T) {
 		},
 	}
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
 	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/SharedStash.d2i", "SharedStash.d2i", nil)
 
 	types := ws.sentEventTypes()
-	if !slices.Contains(types, "pushCompleted") {
-		t.Error("missing pushCompleted")
+	if !slices.Contains(types, "pushSave") {
+		t.Error("missing pushSave")
 	}
 
 	// Identity in parseCompleted should have empty name for game-scoped saves.
@@ -569,19 +490,16 @@ func TestParseAndPush_GameScopedSave(t *testing.T) {
 		t.Error("game-scoped parseCompleted should not have saveName")
 	}
 
-	// Pushed body should have empty SaveName.
-	if len(pusher.calls) != 1 {
-		t.Fatalf("pusher called %d times, want 1", len(pusher.calls))
+	pushMsg := ws.sentProto("pushSave", 0)
+	if pushMsg == nil {
+		t.Fatal("missing pushSave")
 	}
-	var pushedState GameState
-	if err := json.Unmarshal(pusher.calls[0].Body, &pushedState); err != nil {
-		t.Fatalf("unmarshal pushed body: %v", err)
+	ps := pushMsg.GetPushSave()
+	if ps.Identity.Name != "" {
+		t.Errorf("pushed saveName = %q, want empty", ps.Identity.Name)
 	}
-	if pushedState.Identity.SaveName != "" {
-		t.Errorf("pushed saveName = %q, want empty", pushedState.Identity.SaveName)
-	}
-	if pushedState.Identity.GameID != "d2r" {
-		t.Errorf("pushed gameId = %q, want d2r", pushedState.Identity.GameID)
+	if ps.GameId != "d2r" {
+		t.Errorf("pushed gameId = %q, want d2r", ps.GameId)
 	}
 }
 
@@ -591,15 +509,14 @@ func TestScanGame_DetectsGame(t *testing.T) {
 	ws := newFakeWSClient()
 	watcher := newFakeWatcher()
 	runner := d2rRunner()
-	pusher := &fakePushClient{}
 	fsys := d2rFS()
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, watcher, runner, pusher, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(cfg, fsys, watcher, runner, ws, &fakePluginManager{}, nil, testLogger())
 	d.scanGame(context.Background(), "d2r", cfg.Games["d2r"])
 
 	types := ws.sentEventTypes()
-	for _, want := range []string{"scanStarted", "scanCompleted", "gameDetected", "watching", "pushCompleted"} {
+	for _, want := range []string{"scanStarted", "scanCompleted", "gameDetected", "watching", "pushSave"} {
 		if !slices.Contains(types, want) {
 			t.Errorf("missing %s event", want)
 		}
@@ -634,15 +551,13 @@ func TestScanGame_DetectsGame(t *testing.T) {
 		t.Error("runner got wrong save bytes")
 	}
 
-	if len(pusher.calls) != 1 {
-		t.Fatalf("pusher called %d times, want 1", len(pusher.calls))
+	pushMsg := ws.sentProto("pushSave", 0)
+	if pushMsg == nil {
+		t.Fatal("missing pushSave")
 	}
-	var pushedState GameState
-	if err := json.Unmarshal(pusher.calls[0].Body, &pushedState); err != nil {
-		t.Fatalf("unmarshal pushed body: %v", err)
-	}
-	if pushedState.Summary != "Hammerdin, Level 89 Paladin" {
-		t.Error("pusher got wrong summary")
+	ps := pushMsg.GetPushSave()
+	if ps.Summary != "Hammerdin, Level 89 Paladin" {
+		t.Error("pushSave got wrong summary")
 	}
 }
 
@@ -651,7 +566,7 @@ func TestScanGame_MissingDir(t *testing.T) {
 	fsys := &fakeFS{dirs: map[string][]string{}, files: map[string][]byte{}}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, nil, testLogger())
 	d.scanGame(context.Background(), "d2r", cfg.Games["d2r"])
 
 	types := ws.sentEventTypes()
@@ -673,7 +588,7 @@ func TestScanGame_NoMatchingFiles(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, nil, testLogger())
 	d.scanGame(context.Background(), "d2r", cfg.Games["d2r"])
 
 	types := ws.sentEventTypes()
@@ -693,13 +608,12 @@ func TestScanGame_NoMatchingFiles(t *testing.T) {
 func TestHandleFileEvent_ParseAndPush(t *testing.T) {
 	ws := newFakeWSClient()
 	runner := d2rRunner()
-	pusher := &fakePushClient{}
 	fsys := &fakeFS{
 		files: map[string][]byte{"/saves/d2r/Hammerdin.d2s": []byte("save data")},
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	d.handleFileEvent(context.Background(), FileEvent{
@@ -708,7 +622,7 @@ func TestHandleFileEvent_ParseAndPush(t *testing.T) {
 	})
 
 	types := ws.sentEventTypes()
-	for _, want := range []string{"parseStarted", "parseCompleted", "pushStarted", "pushCompleted"} {
+	for _, want := range []string{"parseStarted", "parseCompleted", "pushSave"} {
 		if !slices.Contains(types, want) {
 			t.Errorf("missing %s event", want)
 		}
@@ -716,22 +630,18 @@ func TestHandleFileEvent_ParseAndPush(t *testing.T) {
 	if len(runner.calls) != 1 {
 		t.Fatalf("runner called %d times, want 1", len(runner.calls))
 	}
-	if len(pusher.calls) != 1 {
-		t.Fatalf("pusher called %d times, want 1", len(pusher.calls))
-	}
 }
 
 func TestHandleFileEvent_PreloadedDataBypassesReadFile(t *testing.T) {
 	ws := newFakeWSClient()
 	runner := d2rRunner()
-	pusher := &fakePushClient{}
 	fsys := &fakeFS{
 		// No files — ReadFile would fail if called.
 		files: map[string][]byte{},
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	preloaded := []byte("preloaded save data")
@@ -750,9 +660,6 @@ func TestHandleFileEvent_PreloadedDataBypassesReadFile(t *testing.T) {
 	if string(runner.calls[0].SaveBytes) != string(preloaded) {
 		t.Error("runner received wrong bytes, want preloaded data")
 	}
-	if len(pusher.calls) != 1 {
-		t.Fatalf("pusher called %d times, want 1", len(pusher.calls))
-	}
 }
 
 func TestHandleFileEvent_IgnoresNonMatchingExtension(t *testing.T) {
@@ -760,7 +667,7 @@ func TestHandleFileEvent_IgnoresNonMatchingExtension(t *testing.T) {
 	cfg := d2rConfig()
 
 	d := New(
-		cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{},
+		cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{},
 		ws, &fakePluginManager{}, nil, testLogger(),
 	)
 	d.watchedDirs["/saves/d2r"] = "d2r"
@@ -779,7 +686,7 @@ func TestHandleFileEvent_IgnoresRemove(t *testing.T) {
 	ws := newFakeWSClient()
 
 	d := New(
-		Config{}, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, &fakePushClient{},
+		Config{}, &fakeFS{}, newFakeWatcher(), &fakeRunner{},
 		ws, &fakePluginManager{}, nil, testLogger(),
 	)
 	d.handleFileEvent(context.Background(), FileEvent{
@@ -801,7 +708,6 @@ func TestHandleFileEvent_IgnoresUnwatchedDir(t *testing.T) {
 		&fakeFS{},
 		newFakeWatcher(),
 		&fakeRunner{},
-		&fakePushClient{},
 		ws,
 		&fakePluginManager{},
 		nil,
@@ -833,15 +739,15 @@ func TestParseAndPush_PluginError(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
 	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/bad.d2s", "bad.d2s", nil)
 
 	types := ws.sentEventTypes()
 	if !slices.Contains(types, "parseFailed") {
 		t.Error("missing parseFailed")
 	}
-	if slices.Contains(types, "pushStarted") {
-		t.Error("unexpected pushStarted after parse failure")
+	if slices.Contains(types, "pushSave") {
+		t.Error("unexpected pushSave after parse failure")
 	}
 
 	msg := ws.sentProto("parseFailed", 0)
@@ -860,7 +766,7 @@ func TestParseAndPush_FileReadError(t *testing.T) {
 	fsys := &fakeFS{files: map[string][]byte{}} // file doesn't exist
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, nil, testLogger())
 	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/missing.d2s", "missing.d2s", nil)
 
 	types := ws.sentEventTypes()
@@ -869,38 +775,6 @@ func TestParseAndPush_FileReadError(t *testing.T) {
 	}
 	if slices.Contains(types, "pluginStatus") {
 		t.Error("unexpected pluginStatus -- runner should not have been called")
-	}
-}
-
-func TestParseAndPush_PushError(t *testing.T) {
-	ws := newFakeWSClient()
-	runner := d2rRunner()
-	pusher := &fakePushClient{
-		errors: map[string]error{"d2r": &PushStatusError{StatusCode: 400, Body: "bad request"}},
-	}
-	fsys := &fakeFS{
-		files: map[string][]byte{"/saves/d2r/test.d2s": []byte("data")},
-	}
-	cfg := d2rConfig()
-
-	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil, testLogger())
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s", nil)
-
-	types := ws.sentEventTypes()
-	if !slices.Contains(types, "pushFailed") {
-		t.Error("missing pushFailed")
-	}
-	if slices.Contains(types, "pushCompleted") {
-		t.Error("unexpected pushCompleted after push failure")
-	}
-
-	msg := ws.sentProto("pushFailed", 0)
-	if msg == nil {
-		t.Fatal("missing pushFailed")
-	}
-	failed := msg.GetPushFailed()
-	if failed.WillRetry != false {
-		t.Errorf("willRetry = %v, want false for 400 error", failed.WillRetry)
 	}
 }
 
@@ -915,7 +789,7 @@ func TestParseAndPush_ForwardsPluginStatus(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
 	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s", nil)
 
 	statusCount := 0
@@ -946,214 +820,6 @@ func TestParseAndPush_ForwardsPluginStatus(t *testing.T) {
 	}
 }
 
-// --- Tests: push retry ---
-
-func TestPushWithRetry_TransientThenSuccess(t *testing.T) {
-	ws := newFakeWSClient()
-	runner := d2rRunner()
-	pusher := &fakePushClient{
-		errorSeqs: map[string][]error{
-			"d2r": {
-				&PushStatusError{StatusCode: 503, Body: "unavailable"},
-				nil, // success on second attempt
-			},
-		},
-	}
-	fsys := &fakeFS{
-		files: map[string][]byte{"/saves/d2r/test.d2s": []byte("data")},
-	}
-	cfg := d2rConfig()
-	cfg.Retry = RetryConfig{MaxRetries: 3, BaseDelay: time.Millisecond, MaxDelay: time.Millisecond}
-
-	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil, testLogger())
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s", nil)
-
-	types := ws.sentEventTypes()
-	if !slices.Contains(types, "pushCompleted") {
-		t.Error("missing pushCompleted -- retry should have succeeded")
-	}
-
-	// Should have emitted pushFailed with willRetry=true for the transient failure.
-	msg := ws.sentProto("pushFailed", 0)
-	if msg == nil {
-		t.Fatal("missing pushFailed for transient error")
-	}
-	failed := msg.GetPushFailed()
-	if failed.WillRetry != true {
-		t.Errorf("willRetry = %v, want true", failed.WillRetry)
-	}
-
-	// Should have 2 push calls.
-	pusher.mu.Lock()
-	calls := len(pusher.calls)
-	pusher.mu.Unlock()
-	if calls != 2 {
-		t.Errorf("push calls = %d, want 2", calls)
-	}
-
-	// Should have 2 pushStarted events (initial + retry).
-	pushStartedCount := 0
-	for _, et := range types {
-		if et == "pushStarted" {
-			pushStartedCount++
-		}
-	}
-	if pushStartedCount != 2 {
-		t.Errorf("pushStarted count = %d, want 2", pushStartedCount)
-	}
-}
-
-func TestPushWithRetry_MaxRetriesExhausted(t *testing.T) {
-	ws := newFakeWSClient()
-	runner := d2rRunner()
-	pusher := &fakePushClient{
-		errors: map[string]error{
-			"d2r": &PushStatusError{StatusCode: 503, Body: "unavailable"},
-		},
-	}
-	fsys := &fakeFS{
-		files: map[string][]byte{"/saves/d2r/test.d2s": []byte("data")},
-	}
-	cfg := d2rConfig()
-	cfg.Retry = RetryConfig{MaxRetries: 2, BaseDelay: time.Millisecond, MaxDelay: time.Millisecond}
-
-	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil, testLogger())
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s", nil)
-
-	types := ws.sentEventTypes()
-	if slices.Contains(types, "pushCompleted") {
-		t.Error("unexpected pushCompleted -- all retries should fail")
-	}
-
-	// Should have 3 push calls (1 initial + 2 retries).
-	pusher.mu.Lock()
-	calls := len(pusher.calls)
-	pusher.mu.Unlock()
-	if calls != 3 {
-		t.Errorf("push calls = %d, want 3", calls)
-	}
-
-	// Last pushFailed should have willRetry=false.
-	pushFailedCount := 0
-	for _, et := range types {
-		if et == "pushFailed" {
-			pushFailedCount++
-		}
-	}
-	if pushFailedCount != 3 {
-		t.Errorf("pushFailed count = %d, want 3", pushFailedCount)
-	}
-
-	// Last failure should have willRetry=false.
-	lastMsg := ws.sentProto("pushFailed", pushFailedCount-1)
-	if lastMsg == nil {
-		t.Fatal("missing last pushFailed")
-	}
-	lastFailed := lastMsg.GetPushFailed()
-	if lastFailed.WillRetry != false {
-		t.Errorf("last pushFailed willRetry = %v, want false", lastFailed.WillRetry)
-	}
-
-	// First failure should have willRetry=true.
-	firstMsg := ws.sentProto("pushFailed", 0)
-	if firstMsg == nil {
-		t.Fatal("missing first pushFailed")
-	}
-	firstFailed := firstMsg.GetPushFailed()
-	if firstFailed.WillRetry != true {
-		t.Errorf("first pushFailed willRetry = %v, want true", firstFailed.WillRetry)
-	}
-}
-
-func TestPushWithRetry_PermanentFailureNoRetry(t *testing.T) {
-	ws := newFakeWSClient()
-	runner := d2rRunner()
-	pusher := &fakePushClient{
-		errors: map[string]error{
-			"d2r": &PushStatusError{StatusCode: 401, Body: "unauthorized"},
-		},
-	}
-	fsys := &fakeFS{
-		files: map[string][]byte{"/saves/d2r/test.d2s": []byte("data")},
-	}
-	cfg := d2rConfig()
-	cfg.Retry = RetryConfig{MaxRetries: 3, BaseDelay: time.Millisecond, MaxDelay: time.Millisecond}
-
-	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil, testLogger())
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s", nil)
-
-	// Should only have 1 push call -- no retries for 4xx.
-	pusher.mu.Lock()
-	calls := len(pusher.calls)
-	pusher.mu.Unlock()
-	if calls != 1 {
-		t.Errorf("push calls = %d, want 1 (no retry for 4xx)", calls)
-	}
-
-	types := ws.sentEventTypes()
-	if !slices.Contains(types, "pushFailed") {
-		t.Error("missing pushFailed")
-	}
-	if slices.Contains(types, "pushCompleted") {
-		t.Error("unexpected pushCompleted")
-	}
-
-	msg := ws.sentProto("pushFailed", 0)
-	if msg == nil {
-		t.Fatal("missing pushFailed")
-	}
-	failed := msg.GetPushFailed()
-	if failed.WillRetry != false {
-		t.Errorf("willRetry = %v, want false for permanent failure", failed.WillRetry)
-	}
-}
-
-func TestPushWithRetry_ContextCancellation(t *testing.T) {
-	ws := newFakeWSClient()
-	runner := d2rRunner()
-
-	// First call returns 503, then context gets canceled during backoff
-	pusher := &fakePushClient{
-		errors: map[string]error{
-			"d2r": &PushStatusError{StatusCode: 503, Body: "unavailable"},
-		},
-	}
-	fsys := &fakeFS{
-		files: map[string][]byte{"/saves/d2r/test.d2s": []byte("data")},
-	}
-	cfg := d2rConfig()
-	// Use a longer delay so we can cancel during backoff
-	cfg.Retry = RetryConfig{MaxRetries: 3, BaseDelay: 5 * time.Second, MaxDelay: 5 * time.Second}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	d := New(cfg, fsys, newFakeWatcher(), runner, pusher, ws, &fakePluginManager{}, nil, testLogger())
-
-	done := make(chan struct{})
-	go func() {
-		d.parseAndPush(ctx, "d2r", "/saves/d2r/test.d2s", "test.d2s", nil)
-		close(done)
-	}()
-
-	// Wait for first push attempt, then cancel
-	time.Sleep(50 * time.Millisecond)
-	cancel()
-
-	select {
-	case <-done:
-		// good, returned promptly
-	case <-time.After(2 * time.Second):
-		t.Fatal("parseAndPush did not return after context cancellation")
-	}
-
-	// Should have only 1 push call
-	pusher.mu.Lock()
-	calls := len(pusher.calls)
-	pusher.mu.Unlock()
-	if calls != 1 {
-		t.Errorf("push calls = %d, want 1", calls)
-	}
-}
-
 // --- Tests: handleCommand ---
 
 func TestHandleCommand_RescanGame(t *testing.T) {
@@ -1162,7 +828,7 @@ func TestHandleCommand_RescanGame(t *testing.T) {
 	fsys := d2rFS()
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_RescanGame{RescanGame: &pb.RescanGame{
 		GameId: "d2r",
@@ -1181,7 +847,7 @@ func TestHandleCommand_TestPath_Valid(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, nil, testLogger())
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_TestPath{TestPath: &pb.TestPath{
 		GameId: "d2r",
@@ -1207,7 +873,7 @@ func TestHandleCommand_TestPath_Invalid(t *testing.T) {
 	fsys := &fakeFS{dirs: map[string][]string{}, files: map[string][]byte{}}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, nil, testLogger())
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_TestPath{TestPath: &pb.TestPath{
 		GameId: "d2r",
@@ -1234,7 +900,7 @@ func TestConfigUpdate_AddsNewGame(t *testing.T) {
 	fsys := d2rFS()
 	cfg := Config{SourceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
 
-	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(cfg, fsys, watcher, runner, ws, &fakePluginManager{}, nil, testLogger())
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
 		Games: map[string]*pb.GameConfig{
@@ -1278,7 +944,7 @@ func TestConfigUpdate_DisablesGame(t *testing.T) {
 	watcher := newFakeWatcher()
 	cfg := d2rConfig()
 
-	d := New(cfg, d2rFS(), watcher, d2rRunner(), &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(cfg, d2rFS(), watcher, d2rRunner(), ws, &fakePluginManager{}, nil, testLogger())
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
@@ -1311,7 +977,7 @@ func TestConfigUpdate_RemovesGame(t *testing.T) {
 	watcher := newFakeWatcher()
 	cfg := d2rConfig()
 
-	d := New(cfg, d2rFS(), watcher, d2rRunner(), &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(cfg, d2rFS(), watcher, d2rRunner(), ws, &fakePluginManager{}, nil, testLogger())
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	// Send empty config -- d2r is no longer present.
@@ -1344,7 +1010,7 @@ func TestConfigUpdate_ChangesPath(t *testing.T) {
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(cfg, fsys, watcher, runner, ws, &fakePluginManager{}, nil, testLogger())
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
@@ -1391,7 +1057,7 @@ func TestConfigUpdate_ReenablesGame(t *testing.T) {
 		},
 	}
 
-	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(cfg, fsys, watcher, runner, ws, &fakePluginManager{}, nil, testLogger())
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
 		Games: map[string]*pb.GameConfig{
@@ -1425,7 +1091,6 @@ func TestRun_LifecycleEvents(t *testing.T) {
 		&fakeFS{},
 		newFakeWatcher(),
 		&fakeRunner{},
-		&fakePushClient{},
 		ws,
 		&fakePluginManager{},
 		nil,
@@ -1468,13 +1133,12 @@ func TestRun_FileEventTriggersParseAndPush(t *testing.T) {
 	ws := newFakeWSClient()
 	watcher := newFakeWatcher()
 	runner := d2rRunner()
-	pusher := &fakePushClient{}
 	fsys := &fakeFS{
 		files: map[string][]byte{"/saves/d2r/Hammerdin.d2s": []byte("save data")},
 	}
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, watcher, runner, pusher, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(cfg, fsys, watcher, runner, ws, &fakePluginManager{}, nil, testLogger())
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1490,7 +1154,7 @@ func TestRun_FileEventTriggersParseAndPush(t *testing.T) {
 	watcher.events <- FileEvent{Path: "/saves/d2r/Hammerdin.d2s", Op: FileModify}
 
 	waitFor(t, func() bool {
-		return slices.Contains(ws.sentEventTypes(), "pushCompleted")
+		return slices.Contains(ws.sentEventTypes(), "pushSave")
 	})
 
 	runner.mu.Lock()
@@ -1498,13 +1162,6 @@ func TestRun_FileEventTriggersParseAndPush(t *testing.T) {
 	runner.mu.Unlock()
 	if runnerCalls != 1 {
 		t.Errorf("runner called %d times, want 1", runnerCalls)
-	}
-
-	pusher.mu.Lock()
-	pusherCalls := len(pusher.calls)
-	pusher.mu.Unlock()
-	if pusherCalls != 1 {
-		t.Errorf("pusher called %d times, want 1", pusherCalls)
 	}
 
 	cancel()
@@ -1518,7 +1175,7 @@ func TestRun_WSCommandHandled(t *testing.T) {
 	fsys := d2rFS()
 	cfg := d2rConfig()
 
-	d := New(cfg, fsys, watcher, runner, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	d := New(cfg, fsys, watcher, runner, ws, &fakePluginManager{}, nil, testLogger())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1528,7 +1185,7 @@ func TestRun_WSCommandHandled(t *testing.T) {
 
 	// Wait for startup (scan + initial parse)
 	waitFor(t, func() bool {
-		return slices.Contains(ws.sentEventTypes(), "pushCompleted")
+		return slices.Contains(ws.sentEventTypes(), "pushSave")
 	})
 
 	// Clear sent to isolate the rescan
@@ -1561,7 +1218,7 @@ func TestConfigUpdate_EnsurePluginFailed_SkipsGame(t *testing.T) {
 		ensureErr: map[string]error{"d2r": fmt.Errorf("download failed")},
 	}
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, pm, nil, testLogger())
+	d := New(cfg, fsys, newFakeWatcher(), runner, ws, pm, nil, testLogger())
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
 		Games: map[string]*pb.GameConfig{
@@ -1602,7 +1259,7 @@ func TestRun_EnsurePluginFailed_SkipsGame(t *testing.T) {
 		ensureErr: map[string]error{"d2r": fmt.Errorf("network error")},
 	}
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, &fakePushClient{}, ws, pm, nil, testLogger())
+	d := New(cfg, fsys, newFakeWatcher(), runner, ws, pm, nil, testLogger())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -1634,7 +1291,7 @@ func TestConfigUpdate_NewGame_PluginFailure_RemovesFromConfig(t *testing.T) {
 		ensureErr: map[string]error{"d2r": fmt.Errorf("download failed")},
 	}
 
-	d := New(cfg, fsys, newFakeWatcher(), d2rRunner(), &fakePushClient{}, ws, pm, nil, testLogger())
+	d := New(cfg, fsys, newFakeWatcher(), d2rRunner(), ws, pm, nil, testLogger())
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
 		Games: map[string]*pb.GameConfig{
@@ -1670,7 +1327,7 @@ func TestConfigUpdate_PathChange_PluginFailure_RemovesFromConfig(t *testing.T) {
 		ensureErr: map[string]error{"d2r": fmt.Errorf("download failed")},
 	}
 
-	d := New(cfg, fsys, watcher, d2rRunner(), &fakePushClient{}, ws, pm, nil, testLogger())
+	d := New(cfg, fsys, watcher, d2rRunner(), ws, pm, nil, testLogger())
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
@@ -1724,7 +1381,7 @@ func TestConfigResult_ValidPath(t *testing.T) {
 
 	d := New(
 		cfg, d2rFS(), newFakeWatcher(), d2rRunner(),
-		&fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger(),
+		ws, &fakePluginManager{}, nil, testLogger(),
 	)
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
@@ -1757,7 +1414,7 @@ func TestConfigResult_InvalidPath(t *testing.T) {
 
 	d := New(
 		cfg, fsys, newFakeWatcher(), &fakeRunner{},
-		&fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger(),
+		ws, &fakePluginManager{}, nil, testLogger(),
 	)
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
@@ -1786,7 +1443,7 @@ func TestConfigResult_DisabledGame(t *testing.T) {
 
 	d := New(
 		cfg, d2rFS(), newFakeWatcher(), d2rRunner(),
-		&fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger(),
+		ws, &fakePluginManager{}, nil, testLogger(),
 	)
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
@@ -1817,7 +1474,7 @@ func TestConfigResult_MultipleGames(t *testing.T) {
 
 	d := New(
 		cfg, fsys, newFakeWatcher(), d2rRunner(),
-		&fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger(),
+		ws, &fakePluginManager{}, nil, testLogger(),
 	)
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
@@ -1863,7 +1520,7 @@ func TestConfigResult_ExpandsTildePath(t *testing.T) {
 
 	d := New(
 		cfg, fsys, newFakeWatcher(), d2rRunner(),
-		&fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger(),
+		ws, &fakePluginManager{}, nil, testLogger(),
 	)
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
@@ -1915,7 +1572,7 @@ func TestDiscoverGames_FindsGame(t *testing.T) {
 
 	d := New(
 		Config{Games: map[string]GameConfig{}}, fsys,
-		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm, nil, testLogger(),
+		newFakeWatcher(), &fakeRunner{}, ws, pm, nil, testLogger(),
 	)
 	d.discoverGames(context.Background())
 
@@ -1949,7 +1606,7 @@ func TestDiscoverGames_NilPluginManager(t *testing.T) {
 	cfg := Config{Games: map[string]GameConfig{}}
 	d := New(
 		cfg, &fakeFS{}, newFakeWatcher(),
-		&fakeRunner{}, &fakePushClient{}, ws, nil, nil, testLogger(),
+		&fakeRunner{}, ws, nil, nil, testLogger(),
 	)
 	d.discoverGames(context.Background())
 
@@ -1978,7 +1635,7 @@ func TestDiscoverGames_NoMatchingPaths(t *testing.T) {
 
 	d := New(
 		Config{Games: map[string]GameConfig{}}, fsys,
-		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm, nil, testLogger(),
+		newFakeWatcher(), &fakeRunner{}, ws, pm, nil, testLogger(),
 	)
 	d.discoverGames(context.Background())
 
@@ -2022,7 +1679,7 @@ func TestDiscoverGames_MixedResults(t *testing.T) {
 
 	d := New(
 		Config{Games: map[string]GameConfig{}}, fsys,
-		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm, nil, testLogger(),
+		newFakeWatcher(), &fakeRunner{}, ws, pm, nil, testLogger(),
 	)
 	d.discoverGames(context.Background())
 
@@ -2050,7 +1707,7 @@ func TestDiscoverGames_ManifestError(t *testing.T) {
 
 	d := New(
 		Config{Games: map[string]GameConfig{}}, &fakeFS{},
-		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm, nil, testLogger(),
+		newFakeWatcher(), &fakeRunner{}, ws, pm, nil, testLogger(),
 	)
 	d.discoverGames(context.Background())
 
@@ -2080,7 +1737,7 @@ func TestHandleCommand_DiscoverGames(t *testing.T) {
 
 	d := New(
 		Config{Games: map[string]GameConfig{}}, fsys,
-		newFakeWatcher(), &fakeRunner{}, &fakePushClient{}, ws, pm, nil, testLogger(),
+		newFakeWatcher(), &fakeRunner{}, ws, pm, nil, testLogger(),
 	)
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_DiscoverGames{DiscoverGames: &pb.DiscoverGames{}}})
@@ -2108,7 +1765,6 @@ func TestHandleCommand_DaemonUpdateAvailable(t *testing.T) {
 		&fakeFS{},
 		newFakeWatcher(),
 		&fakeRunner{},
-		&fakePushClient{},
 		ws,
 		&fakePluginManager{},
 		updater,
@@ -2166,7 +1822,6 @@ func TestHandleCommand_DaemonUpdateFailed(t *testing.T) {
 		&fakeFS{},
 		newFakeWatcher(),
 		&fakeRunner{},
-		&fakePushClient{},
 		ws,
 		&fakePluginManager{},
 		updater,
@@ -2209,7 +1864,6 @@ func TestHandleCommand_DaemonUpdateAvailable_NilUpdater(t *testing.T) {
 		&fakeFS{},
 		newFakeWatcher(),
 		&fakeRunner{},
-		&fakePushClient{},
 		ws,
 		&fakePluginManager{},
 		nil,
@@ -2253,7 +1907,6 @@ func TestCheckSelfUpdate_TriggersApply(t *testing.T) {
 		&fakeFS{},
 		newFakeWatcher(),
 		&fakeRunner{},
-		&fakePushClient{},
 		ws,
 		&fakePluginManager{},
 		updater,
@@ -2299,7 +1952,6 @@ func TestCheckSelfUpdate_NilResult(t *testing.T) {
 		&fakeFS{},
 		newFakeWatcher(),
 		&fakeRunner{},
-		&fakePushClient{},
 		ws,
 		&fakePluginManager{},
 		updater,
@@ -2327,7 +1979,6 @@ func TestCheckSelfUpdate_CheckError(t *testing.T) {
 		&fakeFS{},
 		newFakeWatcher(),
 		&fakeRunner{},
-		&fakePushClient{},
 		ws,
 		&fakePluginManager{},
 		updater,
@@ -2354,7 +2005,6 @@ func TestCheckSelfUpdate_NilUpdater(_ *testing.T) {
 		&fakeFS{},
 		newFakeWatcher(),
 		&fakeRunner{},
-		&fakePushClient{},
 		ws,
 		&fakePluginManager{},
 		nil,
@@ -2373,7 +2023,7 @@ func TestSendEvent_HeartbeatWireFormat(t *testing.T) {
 	d := New(
 		Config{SourceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}},
 		&fakeFS{}, newFakeWatcher(), &fakeRunner{},
-		&fakePushClient{}, ws, nil, nil, testLogger(),
+		ws, nil, nil, testLogger(),
 	)
 
 	d.sendMessage(
@@ -2418,7 +2068,7 @@ func TestRun_ReconnectReannounces(t *testing.T) {
 
 	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{
 		results: map[string]*GameState{"d2r": newD2RState()},
-	}, &fakePushClient{}, ws, &fakePluginManager{}, nil, testLogger())
+	}, ws, &fakePluginManager{}, nil, testLogger())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -2462,9 +2112,9 @@ func TestRun_ReconnectReannounces(t *testing.T) {
 		t.Errorf("reconnect sourceOnline version = %v, want 0.1.0", online.Version)
 	}
 
-	// Verify full announceOnline sequence was re-sent: gamesDiscovered, watching, pushCompleted.
+	// Verify full announceOnline sequence was re-sent: gamesDiscovered, watching, pushSave.
 	eventTypes := ws.sentEventTypes()
-	for _, required := range []string{"gamesDiscovered", "watching", "pushCompleted"} {
+	for _, required := range []string{"gamesDiscovered", "watching", "pushSave"} {
 		count := 0
 		for _, et := range eventTypes {
 			if et == required {

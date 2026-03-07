@@ -12,7 +12,6 @@ import (
 	"github.com/joshsymonds/savecraft.gg/internal/envfile"
 	"github.com/joshsymonds/savecraft.gg/internal/osfs"
 	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
-	"github.com/joshsymonds/savecraft.gg/internal/push"
 	"github.com/joshsymonds/savecraft.gg/internal/regclient"
 	"github.com/joshsymonds/savecraft.gg/internal/runner"
 	"github.com/joshsymonds/savecraft.gg/internal/selfupdate"
@@ -27,7 +26,6 @@ type subsystems struct {
 	runner  *runner.WazeroRunner
 	plugins *pluginmgr.Manager
 	updater *selfupdate.HTTPUpdater
-	pusher  *push.Client
 	ws      *wsconn.Client
 }
 
@@ -82,14 +80,6 @@ func createSubsystems(ctx context.Context, cfg *appConfig, appName string, logge
 	updateCacheDir := filepath.Join(cacheDir, "updates")
 	updater := selfupdate.New(cfg.InstallURL, pubKey, updateCacheDir)
 
-	pusher, err := push.New(cfg.ServerURL, cfg.AuthToken)
-	if err != nil {
-		wr.Close(ctx)
-		wt.Close()
-
-		return nil, fmt.Errorf("create push client: %w", err)
-	}
-
 	wsURL := cfg.ServerURL + "/ws/daemon"
 	ws := wsconn.New(wsURL, cfg.AuthToken, wsconn.WithLogger(logger))
 
@@ -99,7 +89,6 @@ func createSubsystems(ctx context.Context, cfg *appConfig, appName string, logge
 		runner:  wr,
 		plugins: mgr,
 		updater: updater,
-		pusher:  pusher,
 		ws:      ws,
 	}, nil
 }
