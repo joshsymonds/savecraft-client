@@ -28,7 +28,6 @@ func TestUnitFileContent_SecurityDirectives(t *testing.T) {
 		"RestartSec=5",
 		"EnvironmentFile=-%h/.config/savecraft/env",
 		"ProtectSystem=strict",
-		"ProtectHome=read-only",
 		"ReadWritePaths=%h/.config/savecraft %h/.cache/savecraft /home/user/.local/bin",
 		"NoNewPrivileges=yes",
 		"PrivateTmp=yes",

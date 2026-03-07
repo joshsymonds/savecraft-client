@@ -32,7 +32,6 @@ func UnitFileContent(cfg Config, exePath string) string {
 	buf.WriteString("\n")
 
 	buf.WriteString("ProtectSystem=strict\n")
-	buf.WriteString("ProtectHome=read-only\n")
 	buf.WriteString("ReadWritePaths=" + configDir + " " + cacheDir + " " + binDir + "\n")
 	buf.WriteString("\n")
 
