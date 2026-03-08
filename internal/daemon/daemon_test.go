@@ -804,7 +804,7 @@ func TestPushState_SkipsNonObjectSections(t *testing.T) {
 		},
 	}
 
-	d.pushState(context.Background(), "d2r", state)
+	d.pushState(context.Background(), "d2r", "/saves/d2r/test.d2s", state)
 
 	msg := ws.sentProto("pushSave", 0)
 	if msg == nil {
@@ -2153,9 +2153,10 @@ func TestRun_ReconnectReannounces(t *testing.T) {
 		t.Errorf("reconnect sourceOnline version = %v, want 0.1.0", online.Version)
 	}
 
-	// Verify full announceOnline sequence was re-sent: gamesDiscovered, watching, pushSave.
+	// Verify gamesDiscovered and watching are re-sent on reconnect.
+	// pushSave is correctly skipped when data hasn't changed (hash dedup).
 	eventTypes := ws.sentEventTypes()
-	for _, required := range []string{"gamesDiscovered", "watching", "pushSave"} {
+	for _, required := range []string{"gamesDiscovered", "watching"} {
 		count := 0
 		for _, et := range eventTypes {
 			if et == required {
@@ -2165,6 +2166,12 @@ func TestRun_ReconnectReannounces(t *testing.T) {
 		if count < 2 {
 			t.Errorf("%s sent %d times, want >= 2 (initial + reconnect)", required, count)
 		}
+	}
+	// pushSave should only be sent once — the reconnect parse produces
+	// identical output, so the hash dedup skips the second push.
+	pushCount := countEventType(ws, "pushSave")
+	if pushCount != 1 {
+		t.Errorf("pushSave sent %d times, want 1 (dedup should skip reconnect push)", pushCount)
 	}
 
 	cancel()
@@ -2371,4 +2378,129 @@ func TestSetInitialLinkCode(t *testing.T) {
 	if !d.linkExpiry.Equal(expiry) {
 		t.Errorf("linkExpiry = %v, want %v", d.linkExpiry, expiry)
 	}
+}
+
+// --- Tests: PushSave output hash dedup ---
+
+func TestParseAndPush_FirstParseAlwaysPushes(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := d2rRunner()
+	fsys := d2rFS()
+	cfg := d2rConfig()
+
+	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil)
+
+	types := ws.sentEventTypes()
+	if !slices.Contains(types, "pushSave") {
+		t.Error("first parse should always produce pushSave")
+	}
+}
+
+func TestParseAndPush_SkipsPushWhenOutputUnchanged(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := d2rRunner()
+	fsys := d2rFS()
+	cfg := d2rConfig()
+
+	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+
+	// First parse — should push.
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil)
+
+	pushCount1 := countEventType(ws, "pushSave")
+	if pushCount1 != 1 {
+		t.Fatalf("after first parse: pushSave count = %d, want 1", pushCount1)
+	}
+
+	// Second parse with identical output — should skip push.
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil)
+
+	pushCount2 := countEventType(ws, "pushSave")
+	if pushCount2 != 1 {
+		t.Errorf("after second identical parse: pushSave count = %d, want 1 (should skip)", pushCount2)
+	}
+
+	// parseStarted still fires (we still parse, just skip the push).
+	parseStartedCount := countEventType(ws, "parseStarted")
+	if parseStartedCount != 2 {
+		t.Errorf("parseStarted count = %d, want 2", parseStartedCount)
+	}
+}
+
+func TestParseAndPush_PushesWhenOutputChanges(t *testing.T) {
+	ws := newFakeWSClient()
+	state1 := newD2RState()
+	state2 := &GameState{
+		Identity: Identity{
+			SaveName: "Hammerdin",
+			GameID:   "d2r",
+			Extra:    map[string]any{"class": "Paladin", "level": float64(90)},
+		},
+		Summary: "Hammerdin, Level 90 Paladin",
+		Sections: map[string]Section{
+			"overview": {Description: "Character overview", Data: jsontext.Value(`{"level":90}`)},
+		},
+	}
+	callCount := 0
+	runner := &fakeRunner{
+		results: map[string]*GameState{"d2r": state1},
+	}
+	fsys := d2rFS()
+	cfg := d2rConfig()
+
+	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+
+	// First parse.
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil)
+	callCount++
+
+	// Change the runner output to simulate leveling up.
+	runner.mu.Lock()
+	runner.results["d2r"] = state2
+	runner.mu.Unlock()
+
+	// Second parse with different output — should push.
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil)
+	callCount++
+
+	pushCount := countEventType(ws, "pushSave")
+	if pushCount != 2 {
+		t.Errorf("pushSave count = %d, want 2 (both should push since output changed)", pushCount)
+	}
+	_ = callCount
+}
+
+func TestParseAndPush_HashUpdatedOnlyAfterSuccessfulPush(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := d2rRunner()
+	fsys := d2rFS()
+	cfg := d2rConfig()
+
+	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+
+	// First parse — should push and cache hash.
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil)
+
+	if len(d.lastPushedHash) != 1 {
+		t.Fatalf("lastPushedHash has %d entries, want 1", len(d.lastPushedHash))
+	}
+	hash, ok := d.lastPushedHash["/saves/d2r/Hammerdin.d2s"]
+	if !ok {
+		t.Fatal("lastPushedHash missing entry for /saves/d2r/Hammerdin.d2s")
+	}
+	if hash == [32]byte{} {
+		t.Error("lastPushedHash should not be zero")
+	}
+}
+
+// countEventType counts how many messages of the given type were sent.
+func countEventType(ws *fakeWSClient, eventType string) int {
+	count := 0
+	for _, t := range ws.sentEventTypes() {
+		if t == eventType {
+			count++
+		}
+	}
+	return count
 }

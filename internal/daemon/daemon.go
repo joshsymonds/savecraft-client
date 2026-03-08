@@ -3,6 +3,7 @@ package daemon
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"encoding/json/jsontext"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -217,6 +219,11 @@ type Daemon struct {
 	// request, allowing synchronous callers (like the repair endpoint) to block
 	// until the server responds.
 	pendingLinkCode chan linkCodeResult
+
+	// lastPushedHash caches SHA-256 of the last successfully pushed PushSave
+	// proto bytes per file path. On reconnect or re-parse, if the hash matches
+	// the cached value the push is skipped (no bandwidth, no server work).
+	lastPushedHash map[string][32]byte
 }
 
 type linkCodeResult struct {
@@ -252,6 +259,7 @@ func New(
 		watchedDirs:     make(map[string]string),
 		configDir:       defaultConfigDir(),
 		pendingLinkCode: make(chan linkCodeResult, 1),
+		lastPushedHash:  make(map[string][32]byte),
 	}
 }
 
@@ -786,11 +794,11 @@ func (d *Daemon) parseAndPush(
 		SectionsCount: int32(len(state.Sections)), // #nosec G115 -- bounded by game limits
 	}}})
 
-	d.pushState(ctx, gameID, state)
+	d.pushState(ctx, gameID, fullPath, state)
 }
 
 func (d *Daemon) pushState(
-	ctx context.Context, gameID string, state *GameState,
+	ctx context.Context, gameID, filePath string, state *GameState,
 ) {
 	sections := make([]*pb.GameSection, 0, len(state.Sections))
 	for name, section := range state.Sections {
@@ -830,6 +838,39 @@ func (d *Daemon) pushState(
 		})
 	}
 
+	// Sort sections by name for deterministic hashing (map iteration order is random).
+	slices.SortFunc(sections, func(a, b *pb.GameSection) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	pushSave := &pb.PushSave{
+		Identity: toProtoIdentity(state.Identity),
+		Summary:  state.Summary,
+		Sections: sections,
+		GameId:   gameID,
+	}
+
+	// Hash the PushSave content (excluding ParsedAt which changes every time).
+	// Skip push if output matches the last successful push for this file.
+	// Use deterministic marshaling so map field ordering is stable.
+	pushBytes, err := proto.MarshalOptions{Deterministic: true}.Marshal(pushSave)
+	if err != nil {
+		d.log.ErrorContext(ctx, "failed to marshal PushSave for hashing",
+			slog.String("game_id", gameID),
+			slog.String("error", err.Error()),
+		)
+		return
+	}
+	newHash := sha256.Sum256(pushBytes)
+
+	if prevHash, ok := d.lastPushedHash[filePath]; ok && prevHash == newHash {
+		d.log.DebugContext(ctx, "save data unchanged, skipping push",
+			slog.String("game_id", gameID),
+			slog.String("file_path", filePath),
+		)
+		return
+	}
+
 	d.log.InfoContext(ctx, "pushing save data",
 		slog.String("game", d.gameName(ctx, gameID)),
 		slog.String("game_id", gameID),
@@ -837,13 +878,9 @@ func (d *Daemon) pushState(
 		slog.Int("sections", len(sections)),
 	)
 
-	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PushSave{PushSave: &pb.PushSave{
-		Identity: toProtoIdentity(state.Identity),
-		Summary:  state.Summary,
-		Sections: sections,
-		ParsedAt: timestamppb.Now(),
-		GameId:   gameID,
-	}}})
+	pushSave.ParsedAt = timestamppb.Now()
+	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PushSave{PushSave: pushSave}})
+	d.lastPushedHash[filePath] = newHash
 }
 
 func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
