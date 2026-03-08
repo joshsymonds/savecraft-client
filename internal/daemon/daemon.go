@@ -252,6 +252,21 @@ func New(
 	}
 }
 
+// gameName returns the display name for a game, falling back to the raw gameID.
+func (d *Daemon) gameName(ctx context.Context, gameID string) string {
+	if d.plugins == nil {
+		return gameID
+	}
+	manifests, err := d.plugins.Manifests(ctx)
+	if err != nil {
+		return gameID
+	}
+	if info, ok := manifests[gameID]; ok && info.Name != "" {
+		return info.Name
+	}
+	return gameID
+}
+
 // SetLinkCallbacks registers callbacks for link state changes.
 // Must be called before Run.
 func (d *Daemon) SetLinkCallbacks(cb LinkCallbacks) {
@@ -386,6 +401,7 @@ func (d *Daemon) announceOnline(ctx context.Context) {
 			continue
 		}
 		d.log.InfoContext(ctx, "initializing game",
+			slog.String("game", d.gameName(ctx, gameID)),
 			slog.String("game_id", gameID),
 			slog.String("save_path", gameCfg.SavePath),
 		)
@@ -451,7 +467,12 @@ func (d *Daemon) checkPluginUpdates(ctx context.Context) {
 		return
 	}
 	for _, gameID := range updated {
-		d.log.InfoContext(ctx, "plugin updated", slog.String("game_id", gameID))
+		d.log.InfoContext(
+			ctx,
+			"plugin updated",
+			slog.String("game", d.gameName(ctx, gameID)),
+			slog.String("game_id", gameID),
+		)
 		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PluginUpdated{PluginUpdated: &pb.PluginUpdated{
 			GameId: gameID,
 		}}})
@@ -549,7 +570,14 @@ func (d *Daemon) discoverGames(ctx context.Context) {
 func (d *Daemon) scanGame(
 	ctx context.Context, gameID string, cfg GameConfig,
 ) {
-	d.log.InfoContext(ctx, "scanning game directory", slog.String("game_id", gameID), slog.String("path", cfg.SavePath))
+	displayName := d.gameName(ctx, gameID)
+	d.log.InfoContext(
+		ctx,
+		"scanning game directory",
+		slog.String("game", displayName),
+		slog.String("game_id", gameID),
+		slog.String("path", cfg.SavePath),
+	)
 	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ScanStarted{ScanStarted: &pb.ScanStarted{
 		GameId: gameID,
 		Path:   cfg.SavePath,
@@ -581,6 +609,7 @@ func (d *Daemon) scanGame(
 
 	matchingFiles := d.filterByExtension(entries, cfg.FileExtensions)
 	d.log.InfoContext(ctx, "save files found",
+		slog.String("game", displayName),
 		slog.String("game_id", gameID),
 		slog.Int("count", len(matchingFiles)),
 		slog.String("path", cfg.SavePath),
@@ -617,6 +646,7 @@ func (d *Daemon) scanGame(
 	d.log.InfoContext(
 		ctx,
 		"watching game",
+		slog.String("game", displayName),
 		slog.String("game_id", gameID),
 		slog.String("path", cfg.SavePath),
 		slog.Int("file_count", len(matchingFiles)),
@@ -734,6 +764,7 @@ func (d *Daemon) parseAndPush(
 	d.log.InfoContext(
 		ctx,
 		"parse completed",
+		slog.String("game", d.gameName(ctx, gameID)),
 		slog.String("game_id", gameID),
 		slog.String("file_name", fileName),
 		slog.String("summary", state.Summary),
@@ -776,6 +807,7 @@ func (d *Daemon) pushState(
 	}
 
 	d.log.InfoContext(ctx, "pushing save data",
+		slog.String("game", d.gameName(ctx, gameID)),
 		slog.String("game_id", gameID),
 		slog.String("summary", state.Summary),
 		slog.Int("sections", len(sections)),
@@ -936,7 +968,12 @@ func (d *Daemon) handleConfigUpdate(
 
 		switch {
 		case !newGame.Enabled:
-			d.log.InfoContext(ctx, "game disabled", slog.String("game_id", gameID))
+			d.log.InfoContext(
+				ctx,
+				"game disabled",
+				slog.String("game", d.gameName(ctx, gameID)),
+				slog.String("game_id", gameID),
+			)
 			if existed {
 				d.unwatchGame(ctx, oldCfg.SavePath)
 			}
@@ -945,6 +982,7 @@ func (d *Daemon) handleConfigUpdate(
 			d.log.InfoContext(
 				ctx,
 				"new game configured",
+				slog.String("game", d.gameName(ctx, gameID)),
 				slog.String("game_id", gameID),
 				slog.String("save_path", resolvedPath),
 				slog.Bool("enabled", newGame.Enabled),
@@ -962,6 +1000,7 @@ func (d *Daemon) handleConfigUpdate(
 			d.log.InfoContext(
 				ctx,
 				"game path changed",
+				slog.String("game", d.gameName(ctx, gameID)),
 				slog.String("game_id", gameID),
 				slog.String("old_path", oldCfg.SavePath),
 				slog.String("new_path", resolvedPath),
