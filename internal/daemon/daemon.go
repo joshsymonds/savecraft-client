@@ -3,6 +3,8 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"io"
@@ -45,9 +47,10 @@ type Identity struct {
 }
 
 // Section is a named block of game state data.
+// Data must be a JSON object (not an array or scalar).
 type Section struct {
-	Description string `json:"description"`
-	Data        any    `json:"data"`
+	Description string         `json:"description"`
+	Data        jsontext.Value `json:"data"`
 }
 
 // PluginError is returned when a WASM plugin fails to parse a save file.
@@ -786,19 +789,35 @@ func (d *Daemon) pushState(
 ) {
 	sections := make([]*pb.GameSection, 0, len(state.Sections))
 	for name, section := range state.Sections {
-		var dataStruct *structpb.Struct
-		if dataMap, ok := section.Data.(map[string]any); ok {
-			var err error
-			dataStruct, err = structpb.NewStruct(dataMap)
-			if err != nil {
-				d.log.WarnContext(ctx, "failed to convert section data to struct",
-					slog.String("game_id", gameID),
-					slog.String("section", name),
-					slog.String("error", err.Error()),
-				)
-				continue
-			}
+		if section.Data.Kind() != '{' {
+			d.log.ErrorContext(ctx, "section data is not a JSON object, skipping",
+				slog.String("game_id", gameID),
+				slog.String("section", name),
+				slog.String("kind", string(section.Data.Kind())),
+			)
+			continue
 		}
+
+		var dataMap map[string]any
+		if err := json.Unmarshal(section.Data, &dataMap); err != nil {
+			d.log.ErrorContext(ctx, "failed to unmarshal section data",
+				slog.String("game_id", gameID),
+				slog.String("section", name),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+
+		dataStruct, err := structpb.NewStruct(dataMap)
+		if err != nil {
+			d.log.ErrorContext(ctx, "failed to convert section data to proto struct",
+				slog.String("game_id", gameID),
+				slog.String("section", name),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+
 		sections = append(sections, &pb.GameSection{
 			Name:        name,
 			Description: section.Description,

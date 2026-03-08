@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"io"
@@ -399,7 +400,7 @@ func newD2RState() *GameState {
 		},
 		Summary: "Hammerdin, Level 89 Paladin",
 		Sections: map[string]Section{
-			"overview": {Description: "Character overview", Data: map[string]any{"level": float64(89)}},
+			"overview": {Description: "Character overview", Data: jsontext.Value(`{"level":89}`)},
 		},
 	}
 }
@@ -432,7 +433,7 @@ func newStashState() *GameState {
 		},
 		Summary: "Shared Stash (Softcore), 60 items, 0 gold",
 		Sections: map[string]Section{
-			"overview": {Description: "Shared stash overview", Data: map[string]any{"gold": float64(0)}},
+			"overview": {Description: "Shared stash overview", Data: jsontext.Value(`{"gold":0}`)},
 		},
 	}
 }

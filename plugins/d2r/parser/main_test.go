@@ -47,11 +47,11 @@ func buildAllSections(save *d2s.D2S) map[string]any {
 		},
 		"skills": map[string]any{
 			"description": "Skill allocations",
-			"data":        buildSkillsSection(save),
+			"data":        map[string]any{"skills": buildSkillsSection(save)},
 		},
 		"equipment": map[string]any{
 			"description": "Equipped items",
-			"data":        buildEquipmentSection(save),
+			"data":        map[string]any{"equipment": buildEquipmentSection(save)},
 		},
 		"inventory": map[string]any{
 			"description": "Inventory, stash, and cube items",
@@ -62,13 +62,13 @@ func buildAllSections(save *d2s.D2S) map[string]any {
 	if len(save.MercItems) > 0 {
 		sections["mercenary"] = map[string]any{
 			"description": "Mercenary equipment",
-			"data":        buildItemList(save.MercItems),
+			"data":        map[string]any{"mercenary": buildItemList(save.MercItems)},
 		}
 	}
 	if len(save.CorpseItems) > 0 {
 		sections["corpse"] = map[string]any{
 			"description": "Items on character's corpse (died and hasn't retrieved body)",
-			"data":        buildItemList(save.CorpseItems),
+			"data":        map[string]any{"corpse": buildItemList(save.CorpseItems)},
 		}
 	}
 	if save.GolemItem != nil {
@@ -271,12 +271,16 @@ func TestCorpseSection_Present(t *testing.T) {
 		t.Fatal("corpse section missing")
 	}
 
-	data, ok := corpse["data"].([]map[string]any)
+	dataObj, ok := corpse["data"].(map[string]any)
 	if !ok {
-		t.Fatalf("corpse data type = %T, want []map[string]any", corpse["data"])
+		t.Fatalf("corpse data type = %T, want map[string]any", corpse["data"])
 	}
-	if len(data) != 2 {
-		t.Errorf("corpse items = %d, want 2", len(data))
+	items, ok := dataObj["corpse"].([]map[string]any)
+	if !ok {
+		t.Fatalf("corpse.data.corpse type = %T, want []map[string]any", dataObj["corpse"])
+	}
+	if len(items) != 2 {
+		t.Errorf("corpse items = %d, want 2", len(items))
 	}
 }
 
@@ -559,8 +563,10 @@ func TestBuildStashSections(t *testing.T) {
 		if !ok {
 			continue
 		}
-		if tabData, ok := tabSec["data"].([]map[string]any); ok && len(tabData) > 0 {
-			hasTabWithItems = true
+		if tabData, ok := tabSec["data"].(map[string]any); ok {
+			if items, ok := tabData["items"].([]map[string]any); ok && len(items) > 0 {
+				hasTabWithItems = true
+			}
 		}
 	}
 	if !hasTabWithItems {

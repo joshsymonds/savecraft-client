@@ -45,6 +45,40 @@ Plugins are compiled as WASI executables. The daemon feeds raw save file bytes o
 
 Valid `error_type` values: `unsupported_version`, `corrupt_file`, `parse_error`.
 
+### Section Data Contract
+
+Each section in the `sections` map has a `description` (string) and `data` field. **Section data must be a JSON object.** It must not be an array, string, number, boolean, or null.
+
+If a section naturally contains a list (e.g. equipped items, skill allocations), wrap the array in an object with a descriptive key:
+
+```json
+// CORRECT — object with descriptive key
+"equipment": {
+  "description": "Equipped items",
+  "data": {"equipment": [{"slot": "head", "name": "Shako"}, ...]}
+}
+
+// CORRECT — object with multiple keys
+"inventory": {
+  "description": "Inventory, stash, and cube items",
+  "data": {"inventory": [...], "stash": [...], "cube": [...]}
+}
+
+// WRONG — bare array
+"equipment": {
+  "description": "Equipped items",
+  "data": [{"slot": "head", "name": "Shako"}, ...]
+}
+
+// WRONG — scalar value
+"playtime": {
+  "description": "Total play time",
+  "data": 3600
+}
+```
+
+**Enforcement:** The daemon validates that each section's data is a JSON object before sending it to the server. Sections with non-object data are skipped with an error log — they will not reach storage or MCP. The server performs the same validation on receipt.
+
 **Plugin Go source example (D2R):**
 
 ```go

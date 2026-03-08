@@ -105,11 +105,11 @@ func handleCharacter(enc *json.Encoder, data []byte) {
 		},
 		"skills": map[string]any{
 			"description": "Skill allocations",
-			"data":        buildSkillsSection(save),
+			"data":        map[string]any{"skills": buildSkillsSection(save)},
 		},
 		"equipment": map[string]any{
 			"description": "Equipped items",
-			"data":        buildEquipmentSection(save),
+			"data":        map[string]any{"equipment": buildEquipmentSection(save)},
 		},
 		"inventory": map[string]any{
 			"description": "Inventory, stash, and cube items",
@@ -120,14 +120,14 @@ func handleCharacter(enc *json.Encoder, data []byte) {
 	if len(save.MercItems) > 0 {
 		sections["mercenary"] = map[string]any{
 			"description": "Mercenary equipment",
-			"data":        buildItemList(save.MercItems),
+			"data":        map[string]any{"mercenary": buildItemList(save.MercItems)},
 		}
 	}
 
 	if len(save.CorpseItems) > 0 {
 		sections["corpse"] = map[string]any{
 			"description": "Items on character's corpse (died and hasn't retrieved body)",
-			"data":        buildItemList(save.CorpseItems),
+			"data":        map[string]any{"corpse": buildItemList(save.CorpseItems)},
 		}
 	}
 
@@ -577,7 +577,7 @@ func buildStashSections(stash *d2s.SharedStash) map[string]any {
 		key := fmt.Sprintf("tab%d", tabNum)
 		sections[key] = map[string]any{
 			"description": fmt.Sprintf("Stash tab %d (%s)", tabNum, tabType),
-			"data":        buildItemList(tab.Items),
+			"data":        map[string]any{"items": buildItemList(tab.Items)},
 		}
 	}
 
