@@ -1,5 +1,23 @@
 # WASM Plugin System
 
+Savecraft has two kinds of plugins, both living in `plugins/{game_id}/`:
+
+| | Daemon Plugins (WASM) | API Adapters (TypeScript) |
+|---|---|---|
+| **Runtime** | wazero in daemon | Cloudflare Worker |
+| **Trigger** | Filesystem event (save file changed) | OAuth callback, MCP refresh, scheduled refresh |
+| **Input** | Raw file bytes on stdin | Game API responses (HTTP) |
+| **Output** | GameState via ndjson stdout | GameState via TypeScript return |
+| **Trust model** | Sandboxed WASM, Ed25519 signed, community code | Reviewed first-party TypeScript, no sandbox needed |
+| **Credentials** | None (no network access) | OAuth tokens stored in D1 |
+| **State pipeline** | Daemon → WebSocket PushSave → SourceHub DO | Worker → D1 saves + SourceHub `/set-game-status` HTTP |
+| **Source kind** | `daemon` | `adapter` |
+| **Example** | D2R (`.d2s` file parser) | WoW (Battle.net + Raider.io APIs) |
+
+Both produce the same `GameState` shape (`identity`, `summary`, `sections`). Everything downstream — D1 storage, FTS indexing, MCP tools, notes, search — works identically regardless of source kind.
+
+This document covers daemon WASM plugins. For API adapters, see [docs/adapters.md](adapters.md).
+
 ## Why WASM
 
 - **Cross-platform:** One .wasm binary works on Windows x86, Linux x86, Linux ARM (Steam Deck). No per-platform compilation for plugins.
