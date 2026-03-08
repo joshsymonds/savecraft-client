@@ -2156,7 +2156,6 @@ func TestRun_ReconnectReannounces(t *testing.T) {
 	// On reconnect with unchanged games/files, only sourceOnline should be
 	// re-sent. All discovery, scan, watch, parse, and push messages should
 	// be suppressed because nothing changed.
-	eventTypes := ws.sentEventTypes()
 	for _, suppressed := range []string{
 		"gamesDiscovered", "scanStarted", "scanCompleted",
 		"gameDetected", "watching", "parseStarted", "parseCompleted", "pushSave",
@@ -2166,7 +2165,6 @@ func TestRun_ReconnectReannounces(t *testing.T) {
 			t.Errorf("%s sent %d times, want 1 (should not re-send on reconnect)", suppressed, count)
 		}
 	}
-	_ = eventTypes
 
 	cancel()
 	<-done
@@ -2436,7 +2434,6 @@ func TestParseAndPush_PushesWhenOutputChanges(t *testing.T) {
 			"overview": {Description: "Character overview", Data: jsontext.Value(`{"level":90}`)},
 		},
 	}
-	callCount := 0
 	runner := &fakeRunner{
 		results: map[string]*GameState{"d2r": state1},
 	}
@@ -2447,7 +2444,6 @@ func TestParseAndPush_PushesWhenOutputChanges(t *testing.T) {
 
 	// First parse.
 	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil, false)
-	callCount++
 
 	// Change the runner output to simulate leveling up.
 	runner.mu.Lock()
@@ -2456,13 +2452,11 @@ func TestParseAndPush_PushesWhenOutputChanges(t *testing.T) {
 
 	// Second parse with different output — should push.
 	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil, false)
-	callCount++
 
 	pushCount := countEventType(ws, "pushSave")
 	if pushCount != 2 {
 		t.Errorf("pushSave count = %d, want 2 (both should push since output changed)", pushCount)
 	}
-	_ = callCount
 }
 
 func TestParseAndPush_HashUpdatedOnlyAfterSuccessfulPush(t *testing.T) {

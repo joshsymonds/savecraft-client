@@ -931,7 +931,19 @@ func (d *Daemon) pushState(
 	)
 
 	pushSave.ParsedAt = timestamppb.Now()
-	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PushSave{PushSave: pushSave}})
+	msg := &pb.Message{Payload: &pb.Message_PushSave{PushSave: pushSave}}
+	data, err := proto.MarshalOptions{Deterministic: true}.Marshal(msg)
+	if err != nil {
+		d.log.ErrorContext(ctx, "failed to marshal PushSave message",
+			slog.String("game_id", gameID),
+			slog.String("error", err.Error()),
+		)
+		return
+	}
+	if sendErr := d.ws.Send(data); sendErr != nil {
+		d.log.WarnContext(ctx, "failed to send message", slog.String("error", sendErr.Error()))
+		return
+	}
 	d.lastPushedHash[filePath] = newHash
 }
 
