@@ -186,6 +186,7 @@ type fakeWSClient struct {
 	reconnected chan struct{}
 	sent        [][]byte
 	connected   bool
+	sendErr     error // if non-nil, Send returns this error
 	mu          sync.Mutex
 }
 
@@ -204,6 +205,9 @@ func (ws *fakeWSClient) Connect(_ context.Context) error {
 func (ws *fakeWSClient) Send(msg []byte) error {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
+	if ws.sendErr != nil {
+		return ws.sendErr
+	}
 	cp := make([]byte, len(msg))
 	copy(cp, msg)
 	ws.sent = append(ws.sent, cp)
@@ -2460,26 +2464,43 @@ func TestParseAndPush_PushesWhenOutputChanges(t *testing.T) {
 }
 
 func TestParseAndPush_HashUpdatedOnlyAfterSuccessfulPush(t *testing.T) {
-	ws := newFakeWSClient()
-	runner := d2rRunner()
-	fsys := d2rFS()
-	cfg := d2rConfig()
+	t.Run("caches hash after successful send", func(t *testing.T) {
+		ws := newFakeWSClient()
+		runner := d2rRunner()
+		fsys := d2rFS()
+		cfg := d2rConfig()
 
-	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+		d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
 
-	// First parse — should push and cache hash.
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil, false)
+		d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil, false)
 
-	if len(d.lastPushedHash) != 1 {
-		t.Fatalf("lastPushedHash has %d entries, want 1", len(d.lastPushedHash))
-	}
-	hash, ok := d.lastPushedHash["/saves/d2r/Hammerdin.d2s"]
-	if !ok {
-		t.Fatal("lastPushedHash missing entry for /saves/d2r/Hammerdin.d2s")
-	}
-	if hash == [32]byte{} {
-		t.Error("lastPushedHash should not be zero")
-	}
+		if len(d.lastPushedHash) != 1 {
+			t.Fatalf("lastPushedHash has %d entries, want 1", len(d.lastPushedHash))
+		}
+		hash, ok := d.lastPushedHash["/saves/d2r/Hammerdin.d2s"]
+		if !ok {
+			t.Fatal("lastPushedHash missing entry for /saves/d2r/Hammerdin.d2s")
+		}
+		if hash == [32]byte{} {
+			t.Error("lastPushedHash should not be zero")
+		}
+	})
+
+	t.Run("does not cache hash when send fails", func(t *testing.T) {
+		ws := newFakeWSClient()
+		ws.sendErr = fmt.Errorf("connection lost")
+		runner := d2rRunner()
+		fsys := d2rFS()
+		cfg := d2rConfig()
+
+		d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+
+		d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil, false)
+
+		if len(d.lastPushedHash) != 0 {
+			t.Errorf("lastPushedHash has %d entries, want 0 (send failed, should not cache)", len(d.lastPushedHash))
+		}
+	})
 }
 
 // countEventType counts how many messages of the given type were sent.
