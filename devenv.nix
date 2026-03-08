@@ -29,7 +29,6 @@
     # Go daemon + plugins
     pkgs.go_1_26
     pkgs.gopls
-    pkgs.gotools        # goimports, etc.
     pkgs.go-tools       # staticcheck
     pkgs.golangci-lint  # comprehensive linter
     pkgs.delve          # debugger
@@ -61,11 +60,15 @@
   ];
 
   enterShell = ''
+    export GOEXPERIMENT=jsonv2
     export GOPATH="$DEVENV_STATE/go"
     export GOMODCACHE="$GOPATH/pkg/mod"
     export PATH="$GOPATH/bin:$PATH"
 
-    # Install deadcode if not present (no nix package available)
+    # Install Go tools with project's Go version (nix gotools is built against older Go)
+    if ! command -v goimports &>/dev/null; then
+      go install golang.org/x/tools/cmd/goimports@latest
+    fi
     if ! command -v deadcode &>/dev/null; then
       go install golang.org/x/tools/cmd/deadcode@latest
     fi

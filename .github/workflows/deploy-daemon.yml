@@ -26,6 +26,9 @@ on:
 permissions:
   contents: write
 
+env:
+  GOEXPERIMENT: jsonv2
+
 jobs:
   test:
     name: Go (lint + test + proto)
@@ -54,8 +57,11 @@ jobs:
           just fmt-go
           git diff --exit-code || (echo "goimports produced changes — run 'just fmt-go' locally" && exit 1)
 
+      - name: Install deadcode
+        run: go install golang.org/x/tools/cmd/deadcode@latest
+
       - name: Deadcode
-        run: go run golang.org/x/tools/cmd/deadcode@latest -test ./internal/... ./cmd/...
+        run: deadcode -test ./...
 
       - name: Test
         run: just test-go

@@ -81,12 +81,6 @@ func (s *Server) Handle(pattern string, handler http.Handler) {
 	s.mux.Handle(pattern, handler)
 }
 
-// ServeHTTP dispatches requests through the server's mux.
-// Useful for testing without starting a real listener.
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.mux.ServeHTTP(w, r)
-}
-
 // SetState updates the daemon's lifecycle state.
 func (s *Server) SetState(state State) {
 	s.mu.Lock()

@@ -71,8 +71,3 @@ func (br *bitReader) Align() {
 		}
 	}
 }
-
-// BitsRead returns the total number of bits consumed.
-func (br *bitReader) BitsRead() uint {
-	return br.totalRead
-}
