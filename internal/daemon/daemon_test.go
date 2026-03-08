@@ -787,6 +787,38 @@ func TestParseAndPush_FileReadError(t *testing.T) {
 	}
 }
 
+func TestPushState_SkipsNonObjectSections(t *testing.T) {
+	ws := newFakeWSClient()
+	cfg := d2rConfig()
+
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, nil, testLogger())
+
+	state := &GameState{
+		Identity: Identity{SaveName: "Test", GameID: "d2r"},
+		Summary:  "test",
+		Sections: map[string]Section{
+			"valid_object": {Description: "An object section", Data: jsontext.Value(`{"key":"value"}`)},
+			"bare_array":   {Description: "A bare array", Data: jsontext.Value(`[1,2,3]`)},
+			"bare_string":  {Description: "A bare string", Data: jsontext.Value(`"hello"`)},
+			"bare_number":  {Description: "A bare number", Data: jsontext.Value(`42`)},
+		},
+	}
+
+	d.pushState(context.Background(), "d2r", state)
+
+	msg := ws.sentProto("pushSave", 0)
+	if msg == nil {
+		t.Fatal("missing pushSave message")
+	}
+	push := msg.GetPushSave()
+	if len(push.Sections) != 1 {
+		t.Fatalf("got %d sections, want 1 (only the valid object)", len(push.Sections))
+	}
+	if push.Sections[0].Name != "valid_object" {
+		t.Errorf("got section %q, want %q", push.Sections[0].Name, "valid_object")
+	}
+}
+
 func TestParseAndPush_ForwardsPluginStatus(t *testing.T) {
 	ws := newFakeWSClient()
 	runner := &fakeRunner{
