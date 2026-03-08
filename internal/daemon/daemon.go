@@ -224,6 +224,11 @@ type Daemon struct {
 	// proto bytes per file path. On reconnect or re-parse, if the hash matches
 	// the cached value the push is skipped (no bandwidth, no server work).
 	lastPushedHash map[string][32]byte
+
+	// hasAnnounced is set after the first announceOnline completes.
+	// On subsequent calls (reconnects), discovery and scan messages are
+	// suppressed when nothing has changed.
+	hasAnnounced bool
 }
 
 type linkCodeResult struct {
@@ -396,6 +401,8 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 // announceOnline sends the sourceOnline event and full game state.
 // Called on initial connect and after each reconnect.
 func (d *Daemon) announceOnline(ctx context.Context) {
+	reconnect := d.hasAnnounced
+
 	hostname, err := os.Hostname()
 	if err != nil {
 		d.log.WarnContext(ctx, "failed to get hostname", slog.String("error", err.Error()))
@@ -409,23 +416,29 @@ func (d *Daemon) announceOnline(ctx context.Context) {
 		Timestamp: timestamppb.Now(),
 	}}})
 
-	d.discoverGames(ctx)
+	if !reconnect {
+		d.discoverGames(ctx)
+	}
 
 	for gameID, gameCfg := range d.cfg.Games {
 		if !gameCfg.Enabled {
 			d.log.DebugContext(ctx, "skipping disabled game", slog.String("game_id", gameID))
 			continue
 		}
-		d.log.InfoContext(ctx, "initializing game",
-			slog.String("game", d.gameName(ctx, gameID)),
-			slog.String("game_id", gameID),
-			slog.String("save_path", gameCfg.SavePath),
-		)
+		if !reconnect {
+			d.log.InfoContext(ctx, "initializing game",
+				slog.String("game", d.gameName(ctx, gameID)),
+				slog.String("game_id", gameID),
+				slog.String("save_path", gameCfg.SavePath),
+			)
+		}
 		if !d.ensurePluginReady(ctx, gameID) {
 			continue
 		}
-		d.scanGame(ctx, gameID, gameCfg)
+		d.scanGame(ctx, gameID, gameCfg, reconnect)
 	}
+
+	d.hasAnnounced = true
 }
 
 func (d *Daemon) checkSelfUpdate(ctx context.Context) {
@@ -583,9 +596,42 @@ func (d *Daemon) discoverGames(ctx context.Context) {
 	}}})
 }
 
-func (d *Daemon) scanGame(
+// rescanQuiet re-parses files for an already-watched game without sending
+// discovery/scan/watch messages. Returns true if handled (dir was already
+// watched), false if the caller should fall through to a full scan.
+func (d *Daemon) rescanQuiet(
 	ctx context.Context, gameID string, cfg GameConfig,
+) bool {
+	d.mu.RLock()
+	_, alreadyWatched := d.watchedDirs[cfg.SavePath]
+	d.mu.RUnlock()
+
+	if !alreadyWatched {
+		return false
+	}
+
+	entries, err := d.fs.ReadDir(cfg.SavePath)
+	if err != nil {
+		return true
+	}
+	matchingFiles := d.filterByExtension(entries, cfg.FileExtensions)
+	for _, fileName := range matchingFiles {
+		fullPath := filepath.Join(cfg.SavePath, fileName)
+		d.parseAndPush(ctx, gameID, fullPath, fileName, nil, true)
+	}
+	return true
+}
+
+func (d *Daemon) scanGame(
+	ctx context.Context, gameID string, cfg GameConfig, quiet bool,
 ) {
+	// On reconnect (quiet=true), skip straight to re-parsing files.
+	// The hash cache in pushState handles dedup; discovery/scan/watch
+	// messages are suppressed because we already sent them.
+	if quiet && d.rescanQuiet(ctx, gameID, cfg) {
+		return
+	}
+
 	displayName := d.gameName(ctx, gameID)
 	d.log.InfoContext(
 		ctx,
@@ -675,7 +721,7 @@ func (d *Daemon) scanGame(
 
 	for _, fileName := range matchingFiles {
 		fullPath := filepath.Join(cfg.SavePath, fileName)
-		d.parseAndPush(ctx, gameID, fullPath, fileName, nil)
+		d.parseAndPush(ctx, gameID, fullPath, fileName, nil, false)
 	}
 }
 
@@ -708,21 +754,25 @@ func (d *Daemon) handleFileEvent(ctx context.Context, ev FileEvent) {
 	}
 
 	fileName := filepath.Base(ev.Path)
-	d.parseAndPush(ctx, gameID, ev.Path, fileName, ev.Data)
+	d.parseAndPush(ctx, gameID, ev.Path, fileName, ev.Data, false)
 }
 
 // parseAndPush reads the save file, runs the plugin, and pushes the result.
 // When preloadedData is non-nil (e.g. from the watcher's SHA-256 read), it is
 // used directly, avoiding a redundant filesystem read.
+// When quiet is true (reconnect with unchanged files), ParseStarted and
+// ParseCompleted messages are suppressed.
 func (d *Daemon) parseAndPush(
 	ctx context.Context, gameID, fullPath, fileName string,
-	preloadedData []byte,
+	preloadedData []byte, quiet bool,
 ) {
 	d.log.DebugContext(ctx, "parsing save file", slog.String("game_id", gameID), slog.String("file_name", fileName))
-	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ParseStarted{ParseStarted: &pb.ParseStarted{
-		GameId:   gameID,
-		FileName: fileName,
-	}}})
+	if !quiet {
+		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ParseStarted{ParseStarted: &pb.ParseStarted{
+			GameId:   gameID,
+			FileName: fileName,
+		}}})
+	}
 
 	saveBytes := preloadedData
 	if saveBytes == nil {
@@ -777,22 +827,24 @@ func (d *Daemon) parseAndPush(
 		return
 	}
 
-	d.log.InfoContext(
-		ctx,
-		"parse completed",
-		slog.String("game", d.gameName(ctx, gameID)),
-		slog.String("game_id", gameID),
-		slog.String("file_name", fileName),
-		slog.String("summary", state.Summary),
-		slog.Int("sections_count", len(state.Sections)),
-	)
-	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ParseCompleted{ParseCompleted: &pb.ParseCompleted{
-		GameId:        gameID,
-		FileName:      fileName,
-		Identity:      toProtoIdentity(state.Identity),
-		Summary:       state.Summary,
-		SectionsCount: int32(len(state.Sections)), // #nosec G115 -- bounded by game limits
-	}}})
+	if !quiet {
+		d.log.InfoContext(
+			ctx,
+			"parse completed",
+			slog.String("game", d.gameName(ctx, gameID)),
+			slog.String("game_id", gameID),
+			slog.String("file_name", fileName),
+			slog.String("summary", state.Summary),
+			slog.Int("sections_count", len(state.Sections)),
+		)
+		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ParseCompleted{ParseCompleted: &pb.ParseCompleted{
+			GameId:        gameID,
+			FileName:      fileName,
+			Identity:      toProtoIdentity(state.Identity),
+			Summary:       state.Summary,
+			SectionsCount: int32(len(state.Sections)), // #nosec G115 -- bounded by game limits
+		}}})
+	}
 
 	d.pushState(ctx, gameID, fullPath, state)
 }
@@ -898,7 +950,7 @@ func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
 		gameCfg, ok := d.cfg.Games[cmd.RescanGame.GameId]
 		d.mu.RUnlock()
 		if ok {
-			d.scanGame(ctx, cmd.RescanGame.GameId, gameCfg)
+			d.scanGame(ctx, cmd.RescanGame.GameId, gameCfg, false)
 		}
 	case *pb.Message_TestPath:
 		d.handleTestPath(ctx, cmd.TestPath.GameId, cmd.TestPath.Path)
@@ -1055,7 +1107,7 @@ func (d *Daemon) handleConfigUpdate(
 				results[gameID] = configGameResult{Error: "plugin download failed", ResolvedPath: resolvedPath}
 				continue
 			}
-			d.scanGame(ctx, gameID, gameCfg)
+			d.scanGame(ctx, gameID, gameCfg, false)
 			results[gameID] = d.buildGameResult(resolvedPath)
 		case oldCfg.SavePath != resolvedPath:
 			d.log.InfoContext(
@@ -1074,7 +1126,7 @@ func (d *Daemon) handleConfigUpdate(
 				results[gameID] = configGameResult{Error: "plugin download failed", ResolvedPath: resolvedPath}
 				continue
 			}
-			d.scanGame(ctx, gameID, gameCfg)
+			d.scanGame(ctx, gameID, gameCfg, false)
 			results[gameID] = d.buildGameResult(resolvedPath)
 		default:
 			// No change needed — game already configured with same path.

@@ -479,7 +479,7 @@ func TestParseAndPush_GameScopedSave(t *testing.T) {
 	}
 
 	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/SharedStash.d2i", "SharedStash.d2i", nil)
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/SharedStash.d2i", "SharedStash.d2i", nil, false)
 
 	types := ws.sentEventTypes()
 	if !slices.Contains(types, "pushSave") {
@@ -522,7 +522,7 @@ func TestScanGame_DetectsGame(t *testing.T) {
 	cfg := d2rConfig()
 
 	d := New(cfg, fsys, watcher, runner, ws, &fakePluginManager{}, nil, testLogger())
-	d.scanGame(context.Background(), "d2r", cfg.Games["d2r"])
+	d.scanGame(context.Background(), "d2r", cfg.Games["d2r"], false)
 
 	types := ws.sentEventTypes()
 	for _, want := range []string{"scanStarted", "scanCompleted", "gameDetected", "watching", "pushSave"} {
@@ -576,7 +576,7 @@ func TestScanGame_MissingDir(t *testing.T) {
 	cfg := d2rConfig()
 
 	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, nil, testLogger())
-	d.scanGame(context.Background(), "d2r", cfg.Games["d2r"])
+	d.scanGame(context.Background(), "d2r", cfg.Games["d2r"], false)
 
 	types := ws.sentEventTypes()
 	if !slices.Contains(types, "scanStarted") {
@@ -598,7 +598,7 @@ func TestScanGame_NoMatchingFiles(t *testing.T) {
 	cfg := d2rConfig()
 
 	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, nil, testLogger())
-	d.scanGame(context.Background(), "d2r", cfg.Games["d2r"])
+	d.scanGame(context.Background(), "d2r", cfg.Games["d2r"], false)
 
 	types := ws.sentEventTypes()
 	if !slices.Contains(types, "scanCompleted") {
@@ -749,7 +749,7 @@ func TestParseAndPush_PluginError(t *testing.T) {
 	cfg := d2rConfig()
 
 	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/bad.d2s", "bad.d2s", nil)
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/bad.d2s", "bad.d2s", nil, false)
 
 	types := ws.sentEventTypes()
 	if !slices.Contains(types, "parseFailed") {
@@ -776,7 +776,7 @@ func TestParseAndPush_FileReadError(t *testing.T) {
 	cfg := d2rConfig()
 
 	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, nil, testLogger())
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/missing.d2s", "missing.d2s", nil)
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/missing.d2s", "missing.d2s", nil, false)
 
 	types := ws.sentEventTypes()
 	if !slices.Contains(types, "parseFailed") {
@@ -831,7 +831,7 @@ func TestParseAndPush_ForwardsPluginStatus(t *testing.T) {
 	cfg := d2rConfig()
 
 	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s", nil)
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/test.d2s", "test.d2s", nil, false)
 
 	statusCount := 0
 	for _, et := range ws.sentEventTypes() {
@@ -2153,26 +2153,20 @@ func TestRun_ReconnectReannounces(t *testing.T) {
 		t.Errorf("reconnect sourceOnline version = %v, want 0.1.0", online.Version)
 	}
 
-	// Verify gamesDiscovered and watching are re-sent on reconnect.
-	// pushSave is correctly skipped when data hasn't changed (hash dedup).
+	// On reconnect with unchanged games/files, only sourceOnline should be
+	// re-sent. All discovery, scan, watch, parse, and push messages should
+	// be suppressed because nothing changed.
 	eventTypes := ws.sentEventTypes()
-	for _, required := range []string{"gamesDiscovered", "watching"} {
-		count := 0
-		for _, et := range eventTypes {
-			if et == required {
-				count++
-			}
-		}
-		if count < 2 {
-			t.Errorf("%s sent %d times, want >= 2 (initial + reconnect)", required, count)
+	for _, suppressed := range []string{
+		"gamesDiscovered", "scanStarted", "scanCompleted",
+		"gameDetected", "watching", "parseStarted", "parseCompleted", "pushSave",
+	} {
+		count := countEventType(ws, suppressed)
+		if count != 1 {
+			t.Errorf("%s sent %d times, want 1 (should not re-send on reconnect)", suppressed, count)
 		}
 	}
-	// pushSave should only be sent once — the reconnect parse produces
-	// identical output, so the hash dedup skips the second push.
-	pushCount := countEventType(ws, "pushSave")
-	if pushCount != 1 {
-		t.Errorf("pushSave sent %d times, want 1 (dedup should skip reconnect push)", pushCount)
-	}
+	_ = eventTypes
 
 	cancel()
 	<-done
@@ -2389,7 +2383,7 @@ func TestParseAndPush_FirstParseAlwaysPushes(t *testing.T) {
 	cfg := d2rConfig()
 
 	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil)
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil, false)
 
 	types := ws.sentEventTypes()
 	if !slices.Contains(types, "pushSave") {
@@ -2406,7 +2400,7 @@ func TestParseAndPush_SkipsPushWhenOutputUnchanged(t *testing.T) {
 	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
 
 	// First parse — should push.
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil)
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil, false)
 
 	pushCount1 := countEventType(ws, "pushSave")
 	if pushCount1 != 1 {
@@ -2414,7 +2408,7 @@ func TestParseAndPush_SkipsPushWhenOutputUnchanged(t *testing.T) {
 	}
 
 	// Second parse with identical output — should skip push.
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil)
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil, false)
 
 	pushCount2 := countEventType(ws, "pushSave")
 	if pushCount2 != 1 {
@@ -2452,7 +2446,7 @@ func TestParseAndPush_PushesWhenOutputChanges(t *testing.T) {
 	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
 
 	// First parse.
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil)
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil, false)
 	callCount++
 
 	// Change the runner output to simulate leveling up.
@@ -2461,7 +2455,7 @@ func TestParseAndPush_PushesWhenOutputChanges(t *testing.T) {
 	runner.mu.Unlock()
 
 	// Second parse with different output — should push.
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil)
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil, false)
 	callCount++
 
 	pushCount := countEventType(ws, "pushSave")
@@ -2480,7 +2474,7 @@ func TestParseAndPush_HashUpdatedOnlyAfterSuccessfulPush(t *testing.T) {
 	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
 
 	// First parse — should push and cache hash.
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil)
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil, false)
 
 	if len(d.lastPushedHash) != 1 {
 		t.Fatalf("lastPushedHash has %d entries, want 1", len(d.lastPushedHash))
