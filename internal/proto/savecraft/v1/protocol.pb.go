@@ -896,6 +896,7 @@ type SourceOnline struct {
 	Platform      string                 `protobuf:"bytes,4,opt,name=platform,proto3" json:"platform,omitempty"`
 	Os            string                 `protobuf:"bytes,5,opt,name=os,proto3" json:"os,omitempty"`
 	Arch          string                 `protobuf:"bytes,6,opt,name=arch,proto3" json:"arch,omitempty"`
+	Hostname      string                 `protobuf:"bytes,7,opt,name=hostname,proto3" json:"hostname,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -961,6 +962,13 @@ func (x *SourceOnline) GetOs() string {
 func (x *SourceOnline) GetArch() string {
 	if x != nil {
 		return x.Arch
+	}
+	return ""
+}
+
+func (x *SourceOnline) GetHostname() string {
+	if x != nil {
+		return x.Hostname
 	}
 	return ""
 }
@@ -3705,13 +3713,14 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\x0eRelayedMessage\x12\x1b\n" +
 	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12E\n" +
 	"\x10server_timestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x0fserverTimestamp\x12/\n" +
-	"\amessage\x18\x03 \x01(\v2\x15.savecraft.v1.MessageR\amessage\"\xa8\x01\n" +
+	"\amessage\x18\x03 \x01(\v2\x15.savecraft.v1.MessageR\amessage\"\xc4\x01\n" +
 	"\fSourceOnline\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x128\n" +
 	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x1a\n" +
 	"\bplatform\x18\x04 \x01(\tR\bplatform\x12\x0e\n" +
 	"\x02os\x18\x05 \x01(\tR\x02os\x12\x12\n" +
-	"\x04arch\x18\x06 \x01(\tR\x04archJ\x04\b\x01\x10\x02\"O\n" +
+	"\x04arch\x18\x06 \x01(\tR\x04arch\x12\x1a\n" +
+	"\bhostname\x18\a \x01(\tR\bhostnameJ\x04\b\x01\x10\x02\"O\n" +
 	"\rSourceOffline\x128\n" +
 	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestampJ\x04\b\x01\x10\x02\"\x11\n" +
 	"\x0fSourceHeartbeat\":\n" +

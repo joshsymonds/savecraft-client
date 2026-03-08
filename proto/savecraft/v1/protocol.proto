@@ -101,6 +101,7 @@ message SourceOnline {
   string platform = 4;
   string os = 5;
   string arch = 6;
+  string hostname = 7;
 }
 
 // Source disconnecting gracefully.

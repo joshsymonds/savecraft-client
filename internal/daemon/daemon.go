@@ -388,11 +388,16 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 // announceOnline sends the sourceOnline event and full game state.
 // Called on initial connect and after each reconnect.
 func (d *Daemon) announceOnline(ctx context.Context) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		d.log.WarnContext(ctx, "failed to get hostname", slog.String("error", err.Error()))
+	}
 	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_SourceOnline{SourceOnline: &pb.SourceOnline{
 		Version:   d.cfg.Version,
 		Platform:  runtime.GOOS + "-" + runtime.GOARCH,
 		Os:        runtime.GOOS,
 		Arch:      runtime.GOARCH,
+		Hostname:  hostname,
 		Timestamp: timestamppb.Now(),
 	}}})
 
