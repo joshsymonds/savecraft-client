@@ -2623,6 +2623,7 @@ type GameInfo struct {
 	Status        GameStatusEnum         `protobuf:"varint,3,opt,name=status,proto3,enum=savecraft.v1.GameStatusEnum" json:"status,omitempty"`
 	Saves         []*SaveInfo            `protobuf:"bytes,4,rep,name=saves,proto3" json:"saves,omitempty"`
 	LastActivity  *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=last_activity,json=lastActivity,proto3" json:"last_activity,omitempty"`
+	Path          string                 `protobuf:"bytes,6,opt,name=path,proto3" json:"path,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2690,6 +2691,13 @@ func (x *GameInfo) GetLastActivity() *timestamppb.Timestamp {
 		return x.LastActivity
 	}
 	return nil
+}
+
+func (x *GameInfo) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
 }
 
 type SaveInfo struct {
@@ -3831,13 +3839,14 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\bplatform\x18\t \x01(\tR\bplatform\x12\x0e\n" +
 	"\x02os\x18\n" +
 	" \x01(\tR\x02os\x12\x12\n" +
-	"\x04arch\x18\v \x01(\tR\x04arch\"\xe5\x01\n" +
+	"\x04arch\x18\v \x01(\tR\x04arch\"\xf9\x01\n" +
 	"\bGameInfo\x12\x17\n" +
 	"\agame_id\x18\x01 \x01(\tR\x06gameId\x12\x1b\n" +
 	"\tgame_name\x18\x02 \x01(\tR\bgameName\x124\n" +
 	"\x06status\x18\x03 \x01(\x0e2\x1c.savecraft.v1.GameStatusEnumR\x06status\x12,\n" +
 	"\x05saves\x18\x04 \x03(\v2\x16.savecraft.v1.SaveInfoR\x05saves\x12?\n" +
-	"\rlast_activity\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\flastActivity\"\xb8\x01\n" +
+	"\rlast_activity\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\flastActivity\x12\x12\n" +
+	"\x04path\x18\x06 \x01(\tR\x04path\"\xb8\x01\n" +
 	"\bSaveInfo\x12\x1b\n" +
 	"\tsave_uuid\x18\x01 \x01(\tR\bsaveUuid\x126\n" +
 	"\bidentity\x18\x02 \x01(\v2\x1a.savecraft.v1.SaveIdentityR\bidentity\x12\x18\n" +

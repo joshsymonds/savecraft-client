@@ -315,6 +315,7 @@ message GameInfo {
   GameStatusEnum status = 3;
   repeated SaveInfo saves = 4;
   google.protobuf.Timestamp last_activity = 5;
+  string path = 6;
 }
 
 enum GameStatusEnum {
