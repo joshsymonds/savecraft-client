@@ -7,6 +7,7 @@ on:
     paths:
       - 'plugins/*/plugin.toml'
       - 'plugins/**/*.go'
+      - 'plugins/*/icon.*'
       - 'reference/src/**'
       - 'reference/test/**'
       - 'reference/wrangler.toml'
@@ -15,6 +16,7 @@ on:
     paths:
       - 'plugins/*/plugin.toml'
       - 'plugins/**/*.go'
+      - 'plugins/*/icon.*'
       - 'reference/src/**'
       - 'reference/test/**'
       - 'reference/wrangler.toml'
@@ -196,8 +198,18 @@ jobs:
             # Detect plugin source type from plugin.toml
             plugin_source=$(grep '^source' "plugins/${game_id}/plugin.toml" | sed 's/.*=.*"\(.*\)".*/\1/')
 
+            # Upload icon if present
+            for icon_ext in png svg; do
+              icon_file="plugins/${game_id}/icon.${icon_ext}"
+              if [ -f "$icon_file" ]; then
+                wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/icon.${icon_ext}" --file "$icon_file" --remote
+                echo "    Uploaded icon.${icon_ext}"
+                break
+              fi
+            done
+
             if [ "$plugin_source" = "api" ]; then
-              # API plugins have no WASM — upload manifest only
+              # API plugins have no WASM — upload manifest + icon only
               wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json" --remote
               echo "    Published ${game_id} v${VERSION} (API adapter, manifest only)"
               continue
