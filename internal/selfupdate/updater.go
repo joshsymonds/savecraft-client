@@ -49,6 +49,7 @@ func WithHTTPClient(c *http.Client) Option {
 type manifestResponse struct {
 	Version   string                       `json:"version"`
 	Platforms map[string]daemon.UpdateInfo `json:"platforms"`
+	Tray      map[string]daemon.UpdateInfo `json:"tray"`
 }
 
 // New creates an HTTPUpdater that checks installURL for updates.
@@ -66,7 +67,7 @@ func New(installURL string, pubKey ed25519.PublicKey, cacheDir string, opts ...O
 }
 
 // Check fetches the daemon manifest and returns update info if a newer version is available.
-func (u *HTTPUpdater) Check(ctx context.Context, currentVersion, platform string) (*daemon.UpdateInfo, error) {
+func (u *HTTPUpdater) Check(ctx context.Context, currentVersion, platform string) (*daemon.CheckResult, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.installURL+"/daemon/manifest.json", nil)
 	if err != nil {
 		return nil, fmt.Errorf("create manifest request: %w", err)
@@ -88,7 +89,7 @@ func (u *HTTPUpdater) Check(ctx context.Context, currentVersion, platform string
 		return nil, fmt.Errorf("decode manifest: %w", decodeErr)
 	}
 
-	info, ok := manifest.Platforms[platform]
+	daemonInfo, ok := manifest.Platforms[platform]
 	if !ok {
 		return nil, ErrNoPlatform
 	}
@@ -97,8 +98,19 @@ func (u *HTTPUpdater) Check(ctx context.Context, currentVersion, platform string
 		return nil, ErrUpToDate
 	}
 
-	info.Version = manifest.Version
-	return &info, nil
+	daemonInfo.Version = manifest.Version
+
+	result := &daemon.CheckResult{
+		Daemon: &daemonInfo,
+	}
+
+	// Include tray info if available for this platform.
+	if trayInfo, trayOK := manifest.Tray[platform]; trayOK {
+		trayInfo.Version = manifest.Version
+		result.Tray = &trayInfo
+	}
+
+	return result, nil
 }
 
 // isNewer returns true if latest is a strictly newer semver than current.

@@ -358,7 +358,7 @@ func (pm *fakePluginManager) Manifests(_ context.Context) (map[string]pluginmgr.
 }
 
 type fakeUpdater struct {
-	checkResult *UpdateInfo
+	checkResult *CheckResult
 	checkErr    error
 	applyErr    error
 	applyCalls  []applyCall
@@ -370,7 +370,7 @@ type applyCall struct {
 	BinaryPath string
 }
 
-func (u *fakeUpdater) Check(_ context.Context, _, _ string) (*UpdateInfo, error) {
+func (u *fakeUpdater) Check(_ context.Context, _, _ string) (*CheckResult, error) {
 	return u.checkResult, u.checkErr
 }
 
@@ -1933,13 +1933,16 @@ func TestHandleCommand_DaemonUpdateAvailable_NilUpdater(t *testing.T) {
 func TestCheckSelfUpdate_TriggersApply(t *testing.T) {
 	ws := newFakeWSClient()
 	updater := &fakeUpdater{
-		checkResult: &UpdateInfo{
-			Version:      "0.3.0",
-			URL:          "https://example.com/daemon",
-			SignatureURL: "https://example.com/daemon.sig",
-			SHA256:       "deadbeef",
+		checkResult: &CheckResult{
+			Daemon: &UpdateInfo{
+				Version:      "0.3.0",
+				URL:          "https://example.com/daemon",
+				SignatureURL: "https://example.com/daemon.sig",
+				SHA256:       "deadbeef",
+			},
 		},
 	}
+
 	cfg := Config{
 		SourceID:   "deck",
 		Version:    "0.2.0",
@@ -2058,6 +2061,195 @@ func TestCheckSelfUpdate_NilUpdater(_ *testing.T) {
 
 	// Should not panic
 	d.checkSelfUpdate(context.Background())
+}
+
+func TestApplyDaemonUpdate_UpdatesTrayBinary(t *testing.T) {
+	ws := newFakeWSClient()
+	updater := &fakeUpdater{}
+	cfg := Config{
+		SourceID:       "deck",
+		Version:        "0.1.0",
+		BinaryPath:     "/usr/local/bin/savecraft-daemon",
+		TrayBinaryPath: "/usr/local/bin/savecraft-tray",
+		Games:          map[string]GameConfig{},
+	}
+
+	d := New(
+		cfg,
+		&fakeFS{},
+		newFakeWatcher(),
+		&fakeRunner{},
+		ws,
+		&fakePluginManager{},
+		updater,
+		testLogger(),
+	)
+	var exitCode int
+	d.exitFunc = func(code int) { exitCode = code }
+
+	result := &CheckResult{
+		Daemon: &UpdateInfo{
+			Version: "0.2.0",
+			URL:     "https://example.com/daemon",
+			SHA256:  "abc",
+		},
+		Tray: &UpdateInfo{
+			Version: "0.2.0",
+			URL:     "https://example.com/tray",
+			SHA256:  "def",
+		},
+	}
+	d.applyDaemonUpdate(context.Background(), result)
+
+	updater.mu.Lock()
+	calls := len(updater.applyCalls)
+	updater.mu.Unlock()
+	if calls != 2 {
+		t.Fatalf("updater.Apply called %d times, want 2 (daemon + tray)", calls)
+	}
+	if updater.applyCalls[0].BinaryPath != "/usr/local/bin/savecraft-daemon" {
+		t.Errorf("first apply binaryPath = %s, want daemon", updater.applyCalls[0].BinaryPath)
+	}
+	if updater.applyCalls[1].BinaryPath != "/usr/local/bin/savecraft-tray" {
+		t.Errorf("second apply binaryPath = %s, want tray", updater.applyCalls[1].BinaryPath)
+	}
+	if exitCode != 0 {
+		t.Errorf("exitFunc called with %d, want 0", exitCode)
+	}
+}
+
+func TestApplyDaemonUpdate_TrayFailureDoesNotBlockDaemon(t *testing.T) {
+	ws := newFakeWSClient()
+	callCount := 0
+	updater := &fakeUpdater{}
+	// Override Apply to fail only for tray path.
+	cfg := Config{
+		SourceID:       "deck",
+		Version:        "0.1.0",
+		BinaryPath:     "/usr/local/bin/savecraft-daemon",
+		TrayBinaryPath: "/usr/local/bin/savecraft-tray",
+		Games:          map[string]GameConfig{},
+	}
+
+	d := New(
+		cfg,
+		&fakeFS{},
+		newFakeWatcher(),
+		&fakeRunner{},
+		ws,
+		&fakePluginManager{},
+		updater,
+		testLogger(),
+	)
+	var exitCalled bool
+	d.exitFunc = func(code int) {
+		exitCalled = true
+		_ = code
+		_ = callCount
+	}
+
+	// Use a custom updater that fails on tray but succeeds on daemon.
+	trayFailUpdater := &trayFailFakeUpdater{}
+	d.updater = trayFailUpdater
+
+	result := &CheckResult{
+		Daemon: &UpdateInfo{Version: "0.2.0", URL: "https://example.com/daemon", SHA256: "abc"},
+		Tray:   &UpdateInfo{Version: "0.2.0", URL: "https://example.com/tray", SHA256: "def"},
+	}
+	d.applyDaemonUpdate(context.Background(), result)
+
+	// Daemon update succeeded, so exit should still be called.
+	if !exitCalled {
+		t.Error("exitFunc should be called even when tray update fails")
+	}
+	// sourceOffline should be sent (daemon update succeeded).
+	if !slices.Contains(ws.sentEventTypes(), "sourceOffline") {
+		t.Error("missing sourceOffline after daemon update succeeded")
+	}
+}
+
+// trayFailFakeUpdater fails Apply for tray paths, succeeds for daemon.
+type trayFailFakeUpdater struct {
+	applyCalls []applyCall
+	mu         sync.Mutex
+}
+
+func (u *trayFailFakeUpdater) Check(_ context.Context, _, _ string) (*CheckResult, error) {
+	return &CheckResult{}, nil
+}
+
+func (u *trayFailFakeUpdater) Apply(_ context.Context, info *UpdateInfo, binaryPath string) error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.applyCalls = append(u.applyCalls, applyCall{Info: info, BinaryPath: binaryPath})
+	if binaryPath == "/usr/local/bin/savecraft-tray" {
+		return fmt.Errorf("tray update failed")
+	}
+	return nil
+}
+
+func TestApplyDaemonUpdate_SkipsTrayWhenNoTrayPath(t *testing.T) {
+	ws := newFakeWSClient()
+	updater := &fakeUpdater{}
+	cfg := Config{
+		SourceID:   "deck",
+		Version:    "0.1.0",
+		BinaryPath: "/usr/local/bin/savecraft-daemon",
+		Games:      map[string]GameConfig{},
+	}
+
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, updater, testLogger())
+	var exitCode int
+	d.exitFunc = func(code int) { exitCode = code }
+
+	result := &CheckResult{
+		Daemon: &UpdateInfo{Version: "0.2.0", URL: "https://example.com/daemon", SHA256: "abc"},
+		Tray:   &UpdateInfo{Version: "0.2.0", URL: "https://example.com/tray", SHA256: "def"},
+	}
+	d.applyDaemonUpdate(context.Background(), result)
+
+	updater.mu.Lock()
+	calls := len(updater.applyCalls)
+	updater.mu.Unlock()
+	// Only daemon should be applied (no TrayBinaryPath configured).
+	if calls != 1 {
+		t.Fatalf("updater.Apply called %d times, want 1 (daemon only, no tray path)", calls)
+	}
+	if exitCode != 0 {
+		t.Errorf("exitFunc called with %d, want 0", exitCode)
+	}
+}
+
+func TestApplyDaemonUpdate_CallsRestartFunc(t *testing.T) {
+	ws := newFakeWSClient()
+	updater := &fakeUpdater{}
+	cfg := Config{
+		SourceID:   "deck",
+		Version:    "0.1.0",
+		BinaryPath: "/usr/local/bin/savecraft-daemon",
+		Games:      map[string]GameConfig{},
+	}
+
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, updater, testLogger())
+	var exitCalled bool
+	d.exitFunc = func(code int) { exitCalled = true; _ = code }
+	var restartPath string
+	d.restartFunc = func(binaryPath string) error {
+		restartPath = binaryPath
+		return nil
+	}
+
+	result := &CheckResult{
+		Daemon: &UpdateInfo{Version: "0.2.0", URL: "https://example.com/daemon", SHA256: "abc"},
+	}
+	d.applyDaemonUpdate(context.Background(), result)
+
+	if restartPath != "/usr/local/bin/savecraft-daemon" {
+		t.Errorf("restartFunc called with %q, want /usr/local/bin/savecraft-daemon", restartPath)
+	}
+	if !exitCalled {
+		t.Error("exitFunc should be called after restart")
+	}
 }
 
 func TestSendEvent_HeartbeatWireFormat(t *testing.T) {

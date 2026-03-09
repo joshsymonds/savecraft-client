@@ -298,28 +298,44 @@ jobs:
           pubkey=$(base64 -w0 < "$tmp_der")
           rm -f "$tmp_der"
 
-          # Build platforms object from checksums
+          # Build platforms and tray objects from checksums
           platforms="{}"
+          tray="{}"
           while IFS='  ' read -r hash filename; do
             # Skip sig files, MSI, and checksums file itself
             case "$filename" in
               *.sig|*.msi|checksums-*) continue ;;
             esac
-            # Extract platform from filename: {app_name}-daemon-linux-amd64 → linux-amd64
-            platform="${filename#"${APP_NAME}"-daemon-}"
-            platforms=$(echo "$platforms" | jq \
-              --arg p "$platform" \
-              --arg url "${INSTALL_URL}/daemon/v${VERSION}/${filename}" \
-              --arg sig "${INSTALL_URL}/daemon/v${VERSION}/${filename}.sig" \
-              --arg hash "$hash" \
-              '.[$p] = {url: $url, signatureUrl: $sig, sha256: $hash}')
+            case "$filename" in
+              "${APP_NAME}"-tray-*)
+                # Extract platform from tray filename: {app_name}-tray-windows-amd64.exe → windows-amd64.exe
+                platform="${filename#"${APP_NAME}"-tray-}"
+                tray=$(echo "$tray" | jq \
+                  --arg p "$platform" \
+                  --arg url "${INSTALL_URL}/daemon/v${VERSION}/${filename}" \
+                  --arg sig "${INSTALL_URL}/daemon/v${VERSION}/${filename}.sig" \
+                  --arg hash "$hash" \
+                  '.[$p] = {url: $url, signatureUrl: $sig, sha256: $hash}')
+                ;;
+              "${APP_NAME}"-daemon-*)
+                # Extract platform from daemon filename: {app_name}-daemon-linux-amd64 → linux-amd64
+                platform="${filename#"${APP_NAME}"-daemon-}"
+                platforms=$(echo "$platforms" | jq \
+                  --arg p "$platform" \
+                  --arg url "${INSTALL_URL}/daemon/v${VERSION}/${filename}" \
+                  --arg sig "${INSTALL_URL}/daemon/v${VERSION}/${filename}.sig" \
+                  --arg hash "$hash" \
+                  '.[$p] = {url: $url, signatureUrl: $sig, sha256: $hash}')
+                ;;
+            esac
           done < dist/checksums-sha256.txt
 
           jq -n \
             --arg version "$VERSION" \
             --arg pubkey "$pubkey" \
             --argjson platforms "$platforms" \
-            '{version: $version, ed25519PublicKey: $pubkey, platforms: $platforms}' > dist/daemon-manifest.json
+            --argjson tray "$tray" \
+            '{version: $version, ed25519PublicKey: $pubkey, platforms: $platforms, tray: $tray}' > dist/daemon-manifest.json
 
           cat dist/daemon-manifest.json
 

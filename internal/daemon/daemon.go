@@ -89,13 +89,14 @@ const (
 
 // Config holds all daemon configuration.
 type Config struct {
-	ServerURL  string
-	AuthToken  string `json:"-"`
-	SourceID   string
-	SourceUUID string
-	Version    string
-	BinaryPath string
-	Games      map[string]GameConfig
+	ServerURL      string
+	AuthToken      string `json:"-"`
+	SourceID       string
+	SourceUUID     string
+	Version        string
+	BinaryPath     string
+	TrayBinaryPath string
+	Games          map[string]GameConfig
 }
 
 // GameConfig holds per-game configuration.
@@ -151,16 +152,24 @@ type PluginManager interface {
 
 // Updater checks for and applies daemon self-updates.
 type Updater interface {
-	Check(ctx context.Context, currentVersion, platform string) (*UpdateInfo, error)
+	Check(ctx context.Context, currentVersion, platform string) (*CheckResult, error)
 	Apply(ctx context.Context, info *UpdateInfo, binaryPath string) error
 }
 
-// UpdateInfo describes an available daemon update.
+// UpdateInfo describes an available update for a single binary.
 type UpdateInfo struct {
 	Version      string `json:"version"`
 	URL          string `json:"url"`
 	SignatureURL string `json:"signatureUrl"`
 	SHA256       string `json:"sha256"`
+}
+
+// CheckResult holds the result of checking for updates.
+// Daemon is always populated when an update is available.
+// Tray is populated when a tray binary update is available in the manifest.
+type CheckResult struct {
+	Daemon *UpdateInfo
+	Tray   *UpdateInfo
 }
 
 // DiscoveredGame represents a game whose save directory was found on disk.
@@ -194,6 +203,11 @@ type Daemon struct {
 	// exitFunc is called after a successful self-update to terminate
 	// the process. Defaults to os.Exit; overridden in tests.
 	exitFunc func(int)
+
+	// restartFunc is called before exitFunc to spawn the new daemon binary.
+	// On Windows, this spawns a new process; on Linux, systemd handles restart.
+	// Defaults to a no-op; set by the boot flow in cmd/savecraftd.
+	restartFunc func(binaryPath string) error
 
 	// mu protects watchedDirs, cfg.Games, and link state from concurrent access.
 	mu sync.RWMutex
@@ -261,11 +275,19 @@ func New(
 		updater:         updater,
 		log:             log,
 		exitFunc:        os.Exit,
+		restartFunc:     func(string) error { return nil },
 		watchedDirs:     make(map[string]string),
 		configDir:       defaultConfigDir(),
 		pendingLinkCode: make(chan linkCodeResult, 1),
 		lastPushedHash:  make(map[string][32]byte),
 	}
+}
+
+// SetRestartFunc sets the function called to restart the daemon after a
+// self-update. On Windows this spawns a new process before exit; on Linux
+// systemd handles restart so the default no-op suffices.
+func (d *Daemon) SetRestartFunc(fn func(binaryPath string) error) {
+	d.restartFunc = fn
 }
 
 // gameName returns the display name for a game, falling back to the raw gameID.
@@ -445,40 +467,55 @@ func (d *Daemon) checkSelfUpdate(ctx context.Context) {
 	if d.updater == nil {
 		return
 	}
-	info, err := d.updater.Check(ctx, d.cfg.Version, runtime.GOOS+"-"+runtime.GOARCH)
+	result, err := d.updater.Check(ctx, d.cfg.Version, runtime.GOOS+"-"+runtime.GOARCH)
 	if err != nil {
 		return
 	}
-	if info == nil {
+	if result == nil || result.Daemon == nil {
 		return
 	}
-	d.log.InfoContext(ctx, "daemon update available", slog.String("new_version", info.Version))
-	d.applyDaemonUpdate(ctx, info)
+	d.log.InfoContext(ctx, "daemon update available", slog.String("new_version", result.Daemon.Version))
+	d.applyDaemonUpdate(ctx, result)
 }
 
-func (d *Daemon) applyDaemonUpdate(ctx context.Context, info *UpdateInfo) {
-	if d.updater == nil {
+func (d *Daemon) applyDaemonUpdate(ctx context.Context, result *CheckResult) {
+	if d.updater == nil || result.Daemon == nil {
 		return
 	}
 	d.sendMessage(
 		ctx,
 		&pb.Message{Payload: &pb.Message_SourceUpdateStarted{SourceUpdateStarted: &pb.SourceUpdateStarted{
-			Version: info.Version,
+			Version: result.Daemon.Version,
 		}}},
 	)
-	if err := d.updater.Apply(ctx, info, d.cfg.BinaryPath); err != nil {
+	if err := d.updater.Apply(ctx, result.Daemon, d.cfg.BinaryPath); err != nil {
 		d.sendMessage(
 			ctx,
 			&pb.Message{Payload: &pb.Message_SourceUpdateFailed{SourceUpdateFailed: &pb.SourceUpdateFailed{
-				Version: info.Version,
+				Version: result.Daemon.Version,
 				Message: err.Error(),
 			}}},
 		)
 		return
 	}
+
+	// Update tray binary (best-effort, don't block daemon update).
+	if result.Tray != nil && d.cfg.TrayBinaryPath != "" {
+		if trayErr := d.updater.Apply(ctx, result.Tray, d.cfg.TrayBinaryPath); trayErr != nil {
+			d.log.WarnContext(ctx, "tray update failed", slog.String("error", trayErr.Error()))
+		}
+	}
+
 	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_SourceOffline{SourceOffline: &pb.SourceOffline{
 		Timestamp: timestamppb.Now(),
 	}}})
+
+	// On Windows, spawn the new binary before exiting.
+	// On Linux, systemd Restart=always handles restart after exit.
+	if restartErr := d.restartFunc(d.cfg.BinaryPath); restartErr != nil {
+		d.log.ErrorContext(ctx, "restart failed", slog.String("error", restartErr.Error()))
+	}
+
 	d.exitFunc(0)
 }
 
@@ -974,13 +1011,15 @@ func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
 			slog.String("save_uuid", result.SaveUuid),
 		)
 	case *pb.Message_SourceUpdateAvailable:
+		// Server-pushed updates only contain daemon info.
+		// The tray will update on the next poll-based manifest check.
 		info := &UpdateInfo{
 			Version:      cmd.SourceUpdateAvailable.Version,
 			URL:          cmd.SourceUpdateAvailable.Url,
 			SignatureURL: cmd.SourceUpdateAvailable.SignatureUrl,
 			SHA256:       cmd.SourceUpdateAvailable.Sha256,
 		}
-		d.applyDaemonUpdate(ctx, info)
+		d.applyDaemonUpdate(ctx, &CheckResult{Daemon: info})
 	case *pb.Message_SourceLinked:
 		d.handleSourceLinked(ctx)
 	case *pb.Message_RefreshLinkCodeResult:

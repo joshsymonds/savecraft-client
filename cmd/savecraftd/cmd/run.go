@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -12,6 +14,7 @@ import (
 	"github.com/joshsymonds/savecraft.gg/internal/daemon"
 	"github.com/joshsymonds/savecraft.gg/internal/envfile"
 	"github.com/joshsymonds/savecraft.gg/internal/localapi"
+	"github.com/joshsymonds/savecraft.gg/internal/selfupdate"
 	"github.com/joshsymonds/savecraft.gg/internal/svcmgr"
 )
 
@@ -117,6 +120,14 @@ func startLocalAPI(
 	return api
 }
 
+// trayBinaryExt returns the file extension for binaries on the current platform.
+func trayBinaryExt() string {
+	if runtime.GOOS == "windows" {
+		return ".exe"
+	}
+	return ""
+}
+
 // runDaemonSubsystems creates subsystems, wires up repair, and runs the daemon.
 func runDaemonSubsystems(
 	ctx context.Context,
@@ -134,6 +145,12 @@ func runDaemonSubsystems(
 
 	cfg.Daemon.BinaryPath = binaryPath
 
+	// Derive tray binary path: same directory, predictable name.
+	trayPath := filepath.Join(filepath.Dir(binaryPath), appName+"-tray"+trayBinaryExt())
+	if _, statErr := os.Stat(trayPath); statErr == nil {
+		cfg.Daemon.TrayBinaryPath = trayPath
+	}
+
 	subsystems, err := createSubsystems(ctx, cfg, appName, logger)
 	if err != nil {
 		return err
@@ -142,6 +159,10 @@ func runDaemonSubsystems(
 
 	dmn := daemon.New(cfg.Daemon, subsystems.fsys, subsystems.watcher, subsystems.runner,
 		subsystems.ws, subsystems.plugins, subsystems.updater, logger)
+
+	// Set restart function for self-update. On Windows, this spawns the new
+	// binary before exit. On Linux, systemd handles restart.
+	dmn.SetRestartFunc(selfupdate.RestartDaemon)
 
 	// If newly registered, set the initial link code for display.
 	if newlyRegistered && regResult != nil {

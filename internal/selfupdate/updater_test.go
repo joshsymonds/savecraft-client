@@ -63,21 +63,80 @@ func TestCheck_NewerVersionAvailable(t *testing.T) {
 
 	u := New(srv.URL, nil, t.TempDir())
 
-	info, err := u.Check(context.Background(), "0.1.0", "linux-amd64")
+	result, err := u.Check(context.Background(), "0.1.0", "linux-amd64")
 	if err != nil {
 		t.Fatalf("Check: %v", err)
 	}
-	if info == nil {
-		t.Fatal("expected non-nil UpdateInfo")
+	if result == nil {
+		t.Fatal("expected non-nil CheckResult")
 	}
-	if info.Version != "0.2.0" {
-		t.Errorf("version = %s, want 0.2.0", info.Version)
+	if result.Daemon == nil {
+		t.Fatal("expected non-nil Daemon info")
 	}
-	if info.URL != "https://example.com/daemon-linux-amd64" {
-		t.Errorf("url = %s", info.URL)
+	if result.Daemon.Version != "0.2.0" {
+		t.Errorf("version = %s, want 0.2.0", result.Daemon.Version)
 	}
-	if info.SHA256 != "abc123" {
-		t.Errorf("sha256 = %s", info.SHA256)
+	if result.Daemon.URL != "https://example.com/daemon-linux-amd64" {
+		t.Errorf("url = %s", result.Daemon.URL)
+	}
+	if result.Daemon.SHA256 != "abc123" {
+		t.Errorf("sha256 = %s", result.Daemon.SHA256)
+	}
+	if result.Tray != nil {
+		t.Errorf("expected nil Tray when not in manifest, got %+v", result.Tray)
+	}
+}
+
+func TestCheck_WithTrayInfo(t *testing.T) {
+	manifest := manifestResponse{
+		Version: "0.2.0",
+		Platforms: map[string]daemon.UpdateInfo{
+			"windows-amd64.exe": {
+				URL:          "https://example.com/daemon-windows-amd64.exe",
+				SignatureURL: "https://example.com/daemon-windows-amd64.exe.sig",
+				SHA256:       "abc123",
+			},
+		},
+		Tray: map[string]daemon.UpdateInfo{
+			"windows-amd64.exe": {
+				URL:          "https://example.com/tray-windows-amd64.exe",
+				SignatureURL: "https://example.com/tray-windows-amd64.exe.sig",
+				SHA256:       "def456",
+			},
+		},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(manifest)
+	}))
+	defer srv.Close()
+
+	u := New(srv.URL, nil, t.TempDir())
+
+	result, err := u.Check(context.Background(), "0.1.0", "windows-amd64.exe")
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil CheckResult")
+	}
+	if result.Daemon == nil {
+		t.Fatal("expected non-nil Daemon info")
+	}
+	if result.Daemon.Version != "0.2.0" {
+		t.Errorf("daemon version = %s, want 0.2.0", result.Daemon.Version)
+	}
+	if result.Tray == nil {
+		t.Fatal("expected non-nil Tray info")
+	}
+	if result.Tray.Version != "0.2.0" {
+		t.Errorf("tray version = %s, want 0.2.0", result.Tray.Version)
+	}
+	if result.Tray.URL != "https://example.com/tray-windows-amd64.exe" {
+		t.Errorf("tray url = %s", result.Tray.URL)
+	}
+	if result.Tray.SHA256 != "def456" {
+		t.Errorf("tray sha256 = %s", result.Tray.SHA256)
 	}
 }
 
@@ -99,12 +158,12 @@ func TestCheck_AlreadyCurrent(t *testing.T) {
 
 	u := New(srv.URL, nil, t.TempDir())
 
-	info, err := u.Check(context.Background(), "0.1.0", "linux-amd64")
+	result, err := u.Check(context.Background(), "0.1.0", "linux-amd64")
 	if !errors.Is(err, ErrUpToDate) {
 		t.Fatalf("Check: got err=%v, want ErrUpToDate", err)
 	}
-	if info != nil {
-		t.Errorf("expected nil for current version, got %+v", info)
+	if result != nil {
+		t.Errorf("expected nil for current version, got %+v", result)
 	}
 }
 
@@ -126,12 +185,12 @@ func TestCheck_PlatformNotFound(t *testing.T) {
 
 	u := New(srv.URL, nil, t.TempDir())
 
-	info, err := u.Check(context.Background(), "0.1.0", "linux-amd64")
+	result, err := u.Check(context.Background(), "0.1.0", "linux-amd64")
 	if !errors.Is(err, ErrNoPlatform) {
 		t.Fatalf("Check: got err=%v, want ErrNoPlatform", err)
 	}
-	if info != nil {
-		t.Errorf("expected nil for missing platform, got %+v", info)
+	if result != nil {
+		t.Errorf("expected nil for missing platform, got %+v", result)
 	}
 }
 
@@ -480,11 +539,20 @@ func TestCheck_DowngradeNotReturned(t *testing.T) {
 	u := New(srv.URL, nil, t.TempDir())
 
 	// Current version is NEWER than manifest — should not return an update.
-	info, err := u.Check(context.Background(), "0.2.0", "linux-amd64")
+	result, err := u.Check(context.Background(), "0.2.0", "linux-amd64")
 	if !errors.Is(err, ErrUpToDate) {
 		t.Fatalf("Check: got err=%v, want ErrUpToDate", err)
 	}
-	if info != nil {
-		t.Errorf("expected nil for downgrade, got %+v", info)
+	if result != nil {
+		t.Errorf("expected nil for downgrade, got %+v", result)
+	}
+}
+
+func TestRestartDaemon_NoopOnLinux(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("this test verifies the non-Windows no-op implementation")
+	}
+	if err := RestartDaemon("/nonexistent/binary"); err != nil {
+		t.Errorf("RestartDaemon on non-Windows should be no-op, got: %v", err)
 	}
 }
