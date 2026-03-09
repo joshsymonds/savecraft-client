@@ -29,7 +29,7 @@ namespace SavecraftRimWorld.Collectors
             var turretCounts = new Dictionary<string, int>();
             foreach (var building in map.listerBuildings.allBuildingsColonist)
             {
-                if (building.def.building != null && building.def.building.turretGunDef != null)
+                if (building.def.building != null && building.def.building.IsTurret)
                 {
                     var label = building.def.label;
                     if (turretCounts.ContainsKey(label))

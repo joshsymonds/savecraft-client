@@ -27,7 +27,17 @@ namespace SavecraftRimWorld.Collectors
             var map = Find.CurrentMap;
             var rooms = new List<Struct>();
 
-            foreach (var room in map.regionGrid.allRooms)
+            // Collect unique rooms via regions (regionGrid.allRooms is not always accessible)
+            var seenRooms = new HashSet<int>();
+            var allRooms = new List<Room>();
+            foreach (var region in map.regionGrid.AllRegions)
+            {
+                var room = region.Room;
+                if (room != null && seenRooms.Add(room.ID))
+                    allRooms.Add(room);
+            }
+
+            foreach (var room in allRooms)
             {
                 // Skip outdoors, very small rooms, and rooms without a role
                 if (room.TouchesMapEdge) continue;

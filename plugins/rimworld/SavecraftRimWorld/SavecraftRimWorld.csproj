@@ -6,11 +6,41 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
     <DebugType>portable</DebugType>
+    <!-- Use real game DLLs when available, fall back to Krafs ref stubs for CI -->
+    <UseGameDlls Condition="Exists('../../../.reference/RimWorldDLLs/Assembly-CSharp.dll')">true</UseGameDlls>
+    <UseGameDlls Condition="'$(UseGameDlls)' == ''">false</UseGameDlls>
   </PropertyGroup>
 
-  <ItemGroup>
-    <!-- RimWorld reference assemblies (build-only, not shipped) -->
+  <!-- Real game DLLs (local dev with game installed) -->
+  <ItemGroup Condition="'$(UseGameDlls)' == 'true'">
+    <Reference Include="Assembly-CSharp">
+      <HintPath>../../../.reference/RimWorldDLLs/Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp-firstpass">
+      <HintPath>../../../.reference/RimWorldDLLs/Assembly-CSharp-firstpass.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>../../../.reference/RimWorldDLLs/UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>../../../.reference/RimWorldDLLs/UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>../../../.reference/RimWorldDLLs/UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Krafs reference stubs (CI/CD, no game install) -->
+  <ItemGroup Condition="'$(UseGameDlls)' != 'true'">
     <PackageReference Include="Krafs.Rimworld.Ref" Version="1.5.4104" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Harmony for patching -->
     <PackageReference Include="Lib.Harmony" Version="2.3.3" ExcludeAssets="runtime" />
     <!-- .NET Framework 4.7.2 reference assemblies for cross-platform build -->
