@@ -90,6 +90,8 @@ namespace SavecraftRimWorld
 
             var runner = new CollectorRunner();
             runner.Register(new ColonyOverviewCollector());
+            runner.Register(new ColonistRosterCollector());
+            runner.Register(new ResourcesCollector());
             SavecraftMod.Connection.SetCollectorRunner(runner);
 
             SavecraftMod.Connection.Start();
