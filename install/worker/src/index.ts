@@ -97,64 +97,81 @@ async function handleDaemon(path: string, env: Env): Promise<Response> {
 }
 
 function handleWindowsInstall(env: Env): Response {
-	const daemonUrl = `${env.INSTALL_URL}/daemon/${env.APP_NAME}-daemon-windows-amd64.exe`;
-	const trayUrl = `${env.INSTALL_URL}/daemon/${env.APP_NAME}-tray-windows-amd64.exe`;
+	const appName = env.APP_NAME;
+	const daemonUrl = `${env.INSTALL_URL}/daemon/${appName}-daemon-windows-amd64.exe`;
+	const trayUrl = `${env.INSTALL_URL}/daemon/${appName}-tray-windows-amd64.exe`;
 	const statusPort = env.STATUS_PORT;
+	const daemonExe = `${appName}-daemon.exe`;
+	const trayExe = `${appName}-tray.exe`;
+	const trayProcess = `${appName}-tray`;
 
 	// A .cmd file that embeds PowerShell — double-clickable on Windows.
-	// Downloads binaries, strips Mark-of-the-Web, registers autostart,
-	// starts daemon in background, launches tray, and prints the link code.
+	// The script is "dumb muscle": health check, kill, download, then hand off
+	// to `savecraftd setup` which handles registration, autostart, and linking.
 	const script = `@echo off
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ErrorActionPreference = 'Stop'; " ^
   "$dir = \\"$env:LOCALAPPDATA\\Savecraft\\"; " ^
+  "$daemon = \\"$dir\\${daemonExe}\\"; " ^
+  "$tray = \\"$dir\\${trayExe}\\"; " ^
   "Write-Host ''; " ^
   "Write-Host '  Savecraft Installer' -ForegroundColor Cyan; " ^
   "Write-Host '  ====================' -ForegroundColor Cyan; " ^
   "Write-Host ''; " ^
+  "try { " ^
+  "  $boot = Invoke-RestMethod -Uri 'http://localhost:${statusPort}/boot' -TimeoutSec 2; " ^
+  "  if ($boot.state -eq 'running') { " ^
+  "    $isLinked = $false; " ^
+  "    try { Invoke-RestMethod -Uri 'http://localhost:${statusPort}/link' -TimeoutSec 2 | Out-Null } catch { $isLinked = $true }; " ^
+  "    if ($isLinked) { " ^
+  "      Write-Host '  Savecraft is already running and linked.' -ForegroundColor Green; " ^
+  "      $a = Read-Host '  Reinstall? (Y/n)'; " ^
+  "      if ($a -eq 'n' -or $a -eq 'N') { Write-Host '  No changes made.'; exit 0 } " ^
+  "    } " ^
+  "  } " ^
+  "} catch { }; " ^
+  "Write-Host '  Stopping existing processes...' -ForegroundColor Yellow; " ^
+  "try { Invoke-RestMethod -Method POST -Uri 'http://localhost:${statusPort}/shutdown' -TimeoutSec 2 | Out-Null } catch { }; " ^
+  "Start-Sleep -Seconds 2; " ^
+  "try { taskkill /IM ${daemonExe} /F 2>$null | Out-Null } catch { }; " ^
+  "Stop-Process -Name ${trayProcess} -Force -ErrorAction SilentlyContinue; " ^
+  "Start-Sleep -Seconds 1; " ^
+  "$portBusy = $false; " ^
+  "try { $tcp = New-Object System.Net.Sockets.TcpClient; $tcp.Connect('localhost', ${statusPort}); $tcp.Close(); $portBusy = $true } catch { }; " ^
+  "if ($portBusy) { " ^
+  "  Write-Host '  ERROR: Port ${statusPort} is still in use by another program.' -ForegroundColor Red; " ^
+  "  Write-Host '  Close the program using that port and try again.' -ForegroundColor Red; " ^
+  "  exit 1 " ^
+  "}; " ^
   "New-Item -ItemType Directory -Force -Path $dir | Out-Null; " ^
-  "if (Test-Path \\"$dir\\savecraft-daemon.exe\\") { " ^
-  "  Write-Host '  Stopping existing Savecraft...' -ForegroundColor Yellow; " ^
-  "  try { & \\"$dir\\savecraft-daemon.exe\\" stop 2>$null } catch { }; " ^
-  "  Stop-Process -Name savecraft-tray -Force -ErrorAction SilentlyContinue; " ^
-  "  Start-Sleep -Milliseconds 500; " ^
-  "} " ^
-  "Write-Host '  [1/5] Downloading daemon...' -ForegroundColor White; " ^
-  "Invoke-WebRequest -Uri '${daemonUrl}' -OutFile \\"$dir\\savecraft-daemon.exe\\"; " ^
-  "Unblock-File -Path \\"$dir\\savecraft-daemon.exe\\"; " ^
-  "Write-Host '  [2/5] Downloading tray...' -ForegroundColor White; " ^
-  "Invoke-WebRequest -Uri '${trayUrl}' -OutFile \\"$dir\\savecraft-tray.exe\\"; " ^
-  "Unblock-File -Path \\"$dir\\savecraft-tray.exe\\"; " ^
-  "Write-Host '  [3/5] Registering autostart...' -ForegroundColor White; " ^
-  "& \\"$dir\\savecraft-daemon.exe\\" install; " ^
-  "Write-Host '  [4/5] Starting daemon...' -ForegroundColor White; " ^
-  "& \\"$dir\\savecraft-daemon.exe\\" start; " ^
-  "Write-Host '  [5/5] Launching tray...' -ForegroundColor White; " ^
-  "Start-Process -FilePath \\"$dir\\savecraft-tray.exe\\"; " ^
+  "Write-Host '  [1/3] Downloading daemon...' -ForegroundColor White; " ^
+  "try { Invoke-WebRequest -Uri '${daemonUrl}' -OutFile $daemon; Unblock-File -Path $daemon } catch { " ^
+  "  Write-Host \\"  ERROR: Failed to download daemon: $_\\" -ForegroundColor Red; " ^
+  "  exit 1 " ^
+  "}; " ^
+  "Write-Host '  [2/3] Downloading tray...' -ForegroundColor White; " ^
+  "try { Invoke-WebRequest -Uri '${trayUrl}' -OutFile $tray; Unblock-File -Path $tray } catch { " ^
+  "  Write-Host \\"  ERROR: Failed to download tray: $_\\" -ForegroundColor Red; " ^
+  "  exit 1 " ^
+  "}; " ^
+  "if (-not (Test-Path $daemon) -or (Get-Item $daemon).Length -eq 0) { " ^
+  "  Write-Host '  ERROR: Daemon binary is missing or empty after download.' -ForegroundColor Red; " ^
+  "  exit 1 " ^
+  "}; " ^
+  "if (-not (Test-Path $tray) -or (Get-Item $tray).Length -eq 0) { " ^
+  "  Write-Host '  ERROR: Tray binary is missing or empty after download.' -ForegroundColor Red; " ^
+  "  exit 1 " ^
+  "}; " ^
+  "Write-Host '  [3/3] Setting up...' -ForegroundColor White; " ^
   "Write-Host ''; " ^
-  "Write-Host '  Waiting for registration...' -ForegroundColor Gray; " ^
-  "$attempts = 0; " ^
-  "$linkCode = $null; " ^
-  "while ($attempts -lt 30 -and -not $linkCode) { " ^
-  "  Start-Sleep -Seconds 1; " ^
-  "  $attempts++; " ^
-  "  try { " ^
-  "    $resp = Invoke-RestMethod -Uri 'http://localhost:${statusPort}/link' -ErrorAction SilentlyContinue; " ^
-  "    if ($resp.linkCode) { $linkCode = $resp.linkCode; $linkURL = $resp.linkURL } " ^
-  "  } catch { } " ^
-  "} " ^
-  "Write-Host ''; " ^
-  "if ($linkCode) { " ^
-  "  Write-Host '  =============================' -ForegroundColor Green; " ^
-  "  Write-Host \\"  Link code: $linkCode\\" -ForegroundColor Green; " ^
-  "  Write-Host '  =============================' -ForegroundColor Green; " ^
+  "& $daemon setup; " ^
+  "if ($LASTEXITCODE -ne 0) { " ^
   "  Write-Host ''; " ^
-  "  Write-Host \\"  Visit $linkURL to connect this device.\\" -ForegroundColor Yellow; " ^
+  "  Write-Host '  Setup failed. Check the errors above.' -ForegroundColor Red " ^
   "} else { " ^
-  "  Write-Host '  Could not get link code. Check the tray icon.' -ForegroundColor Red; " ^
-  "} " ^
-  "Write-Host ''; " ^
-  "Write-Host '  Installation complete. You can close this window.' -ForegroundColor Cyan; "
+  "  Write-Host ''; " ^
+  "  Write-Host '  Installation complete.' -ForegroundColor Cyan " ^
+  "} "
 pause
 `;
 

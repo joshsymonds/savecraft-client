@@ -105,8 +105,47 @@ describe("install worker", () => {
 				},
 			});
 			const body = await resp.text();
-			expect(body).toContain("savecraft-daemon.exe\\\" stop");
+			expect(body).toContain("/shutdown");
+			expect(body).toContain("taskkill");
 			expect(body).toContain("Stop-Process -Name savecraft-tray");
+		});
+
+		it("delegates to savecraftd setup instead of polling link code", async () => {
+			const resp = await SELF.fetch("https://install.savecraft.gg/", {
+				headers: {
+					"user-agent":
+						"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+				},
+			});
+			const body = await resp.text();
+			expect(body).toContain("setup");
+			expect(body).not.toContain("$linkCode");
+			expect(body).not.toContain("Could not get link code");
+		});
+
+		it("checks if daemon is already linked before reinstalling", async () => {
+			const resp = await SELF.fetch("https://install.savecraft.gg/", {
+				headers: {
+					"user-agent":
+						"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+				},
+			});
+			const body = await resp.text();
+			expect(body).toContain("/boot");
+			expect(body).toContain("/link");
+			expect(body).toContain("Reinstall");
+		});
+
+		it("verifies port is free after killing processes", async () => {
+			const resp = await SELF.fetch("https://install.savecraft.gg/", {
+				headers: {
+					"user-agent":
+						"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+				},
+			});
+			const body = await resp.text();
+			expect(body).toContain("TcpClient");
+			expect(body).toContain("Port " + env.STATUS_PORT + " is still in use");
 		});
 
 		it("does not serve .cmd to Windows Phone", async () => {
