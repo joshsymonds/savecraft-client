@@ -89,9 +89,25 @@ namespace SavecraftRimWorld
             Log.Message("[Savecraft] Game started, initializing connection.");
 
             var runner = new CollectorRunner();
+            // Core sections
             runner.Register(new ColonyOverviewCollector());
             runner.Register(new ColonistRosterCollector());
             runner.Register(new ResourcesCollector());
+            runner.Register(new ResearchCollector());
+            runner.Register(new SkillsAndWorkCollector());
+            runner.Register(new MoodReportCollector());
+            runner.Register(new HealthReportCollector());
+            // Infrastructure sections
+            runner.Register(new PowerCollector());
+            runner.Register(new FarmingCollector());
+            runner.Register(new DefensesCollector());
+            runner.Register(new RoomsCollector());
+            // World sections
+            runner.Register(new FactionsCollector());
+            runner.Register(new ThreatsCollector());
+            runner.Register(new AnimalsCollector());
+            // Optional
+            runner.Register(new NotableItemsCollector());
             SavecraftMod.Connection.SetCollectorRunner(runner);
 
             SavecraftMod.Connection.Start();
