@@ -182,6 +182,37 @@ func TestRunSetup(t *testing.T) {
 			},
 			wantErr: "save credentials",
 		},
+		{
+			name: "remove stale env file failure returns error",
+			cfg: func(c *setupConfig) {
+				c.authToken = "sct_stale"
+			},
+			deps: func(d *setupDeps) {
+				d.verifyToken = func(_ context.Context, _, _ string) error {
+					return fmt.Errorf("token rejected (HTTP 401)")
+				}
+				d.removeFile = func(_ string) error {
+					return fmt.Errorf("permission denied")
+				}
+			},
+			wantErr: "remove stale credentials",
+		},
+		{
+			name: "tray failure is non-fatal",
+			cfg: func(c *setupConfig) {
+				c.trayPath = "/fake/tray"
+			},
+			deps: func(d *setupDeps) {
+				d.startTray = func(_ string) error {
+					return fmt.Errorf("tray binary corrupt")
+				}
+			},
+			wantOutput: []string{
+				"tray: tray binary corrupt",
+				"[3/4] Starting daemon",
+				"Link code: 123456",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -302,5 +333,29 @@ func TestSetupValidCredentialsSkipsRegistration(t *testing.T) {
 
 	if writeEnvCalled {
 		t.Error("writeEnv should not be called when credentials are valid")
+	}
+}
+
+func TestSetupContextCancellation(t *testing.T) {
+	var buf bytes.Buffer
+	cfg := newTestSetupConfig(&buf)
+
+	deps := newWorkingSetupDeps()
+	deps.boot = func(_ context.Context) (*localapi.BootResponse, error) {
+		return nil, fmt.Errorf("connection refused")
+	}
+	deps.link = func(_ context.Context) (*localapi.LinkResponse, int, error) {
+		return nil, 0, fmt.Errorf("connection refused")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-cancel
+
+	err := runSetup(ctx, cfg, deps)
+	if err == nil {
+		t.Fatal("expected error from canceled context, got nil")
+	}
+	if !strings.Contains(err.Error(), "setup canceled") {
+		t.Fatalf("error %q does not contain %q", err.Error(), "setup canceled")
 	}
 }

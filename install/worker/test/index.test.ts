@@ -284,5 +284,13 @@ describe("install worker", () => {
 			);
 			expect(resp.status).toBe(404);
 		});
+
+		it("rejects path traversal attempts", async () => {
+			const resp = await SELF.fetch(
+				"https://install.savecraft.gg/daemon/..%2Fcurl%2Finstall.sh",
+				{ headers: { "user-agent": "curl/8.0" } },
+			);
+			expect(resp.status).toBe(400);
+		});
 	});
 });

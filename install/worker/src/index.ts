@@ -75,11 +75,17 @@ async function handleInstallScript(request: Request, env: Env): Promise<Response
 		headers: {
 			'content-type': 'text/x-shellscript; charset=utf-8',
 			'content-disposition': 'inline; filename="install.sh"',
+			'cache-control': 'no-store',
+			'x-content-type-options': 'nosniff',
 		},
 	});
 }
 
 async function handleDaemon(path: string, env: Env): Promise<Response> {
+	if (path.includes('..')) {
+		return new Response('Bad request\n', { status: 400 });
+	}
+
 	const key = `daemon/${path}`;
 	const obj = await env.INSTALL.get(key);
 	if (!obj) {
@@ -179,6 +185,8 @@ pause
 		headers: {
 			'content-type': 'application/x-msdos-program',
 			'content-disposition': `attachment; filename="savecraft-install.cmd"`,
+			'cache-control': 'no-store',
+			'x-content-type-options': 'nosniff',
 		},
 	});
 }

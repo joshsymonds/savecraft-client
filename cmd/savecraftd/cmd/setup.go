@@ -301,7 +301,7 @@ func httpVerifyToken(ctx context.Context, serverURL, token string) error {
 
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	resp, err := (&http.Client{}).Do(req)
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
 	if err != nil {
 		return fmt.Errorf("verify request: %w", err)
 	}
