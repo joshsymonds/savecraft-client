@@ -15,10 +15,16 @@ namespace SavecraftRimWorld.Collectors
     public class CollectorRunner
     {
         readonly List<ICollector> collectors = new List<ICollector>();
+        readonly List<IMultiCollector> multiCollectors = new List<IMultiCollector>();
 
         public void Register(ICollector collector)
         {
             collectors.Add(collector);
+        }
+
+        public void Register(IMultiCollector collector)
+        {
+            multiCollectors.Add(collector);
         }
 
         /// <summary>
@@ -51,6 +57,26 @@ namespace SavecraftRimWorld.Collectors
                 catch (Exception ex)
                 {
                     Log.Error($"[Savecraft] Collector '{collector.SectionName}' failed: {ex}");
+                }
+            }
+
+            foreach (var multi in multiCollectors)
+            {
+                try
+                {
+                    foreach (var cs in multi.CollectAll())
+                    {
+                        sections.Add(new GameSection
+                        {
+                            Name = cs.Name,
+                            Description = cs.Description,
+                            Data = cs.Data
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"[Savecraft] Multi-collector failed: {ex}");
                 }
             }
 

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Google.Protobuf.WellKnownTypes;
 
 namespace SavecraftRimWorld.Collectors
@@ -16,5 +17,25 @@ namespace SavecraftRimWorld.Collectors
 
         /// <summary>Extract game state into a proto Struct. Called on main thread.</summary>
         Struct Collect();
+    }
+
+    /// <summary>
+    /// A section of collected data with its name and description.
+    /// </summary>
+    public struct CollectedSection
+    {
+        public string Name;
+        public string Description;
+        public Struct Data;
+    }
+
+    /// <summary>
+    /// Collects multiple sections of game state (e.g. one per colonist).
+    /// Must be called on Unity's main thread.
+    /// </summary>
+    public interface IMultiCollector
+    {
+        /// <summary>Extract game state into multiple named sections.</summary>
+        List<CollectedSection> CollectAll();
     }
 }

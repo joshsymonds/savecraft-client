@@ -108,6 +108,8 @@ namespace SavecraftRimWorld
             runner.Register(new AnimalsCollector());
             // Optional
             runner.Register(new NotableItemsCollector());
+            // Dynamic per-colonist sections
+            runner.Register(new ColonistDetailCollector());
             SavecraftMod.Connection.SetCollectorRunner(runner);
 
             SavecraftMod.Connection.Start();
