@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <OutputPath>..\Assemblies\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- RimWorld reference assemblies (build-only, not shipped) -->
+    <PackageReference Include="Krafs.Rimworld.Ref" Version="1.5.4104" PrivateAssets="all" />
+    <!-- Harmony for patching -->
+    <PackageReference Include="Lib.Harmony" Version="2.3.3" ExcludeAssets="runtime" />
+    <!-- .NET Framework 4.7.2 reference assemblies for cross-platform build -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472" Version="1.0.3" PrivateAssets="all" />
+    <!-- Protobuf runtime (DLL shipped alongside mod) -->
+    <PackageReference Include="Google.Protobuf" Version="3.29.3" />
+  </ItemGroup>
+
+  <!-- Copy Google.Protobuf.dll to output for shipping -->
+  <Target Name="CopyProtobufDll" AfterTargets="Build">
+    <Copy
+      SourceFiles="$(NuGetPackageRoot)google.protobuf/3.29.3/lib/net45/Google.Protobuf.dll"
+      DestinationFolder="$(OutputPath)"
+      SkipUnchangedFiles="true" />
+  </Target>
+</Project>

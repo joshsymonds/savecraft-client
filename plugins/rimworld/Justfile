@@ -1,0 +1,16 @@
+build:
+    dotnet build SavecraftRimWorld/SavecraftRimWorld.csproj -c Release
+
+clean:
+    dotnet clean SavecraftRimWorld/SavecraftRimWorld.csproj
+    rm -rf Assemblies/
+
+restore:
+    dotnet restore SavecraftRimWorld/SavecraftRimWorld.csproj
+
+# Generate C# protobuf types from the monorepo proto definition
+proto:
+    protoc \
+        --proto_path=../../proto \
+        --csharp_out=SavecraftRimWorld/Proto \
+        ../../proto/savecraft/v1/protocol.proto
