@@ -83,5 +83,6 @@
   '';
 
   processes.web.exec = "cd web && npm run dev";
+  processes.site.exec = "cd site && npm run dev";
   processes.storybook.exec = "cd web && npm run storybook";
 }
