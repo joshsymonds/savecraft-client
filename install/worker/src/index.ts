@@ -40,7 +40,7 @@ async function handleInstallScript(request: Request, env: Env): Promise<Response
 
 	if (!isCli(ua)) {
 		if (isWindows(ua)) {
-			return Response.redirect(`${env.INSTALL_URL}/daemon/${env.APP_NAME}.msi`, 302);
+			return handleWindowsInstall(env);
 		}
 		return Response.redirect(env.REDIRECT_URL, 302);
 	}
@@ -92,6 +92,41 @@ async function handleDaemon(path: string, env: Env): Promise<Response> {
 		headers: {
 			'content-type': contentType,
 			'content-length': obj.size.toString(),
+		},
+	});
+}
+
+function handleWindowsInstall(env: Env): Response {
+	const daemonUrl = `${env.INSTALL_URL}/daemon/${env.APP_NAME}-daemon-windows-amd64.exe`;
+	const trayUrl = `${env.INSTALL_URL}/daemon/${env.APP_NAME}-tray-windows-amd64.exe`;
+	const frontendUrl = env.REDIRECT_URL;
+
+	// A .cmd file that embeds PowerShell — double-clickable on Windows.
+	// Bypasses Smart App Control by downloading raw exes and stripping Mark-of-the-Web.
+	const script = `@echo off
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$ErrorActionPreference = 'Stop'; " ^
+  "$dir = \\"$env:LOCALAPPDATA\\Savecraft\\"; " ^
+  "Write-Host 'Installing Savecraft...' -ForegroundColor Cyan; " ^
+  "New-Item -ItemType Directory -Force -Path $dir | Out-Null; " ^
+  "Write-Host 'Downloading daemon...'; " ^
+  "Invoke-WebRequest -Uri '${daemonUrl}' -OutFile \\"$dir\\savecraft-daemon.exe\\"; " ^
+  "Unblock-File -Path \\"$dir\\savecraft-daemon.exe\\"; " ^
+  "Write-Host 'Downloading tray...'; " ^
+  "Invoke-WebRequest -Uri '${trayUrl}' -OutFile \\"$dir\\savecraft-tray.exe\\"; " ^
+  "Unblock-File -Path \\"$dir\\savecraft-tray.exe\\"; " ^
+  "Write-Host ''; " ^
+  "Write-Host 'Starting daemon...' -ForegroundColor Cyan; " ^
+  "Write-Host 'The link code will appear below. Enter it at ${frontendUrl} to connect.' -ForegroundColor Yellow; " ^
+  "Write-Host ''; " ^
+  "& \\"$dir\\savecraft-daemon.exe\\" run"
+pause
+`;
+
+	return new Response(script, {
+		headers: {
+			'content-type': 'application/x-msdos-program',
+			'content-disposition': `attachment; filename="savecraft-install.cmd"`,
 		},
 	});
 }

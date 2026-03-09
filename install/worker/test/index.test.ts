@@ -76,7 +76,7 @@ describe("install worker", () => {
 		}
 	});
 
-	describe("Windows browser → MSI redirect", () => {
+	describe("Windows browser → .cmd installer", () => {
 		const windowsBrowserAgents = [
 			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 			"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
@@ -84,19 +84,20 @@ describe("install worker", () => {
 		];
 
 		for (const ua of windowsBrowserAgents) {
-			it(`redirects Windows browser to MSI (${ua.slice(0, 40)}...)`, async () => {
+			it(`serves .cmd installer to Windows browser (${ua.slice(0, 40)}...)`, async () => {
 				const resp = await SELF.fetch("https://install.savecraft.gg/", {
 					headers: { "user-agent": ua },
-					redirect: "manual",
 				});
-				expect(resp.status).toBe(302);
-				const location = resp.headers.get("location")!;
-				expect(location).toContain("/daemon/");
-				expect(location).toContain(`${env.APP_NAME}.msi`);
+				expect(resp.status).toBe(200);
+				expect(resp.headers.get("content-disposition")).toContain("savecraft-install.cmd");
+				const body = await resp.text();
+				expect(body).toContain("@echo off");
+				expect(body).toContain(env.APP_NAME);
+				expect(body).toContain("Unblock-File");
 			});
 		}
 
-		it("does not redirect Windows Phone to MSI", async () => {
+		it("does not serve .cmd to Windows Phone", async () => {
 			const resp = await SELF.fetch("https://install.savecraft.gg/", {
 				headers: {
 					"user-agent":
@@ -106,7 +107,6 @@ describe("install worker", () => {
 			});
 			expect(resp.status).toBe(302);
 			const location = resp.headers.get("location")!;
-			expect(location).not.toContain(".msi");
 			expect(location).toContain(env.REDIRECT_URL);
 		});
 
