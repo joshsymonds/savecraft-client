@@ -99,27 +99,56 @@ async function handleDaemon(path: string, env: Env): Promise<Response> {
 function handleWindowsInstall(env: Env): Response {
 	const daemonUrl = `${env.INSTALL_URL}/daemon/${env.APP_NAME}-daemon-windows-amd64.exe`;
 	const trayUrl = `${env.INSTALL_URL}/daemon/${env.APP_NAME}-tray-windows-amd64.exe`;
-	const frontendUrl = env.REDIRECT_URL;
+	const statusPort = env.STATUS_PORT;
 
 	// A .cmd file that embeds PowerShell — double-clickable on Windows.
-	// Bypasses Smart App Control by downloading raw exes and stripping Mark-of-the-Web.
+	// Downloads binaries, strips Mark-of-the-Web, registers autostart,
+	// starts daemon in background, launches tray, and prints the link code.
 	const script = `@echo off
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ErrorActionPreference = 'Stop'; " ^
   "$dir = \\"$env:LOCALAPPDATA\\Savecraft\\"; " ^
-  "Write-Host 'Installing Savecraft...' -ForegroundColor Cyan; " ^
+  "Write-Host ''; " ^
+  "Write-Host '  Savecraft Installer' -ForegroundColor Cyan; " ^
+  "Write-Host '  ====================' -ForegroundColor Cyan; " ^
+  "Write-Host ''; " ^
   "New-Item -ItemType Directory -Force -Path $dir | Out-Null; " ^
-  "Write-Host 'Downloading daemon...'; " ^
+  "Write-Host '  [1/5] Downloading daemon...' -ForegroundColor White; " ^
   "Invoke-WebRequest -Uri '${daemonUrl}' -OutFile \\"$dir\\savecraft-daemon.exe\\"; " ^
   "Unblock-File -Path \\"$dir\\savecraft-daemon.exe\\"; " ^
-  "Write-Host 'Downloading tray...'; " ^
+  "Write-Host '  [2/5] Downloading tray...' -ForegroundColor White; " ^
   "Invoke-WebRequest -Uri '${trayUrl}' -OutFile \\"$dir\\savecraft-tray.exe\\"; " ^
   "Unblock-File -Path \\"$dir\\savecraft-tray.exe\\"; " ^
+  "Write-Host '  [3/5] Registering autostart...' -ForegroundColor White; " ^
+  "& \\"$dir\\savecraft-daemon.exe\\" install; " ^
+  "Write-Host '  [4/5] Starting daemon...' -ForegroundColor White; " ^
+  "& \\"$dir\\savecraft-daemon.exe\\" start; " ^
+  "Write-Host '  [5/5] Launching tray...' -ForegroundColor White; " ^
+  "Start-Process -FilePath \\"$dir\\savecraft-tray.exe\\"; " ^
   "Write-Host ''; " ^
-  "Write-Host 'Starting daemon...' -ForegroundColor Cyan; " ^
-  "Write-Host 'The link code will appear below. Enter it at ${frontendUrl} to connect.' -ForegroundColor Yellow; " ^
+  "Write-Host '  Waiting for registration...' -ForegroundColor Gray; " ^
+  "$attempts = 0; " ^
+  "$linkCode = $null; " ^
+  "while ($attempts -lt 30 -and -not $linkCode) { " ^
+  "  Start-Sleep -Seconds 1; " ^
+  "  $attempts++; " ^
+  "  try { " ^
+  "    $resp = Invoke-RestMethod -Uri 'http://localhost:${statusPort}/link' -ErrorAction SilentlyContinue; " ^
+  "    if ($resp.linkCode) { $linkCode = $resp.linkCode; $linkURL = $resp.linkURL } " ^
+  "  } catch { } " ^
+  "} " ^
   "Write-Host ''; " ^
-  "& \\"$dir\\savecraft-daemon.exe\\" run"
+  "if ($linkCode) { " ^
+  "  Write-Host '  =============================' -ForegroundColor Green; " ^
+  "  Write-Host \\"  Link code: $linkCode\\" -ForegroundColor Green; " ^
+  "  Write-Host '  =============================' -ForegroundColor Green; " ^
+  "  Write-Host ''; " ^
+  "  Write-Host \\"  Visit $linkURL to connect this device.\\" -ForegroundColor Yellow; " ^
+  "} else { " ^
+  "  Write-Host '  Could not get link code. Check the tray icon.' -ForegroundColor Red; " ^
+  "} " ^
+  "Write-Host ''; " ^
+  "Write-Host '  Installation complete. You can close this window.' -ForegroundColor Cyan; "
 pause
 `;
 
