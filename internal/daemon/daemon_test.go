@@ -2120,7 +2120,6 @@ func TestApplyDaemonUpdate_UpdatesTrayBinary(t *testing.T) {
 
 func TestApplyDaemonUpdate_TrayFailureDoesNotBlockDaemon(t *testing.T) {
 	ws := newFakeWSClient()
-	callCount := 0
 	updater := &fakeUpdater{}
 	// Override Apply to fail only for tray path.
 	cfg := Config{
@@ -2145,7 +2144,6 @@ func TestApplyDaemonUpdate_TrayFailureDoesNotBlockDaemon(t *testing.T) {
 	d.exitFunc = func(code int) {
 		exitCalled = true
 		_ = code
-		_ = callCount
 	}
 
 	// Use a custom updater that fails on tray but succeeds on daemon.
@@ -2224,18 +2222,20 @@ func TestApplyDaemonUpdate_CallsRestartFunc(t *testing.T) {
 	ws := newFakeWSClient()
 	updater := &fakeUpdater{}
 	cfg := Config{
-		SourceID:   "deck",
-		Version:    "0.1.0",
-		BinaryPath: "/usr/local/bin/savecraft-daemon",
-		Games:      map[string]GameConfig{},
+		SourceID:       "deck",
+		Version:        "0.1.0",
+		BinaryPath:     "/usr/local/bin/savecraft-daemon",
+		TrayBinaryPath: "/usr/local/bin/savecraft-tray",
+		Games:          map[string]GameConfig{},
 	}
 
 	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, updater, testLogger())
 	var exitCalled bool
 	d.exitFunc = func(code int) { exitCalled = true; _ = code }
-	var restartPath string
-	d.restartFunc = func(binaryPath string) error {
-		restartPath = binaryPath
+	var restartDaemonPath, restartTrayPath string
+	d.restartFunc = func(daemonPath, trayPath string) error {
+		restartDaemonPath = daemonPath
+		restartTrayPath = trayPath
 		return nil
 	}
 
@@ -2244,11 +2244,42 @@ func TestApplyDaemonUpdate_CallsRestartFunc(t *testing.T) {
 	}
 	d.applyDaemonUpdate(context.Background(), result)
 
-	if restartPath != "/usr/local/bin/savecraft-daemon" {
-		t.Errorf("restartFunc called with %q, want /usr/local/bin/savecraft-daemon", restartPath)
+	if restartDaemonPath != "/usr/local/bin/savecraft-daemon" {
+		t.Errorf("restartFunc daemonPath = %q, want /usr/local/bin/savecraft-daemon", restartDaemonPath)
+	}
+	if restartTrayPath != "/usr/local/bin/savecraft-tray" {
+		t.Errorf("restartFunc trayPath = %q, want /usr/local/bin/savecraft-tray", restartTrayPath)
 	}
 	if !exitCalled {
 		t.Error("exitFunc should be called after restart")
+	}
+}
+
+func TestApplyDaemonUpdate_CallsRestartFuncWithEmptyTray(t *testing.T) {
+	ws := newFakeWSClient()
+	updater := &fakeUpdater{}
+	cfg := Config{
+		SourceID:   "deck",
+		Version:    "0.1.0",
+		BinaryPath: "/usr/local/bin/savecraft-daemon",
+		Games:      map[string]GameConfig{},
+	}
+
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, updater, testLogger())
+	d.exitFunc = func(int) {}
+	var restartTrayPath string
+	d.restartFunc = func(_, trayPath string) error {
+		restartTrayPath = trayPath
+		return nil
+	}
+
+	result := &CheckResult{
+		Daemon: &UpdateInfo{Version: "0.2.0", URL: "https://example.com/daemon", SHA256: "abc"},
+	}
+	d.applyDaemonUpdate(context.Background(), result)
+
+	if restartTrayPath != "" {
+		t.Errorf("restartFunc trayPath = %q, want empty string when TrayBinaryPath not set", restartTrayPath)
 	}
 }
 

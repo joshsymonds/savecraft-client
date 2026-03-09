@@ -552,7 +552,7 @@ func TestRestartDaemon_NoopOnLinux(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("this test verifies the non-Windows no-op implementation")
 	}
-	if err := RestartDaemon("/nonexistent/binary"); err != nil {
+	if err := RestartDaemon("/nonexistent/binary", "/nonexistent/tray"); err != nil {
 		t.Errorf("RestartDaemon on non-Windows should be no-op, got: %v", err)
 	}
 }

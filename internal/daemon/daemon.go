@@ -207,7 +207,7 @@ type Daemon struct {
 	// restartFunc is called before exitFunc to spawn the new daemon binary.
 	// On Windows, this spawns a new process; on Linux, systemd handles restart.
 	// Defaults to a no-op; set by the boot flow in cmd/savecraftd.
-	restartFunc func(binaryPath string) error
+	restartFunc func(daemonPath, trayPath string) error
 
 	// mu protects watchedDirs, cfg.Games, and link state from concurrent access.
 	mu sync.RWMutex
@@ -275,7 +275,7 @@ func New(
 		updater:         updater,
 		log:             log,
 		exitFunc:        os.Exit,
-		restartFunc:     func(string) error { return nil },
+		restartFunc:     func(string, string) error { return nil },
 		watchedDirs:     make(map[string]string),
 		configDir:       defaultConfigDir(),
 		pendingLinkCode: make(chan linkCodeResult, 1),
@@ -286,7 +286,7 @@ func New(
 // SetRestartFunc sets the function called to restart the daemon after a
 // self-update. On Windows this spawns a new process before exit; on Linux
 // systemd handles restart so the default no-op suffices.
-func (d *Daemon) SetRestartFunc(fn func(binaryPath string) error) {
+func (d *Daemon) SetRestartFunc(fn func(daemonPath, trayPath string) error) {
 	d.restartFunc = fn
 }
 
@@ -512,7 +512,7 @@ func (d *Daemon) applyDaemonUpdate(ctx context.Context, result *CheckResult) {
 
 	// On Windows, spawn the new binary before exiting.
 	// On Linux, systemd Restart=always handles restart after exit.
-	if restartErr := d.restartFunc(d.cfg.BinaryPath); restartErr != nil {
+	if restartErr := d.restartFunc(d.cfg.BinaryPath, d.cfg.TrayBinaryPath); restartErr != nil {
 		d.log.ErrorContext(ctx, "restart failed", slog.String("error", restartErr.Error()))
 	}
 
