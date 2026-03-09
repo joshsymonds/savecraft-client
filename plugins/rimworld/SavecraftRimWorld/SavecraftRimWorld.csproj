@@ -42,7 +42,7 @@
 
   <ItemGroup>
     <!-- Harmony for patching -->
-    <PackageReference Include="Lib.Harmony" Version="2.3.3" ExcludeAssets="runtime" />
+    <PackageReference Include="Lib.Harmony" Version="2.3.3" />
     <!-- .NET Framework 4.7.2 reference assemblies for cross-platform build -->
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472" Version="1.0.3" PrivateAssets="all" />
     <!-- Protobuf runtime (DLL shipped alongside mod) -->
