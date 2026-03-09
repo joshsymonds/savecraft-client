@@ -97,6 +97,18 @@ describe("install worker", () => {
 			});
 		}
 
+		it("stops existing processes before downloading", async () => {
+			const resp = await SELF.fetch("https://install.savecraft.gg/", {
+				headers: {
+					"user-agent":
+						"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+				},
+			});
+			const body = await resp.text();
+			expect(body).toContain("savecraft-daemon.exe\\\" stop");
+			expect(body).toContain("Stop-Process -Name savecraft-tray");
+		});
+
 		it("does not serve .cmd to Windows Phone", async () => {
 			const resp = await SELF.fetch("https://install.savecraft.gg/", {
 				headers: {

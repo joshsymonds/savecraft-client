@@ -113,6 +113,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "Write-Host '  ====================' -ForegroundColor Cyan; " ^
   "Write-Host ''; " ^
   "New-Item -ItemType Directory -Force -Path $dir | Out-Null; " ^
+  "if (Test-Path \\"$dir\\savecraft-daemon.exe\\") { " ^
+  "  Write-Host '  Stopping existing Savecraft...' -ForegroundColor Yellow; " ^
+  "  try { & \\"$dir\\savecraft-daemon.exe\\" stop 2>$null } catch { }; " ^
+  "  Stop-Process -Name savecraft-tray -Force -ErrorAction SilentlyContinue; " ^
+  "  Start-Sleep -Milliseconds 500; " ^
+  "} " ^
   "Write-Host '  [1/5] Downloading daemon...' -ForegroundColor White; " ^
   "Invoke-WebRequest -Uri '${daemonUrl}' -OutFile \\"$dir\\savecraft-daemon.exe\\"; " ^
   "Unblock-File -Path \\"$dir\\savecraft-daemon.exe\\"; " ^

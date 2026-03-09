@@ -67,3 +67,6 @@ site/build/
 /savecraft-verify
 .worktrees/
 deployment-status.json
+
+# Demo account reset script (contains hardcoded user UUID, not for public repo)
+scripts/reset-demo.sh
