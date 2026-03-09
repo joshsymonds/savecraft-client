@@ -4,8 +4,11 @@ using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf;
+using RimWorld;
 using Savecraft.V1;
+using Message = Savecraft.V1.Message;
 using SavecraftRimWorld.Collectors;
+using Verse;
 
 namespace SavecraftRimWorld.Connection
 {
@@ -66,13 +69,13 @@ namespace SavecraftRimWorld.Connection
         {
             if (status != ConnectionStatus.Connected && status != ConnectionStatus.Linked)
             {
-                Verse.Log.Warning("[Savecraft] Not connected, skipping push.");
+                Log.Warning("[Savecraft] Not connected, skipping push.");
                 return;
             }
 
             if (collectorRunner == null)
             {
-                Verse.Log.Warning("[Savecraft] No collector runner, skipping push.");
+                Log.Warning("[Savecraft] No collector runner, skipping push.");
                 return;
             }
 
@@ -88,13 +91,13 @@ namespace SavecraftRimWorld.Connection
                         Task.Run(async () =>
                         {
                             try { await SendAsync(msg); }
-                            catch (Exception sendEx) { Verse.Log.Error($"[Savecraft] Send failed: {sendEx}"); }
+                            catch (Exception sendEx) { Log.Error($"[Savecraft] Send failed: {sendEx}"); }
                         });
                     }
                 }
                 catch (Exception ex)
                 {
-                    Verse.Log.Error($"[Savecraft] Failed to build push: {ex}");
+                    Log.Error($"[Savecraft] Failed to build push: {ex}");
                 }
             });
         }
@@ -133,7 +136,7 @@ namespace SavecraftRimWorld.Connection
                 }
                 catch (Exception ex)
                 {
-                    Verse.Log.Warning($"[Savecraft] Error during disconnect: {ex.Message}");
+                    Log.Warning($"[Savecraft] Error during disconnect: {ex.Message}");
                 }
             }
 
@@ -149,11 +152,36 @@ namespace SavecraftRimWorld.Connection
         {
             if (socket?.State != WebSocketState.Open)
             {
-                Verse.Log.Warning("[Savecraft] Send dropped, not connected.");
+                Log.Warning("[Savecraft] Send dropped, not connected.");
                 return;
             }
 
             await SendImmediate(msg);
+        }
+
+        /// <summary>
+        /// Request a new link code from the server (for re-pairing).
+        /// Resets linked state so the new code will be displayed.
+        /// </summary>
+        public void RequestNewLinkCode()
+        {
+            if (status != ConnectionStatus.Connected && status != ConnectionStatus.Linked)
+            {
+                Log.Warning("[Savecraft] Not connected, cannot request new link code.");
+                return;
+            }
+
+            settings.IsLinked = false;
+            settings.LinkCode = "";
+            settings.Write();
+            status = ConnectionStatus.Connected;
+
+            var msg = new Message { RefreshLinkCode = new RefreshLinkCode() };
+            Task.Run(async () =>
+            {
+                try { await SendAsync(msg); }
+                catch (Exception ex) { Log.Error($"[Savecraft] Failed to request link code: {ex}"); }
+            });
         }
 
         async Task SendImmediate(Message msg)
@@ -182,7 +210,7 @@ namespace SavecraftRimWorld.Connection
                 await Register(ct);
                 if (!settings.HasCredentials)
                 {
-                    Verse.Log.Error("[Savecraft] Registration failed, cannot connect.");
+                    Log.Error("[Savecraft] Registration failed, cannot connect.");
                     return;
                 }
             }
@@ -200,7 +228,7 @@ namespace SavecraftRimWorld.Connection
                     delay = ReconnectBaseMs;
                     status = settings.IsLinked ? ConnectionStatus.Linked : ConnectionStatus.Connected;
 
-                    Verse.Log.Message("[Savecraft] Connected to server.");
+                    Log.Message("[Savecraft] Connected to server.");
                     await ReceiveLoop(ct);
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -209,7 +237,7 @@ namespace SavecraftRimWorld.Connection
                 }
                 catch (Exception ex)
                 {
-                    Verse.Log.Warning($"[Savecraft] Connection lost: {ex.Message}");
+                    Log.Warning($"[Savecraft] Connection lost: {ex.Message}");
                 }
 
                 // Clean up old socket
@@ -219,7 +247,7 @@ namespace SavecraftRimWorld.Connection
 
                 if (ct.IsCancellationRequested) return;
 
-                Verse.Log.Warning($"[Savecraft] Reconnecting in {delay}ms...");
+                Log.Warning($"[Savecraft] Reconnecting in {delay}ms...");
                 try
                 {
                     await Task.Delay(delay, ct);
@@ -235,7 +263,7 @@ namespace SavecraftRimWorld.Connection
 
         async Task Register(CancellationToken ct)
         {
-            Verse.Log.Message("[Savecraft] Registering new source...");
+            Log.Message("[Savecraft] Registering new source...");
             status = ConnectionStatus.Connecting;
 
             var registerUrl = settings.ServerUrl.TrimEnd('/') + "/ws/register";
@@ -251,7 +279,7 @@ namespace SavecraftRimWorld.Connection
                 }
                 catch (Exception ex)
                 {
-                    Verse.Log.Error($"[Savecraft] Registration connect failed: {ex.Message}");
+                    Log.Error($"[Savecraft] Registration connect failed: {ex.Message}");
                     status = ConnectionStatus.Disconnected;
                     return;
                 }
@@ -286,17 +314,20 @@ namespace SavecraftRimWorld.Connection
                         settings.LinkCode = reg.LinkCode;
                         settings.IsLinked = false;
 
-                        // Persist credentials immediately
+                        // Persist credentials and notify player
                         EnqueueMainThread(() =>
                         {
                             settings.Write();
-                            Verse.Log.Message($"[Savecraft] Registered! Link code: {reg.LinkCode}");
-                            Verse.Log.Message($"[Savecraft] Enter this code at savecraft.gg to link your colony.");
+                            Log.Message($"[Savecraft] Registered! Link code: {reg.LinkCode}");
+                            Find.LetterStack.ReceiveLetter(
+                                "Savecraft Registered",
+                                $"Your link code is: {reg.LinkCode}\n\nEnter this code at savecraft.gg to connect your colony to Savecraft.",
+                                LetterDefOf.NeutralEvent);
                         });
                     }
                     else
                     {
-                        Verse.Log.Error($"[Savecraft] Unexpected registration response: {responseMsg.PayloadCase}");
+                        Log.Error($"[Savecraft] Unexpected registration response: {responseMsg.PayloadCase}");
                     }
                 }
 
@@ -351,7 +382,7 @@ namespace SavecraftRimWorld.Connection
                     result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
                     if (result.MessageType == WebSocketMessageType.Close)
                     {
-                        Verse.Log.Message("[Savecraft] Server closed connection.");
+                        Log.Message("[Savecraft] Server closed connection.");
                         return;
                     }
                     ms.Write(buffer, 0, result.Count);
@@ -367,7 +398,7 @@ namespace SavecraftRimWorld.Connection
                 }
                 catch (Exception ex)
                 {
-                    Verse.Log.Warning($"[Savecraft] Failed to parse message: {ex.Message}");
+                    Log.Warning($"[Savecraft] Failed to parse message: {ex.Message}");
                 }
             }
         }
@@ -383,7 +414,11 @@ namespace SavecraftRimWorld.Connection
                         settings.LinkCode = "";
                         settings.Write();
                         status = ConnectionStatus.Linked;
-                        Verse.Log.Message("[Savecraft] Source linked to user account!");
+                        Log.Message("[Savecraft] Source linked to user account!");
+                        Find.LetterStack.ReceiveLetter(
+                            "Savecraft Linked",
+                            "Your colony is now linked to your Savecraft account!\n\nColony data will sync automatically on each save.",
+                            LetterDefOf.PositiveEvent);
                     });
                     break;
 
@@ -393,17 +428,21 @@ namespace SavecraftRimWorld.Connection
                     {
                         settings.LinkCode = linkResult.LinkCode;
                         settings.Write();
-                        Verse.Log.Message($"[Savecraft] Link code: {linkResult.LinkCode}");
+                        Log.Message($"[Savecraft] New link code: {linkResult.LinkCode}");
+                        Find.LetterStack.ReceiveLetter(
+                            "Savecraft Link Code",
+                            $"Your new link code is: {linkResult.LinkCode}\n\nEnter this code at savecraft.gg to link your colony.",
+                            LetterDefOf.NeutralEvent);
                     });
                     break;
 
                 case Message.PayloadOneofCase.PushSaveResult:
                     var pushResult = msg.PushSaveResult;
-                    Verse.Log.Message($"[Savecraft] Save pushed successfully (save_uuid: {pushResult.SaveUuid}).");
+                    Log.Message($"[Savecraft] Save pushed successfully (save_uuid: {pushResult.SaveUuid}).");
                     break;
 
                 default:
-                    Verse.Log.Message($"[Savecraft] Received: {msg.PayloadCase}");
+                    Log.Message($"[Savecraft] Received: {msg.PayloadCase}");
                     break;
             }
         }

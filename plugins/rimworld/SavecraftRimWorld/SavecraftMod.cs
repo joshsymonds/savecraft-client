@@ -48,11 +48,34 @@ namespace SavecraftRimWorld
             };
             listing.Label($"Status: {statusText}");
 
-            if (!string.IsNullOrEmpty(Settings.LinkCode) && !Settings.IsLinked)
+            listing.Gap(12f);
+
+            if (Settings.IsLinked)
             {
-                listing.Gap(12f);
+                listing.Label("Your colony is linked to your Savecraft account.");
+                listing.Gap(6f);
+                if (listing.ButtonText("Re-pair with a different account"))
+                {
+                    Connection.RequestNewLinkCode();
+                }
+            }
+            else if (!string.IsNullOrEmpty(Settings.LinkCode))
+            {
                 listing.Label($"Link Code: {Settings.LinkCode}");
                 listing.Label("Enter this code at savecraft.gg to link your colony.");
+                listing.Gap(6f);
+                if (listing.ButtonText("Get new link code"))
+                {
+                    Connection.RequestNewLinkCode();
+                }
+            }
+            else if (Settings.HasCredentials)
+            {
+                listing.Label("Waiting for link code from server...");
+            }
+            else
+            {
+                listing.Label("Not registered. Start a game to register automatically.");
             }
 
             listing.End();
