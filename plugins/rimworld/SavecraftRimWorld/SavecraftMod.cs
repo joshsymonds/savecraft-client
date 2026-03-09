@@ -131,10 +131,5 @@ namespace SavecraftRimWorld
                 }
             }
         }
-
-        public override void GameComponentOnGUI()
-        {
-            // Future: overlay UI for link code display
-        }
     }
 }

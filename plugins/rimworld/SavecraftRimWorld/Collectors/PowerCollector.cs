@@ -41,11 +41,7 @@ namespace SavecraftRimWorld.Collectors
                     if (comp.PowerOutput > 0)
                     {
                         totalGeneration += comp.PowerOutput;
-                        var label = comp.parent.def.label;
-                        if (generatorCounts.ContainsKey(label))
-                            generatorCounts[label] += comp.PowerOutput;
-                        else
-                            generatorCounts[label] = comp.PowerOutput;
+                        generatorCounts.Add(comp.parent.def.label, comp.PowerOutput);
                     }
                     else if (comp.PowerOutput < 0)
                     {

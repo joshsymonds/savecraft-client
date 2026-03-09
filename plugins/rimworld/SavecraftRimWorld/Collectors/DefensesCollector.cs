@@ -25,81 +25,41 @@ namespace SavecraftRimWorld.Collectors
             var s = StructHelper.NewStruct();
             var map = Find.CurrentMap;
 
-            // Turrets
+            // Single pass over all colonist buildings
             var turretCounts = new Dictionary<string, int>();
+            var trapCounts = new Dictionary<string, int>();
+            var wallCounts = new Dictionary<string, int>();
+
             foreach (var building in map.listerBuildings.allBuildingsColonist)
             {
                 if (building.def.building != null && building.def.building.IsTurret)
-                {
-                    var label = building.def.label;
-                    if (turretCounts.ContainsKey(label))
-                        turretCounts[label]++;
-                    else
-                        turretCounts[label] = 1;
-                }
+                    turretCounts.Increment(building.def.label);
+                else if (building is Building_Trap)
+                    trapCounts.Increment(building.def.label);
+                else if (building.def == ThingDefOf.Wall)
+                    wallCounts.Increment(building.Stuff?.label ?? "unknown");
             }
 
-            var turrets = new List<Struct>();
-            foreach (var kv in turretCounts.OrderByDescending(kv => kv.Value))
-            {
-                var t = StructHelper.NewStruct();
-                t.Set("type", kv.Key);
-                t.Set("count", kv.Value);
-                turrets.Add(t);
-            }
-            s.SetList("turrets", turrets);
+            s.SetList("turrets", CountsToStructList(turretCounts, "type"));
             s.Set("turret_total", turretCounts.Values.Sum());
-
-            // Traps
-            var trapCounts = new Dictionary<string, int>();
-            foreach (var building in map.listerBuildings.allBuildingsColonist)
-            {
-                if (building is Building_Trap)
-                {
-                    var label = building.def.label;
-                    if (trapCounts.ContainsKey(label))
-                        trapCounts[label]++;
-                    else
-                        trapCounts[label] = 1;
-                }
-            }
-
-            var traps = new List<Struct>();
-            foreach (var kv in trapCounts.OrderByDescending(kv => kv.Value))
-            {
-                var t = StructHelper.NewStruct();
-                t.Set("type", kv.Key);
-                t.Set("count", kv.Value);
-                traps.Add(t);
-            }
-            s.SetList("traps", traps);
+            s.SetList("traps", CountsToStructList(trapCounts, "type"));
             s.Set("trap_total", trapCounts.Values.Sum());
-
-            // Walls by material
-            var wallCounts = new Dictionary<string, int>();
-            foreach (var building in map.listerBuildings.allBuildingsColonist)
-            {
-                if (building.def == ThingDefOf.Wall)
-                {
-                    var stuffLabel = building.Stuff?.label ?? "unknown";
-                    if (wallCounts.ContainsKey(stuffLabel))
-                        wallCounts[stuffLabel]++;
-                    else
-                        wallCounts[stuffLabel] = 1;
-                }
-            }
-
-            var walls = new List<Struct>();
-            foreach (var kv in wallCounts.OrderByDescending(kv => kv.Value))
-            {
-                var w = StructHelper.NewStruct();
-                w.Set("material", kv.Key);
-                w.Set("count", kv.Value);
-                walls.Add(w);
-            }
-            s.SetList("walls", walls);
+            s.SetList("walls", CountsToStructList(wallCounts, "material"));
 
             return s;
+        }
+
+        static List<Struct> CountsToStructList(Dictionary<string, int> counts, string keyName)
+        {
+            var result = new List<Struct>();
+            foreach (var kv in counts.OrderByDescending(kv => kv.Value))
+            {
+                var item = StructHelper.NewStruct();
+                item.Set(keyName, kv.Key);
+                item.Set("count", kv.Value);
+                result.Add(item);
+            }
+            return result;
         }
     }
 }

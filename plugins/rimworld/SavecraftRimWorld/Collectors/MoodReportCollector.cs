@@ -75,7 +75,7 @@ namespace SavecraftRimWorld.Collectors
                         negatives.Add(m);
                     }
                     if (negatives.Count > 0)
-                        s.SetList("worst_modifiers", negatives);
+                        p.SetList("worst_modifiers", negatives);
 
                     var positives = new List<Struct>();
                     foreach (var t in thoughts.OrderByDescending(t => t.MoodOffset()).Take(3))

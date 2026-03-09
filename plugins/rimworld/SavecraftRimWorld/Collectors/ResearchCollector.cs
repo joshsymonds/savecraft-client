@@ -25,17 +25,33 @@ namespace SavecraftRimWorld.Collectors
             var s = StructHelper.NewStruct();
             var manager = Find.ResearchManager;
 
-            // Current project — Krafs ref assemblies don't expose currentProj field,
-            // so we find the in-progress project by scanning all defs
+            // Single pass over all research defs
             ResearchProjectDef current = null;
+            var completed = new List<string>();
+            var available = new List<Struct>();
+
             foreach (var def in DefDatabase<ResearchProjectDef>.AllDefs)
             {
-                if (!def.IsFinished && manager.GetProgress(def) > 0)
+                if (def.IsFinished)
                 {
-                    current = def;
-                    break;
+                    completed.Add(def.label);
+                }
+                else
+                {
+                    if (current == null && manager.GetProgress(def) > 0)
+                        current = def;
+
+                    if (def.CanStartNow)
+                    {
+                        var a = StructHelper.NewStruct();
+                        a.Set("name", def.label);
+                        a.Set("cost", def.baseCost);
+                        a.Set("tech_level", def.techLevel.ToString());
+                        available.Add(a);
+                    }
                 }
             }
+
             if (current != null)
             {
                 var proj = StructHelper.NewStruct();
@@ -45,29 +61,8 @@ namespace SavecraftRimWorld.Collectors
                 s.Set("current_project", proj);
             }
 
-            // Completed research
-            var completed = new List<string>();
-            foreach (var def in DefDatabase<ResearchProjectDef>.AllDefs)
-            {
-                if (def.IsFinished)
-                    completed.Add(def.label);
-            }
             s.SetList("completed", completed);
             s.Set("completed_count", completed.Count);
-
-            // Available (prerequisites met, not finished)
-            var available = new List<Struct>();
-            foreach (var def in DefDatabase<ResearchProjectDef>.AllDefs)
-            {
-                if (!def.IsFinished && def.CanStartNow)
-                {
-                    var a = StructHelper.NewStruct();
-                    a.Set("name", def.label);
-                    a.Set("cost", def.baseCost);
-                    a.Set("tech_level", def.techLevel.ToString());
-                    available.Add(a);
-                }
-            }
             s.SetList("available", available);
             s.Set("available_count", available.Count);
 

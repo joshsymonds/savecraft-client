@@ -14,6 +14,8 @@ namespace SavecraftRimWorld.Collectors
     /// </summary>
     public class CollectorRunner
     {
+        const int MaxSections = 50;
+
         readonly List<ICollector> collectors = new List<ICollector>();
         readonly List<IMultiCollector> multiCollectors = new List<IMultiCollector>();
 
@@ -66,6 +68,11 @@ namespace SavecraftRimWorld.Collectors
                 {
                     foreach (var cs in multi.CollectAll())
                     {
+                        if (sections.Count >= MaxSections)
+                        {
+                            Log.Warning($"[Savecraft] Section cap ({MaxSections}) reached, skipping remaining dynamic sections.");
+                            break;
+                        }
                         sections.Add(new GameSection
                         {
                             Name = cs.Name,
@@ -78,6 +85,7 @@ namespace SavecraftRimWorld.Collectors
                 {
                     Log.Error($"[Savecraft] Multi-collector failed: {ex}");
                 }
+                if (sections.Count >= MaxSections) break;
             }
 
             if (sections.Count == 0)
@@ -136,7 +144,7 @@ namespace SavecraftRimWorld.Collectors
         /// Difficulty (settings class) instead of DifficultyDef (the actual runtime type, a Def
         /// with .label). We cast at runtime to get the label safely.
         /// </summary>
-        static string GetDifficultyLabel()
+        internal static string GetDifficultyLabel()
         {
             object difficulty = Find.Storyteller?.difficulty;
             if (difficulty == null) return "Unknown";

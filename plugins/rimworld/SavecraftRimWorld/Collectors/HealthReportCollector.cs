@@ -53,17 +53,7 @@ namespace SavecraftRimWorld.Collectors
                     if (hediff.Severity > 0 && !(hediff is Hediff_MissingPart))
                         h.Set("severity", System.Math.Round(hediff.Severity, 2));
 
-                    // Category
-                    if (hediff is Hediff_Injury)
-                        h.Set("type", "injury");
-                    else if (hediff is Hediff_MissingPart)
-                        h.Set("type", "missing_part");
-                    else if (hediff is Hediff_AddedPart)
-                        h.Set("type", "implant");
-                    else if (hediff.def.lethalSeverity > 0)
-                        h.Set("type", "disease");
-                    else
-                        h.Set("type", "condition");
+                    h.Set("type", StructHelper.ClassifyHediff(hediff));
 
                     // Immunity for diseases
                     if (hediff.def.lethalSeverity > 0)

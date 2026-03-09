@@ -34,6 +34,7 @@ namespace SavecraftRimWorld.Connection
 
         readonly SavecraftSettings settings;
         readonly ConcurrentQueue<Action> mainThreadQueue;
+        readonly SemaphoreSlim sendLock = new SemaphoreSlim(1, 1);
         CollectorRunner collectorRunner;
 
         ClientWebSocket socket;
@@ -83,8 +84,12 @@ namespace SavecraftRimWorld.Connection
                     var msg = collectorRunner.BuildPushSave();
                     if (msg != null)
                     {
-                        // Fire-and-forget send on background thread
-                        Task.Run(() => SendAsync(msg));
+                        // Send on background thread with error logging
+                        Task.Run(async () =>
+                        {
+                            try { await SendAsync(msg); }
+                            catch (Exception sendEx) { Verse.Log.Error($"[Savecraft] Send failed: {sendEx}"); }
+                        });
                     }
                 }
                 catch (Exception ex)
@@ -153,11 +158,19 @@ namespace SavecraftRimWorld.Connection
 
         async Task SendImmediate(Message msg)
         {
-            var data = msg.ToByteArray();
-            using (var writeTimeout = new CancellationTokenSource(WriteTimeoutMs))
+            await sendLock.WaitAsync();
+            try
             {
-                await socket.SendAsync(new ArraySegment<byte>(data), WebSocketMessageType.Binary,
-                    true, writeTimeout.Token);
+                var data = msg.ToByteArray();
+                using (var writeTimeout = new CancellationTokenSource(WriteTimeoutMs))
+                {
+                    await socket.SendAsync(new ArraySegment<byte>(data), WebSocketMessageType.Binary,
+                        true, writeTimeout.Token);
+                }
+            }
+            finally
+            {
+                sendLock.Release();
             }
         }
 
@@ -330,19 +343,26 @@ namespace SavecraftRimWorld.Connection
 
             while (!ct.IsCancellationRequested && socket?.State == WebSocketState.Open)
             {
-                var result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
-
-                if (result.MessageType == WebSocketMessageType.Close)
+                // Accumulate multi-frame messages
+                var ms = new System.IO.MemoryStream();
+                WebSocketReceiveResult result;
+                do
                 {
-                    Verse.Log.Message("[Savecraft] Server closed connection.");
-                    return;
+                    result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        Verse.Log.Message("[Savecraft] Server closed connection.");
+                        return;
+                    }
+                    ms.Write(buffer, 0, result.Count);
                 }
+                while (!result.EndOfMessage);
 
                 if (result.MessageType != WebSocketMessageType.Binary) continue;
 
                 try
                 {
-                    var msg = Message.Parser.ParseFrom(buffer, 0, result.Count);
+                    var msg = Message.Parser.ParseFrom(ms.GetBuffer(), 0, (int)ms.Length);
                     HandleMessage(msg);
                 }
                 catch (Exception ex)

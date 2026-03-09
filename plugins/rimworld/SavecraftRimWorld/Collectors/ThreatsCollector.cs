@@ -31,8 +31,7 @@ namespace SavecraftRimWorld.Collectors
 
             // Storyteller info
             s.Set("storyteller", Find.Storyteller.def.label);
-            object difficulty = Find.Storyteller.difficulty;
-            s.Set("difficulty", difficulty is Def diffDef ? diffDef.label : difficulty.ToString());
+            s.Set("difficulty", CollectorRunner.GetDifficultyLabel());
 
             // Adaptation factor (affects raid strength scaling)
             s.Set("adaptation", System.Math.Round(Find.StoryWatcher.watcherAdaptation.AdaptDays, 1));

@@ -26,6 +26,10 @@ namespace SavecraftRimWorld.Collectors
             var map = Find.CurrentMap;
             var animals = new List<Struct>();
 
+            // Hoist def lookups outside loop
+            var rescueDef = DefDatabase<TrainableDef>.GetNamed("Rescue", errorOnFail: false);
+            var haulDef = DefDatabase<TrainableDef>.GetNamed("Haul", errorOnFail: false);
+
             var colonyAnimals = map.mapPawns.SpawnedPawnsInFaction(Faction.OfPlayer)
                 .Where(p => p.RaceProps.Animal);
 
@@ -89,12 +93,9 @@ namespace SavecraftRimWorld.Collectors
                         if (animal.training.HasLearned(TrainableDefOf.Release))
                             training.Add("release");
 
-                        // Rescue and Haul may not be in TrainableDefOf — look up at runtime
-                        var rescueDef = DefDatabase<TrainableDef>.GetNamed("Rescue", errorOnFail: false);
                         if (rescueDef != null && animal.training.HasLearned(rescueDef))
                             training.Add("rescue");
 
-                        var haulDef = DefDatabase<TrainableDef>.GetNamed("Haul", errorOnFail: false);
                         if (haulDef != null && animal.training.HasLearned(haulDef))
                             training.Add("haul");
 

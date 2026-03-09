@@ -35,10 +35,7 @@ namespace SavecraftRimWorld.Collectors
 
             // Game settings
             s.Set("storyteller", Find.Storyteller.def.label);
-            // Krafs ref assemblies mis-type Storyteller.difficulty as Difficulty (settings class)
-            // instead of DifficultyDef (Def subclass). Cast through object for runtime resolution.
-            object difficulty = Find.Storyteller.difficulty;
-            s.Set("difficulty", difficulty is Def diffDef ? diffDef.label : difficulty.ToString());
+            s.Set("difficulty", CollectorRunner.GetDifficultyLabel());
             s.Set("permadeath", Find.GameInfo.permadeathMode);
 
             // Date
