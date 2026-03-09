@@ -1,6 +1,6 @@
 game_id = "d2r"
 source = "wasm"
-icon = "icon.svg"
+icon = "icon.png"
 name = "Diablo II: Resurrected"
 description = "Parses .d2s character saves and .d2i shared stash from Reign of the Warlock (v105)"
 channel = "beta"

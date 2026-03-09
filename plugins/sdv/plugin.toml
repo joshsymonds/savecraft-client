@@ -1,6 +1,6 @@
 game_id = "sdv"
 source = "wasm"
-icon = "icon.svg"
+icon = "icon.png"
 name = "Stardew Valley"
 description = "Parses Stardew Valley 1.6 save files into structured game state"
 channel = "beta"

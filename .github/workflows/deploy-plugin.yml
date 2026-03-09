@@ -204,7 +204,6 @@ jobs:
               if [ -f "$icon_file" ]; then
                 wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/icon.${icon_ext}" --file "$icon_file" --remote
                 echo "    Uploaded icon.${icon_ext}"
-                break
               fi
             done
 
