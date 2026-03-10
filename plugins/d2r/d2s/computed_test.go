@@ -277,6 +277,12 @@ func TestComputeStats_Mercenary(t *testing.T) {
 					{ID: statLifeLeech, Values: []int64{8}},
 					{ID: statMagicFind, Values: []int64{40}},
 				},
+				SocketedItems: []Item{
+					{
+						Code:            OrtRune,
+						MagicAttributes: []MagicAttribute{{ID: statLightningResist, Values: []int64{35}}},
+					},
+				},
 			},
 		},
 	}
@@ -286,6 +292,7 @@ func TestComputeStats_Mercenary(t *testing.T) {
 		t.Fatal("expected mercenary stats")
 	}
 	assertInt(t, "merc fire", stats.Mercenary.Resistances.Fire.Total, 30)
+	assertInt(t, "merc lightning", stats.Mercenary.Resistances.Lightning.Total, 35)
 	assertInt(t, "merc lifeLeech", stats.Mercenary.LifeLeech, 8)
 	assertInt(t, "merc mf", stats.Mercenary.MagicFind, 40)
 }
@@ -329,14 +336,16 @@ func TestComputeStats_Atmus(t *testing.T) {
 
 	// Atmus is a level 74 Warlock — pin known values from real save.
 	assertInt(t, "class", int(save.Header.Class), int(Warlock))
-	assertInt(t, "fire resist", stats.Resistances.Fire.Total, 38)
+	assertInt(t, "fire resist", stats.Resistances.Fire.Total, 73)
 	assertInt(t, "cold resist", stats.Resistances.Cold.Total, 62)
-	assertInt(t, "lightning resist", stats.Resistances.Lightning.Total, 75)
+	assertInt(t, "lightning resist", stats.Resistances.Lightning.Total, 110)
 	assertInt(t, "poison resist", stats.Resistances.Poison.Total, 55)
 	assertInt(t, "magicFind", stats.MagicFind, 81)
 	assertInt(t, "goldFind", stats.GoldFind, 191)
 	assertInt(t, "fcr total", stats.FCR.Total, 35)
 	assertInt(t, "fcr breakpoint", stats.FCR.Current, 30)
+	assertInt(t, "fhr total", stats.FHR.Total, 40)
+	assertInt(t, "fhr breakpoint", stats.FHR.Current, 30)
 	assertInt(t, "frw", stats.FRW, 27)
 	assertInt(t, "lifeLeech", stats.LifeLeech, 9)
 	assertInt(t, "allSkills", stats.AllSkills, 1)

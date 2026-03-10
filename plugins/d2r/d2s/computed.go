@@ -98,8 +98,8 @@ func isSwapSlot(slot byte) bool {
 }
 
 // ComputeStats aggregates stats from equipped items and inventory charms.
-// Weapon swap slots (11, 12) are excluded. Socketed item stats are already
-// resolved into the parent item's MagicAttributes by the parser.
+// Weapon swap slots (11, 12) are excluded. Socketed item (rune/gem) stats
+// live on each SocketedItem and are traversed by aggregateItems.
 func ComputeStats(save *D2S) ComputedStats {
 	class := save.Header.Class
 	level := int(save.Attributes.Level)
@@ -181,6 +181,9 @@ func aggregateItems(items []Item, level int, class Class) accumulator {
 		accumulateAttrs(&acc, items[i].RunewordAttributes, level, class)
 		for _, setList := range items[i].SetAttributes {
 			accumulateAttrs(&acc, setList, level, class)
+		}
+		for si := range items[i].SocketedItems {
+			accumulateAttrs(&acc, items[i].SocketedItems[si].MagicAttributes, level, class)
 		}
 	}
 
