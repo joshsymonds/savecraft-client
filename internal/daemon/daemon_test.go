@@ -327,11 +327,13 @@ func (ws *fakeWSClient) sentProto(eventType string, index int) *pb.Message {
 }
 
 type fakePluginManager struct {
-	ensured     []string
-	ensureErr   map[string]error
-	manifests   map[string]pluginmgr.PluginInfo
-	manifestErr error
-	mu          sync.Mutex
+	ensured      []string
+	ensureErr    map[string]error
+	manifests    map[string]pluginmgr.PluginInfo
+	manifestErr  error
+	updateResult []string
+	updateErr    error
+	mu           sync.Mutex
 }
 
 func (pm *fakePluginManager) EnsurePlugin(_ context.Context, gameID string) error {
@@ -347,7 +349,9 @@ func (pm *fakePluginManager) EnsurePlugin(_ context.Context, gameID string) erro
 }
 
 func (pm *fakePluginManager) CheckForUpdates(_ context.Context) ([]string, error) {
-	return nil, nil
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	return pm.updateResult, pm.updateErr
 }
 
 func (pm *fakePluginManager) Manifests(_ context.Context) (map[string]pluginmgr.PluginInfo, error) {
@@ -2724,6 +2728,184 @@ func TestParseAndPush_HashUpdatedOnlyAfterSuccessfulPush(t *testing.T) {
 			t.Errorf("lastPushedHash has %d entries, want 0 (send failed, should not cache)", len(d.lastPushedHash))
 		}
 	})
+}
+
+func TestUpdatePlugins_Success(t *testing.T) {
+	ws := newFakeWSClient()
+	pm := &fakePluginManager{updateResult: []string{"d2r"}}
+	cfg := Config{
+		SourceID: "test",
+		Version:  "0.1.0",
+		Games:    map[string]GameConfig{},
+	}
+	dmn := New(cfg, &fakeFS{}, &fakeWatcher{events: make(chan FileEvent)}, nil, ws, pm, nil, testLogger())
+
+	updated, err := dmn.UpdatePlugins(context.Background())
+	if err != nil {
+		t.Fatalf("UpdatePlugins() error: %v", err)
+	}
+	if len(updated) != 1 || updated[0] != "d2r" {
+		t.Errorf("updated = %v, want [d2r]", updated)
+	}
+
+	// Verify PluginUpdated message was sent.
+	types := ws.sentEventTypes()
+	if !slices.Contains(types, "pluginUpdated") {
+		t.Errorf("expected pluginUpdated message, got %v", types)
+	}
+
+	// Verify reset channel was signaled.
+	select {
+	case <-dmn.pluginUpdateResetCh:
+		// ok
+	default:
+		t.Error("expected pluginUpdateResetCh to be signaled")
+	}
+}
+
+func TestUpdatePlugins_NoPluginManager(t *testing.T) {
+	ws := newFakeWSClient()
+	cfg := Config{
+		SourceID: "test",
+		Version:  "0.1.0",
+		Games:    map[string]GameConfig{},
+	}
+	dmn := New(cfg, &fakeFS{}, &fakeWatcher{events: make(chan FileEvent)}, nil, ws, nil, nil, testLogger())
+
+	_, err := dmn.UpdatePlugins(context.Background())
+	if err == nil {
+		t.Fatal("expected error when plugin manager is nil")
+	}
+}
+
+func TestUpdatePlugins_CheckError(t *testing.T) {
+	ws := newFakeWSClient()
+	pm := &fakePluginManager{updateErr: fmt.Errorf("manifest fetch failed")}
+	cfg := Config{
+		SourceID: "test",
+		Version:  "0.1.0",
+		Games:    map[string]GameConfig{},
+	}
+	dmn := New(cfg, &fakeFS{}, &fakeWatcher{events: make(chan FileEvent)}, nil, ws, pm, nil, testLogger())
+
+	_, err := dmn.UpdatePlugins(context.Background())
+	if err == nil {
+		t.Fatal("expected error from CheckForUpdates")
+	}
+}
+
+func TestUpdatePlugins_NoneUpdated(t *testing.T) {
+	ws := newFakeWSClient()
+	pm := &fakePluginManager{updateResult: nil}
+	cfg := Config{
+		SourceID: "test",
+		Version:  "0.1.0",
+		Games:    map[string]GameConfig{},
+	}
+	dmn := New(cfg, &fakeFS{}, &fakeWatcher{events: make(chan FileEvent)}, nil, ws, pm, nil, testLogger())
+
+	updated, err := dmn.UpdatePlugins(context.Background())
+	if err != nil {
+		t.Fatalf("UpdatePlugins() error: %v", err)
+	}
+	if len(updated) != 0 {
+		t.Errorf("updated = %v, want empty", updated)
+	}
+
+	// No PluginUpdated message should be sent.
+	types := ws.sentEventTypes()
+	for _, typ := range types {
+		if typ == "pluginUpdated" {
+			t.Error("unexpected pluginUpdated message when nothing was updated")
+		}
+	}
+}
+
+func TestHandlePluginAvailable_Success(t *testing.T) {
+	ws := newFakeWSClient()
+	pm := &fakePluginManager{}
+	cfg := Config{
+		SourceID: "test",
+		Version:  "0.1.0",
+		Games:    map[string]GameConfig{},
+	}
+	dmn := New(cfg, &fakeFS{}, &fakeWatcher{events: make(chan FileEvent)}, nil, ws, pm, nil, testLogger())
+
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_PluginAvailable{PluginAvailable: &pb.PluginAvailable{
+		GameId:  "d2r",
+		Version: "1.2.0",
+	}}})
+	dmn.handleCommand(context.Background(), cmd)
+
+	// Verify EnsurePlugin was called for the right game.
+	pm.mu.Lock()
+	ensured := slices.Clone(pm.ensured)
+	pm.mu.Unlock()
+	if len(ensured) != 1 || ensured[0] != "d2r" {
+		t.Errorf("ensured = %v, want [d2r]", ensured)
+	}
+
+	// Verify PluginUpdated was sent.
+	if !slices.Contains(ws.sentEventTypes(), "pluginUpdated") {
+		t.Errorf("expected pluginUpdated, got %v", ws.sentEventTypes())
+	}
+
+	// Verify timer reset was signaled.
+	select {
+	case <-dmn.pluginUpdateResetCh:
+	default:
+		t.Error("expected pluginUpdateResetCh to be signaled")
+	}
+}
+
+func TestHandlePluginAvailable_EnsureError(t *testing.T) {
+	ws := newFakeWSClient()
+	pm := &fakePluginManager{
+		ensureErr: map[string]error{"d2r": fmt.Errorf("download failed")},
+	}
+	cfg := Config{
+		SourceID: "test",
+		Version:  "0.1.0",
+		Games:    map[string]GameConfig{},
+	}
+	dmn := New(cfg, &fakeFS{}, &fakeWatcher{events: make(chan FileEvent)}, nil, ws, pm, nil, testLogger())
+
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_PluginAvailable{PluginAvailable: &pb.PluginAvailable{
+		GameId:  "d2r",
+		Version: "1.2.0",
+	}}})
+	dmn.handleCommand(context.Background(), cmd)
+
+	// Verify PluginDownloadFailed was sent.
+	if !slices.Contains(ws.sentEventTypes(), "pluginDownloadFailed") {
+		t.Errorf("expected pluginDownloadFailed, got %v", ws.sentEventTypes())
+	}
+
+	// Should NOT have sent PluginUpdated.
+	if slices.Contains(ws.sentEventTypes(), "pluginUpdated") {
+		t.Error("unexpected pluginUpdated on failure")
+	}
+}
+
+func TestHandlePluginAvailable_NoPluginManager(t *testing.T) {
+	ws := newFakeWSClient()
+	cfg := Config{
+		SourceID: "test",
+		Version:  "0.1.0",
+		Games:    map[string]GameConfig{},
+	}
+	dmn := New(cfg, &fakeFS{}, &fakeWatcher{events: make(chan FileEvent)}, nil, ws, nil, nil, testLogger())
+
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_PluginAvailable{PluginAvailable: &pb.PluginAvailable{
+		GameId:  "d2r",
+		Version: "1.2.0",
+	}}})
+	// Should not panic with nil plugin manager, and no messages sent.
+	dmn.handleCommand(context.Background(), cmd)
+
+	if len(ws.sentEventTypes()) != 0 {
+		t.Errorf("expected no messages sent, got %v", ws.sentEventTypes())
+	}
 }
 
 // countEventType counts how many messages of the given type were sent.

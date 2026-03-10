@@ -21,10 +21,11 @@ type Server struct {
 	expiresAt string
 	errMsg    string
 
-	ringBuf    *RingBuffer
-	shutdownFn func()
-	restartFn  func() error
-	repairFn   func(ctx context.Context) (linkCode, linkURL, expiresAt string, err error)
+	ringBuf         *RingBuffer
+	shutdownFn      func()
+	restartFn       func() error
+	repairFn        func(ctx context.Context) (linkCode, linkURL, expiresAt string, err error)
+	updatePluginsFn func(ctx context.Context) ([]string, error)
 
 	mux    *http.ServeMux
 	srv    *http.Server
@@ -49,6 +50,7 @@ func NewServer(addr string, logger *slog.Logger) *Server {
 	server.mux.HandleFunc("/shutdown", server.handleShutdown)
 	server.mux.HandleFunc("/restart", server.handleRestart)
 	server.mux.HandleFunc("/repair", server.handleRepair)
+	server.mux.HandleFunc("/update-plugins", server.handleUpdatePlugins)
 	server.srv = &http.Server{
 		Addr:              addr,
 		Handler:           server.mux,
@@ -169,6 +171,47 @@ func (s *Server) SetRepairFunc(fn func(ctx context.Context) (linkCode, linkURL, 
 	defer s.mu.Unlock()
 
 	s.repairFn = fn
+}
+
+// SetUpdatePluginsFunc sets the callback invoked by POST /update-plugins.
+func (s *Server) SetUpdatePluginsFunc(fn func(ctx context.Context) ([]string, error)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.updatePluginsFn = fn
+}
+
+func (s *Server) handleUpdatePlugins(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		s.writeJSON(w, http.StatusMethodNotAllowed, UpdatePluginsResponse{Error: "use POST"})
+
+		return
+	}
+
+	s.mu.RLock()
+	fn := s.updatePluginsFn
+	s.mu.RUnlock()
+
+	if fn == nil {
+		s.writeJSON(w, http.StatusServiceUnavailable, UpdatePluginsResponse{Error: "plugin updates not available"})
+
+		return
+	}
+
+	updated, err := fn(r.Context())
+	if err != nil {
+		s.logger.Error("update plugins failed", slog.String("error", err.Error()))
+		s.writeJSON(w, http.StatusInternalServerError, UpdatePluginsResponse{Error: "plugin update failed"})
+
+		return
+	}
+
+	if updated == nil {
+		updated = []string{}
+	}
+
+	s.writeJSON(w, http.StatusOK, UpdatePluginsResponse{Updated: updated})
 }
 
 func (s *Server) handleRepair(w http.ResponseWriter, r *http.Request) {

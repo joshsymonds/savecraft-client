@@ -201,6 +201,7 @@ func runDaemonSubsystems(
 	api.SetState(localapi.StateRunning)
 
 	wireRepairCallback(ctx, dmn, frontendURL, api)
+	api.SetUpdatePluginsFunc(dmn.UpdatePlugins)
 
 	logger.InfoContext(ctx, "starting daemon",
 		slog.String("server", cfg.ServerURL),

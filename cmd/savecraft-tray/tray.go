@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -50,6 +51,7 @@ func (a *trayApp) onReady() {
 
 	mCopyLogs := systray.AddMenuItem("Copy Logs", "Copy daemon logs to clipboard")
 	mRestart := systray.AddMenuItem("Restart Daemon", "Restart the daemon process")
+	mUpdatePlugins := systray.AddMenuItem("Check for Plugin Updates", "Download the latest plugin versions")
 
 	systray.AddSeparator()
 
@@ -60,7 +62,7 @@ func (a *trayApp) onReady() {
 	mQuit := systray.AddMenuItem("Quit", "Close the tray app")
 
 	// Handle menu clicks.
-	go a.handleClicks(mCopyLogs, mRestart, mDashboard, mQuit)
+	go a.handleClicks(mCopyLogs, mRestart, mUpdatePlugins, mDashboard, mQuit)
 
 	// Poll daemon state.
 	go a.pollState(ctx, mStatus)
@@ -73,7 +75,7 @@ func (a *trayApp) onExit() {
 }
 
 func (a *trayApp) handleClicks(
-	mCopyLogs, mRestart, mDashboard, mQuit *systray.MenuItem,
+	mCopyLogs, mRestart, mUpdatePlugins, mDashboard, mQuit *systray.MenuItem,
 ) {
 	for {
 		select {
@@ -89,6 +91,8 @@ func (a *trayApp) handleClicks(
 			a.doCopyLogs()
 		case <-mRestart.ClickedCh:
 			a.doRestart()
+		case <-mUpdatePlugins.ClickedCh:
+			a.doUpdatePlugins()
 		case <-mDashboard.ClickedCh:
 			if err := openBrowser(a.frontendURL); err != nil {
 				a.logger.Error("open dashboard", slog.String("error", err.Error()))
@@ -232,6 +236,25 @@ func (a *trayApp) doRepair() {
 	}
 
 	// State transitions to StateRegistered — pollState will show "Link Account" automatically.
+}
+
+func (a *trayApp) doUpdatePlugins() {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	resp, err := a.client.UpdatePlugins(ctx)
+	if err != nil {
+		a.logger.Error("update plugins", slog.String("error", err.Error()))
+		systray.SetTooltip(fmt.Sprintf("Savecraft — plugin update failed: %v", err))
+
+		return
+	}
+
+	if len(resp.Updated) == 0 {
+		systray.SetTooltip("Savecraft — all plugins up to date")
+	} else {
+		systray.SetTooltip(fmt.Sprintf("Savecraft — updated plugins: %s", strings.Join(resp.Updated, ", ")))
+	}
 }
 
 func (a *trayApp) doRestart() {

@@ -445,6 +445,97 @@ func TestHandleRepair_WrongMethod(t *testing.T) {
 	}
 }
 
+func TestHandleUpdatePlugins_Success(t *testing.T) {
+	srv := NewServer("localhost:0", nil)
+	srv.SetUpdatePluginsFunc(func(_ context.Context) ([]string, error) {
+		return []string{"d2r"}, nil
+	})
+
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/update-plugins", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	var resp UpdatePluginsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Updated) != 1 || resp.Updated[0] != "d2r" {
+		t.Errorf("updated = %v, want [d2r]", resp.Updated)
+	}
+}
+
+func TestHandleUpdatePlugins_NoneUpdated(t *testing.T) {
+	srv := NewServer("localhost:0", nil)
+	srv.SetUpdatePluginsFunc(func(_ context.Context) ([]string, error) {
+		return nil, nil
+	})
+
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/update-plugins", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	var resp UpdatePluginsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Updated) != 0 {
+		t.Errorf("updated = %v, want []", resp.Updated)
+	}
+}
+
+func TestHandleUpdatePlugins_Error(t *testing.T) {
+	srv := NewServer("localhost:0", nil)
+	srv.SetUpdatePluginsFunc(func(_ context.Context) ([]string, error) {
+		return nil, fmt.Errorf("manifest fetch failed")
+	})
+
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/update-plugins", nil))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+
+	var resp UpdatePluginsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Error != "plugin update failed" {
+		t.Errorf("error = %q, want %q", resp.Error, "plugin update failed")
+	}
+}
+
+func TestHandleUpdatePlugins_NoCallback(t *testing.T) {
+	srv := NewServer("localhost:0", nil)
+
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/update-plugins", nil))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+}
+
+func TestHandleUpdatePlugins_WrongMethod(t *testing.T) {
+	srv := NewServer("localhost:0", nil)
+	srv.SetUpdatePluginsFunc(func(_ context.Context) ([]string, error) {
+		return nil, nil
+	})
+
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/update-plugins", nil))
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 405", rec.Code)
+	}
+}
+
 func TestServer_ConcurrentStateAccess(t *testing.T) {
 	srv := NewServer("localhost:0", nil)
 

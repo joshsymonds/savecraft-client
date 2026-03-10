@@ -234,6 +234,10 @@ type Daemon struct {
 	// until the server responds.
 	pendingLinkCode chan linkCodeResult
 
+	// pluginUpdateResetCh signals the event loop to reset the plugin update ticker.
+	// Sent by UpdatePlugins (local API callback) and handlePluginAvailable.
+	pluginUpdateResetCh chan struct{}
+
 	// lastPushedHash caches SHA-256 of the last successfully pushed PushSave
 	// proto bytes per file path. On reconnect or re-parse, if the hash matches
 	// the cached value the push is skipped (no bandwidth, no server work).
@@ -266,20 +270,21 @@ func New(
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	return &Daemon{
-		cfg:             cfg,
-		fs:              fsys,
-		watcher:         watcher,
-		runner:          runner,
-		ws:              ws,
-		plugins:         plugins,
-		updater:         updater,
-		log:             log,
-		exitFunc:        os.Exit,
-		restartFunc:     func(string, string) error { return nil },
-		watchedDirs:     make(map[string]string),
-		configDir:       defaultConfigDir(),
-		pendingLinkCode: make(chan linkCodeResult, 1),
-		lastPushedHash:  make(map[string][32]byte),
+		cfg:                 cfg,
+		fs:                  fsys,
+		watcher:             watcher,
+		runner:              runner,
+		ws:                  ws,
+		plugins:             plugins,
+		updater:             updater,
+		log:                 log,
+		exitFunc:            os.Exit,
+		restartFunc:         func(string, string) error { return nil },
+		watchedDirs:         make(map[string]string),
+		configDir:           defaultConfigDir(),
+		pendingLinkCode:     make(chan linkCodeResult, 1),
+		pluginUpdateResetCh: make(chan struct{}, 1),
+		lastPushedHash:      make(map[string][32]byte),
 	}
 }
 
@@ -288,6 +293,37 @@ func New(
 // systemd handles restart so the default no-op suffices.
 func (d *Daemon) SetRestartFunc(fn func(daemonPath, trayPath string) error) {
 	d.restartFunc = fn
+}
+
+// UpdatePlugins triggers an immediate plugin update check and returns
+// the list of updated game IDs. It also resets the periodic update timer.
+// Called by the local API endpoint handler.
+func (d *Daemon) UpdatePlugins(ctx context.Context) ([]string, error) {
+	if d.plugins == nil {
+		return nil, fmt.Errorf("plugin manager not configured")
+	}
+
+	updated, err := d.plugins.CheckForUpdates(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("check for updates: %w", err)
+	}
+
+	for _, gameID := range updated {
+		d.sendMessage(ctx, &pb.Message{
+			Payload: &pb.Message_PluginUpdated{PluginUpdated: &pb.PluginUpdated{
+				GameId:  gameID,
+				Version: "", // version is logged by pluginmgr; proto field is informational
+			}},
+		})
+	}
+
+	// Signal the event loop to reset the periodic timer (non-blocking).
+	select {
+	case d.pluginUpdateResetCh <- struct{}{}:
+	default:
+	}
+
+	return updated, nil
 }
 
 // gameName returns the display name for a game, falling back to the raw gameID.
@@ -372,12 +408,13 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 
 	d.announceOnline(ctx)
 
-	var updateTicker *time.Ticker
+	// Always create the plugin update ticker — the reset channel may fire
+	// even when plugins are nil (the handler guards against that).
+	updateTicker := time.NewTicker(pluginUpdateInterval)
+	defer updateTicker.Stop()
 	var updateCh <-chan time.Time
 	if d.plugins != nil {
-		updateTicker = time.NewTicker(pluginUpdateInterval)
 		updateCh = updateTicker.C
-		defer updateTicker.Stop()
 	}
 
 	var selfUpdateTicker *time.Ticker
@@ -394,10 +431,7 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 	for {
 		select {
 		case <-ctx.Done():
-			d.log.InfoContext(ctx, "daemon shutting down")
-			d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_SourceOffline{SourceOffline: &pb.SourceOffline{
-				Timestamp: timestamppb.Now(),
-			}}})
+			d.sendShutdown(ctx)
 			return nil
 		case ev := <-d.watcher.Events():
 			d.handleFileEvent(ctx, ev)
@@ -408,11 +442,9 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 		case <-selfUpdateCh:
 			d.checkSelfUpdate(ctx)
 		case <-heartbeatTicker.C:
-			d.sendMessage(
-				ctx,
-				&pb.Message{Payload: &pb.Message_SourceHeartbeat{SourceHeartbeat: &pb.SourceHeartbeat{}}},
-			)
-			d.maybeRefreshLinkCode(ctx)
+			d.sendHeartbeat(ctx)
+		case <-d.pluginUpdateResetCh:
+			updateTicker.Reset(pluginUpdateInterval)
 		case <-d.ws.Reconnected():
 			d.log.InfoContext(ctx, "websocket reconnected, re-announcing")
 			d.announceOnline(ctx)
@@ -1020,10 +1052,52 @@ func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
 			SHA256:       cmd.SourceUpdateAvailable.Sha256,
 		}
 		d.applyDaemonUpdate(ctx, &CheckResult{Daemon: info})
+	case *pb.Message_PluginAvailable:
+		d.handlePluginAvailable(ctx, cmd.PluginAvailable)
 	case *pb.Message_SourceLinked:
 		d.handleSourceLinked(ctx)
 	case *pb.Message_RefreshLinkCodeResult:
 		d.handleRefreshLinkCodeResult(ctx, cmd.RefreshLinkCodeResult)
+	}
+}
+
+func (d *Daemon) handlePluginAvailable(ctx context.Context, msg *pb.PluginAvailable) {
+	if d.plugins == nil {
+		d.log.WarnContext(ctx, "received PluginAvailable but no plugin manager configured",
+			slog.String("game_id", msg.GameId))
+		return
+	}
+
+	d.log.InfoContext(ctx, "plugin update available",
+		slog.String("game_id", msg.GameId),
+		slog.String("version", msg.Version),
+	)
+
+	if err := d.plugins.EnsurePlugin(ctx, msg.GameId); err != nil {
+		d.log.ErrorContext(ctx, "failed to download plugin",
+			slog.String("game_id", msg.GameId),
+			slog.String("error", err.Error()),
+		)
+		d.sendMessage(ctx, &pb.Message{
+			Payload: &pb.Message_PluginDownloadFailed{PluginDownloadFailed: &pb.PluginDownloadFailed{
+				GameId:  msg.GameId,
+				Message: "plugin download failed",
+			}},
+		})
+		return
+	}
+
+	d.sendMessage(ctx, &pb.Message{
+		Payload: &pb.Message_PluginUpdated{PluginUpdated: &pb.PluginUpdated{
+			GameId:  msg.GameId,
+			Version: msg.Version,
+		}},
+	})
+
+	// Reset the periodic update timer.
+	select {
+	case d.pluginUpdateResetCh <- struct{}{}:
+	default:
 	}
 }
 
@@ -1066,6 +1140,21 @@ func (d *Daemon) handleRefreshLinkCodeResult(ctx context.Context, result *pb.Ref
 	case d.pendingLinkCode <- linkCodeResult{Code: result.LinkCode, ExpiresAt: expiresAt}:
 	default:
 	}
+}
+
+func (d *Daemon) sendShutdown(ctx context.Context) {
+	d.log.InfoContext(ctx, "daemon shutting down")
+	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_SourceOffline{SourceOffline: &pb.SourceOffline{
+		Timestamp: timestamppb.Now(),
+	}}})
+}
+
+func (d *Daemon) sendHeartbeat(ctx context.Context) {
+	d.sendMessage(
+		ctx,
+		&pb.Message{Payload: &pb.Message_SourceHeartbeat{SourceHeartbeat: &pb.SourceHeartbeat{}}},
+	)
+	d.maybeRefreshLinkCode(ctx)
 }
 
 // refreshThreshold is how close to expiry we refresh the link code.

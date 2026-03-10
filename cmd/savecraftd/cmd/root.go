@@ -4,6 +4,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -44,6 +45,7 @@ func Execute(version, serverURL, installURL, appName, statusPort, frontendURL st
 	root.AddCommand(buildServiceCommand("start", "Start the daemon OS service", svcCfg))
 	root.AddCommand(buildStopCommand(statusPort))
 	root.AddCommand(buildRepairCommand(statusPort))
+	root.AddCommand(buildUpdatePluginsCommand(statusPort))
 	root.AddCommand(buildSetupCommand(serverURL, appName, statusPort, frontendURL))
 	root.AddCommand(buildVerifyCommand(appName, serverURL))
 	root.AddCommand(buildVersionCommand(version))
@@ -91,6 +93,34 @@ func buildRepairCommand(statusPort string) *cobra.Command {
 			}
 
 			fmt.Printf("Re-pairing initiated.\n\n  Link this source: %s\n  Code: %s\n\n", resp.LinkURL, resp.LinkCode)
+
+			return nil
+		},
+	}
+}
+
+// buildUpdatePluginsCommand creates a cobra command that triggers an immediate
+// plugin update check via the local API /update-plugins endpoint.
+func buildUpdatePluginsCommand(statusPort string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "update-plugins",
+		Short: "Check for and download plugin updates",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			client := localapi.NewClient("http://localhost:" + statusPort)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+
+			resp, err := client.UpdatePlugins(ctx)
+			if err != nil {
+				return fmt.Errorf("update plugins: %w", err)
+			}
+
+			if len(resp.Updated) == 0 {
+				fmt.Println("All plugins are up to date.")
+			} else {
+				fmt.Printf("Updated: %s\n", strings.Join(resp.Updated, ", "))
+			}
 
 			return nil
 		},

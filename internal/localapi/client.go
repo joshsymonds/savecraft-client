@@ -8,7 +8,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
+
+const clientTimeout = 30 * time.Second
 
 // Client is an HTTP client for the daemon's local API.
 type Client struct {
@@ -20,7 +23,7 @@ type Client struct {
 func NewClient(baseURL string) *Client {
 	return &Client{
 		baseURL: baseURL,
-		http:    &http.Client{},
+		http:    &http.Client{Timeout: clientTimeout},
 	}
 }
 
@@ -134,6 +137,31 @@ func (c *Client) Repair(ctx context.Context) (*LinkResponse, error) {
 
 	if result.Error != "" {
 		return nil, fmt.Errorf("repair: %s", result.Error)
+	}
+
+	return &result, nil
+}
+
+// UpdatePlugins triggers an immediate plugin update check via POST /update-plugins.
+func (c *Client) UpdatePlugins(ctx context.Context) (*UpdatePluginsResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/update-plugins", nil)
+	if err != nil {
+		return nil, fmt.Errorf("build update-plugins request: %w", err)
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("update-plugins request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result UpdatePluginsResponse
+	if decErr := json.NewDecoder(resp.Body).Decode(&result); decErr != nil {
+		return nil, fmt.Errorf("decode update-plugins response: %w", decErr)
+	}
+
+	if result.Error != "" {
+		return nil, fmt.Errorf("update-plugins: %s", result.Error)
 	}
 
 	return &result, nil
