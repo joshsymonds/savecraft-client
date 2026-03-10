@@ -327,14 +327,20 @@ func TestComputeStats_Atmus(t *testing.T) {
 			stats.Mercenary.LifeLeech)
 	}
 
-	// Basic sanity: Atmus is level 74 Warlock with items, should have non-zero stats.
-	if save.Header.Class != Warlock {
-		t.Errorf("class = %s, want Warlock", save.Header.Class)
-	}
-	if stats.Resistances.Fire.Total == 0 && stats.Resistances.Cold.Total == 0 &&
-		stats.Resistances.Lightning.Total == 0 && stats.Resistances.Poison.Total == 0 {
-		t.Error("all resistances zero — expected at least some from equipment")
-	}
+	// Atmus is a level 74 Warlock — pin known values from real save.
+	assertInt(t, "class", int(save.Header.Class), int(Warlock))
+	assertInt(t, "fire resist", stats.Resistances.Fire.Total, 38)
+	assertInt(t, "cold resist", stats.Resistances.Cold.Total, 62)
+	assertInt(t, "lightning resist", stats.Resistances.Lightning.Total, 75)
+	assertInt(t, "poison resist", stats.Resistances.Poison.Total, 55)
+	assertInt(t, "magicFind", stats.MagicFind, 81)
+	assertInt(t, "goldFind", stats.GoldFind, 191)
+	assertInt(t, "fcr total", stats.FCR.Total, 35)
+	assertInt(t, "fcr breakpoint", stats.FCR.Current, 30)
+	assertInt(t, "frw", stats.FRW, 27)
+	assertInt(t, "lifeLeech", stats.LifeLeech, 9)
+	assertInt(t, "allSkills", stats.AllSkills, 1)
+	assertInt(t, "classSkills", stats.ClassSkills, 2)
 }
 
 func TestFCRBreakpoints_AllClasses(t *testing.T) {

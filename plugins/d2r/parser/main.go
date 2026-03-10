@@ -498,20 +498,9 @@ func skillOrID(id int64) string {
 	return fmt.Sprintf("Skill#%d", id)
 }
 
-var skilltabNames = []string{
-	"Bow and Crossbow", "Passive and Magic", "Javelin and Spear",
-	"Fire", "Lightning", "Cold",
-	"Curses", "Poison and Bone", "Summoning",
-	"Combat (Paladin)", "Offensive Auras", "Defensive Auras",
-	"Combat (Barbarian)", "Masteries", "Warcries",
-	"Summoning (Druid)", "Shape Shifting", "Elemental",
-	"Traps", "Shadow Disciplines", "Martial Arts",
-	"Summoning (Warlock)", "Hex", "Sigils",
-}
-
 func skilltabName(idx int) string {
-	if idx >= 0 && idx < len(skilltabNames) {
-		return skilltabNames[idx]
+	if name := d2s.SkilltabNameForIdx(idx); name != "Unknown" {
+		return name
 	}
 	return fmt.Sprintf("Tab#%d", idx)
 }

@@ -240,15 +240,24 @@ func accumulateAttrs(acc *accumulator, attrs []MagicAttribute, level int, class 
 			// Values = [tabIndex, classID, bonus]. Only count for character's class.
 			if len(a.Values) >= 3 && int(a.Values[1]) == int(class) {
 				tabIdx := int(a.Values[0])
-				tabName := skilltabNameForIdx(tabIdx)
+				tabName := SkilltabNameForIdx(tabIdx)
 				acc.skillTrees[tabName] += int(a.Values[2])
 			}
 		}
 	}
 }
 
-// skilltabNameForIdx returns a human-readable skill tree name.
-var skilltabNamesTable = []string{
+// SkilltabNameForIdx returns a human-readable skill tree name.
+// This is the canonical source for skill tab names — also used by parser/main.go.
+func SkilltabNameForIdx(idx int) string {
+	if idx >= 0 && idx < len(SkilltabNames) {
+		return SkilltabNames[idx]
+	}
+	return "Unknown"
+}
+
+// SkilltabNames maps tab index to display name.
+var SkilltabNames = []string{
 	"Bow and Crossbow", "Passive and Magic", "Javelin and Spear",
 	"Fire", "Lightning", "Cold",
 	"Curses", "Poison and Bone", "Summoning",
@@ -257,11 +266,4 @@ var skilltabNamesTable = []string{
 	"Summoning (Druid)", "Shape Shifting", "Elemental",
 	"Traps", "Shadow Disciplines", "Martial Arts",
 	"Summoning (Warlock)", "Hex", "Sigils",
-}
-
-func skilltabNameForIdx(idx int) string {
-	if idx >= 0 && idx < len(skilltabNamesTable) {
-		return skilltabNamesTable[idx]
-	}
-	return "Unknown"
 }
