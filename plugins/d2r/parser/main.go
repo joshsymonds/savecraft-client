@@ -117,6 +117,12 @@ func handleCharacter(enc *json.Encoder, data []byte) {
 		},
 	}
 
+	// Computed/aggregated stats from equipped items + charms.
+	sections["totals"] = map[string]any{
+		"description": "Aggregated character stats: resistances (per difficulty), magic find, gold find, faster cast rate, faster hit recovery, attack speed, run/walk speed, crushing blow, deadly strike, open wounds, life/mana leech, skill bonuses — with FCR/FHR/IAS breakpoints. Includes mercenary totals.",
+		"data":        d2s.ComputeStats(save),
+	}
+
 	if len(save.MercItems) > 0 {
 		sections["mercenary"] = map[string]any{
 			"description": "Mercenary equipment",
