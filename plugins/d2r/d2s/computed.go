@@ -2,22 +2,22 @@ package d2s
 
 // ComputedStats holds aggregated stats from equipped items and charms.
 type ComputedStats struct {
-	Resistances Resistances       `json:"resistances"`
-	MagicFind   int               `json:"magicFind"`
-	GoldFind    int               `json:"goldFind"`
-	FCR         Breakpoint        `json:"fasterCastRate"`
-	FHR         Breakpoint        `json:"fasterHitRecovery"`
-	IAS         Breakpoint        `json:"increasedAttackSpeed"`
-	FRW         int               `json:"fasterRunWalk"`
-	LifeLeech   int               `json:"lifeLeech"`
-	ManaLeech   int               `json:"manaLeech"`
-	CrushingBlow int              `json:"crushingBlow"`
-	DeadlyStrike int              `json:"deadlyStrike"`
-	OpenWounds   int              `json:"openWounds"`
-	AllSkills    int              `json:"allSkills"`
-	ClassSkills  int              `json:"classSkills"`
-	SkillTrees   map[string]int   `json:"skillTrees"`
-	Mercenary    *MercenaryStats  `json:"mercenary,omitempty"`
+	Resistances  Resistances     `json:"resistances"`
+	MagicFind    int             `json:"magicFind"`
+	GoldFind     int             `json:"goldFind"`
+	FCR          Breakpoint      `json:"fasterCastRate"`
+	FHR          Breakpoint      `json:"fasterHitRecovery"`
+	IAS          Breakpoint      `json:"increasedAttackSpeed"`
+	FRW          int             `json:"fasterRunWalk"`
+	LifeLeech    int             `json:"lifeLeech"`
+	ManaLeech    int             `json:"manaLeech"`
+	CrushingBlow int             `json:"crushingBlow"`
+	DeadlyStrike int             `json:"deadlyStrike"`
+	OpenWounds   int             `json:"openWounds"`
+	AllSkills    int             `json:"allSkills"`
+	ClassSkills  int             `json:"classSkills"`
+	SkillTrees   map[string]int  `json:"skillTrees"`
+	Mercenary    *MercenaryStats `json:"mercenary,omitempty"`
 }
 
 // MercenaryStats holds aggregated stats from mercenary equipment.
@@ -164,13 +164,13 @@ func ComputeStats(save *D2S) ComputedStats {
 
 // accumulator gathers raw stat totals during a single pass over items.
 type accumulator struct {
-	fireRes, coldRes, lightRes, poisonRes int
-	magicFind, goldFind                   int
-	fcr, fhr, ias, frw                    int
-	lifeLeech, manaLeech                  int
+	fireRes, coldRes, lightRes, poisonRes  int
+	magicFind, goldFind                    int
+	fcr, fhr, ias, frw                     int
+	lifeLeech, manaLeech                   int
 	crushingBlow, deadlyStrike, openWounds int
-	allSkills, classSkills                int
-	skillTrees                            map[string]int
+	allSkills, classSkills                 int
+	skillTrees                             map[string]int
 }
 
 func aggregateItems(items []Item, level int, class Class) accumulator {
