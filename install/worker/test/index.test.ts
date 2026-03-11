@@ -76,7 +76,7 @@ describe("install worker", () => {
 		}
 	});
 
-	describe("Windows browser → .cmd installer", () => {
+	describe("Windows browser → MSI redirect", () => {
 		const windowsBrowserAgents = [
 			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 			"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
@@ -84,71 +84,19 @@ describe("install worker", () => {
 		];
 
 		for (const ua of windowsBrowserAgents) {
-			it(`serves .cmd installer to Windows browser (${ua.slice(0, 40)}...)`, async () => {
+			it(`redirects Windows browser to MSI (${ua.slice(0, 40)}...)`, async () => {
 				const resp = await SELF.fetch("https://install.savecraft.gg/", {
 					headers: { "user-agent": ua },
+					redirect: "manual",
 				});
-				expect(resp.status).toBe(200);
-				expect(resp.headers.get("content-disposition")).toContain("savecraft-install.cmd");
-				const body = await resp.text();
-				expect(body).toContain("@echo off");
-				expect(body).toContain(env.APP_NAME);
-				expect(body).toContain("Unblock-File");
+				expect(resp.status).toBe(302);
+				const location = resp.headers.get("location")!;
+				expect(location).toContain(`${env.APP_NAME}.msi`);
+				expect(location).toContain(env.INSTALL_URL);
 			});
 		}
 
-		it("stops existing processes before downloading", async () => {
-			const resp = await SELF.fetch("https://install.savecraft.gg/", {
-				headers: {
-					"user-agent":
-						"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-				},
-			});
-			const body = await resp.text();
-			expect(body).toContain("/shutdown");
-			expect(body).toContain("taskkill");
-			expect(body).toContain("Stop-Process -Name savecraft-tray");
-		});
-
-		it("delegates to savecraftd setup instead of polling link code", async () => {
-			const resp = await SELF.fetch("https://install.savecraft.gg/", {
-				headers: {
-					"user-agent":
-						"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-				},
-			});
-			const body = await resp.text();
-			expect(body).toContain("setup");
-			expect(body).not.toContain("$linkCode");
-			expect(body).not.toContain("Could not get link code");
-		});
-
-		it("checks if daemon is already linked before reinstalling", async () => {
-			const resp = await SELF.fetch("https://install.savecraft.gg/", {
-				headers: {
-					"user-agent":
-						"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-				},
-			});
-			const body = await resp.text();
-			expect(body).toContain("/boot");
-			expect(body).toContain("/link");
-			expect(body).toContain("Reinstall");
-		});
-
-		it("verifies port is free after killing processes", async () => {
-			const resp = await SELF.fetch("https://install.savecraft.gg/", {
-				headers: {
-					"user-agent":
-						"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-				},
-			});
-			const body = await resp.text();
-			expect(body).toContain("TcpClient");
-			expect(body).toContain("Port " + env.STATUS_PORT + " is still in use");
-		});
-
-		it("does not serve .cmd to Windows Phone", async () => {
+		it("does not redirect Windows Phone to MSI", async () => {
 			const resp = await SELF.fetch("https://install.savecraft.gg/", {
 				headers: {
 					"user-agent":

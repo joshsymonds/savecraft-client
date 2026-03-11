@@ -7,7 +7,8 @@
            -d TrayPath=../../dist/savecraft-tray-windows-amd64.exe \
            -o savecraft.msi savecraft.wxs
 
-  No custom actions — installs files only. Pairing happens in the tray app post-install.
+  Per-user install to %LOCALAPPDATA%\Savecraft\. No admin required.
+  Launches tray on MSI completion for first-run pairing flow.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package
@@ -15,6 +16,7 @@
     Manufacturer="Savecraft"
     Version="$(var.Version)"
     UpgradeCode="abfd37bd-ee90-4422-8423-2eccd3326a30"
+    Scope="perUser"
     Compressed="yes">
 
     <!-- Allow upgrades, prevent downgrades -->
@@ -28,16 +30,23 @@
       <ComponentRef Id="DaemonStartupKey" />
       <ComponentRef Id="TrayStartupKey" />
     </Feature>
+
+    <!-- Launch tray after install for first-run pairing -->
+    <Property Id="WixShellExecTarget" Value="[INSTALLFOLDER]savecraft-tray.exe" />
+    <CustomAction Id="LaunchTray" DllEntry="WixShellExec" Impersonate="yes" BinaryRef="Wix4UtilCA_X86" />
+    <InstallExecuteSequence>
+      <Custom Action="LaunchTray" After="InstallFinalize">NOT Installed OR REINSTALL</Custom>
+    </InstallExecuteSequence>
   </Package>
 
-  <!-- Install to C:\Program Files\Savecraft\ -->
+  <!-- Install to %LOCALAPPDATA%\Savecraft\ (per-user, no elevation) -->
   <Fragment>
-    <StandardDirectory Id="ProgramFiles6432Folder">
+    <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="INSTALLFOLDER" Name="Savecraft" />
     </StandardDirectory>
   </Fragment>
 
-  <!-- Daemon binary -->
+  <!-- Daemon and tray binaries -->
   <Fragment>
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
       <Component Id="DaemonExe">

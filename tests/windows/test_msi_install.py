@@ -2,7 +2,7 @@
 Integration tests for the Savecraft Windows MSI installer.
 
 Runs on windows-latest GitHub Actions runners. Tests:
-- MSI silent install puts binary in Program Files
+- MSI silent install puts binaries in %LOCALAPPDATA%\\Savecraft
 - Startup registry key is created
 - MSI silent uninstall cleans up
 """
@@ -13,7 +13,7 @@ import sys
 import tempfile
 import winreg
 
-INSTALL_DIR = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Savecraft")
+INSTALL_DIR = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expandvars(r"%LOCALAPPDATA%")), "Savecraft")
 DAEMON_PATH = os.path.join(INSTALL_DIR, "savecraftd.exe")
 TRAY_PATH = os.path.join(INSTALL_DIR, "savecraft-tray.exe")
 REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -66,12 +66,12 @@ def msi_uninstall(msi_path: str) -> None:
 
 
 def test_install_creates_daemon():
-    """After install, savecraftd.exe exists in Program Files."""
+    """After install, savecraftd.exe exists in %LOCALAPPDATA%\\Savecraft."""
     assert os.path.isfile(DAEMON_PATH), f"Daemon not found at {DAEMON_PATH}"
 
 
 def test_install_creates_tray():
-    """After install, savecraft-tray.exe exists in Program Files."""
+    """After install, savecraft-tray.exe exists in %LOCALAPPDATA%\\Savecraft."""
     assert os.path.isfile(TRAY_PATH), f"Tray not found at {TRAY_PATH}"
 
 

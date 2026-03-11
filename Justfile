@@ -254,7 +254,7 @@ build-tray os arch app_name="savecraft" status_port="9182" frontend_url="https:/
 build-tray-all app_name="savecraft" status_port="9182" frontend_url="https://my.savecraft.gg":
     just build-tray windows amd64 {{app_name}} {{status_port}} {{frontend_url}}
 
-# Build Windows MSI installer (requires WiX v5: dotnet tool install --global wix --version 5.0.2)
+# Build Windows MSI installer (requires WiX v5: dotnet tool install --global wix --version 5.0.2 + wix extension add WixToolset.Util.wixext/5.0.2)
 build-msi version="1.0.0" app_name="savecraft":
     wix build \
         -arch x64 \
@@ -262,6 +262,7 @@ build-msi version="1.0.0" app_name="savecraft":
         -d DaemonPath=dist/{{app_name}}-daemon-windows-amd64.exe \
         -d TrayPath=dist/{{app_name}}-tray-windows-amd64.exe \
         -o dist/{{app_name}}.msi \
+        -ext WixToolset.Util.wixext \
         install/windows/savecraft.wxs
 
 # Run install Worker tests

@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write  # Required for Azure OIDC federated auth
 
 env:
   GOEXPERIMENT: jsonv2
@@ -191,10 +192,35 @@ jobs:
           FRONTEND_URL: ${{ needs.environment.outputs.frontend_url }}
         run: just build-tray windows amd64 "$env:APP_NAME" "$env:STATUS_PORT" "$env:FRONTEND_URL"
 
+      # Authenticode sign the .exe files before packaging into MSI
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign Windows binaries (Authenticode)
+        uses: azure/trusted-signing-action@v0.5.0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          endpoint: https://eus.codesigning.azure.net/
+          trusted-signing-account-name: ${{ secrets.SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.CERT_PROFILE }}
+          files-folder: ${{ github.workspace }}/dist
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
       - name: Install WiX v5
         run: dotnet tool install --global wix --version 5.0.2
 
-      - name: Build MSI
+      - name: Add WixToolset.Util.wixext
+        run: wix extension add WixToolset.Util.wixext/5.0.2
+
+      - name: Build MSI (with signed binaries)
         env:
           VERSION: ${{ needs.environment.outputs.version }}
           APP_NAME: ${{ needs.environment.outputs.app_name }}
@@ -205,7 +231,22 @@ jobs:
             -d DaemonPath="dist/$env:APP_NAME-daemon-windows-amd64.exe" `
             -d TrayPath="dist/$env:APP_NAME-tray-windows-amd64.exe" `
             -o "dist/$env:APP_NAME.msi" `
+            -ext WixToolset.Util.wixext `
             install/windows/savecraft.wxs
+
+      - name: Sign MSI (Authenticode)
+        uses: azure/trusted-signing-action@v0.5.0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          endpoint: https://eus.codesigning.azure.net/
+          trusted-signing-account-name: ${{ secrets.SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.CERT_PROFILE }}
+          files-folder: ${{ github.workspace }}/dist
+          files-folder-filter: msi
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
 
       - uses: actions/upload-artifact@v4
         with:

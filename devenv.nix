@@ -54,6 +54,9 @@
     # Shell linting
     pkgs.shellcheck     # static analysis for bash/sh
     pkgs.shfmt          # shell formatter
+
+    # Azure (Trusted Signing for Windows MSI)
+    (pkgs.azure-cli.withExtensions [ pkgs.azure-cli-extensions.trustedsigning ])
   ];
 
   enterShell = ''
