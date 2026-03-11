@@ -10,7 +10,8 @@
   Per-user install to %LOCALAPPDATA%\Savecraft\. No admin required.
   Launches tray on MSI completion for first-run pairing flow.
 -->
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
   <Package
     Name="Savecraft"
     Manufacturer="Savecraft"
@@ -21,6 +22,13 @@
 
     <!-- Allow upgrades, prevent downgrades -->
     <MajorUpgrade DowngradeErrorMessage="A newer version of Savecraft is already installed." />
+
+    <!-- Close running processes before install/upgrade/uninstall.
+         CloseMessage sends WM_CLOSE first (tray responds to this gracefully).
+         TerminateProcess force-kills if WM_CLOSE doesn't work within the
+         timeout (daemon is headless — no message loop to receive WM_CLOSE). -->
+    <util:CloseApplication Id="CloseDaemon" Target="savecraftd.exe" RebootPrompt="no" CloseMessage="yes" TerminateProcess="yes" />
+    <util:CloseApplication Id="CloseTray" Target="savecraft-tray.exe" RebootPrompt="no" CloseMessage="yes" TerminateProcess="yes" />
 
     <MediaTemplate EmbedCab="yes" />
 
