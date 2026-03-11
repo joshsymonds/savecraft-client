@@ -897,6 +897,7 @@ type SourceOnline struct {
 	Os            string                 `protobuf:"bytes,5,opt,name=os,proto3" json:"os,omitempty"`
 	Arch          string                 `protobuf:"bytes,6,opt,name=arch,proto3" json:"arch,omitempty"`
 	Hostname      string                 `protobuf:"bytes,7,opt,name=hostname,proto3" json:"hostname,omitempty"`
+	Device        string                 `protobuf:"bytes,8,opt,name=device,proto3" json:"device,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -969,6 +970,13 @@ func (x *SourceOnline) GetArch() string {
 func (x *SourceOnline) GetHostname() string {
 	if x != nil {
 		return x.Hostname
+	}
+	return ""
+}
+
+func (x *SourceOnline) GetDevice() string {
+	if x != nil {
+		return x.Device
 	}
 	return ""
 }
@@ -2513,6 +2521,7 @@ type SourceInfo struct {
 	Platform         string                 `protobuf:"bytes,9,opt,name=platform,proto3" json:"platform,omitempty"`
 	Os               string                 `protobuf:"bytes,10,opt,name=os,proto3" json:"os,omitempty"`
 	Arch             string                 `protobuf:"bytes,11,opt,name=arch,proto3" json:"arch,omitempty"`
+	Device           string                 `protobuf:"bytes,12,opt,name=device,proto3" json:"device,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -2620,6 +2629,13 @@ func (x *SourceInfo) GetOs() string {
 func (x *SourceInfo) GetArch() string {
 	if x != nil {
 		return x.Arch
+	}
+	return ""
+}
+
+func (x *SourceInfo) GetDevice() string {
+	if x != nil {
+		return x.Device
 	}
 	return ""
 }
@@ -3079,6 +3095,7 @@ type Register struct {
 	Hostname      string                 `protobuf:"bytes,1,opt,name=hostname,proto3" json:"hostname,omitempty"`
 	Os            string                 `protobuf:"bytes,2,opt,name=os,proto3" json:"os,omitempty"`
 	Arch          string                 `protobuf:"bytes,3,opt,name=arch,proto3" json:"arch,omitempty"`
+	Device        string                 `protobuf:"bytes,4,opt,name=device,proto3" json:"device,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3130,6 +3147,13 @@ func (x *Register) GetOs() string {
 func (x *Register) GetArch() string {
 	if x != nil {
 		return x.Arch
+	}
+	return ""
+}
+
+func (x *Register) GetDevice() string {
+	if x != nil {
+		return x.Device
 	}
 	return ""
 }
@@ -3713,14 +3737,15 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\x0eRelayedMessage\x12\x1b\n" +
 	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12E\n" +
 	"\x10server_timestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x0fserverTimestamp\x12/\n" +
-	"\amessage\x18\x03 \x01(\v2\x15.savecraft.v1.MessageR\amessage\"\xc4\x01\n" +
+	"\amessage\x18\x03 \x01(\v2\x15.savecraft.v1.MessageR\amessage\"\xdc\x01\n" +
 	"\fSourceOnline\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x128\n" +
 	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x1a\n" +
 	"\bplatform\x18\x04 \x01(\tR\bplatform\x12\x0e\n" +
 	"\x02os\x18\x05 \x01(\tR\x02os\x12\x12\n" +
 	"\x04arch\x18\x06 \x01(\tR\x04arch\x12\x1a\n" +
-	"\bhostname\x18\a \x01(\tR\bhostnameJ\x04\b\x01\x10\x02\"O\n" +
+	"\bhostname\x18\a \x01(\tR\bhostname\x12\x16\n" +
+	"\x06device\x18\b \x01(\tR\x06deviceJ\x04\b\x01\x10\x02\"O\n" +
 	"\rSourceOffline\x128\n" +
 	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestampJ\x04\b\x01\x10\x02\"\x11\n" +
 	"\x0fSourceHeartbeat\":\n" +
@@ -3832,7 +3857,7 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\x03url\x18\x03 \x01(\tR\x03url\"\x0f\n" +
 	"\rDiscoverGames\"A\n" +
 	"\vSourceState\x122\n" +
-	"\asources\x18\x01 \x03(\v2\x18.savecraft.v1.SourceInfoR\asources\"\xf2\x02\n" +
+	"\asources\x18\x01 \x03(\v2\x18.savecraft.v1.SourceInfoR\asources\"\x8a\x03\n" +
 	"\n" +
 	"SourceInfo\x12\x1b\n" +
 	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\x16\n" +
@@ -3848,7 +3873,8 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\bplatform\x18\t \x01(\tR\bplatform\x12\x0e\n" +
 	"\x02os\x18\n" +
 	" \x01(\tR\x02os\x12\x12\n" +
-	"\x04arch\x18\v \x01(\tR\x04arch\"\xf9\x01\n" +
+	"\x04arch\x18\v \x01(\tR\x04arch\x12\x16\n" +
+	"\x06device\x18\f \x01(\tR\x06device\"\xf9\x01\n" +
 	"\bGameInfo\x12\x17\n" +
 	"\agame_id\x18\x01 \x01(\tR\x06gameId\x12\x1b\n" +
 	"\tgame_name\x18\x02 \x01(\tR\bgameName\x124\n" +
@@ -3881,11 +3907,12 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\aversion\x18\x01 \x01(\tR\aversion\"H\n" +
 	"\x12SourceUpdateFailed\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"J\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"b\n" +
 	"\bRegister\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12\x0e\n" +
 	"\x02os\x18\x02 \x01(\tR\x02os\x12\x12\n" +
-	"\x04arch\x18\x03 \x01(\tR\x04arch\"\xbe\x01\n" +
+	"\x04arch\x18\x03 \x01(\tR\x04arch\x12\x16\n" +
+	"\x06device\x18\x04 \x01(\tR\x06device\"\xbe\x01\n" +
 	"\x0eRegisterResult\x12\x1f\n" +
 	"\vsource_uuid\x18\x01 \x01(\tR\n" +
 	"sourceUuid\x12!\n" +

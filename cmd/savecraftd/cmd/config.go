@@ -234,6 +234,7 @@ func wsRegister(ctx context.Context, serverURL, hostname string) (*registerResul
 		Hostname: hostname,
 		Os:       runtime.GOOS,
 		Arch:     runtime.GOARCH,
+		Device:   daemon.DetectDevice(),
 	}}}
 	data, marshalErr := proto.Marshal(registerMsg)
 	if marshalErr != nil {

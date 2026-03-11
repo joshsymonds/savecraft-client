@@ -102,6 +102,7 @@ message SourceOnline {
   string os = 5;
   string arch = 6;
   string hostname = 7;
+  string device = 8;
 }
 
 // Source disconnecting gracefully.
@@ -308,6 +309,7 @@ message SourceInfo {
   string platform = 9;
   string os = 10;
   string arch = 11;
+  string device = 12;
 }
 
 message GameInfo {
@@ -380,6 +382,7 @@ message Register {
   string hostname = 1;
   string os = 2;
   string arch = 3;
+  string device = 4;
 }
 
 // Server response to Register with credentials and initial link code.

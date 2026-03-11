@@ -467,6 +467,7 @@ func (d *Daemon) announceOnline(ctx context.Context) {
 		Os:        runtime.GOOS,
 		Arch:      runtime.GOARCH,
 		Hostname:  hostname,
+		Device:    DetectDevice(),
 		Timestamp: timestamppb.Now(),
 	}}})
 
