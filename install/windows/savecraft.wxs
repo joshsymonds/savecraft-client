@@ -32,10 +32,10 @@
     </Feature>
 
     <!-- Launch tray after install for first-run pairing -->
-    <Property Id="WixShellExecTarget" Value="[INSTALLFOLDER]savecraft-tray.exe" />
+    <SetProperty Id="WixShellExecTarget" Value="[INSTALLFOLDER]savecraft-tray.exe" After="CostFinalize" Sequence="execute" />
     <CustomAction Id="LaunchTray" DllEntry="WixShellExec" Impersonate="yes" BinaryRef="Wix4UtilCA_X86" />
     <InstallExecuteSequence>
-      <Custom Action="LaunchTray" After="InstallFinalize">NOT Installed OR REINSTALL</Custom>
+      <Custom Action="LaunchTray" After="InstallFinalize" Condition="NOT Installed OR REINSTALL" />
     </InstallExecuteSequence>
   </Package>
 
