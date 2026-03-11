@@ -105,7 +105,7 @@ func TestRunSetup(t *testing.T) {
 				}
 			},
 			wantOutput: []string{
-				"expired, re-registering",
+				"invalid (token rejected (HTTP 401)), re-registering",
 				"[2/4] Registered",
 				"Link code: 123456",
 			},
@@ -123,7 +123,40 @@ func TestRunSetup(t *testing.T) {
 			wantErr: "daemon error: WebSocket connection refused",
 		},
 		{
-			name: "timeout with daemon not responding",
+			name: "timeout with daemon not responding falls back to registration link code",
+			deps: func(d *setupDeps) {
+				d.boot = func(_ context.Context) (*localapi.BootResponse, error) {
+					return nil, fmt.Errorf("connection refused")
+				}
+				d.link = func(_ context.Context) (*localapi.LinkResponse, int, error) {
+					return nil, 0, fmt.Errorf("connection refused")
+				}
+			},
+			wantOutput: []string{
+				"[4/4] Waiting for daemon",
+				"Link code: 123456",
+			},
+		},
+		{
+			name: "timeout with daemon running but no link code falls back to registration link code",
+			deps: func(d *setupDeps) {
+				d.link = func(_ context.Context) (*localapi.LinkResponse, int, error) {
+					return &localapi.LinkResponse{
+						Error: "source not yet registered",
+						State: localapi.StateRegistering,
+					}, http.StatusServiceUnavailable, nil
+				}
+			},
+			wantOutput: []string{
+				"[4/4] Waiting for daemon",
+				"Link code: 123456",
+			},
+		},
+		{
+			name: "timeout with valid credentials and daemon not responding",
+			cfg: func(c *setupConfig) {
+				c.authToken = "sct_valid"
+			},
 			deps: func(d *setupDeps) {
 				d.boot = func(_ context.Context) (*localapi.BootResponse, error) {
 					return nil, fmt.Errorf("connection refused")
@@ -135,7 +168,10 @@ func TestRunSetup(t *testing.T) {
 			wantErr: "daemon not responding after 30s",
 		},
 		{
-			name: "timeout with daemon running but no link code",
+			name: "timeout with valid credentials and no link code",
+			cfg: func(c *setupConfig) {
+				c.authToken = "sct_valid"
+			},
 			deps: func(d *setupDeps) {
 				d.link = func(_ context.Context) (*localapi.LinkResponse, int, error) {
 					return &localapi.LinkResponse{

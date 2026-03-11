@@ -72,7 +72,6 @@ func buildSetupCommand(serverURL, appName, statusPort, frontendURL string) *cobr
 
 Safe to run multiple times — reuses valid credentials and recovers
 from stale state automatically.`,
-		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			loadEnvFileDefaults(appName)
 
@@ -151,7 +150,8 @@ func runSetup(ctx context.Context, cfg setupConfig, deps setupDeps) error {
 	fmt.Fprintln(output, " done")
 
 	// Step 2: Credential check + registration.
-	if err := setupCredentials(ctx, cfg, deps, output); err != nil {
+	creds, err := setupCredentials(ctx, cfg, deps, output)
+	if err != nil {
 		return err
 	}
 
@@ -170,40 +170,71 @@ func runSetup(ctx context.Context, cfg setupConfig, deps setupDeps) error {
 	fmt.Fprintln(output, " done")
 
 	// Step 4: Wait for link code.
-	return setupPollLink(ctx, cfg, deps, output)
+	return setupPollLink(ctx, cfg, deps, output, creds)
 }
 
+// credentialResult holds the outcome of setupCredentials.
+type credentialResult struct {
+	// registered is non-nil when a new source was registered and contains the
+	// link code needed for the polling fallback.
+	registered *registerResult
+}
+
+// setupCredentials checks existing credentials and registers if needed.
 func setupCredentials(
 	ctx context.Context,
 	cfg setupConfig,
 	deps setupDeps,
 	output io.Writer,
-) error {
+) (credentialResult, error) {
 	fmt.Fprint(output, "  [2/4] Checking credentials...")
 
-	if cfg.authToken != "" {
-		verifyCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		err := deps.verifyToken(verifyCtx, cfg.serverURL, cfg.authToken)
-		cancel()
-
-		if err == nil {
-			fmt.Fprintln(output, " valid")
-
-			return nil
-		}
-
-		fmt.Fprintln(output, " expired, re-registering")
-
-		if removeErr := deps.removeFile(cfg.envPath); removeErr != nil && !os.IsNotExist(removeErr) {
-			return fmt.Errorf("remove stale credentials: %w", removeErr)
-		}
-	} else {
+	if cfg.authToken == "" {
 		fmt.Fprintln(output, " none found, registering")
+
+		result, err := setupRegister(ctx, cfg, deps, output)
+		if err != nil {
+			return credentialResult{}, err
+		}
+
+		return credentialResult{registered: result}, nil
 	}
 
+	verifyCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	verifyErr := deps.verifyToken(verifyCtx, cfg.serverURL, cfg.authToken)
+	cancel()
+
+	if verifyErr == nil {
+		fmt.Fprintln(output, " valid")
+
+		return credentialResult{}, nil
+	}
+
+	fmt.Fprintf(output, " invalid (%v), re-registering\n", verifyErr)
+
+	if removeErr := deps.removeFile(cfg.envPath); removeErr != nil && !os.IsNotExist(removeErr) {
+		return credentialResult{}, fmt.Errorf("remove stale credentials: %w", removeErr)
+	}
+
+	result, err := setupRegister(ctx, cfg, deps, output)
+	if err != nil {
+		return credentialResult{}, err
+	}
+
+	return credentialResult{registered: result}, nil
+}
+
+// setupRegister registers a new source and persists credentials.
+// Always returns a result on success.
+func setupRegister(
+	ctx context.Context,
+	cfg setupConfig,
+	deps setupDeps,
+	output io.Writer,
+) (*registerResult, error) {
 	result, err := deps.register(ctx, cfg.serverURL, cfg.hostname)
 	if err != nil {
-		return fmt.Errorf(
+		return nil, fmt.Errorf(
 			"could not reach savecraft.gg — check your internet connection: %w",
 			err,
 		)
@@ -214,12 +245,12 @@ func setupCredentials(
 		"SAVECRAFT_SOURCE_UUID": result.SourceUUID,
 		"SAVECRAFT_SERVER_URL":  cfg.serverURL,
 	}); writeErr != nil {
-		return fmt.Errorf("save credentials: %w", writeErr)
+		return nil, fmt.Errorf("save credentials: %w", writeErr)
 	}
 
 	fmt.Fprintln(output, "  [2/4] Registered")
 
-	return nil
+	return result, nil
 }
 
 func setupPollLink(
@@ -227,6 +258,7 @@ func setupPollLink(
 	cfg setupConfig,
 	deps setupDeps,
 	output io.Writer,
+	creds credentialResult,
 ) error {
 	fmt.Fprintln(output, "  [4/4] Waiting for daemon...")
 
@@ -254,12 +286,7 @@ func setupPollLink(
 		switch status {
 		case http.StatusOK:
 			if link.LinkCode != "" {
-				fmt.Fprintln(output)
-				fmt.Fprintln(output, "  =============================")
-				fmt.Fprintf(output, "  Link code: %s\n", link.LinkCode)
-				fmt.Fprintln(output, "  =============================")
-				fmt.Fprintln(output)
-				fmt.Fprintf(output, "  Visit %s to connect this device.\n", link.LinkURL)
+				printLinkCode(output, link.LinkCode, link.LinkURL)
 
 				return nil
 			}
@@ -268,6 +295,15 @@ func setupPollLink(
 
 			return nil
 		}
+	}
+
+	// If we registered and got a link code, the daemon is just slow to start.
+	// Show the link code we already have rather than failing.
+	if creds.registered != nil && creds.registered.LinkCode != "" {
+		linkURL := localapi.BuildLinkURL(cfg.frontendURL, creds.registered.LinkCode)
+		printLinkCode(output, creds.registered.LinkCode, linkURL)
+
+		return nil
 	}
 
 	// Final check after all retries.
@@ -287,6 +323,15 @@ func setupPollLink(
 		"daemon started but link code not available after 30s — check logs: http://localhost:%s/logs",
 		cfg.statusPort,
 	)
+}
+
+func printLinkCode(output io.Writer, code, linkURL string) {
+	fmt.Fprintln(output)
+	fmt.Fprintln(output, "  =============================")
+	fmt.Fprintf(output, "  Link code: %s\n", code)
+	fmt.Fprintln(output, "  =============================")
+	fmt.Fprintln(output)
+	fmt.Fprintf(output, "  Visit %s to connect this device.\n", linkURL)
 }
 
 // httpVerifyToken checks whether a source token is still valid by hitting
