@@ -116,6 +116,28 @@ The install script:
 
 **Steam Deck specifics:** SteamOS is immutable — the root filesystem is read-only and resets on OS updates. But `~/.local/bin/` and `~/.config/` persist on the user partition. Systemd user services survive updates. Users need to switch to Desktop Mode to run the curl command via Konsole.
 
+## Installation: Windows
+
+**CMD installer (no signing key yet — no MSI):**
+
+Visit `https://install.savecraft.gg` from a Windows browser. The install Worker detects the Windows User-Agent and serves a `.cmd` file (`savecraft-install.cmd`) instead of the bash script.
+
+The `.cmd` file embeds a PowerShell script that:
+1. Checks for an existing daemon (polls local status port) and offers to reinstall if already linked
+2. Gracefully shuts down existing daemon/tray processes, with `taskkill` fallback
+3. Detects port conflicts and aborts with an error if the status port is occupied
+4. Downloads daemon and tray binaries to `%LOCALAPPDATA%\Savecraft\`
+5. Calls `Unblock-File` on both binaries (removes the "downloaded from internet" mark)
+6. Delegates to `savecraftd setup`, which:
+   - Registers autostart via HKCU `Software\Microsoft\Windows\CurrentVersion\Run` registry key
+   - Validates existing credentials or registers a new source
+   - Starts daemon and tray as detached processes
+   - Polls for link code and displays it
+
+**No admin required.** Everything installs in `%LOCALAPPDATA%\Savecraft\` (user-scoped). Autostart uses the HKCU registry Run key, not a Windows service.
+
+**Unblocking the installer:** The downloaded `.cmd` file is marked with a Zone.Identifier ADS by the browser. Users must right-click the file → Properties → check "Unblock" → OK before double-clicking to run. The script then calls `Unblock-File` on the downloaded daemon and tray binaries internally. An MSI with Authenticode code signing is on the roadmap, which will eliminate these manual steps.
+
 ## Development Tooling
 
 ### Protobuf + buf
