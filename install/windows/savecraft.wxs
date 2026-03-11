@@ -27,8 +27,8 @@
          CloseMessage sends WM_CLOSE first (tray responds to this gracefully).
          TerminateProcess force-kills if WM_CLOSE doesn't work within the
          timeout (daemon is headless — no message loop to receive WM_CLOSE). -->
-    <util:CloseApplication Id="CloseDaemon" Target="savecraftd.exe" RebootPrompt="no" CloseMessage="yes" TerminateProcess="yes" />
-    <util:CloseApplication Id="CloseTray" Target="savecraft-tray.exe" RebootPrompt="no" CloseMessage="yes" TerminateProcess="yes" />
+    <util:CloseApplication Id="CloseDaemon" Target="savecraftd.exe" RebootPrompt="no" CloseMessage="yes" TerminateProcess="0" />
+    <util:CloseApplication Id="CloseTray" Target="savecraft-tray.exe" RebootPrompt="no" CloseMessage="yes" TerminateProcess="0" />
 
     <MediaTemplate EmbedCab="yes" />
 
