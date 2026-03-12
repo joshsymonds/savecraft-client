@@ -165,6 +165,7 @@ jobs:
     name: Build (Windows + MSI)
     needs: [environment, test]
     runs-on: windows-latest
+    environment: signing
     steps:
       - uses: actions/checkout@v4
 
