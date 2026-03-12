@@ -19,7 +19,7 @@ func showToast(title, body, clickURL string) error {
 [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom, ContentType = WindowsRuntime] | Out-Null
 
 $xml = @"
-<toast launch="%s" activationType="protocol">
+<toast launch="%s" activationType="protocol" scenario="reminder">
   <visual>
     <binding template="ToastGeneric">
       <text>%s</text>
