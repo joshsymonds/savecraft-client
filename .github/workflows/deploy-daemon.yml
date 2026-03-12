@@ -87,6 +87,7 @@ jobs:
     outputs:
       is_production: ${{ steps.config.outputs.is_production }}
       version: ${{ steps.version.outputs.version }}
+      msi_version: ${{ steps.version.outputs.msi_version }}
       install_url: ${{ steps.config.outputs.install_url }}
       server_url: ${{ steps.config.outputs.server_url }}
       r2_bucket: ${{ steps.config.outputs.r2_bucket }}
@@ -222,12 +223,12 @@ jobs:
 
       - name: Build MSI (with signed binaries)
         env:
-          VERSION: ${{ needs.environment.outputs.version }}
+          MSI_VERSION: ${{ needs.environment.outputs.msi_version }}
           APP_NAME: ${{ needs.environment.outputs.app_name }}
         run: |
           wix build `
             -arch x64 `
-            -d Version="$env:VERSION" `
+            -d Version="$env:MSI_VERSION" `
             -d DaemonPath="dist/$env:APP_NAME-daemon-windows-amd64.exe" `
             -d TrayPath="dist/$env:APP_NAME-tray-windows-amd64.exe" `
             -o "dist/$env:APP_NAME.msi" `

@@ -24,10 +24,9 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version of Savecraft is already installed." />
 
     <!-- Close running processes before install/upgrade/uninstall.
-         CloseMessage sends WM_CLOSE first (tray responds to this gracefully).
-         TerminateProcess force-kills if WM_CLOSE doesn't work within the
-         timeout (daemon is headless — no message loop to receive WM_CLOSE). -->
-    <util:CloseApplication Id="CloseDaemon" Target="savecraftd.exe" RebootPrompt="no" CloseMessage="yes" TerminateProcess="0" />
+         Tray has a message loop so WM_CLOSE works; daemon is headless so skip
+         CloseMessage and go straight to TerminateProcess (exit code 0). -->
+    <util:CloseApplication Id="CloseDaemon" Target="savecraftd.exe" RebootPrompt="no" CloseMessage="no" EndSessionMessage="no" TerminateProcess="0" Timeout="5" />
     <util:CloseApplication Id="CloseTray" Target="savecraft-tray.exe" RebootPrompt="no" CloseMessage="yes" TerminateProcess="0" />
 
     <MediaTemplate EmbedCab="yes" />
@@ -39,11 +38,13 @@
       <ComponentRef Id="TrayStartupKey" />
     </Feature>
 
-    <!-- Launch tray after install for first-run pairing -->
-    <SetProperty Id="WixShellExecTarget" Value="[INSTALLFOLDER]savecraft-tray.exe" After="CostFinalize" Sequence="execute" />
-    <CustomAction Id="LaunchTray" DllEntry="WixShellExec" Impersonate="yes" BinaryRef="Wix4UtilCA_X86" />
+    <!-- Launch tray after install for first-run pairing.
+         [#savecraft_tray.exe] resolves to the full installed path.
+         $(sys.BUILDARCHSHORT) matches the -arch flag (X86/X64/A64). -->
+    <SetProperty Id="WixShellExecTarget" Value="[#savecraft_tray.exe]" Before="LaunchTray" Sequence="execute" />
+    <CustomAction Id="LaunchTray" DllEntry="WixShellExec" Impersonate="yes" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" />
     <InstallExecuteSequence>
-      <Custom Action="LaunchTray" After="InstallFinalize" Condition="NOT Installed OR REINSTALL" />
+      <Custom Action="LaunchTray" After="InstallFinalize" Condition="NOT Installed" />
     </InstallExecuteSequence>
   </Package>
 

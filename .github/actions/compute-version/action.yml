@@ -12,6 +12,9 @@ outputs:
   version:
     description: Computed version string
     value: ${{ steps.compute.outputs.version }}
+  msi_version:
+    description: MSI-safe version (Major.Minor.Build, integers only)
+    value: ${{ steps.compute.outputs.msi_version }}
   environment:
     description: Either "production" or "staging"
     value: ${{ steps.compute.outputs.environment }}
@@ -25,10 +28,14 @@ runs:
       run: |
         prefix="${{ inputs.tag_prefix }}"
         if [[ "${GITHUB_REF_NAME}" == "${prefix}"* ]]; then
-          echo "version=${GITHUB_REF_NAME#"${prefix}"}" >> "$GITHUB_OUTPUT"
+          version="${GITHUB_REF_NAME#"${prefix}"}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "msi_version=${version}" >> "$GITHUB_OUTPUT"
           echo "environment=production" >> "$GITHUB_OUTPUT"
         else
           short_sha="${GITHUB_SHA::7}"
           echo "version=0.0.0-dev.${GITHUB_RUN_NUMBER}.${short_sha}" >> "$GITHUB_OUTPUT"
+          # MSI requires Major.Minor.Build (integers only, build ≤ 65535)
+          echo "msi_version=0.0.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "environment=staging" >> "$GITHUB_OUTPUT"
         fi
