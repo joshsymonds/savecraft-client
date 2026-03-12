@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html"
 	"os/exec"
+	"syscall"
 )
 
 // showToast displays a Windows toast notification using PowerShell.
@@ -36,6 +37,7 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($doc)
 `, html.EscapeString(clickURL), html.EscapeString(title), html.EscapeString(body))
 
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", script)
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000} // CREATE_NO_WINDOW
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("powershell toast: %w", err)
