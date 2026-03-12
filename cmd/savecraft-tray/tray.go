@@ -15,6 +15,10 @@ import (
 
 const pollInterval = 3 * time.Second
 
+// toastFunc is the function used to show toast notifications.
+// Replaced in tests to avoid shell dependencies.
+var toastFunc = showToast
+
 // trayApp holds the tray application state.
 type trayApp struct {
 	client      *localapi.Client
@@ -29,6 +33,10 @@ type trayApp struct {
 
 	// Re-pair menu item — visible only in StateRunning.
 	mRepair *systray.MenuItem
+
+	// notifiedFirstRun prevents repeated toast notifications within a single
+	// tray process lifetime. Set to true after the first toast fires.
+	notifiedFirstRun bool
 }
 
 func (a *trayApp) onReady() {
@@ -142,6 +150,11 @@ func (a *trayApp) updateStatus(mStatus *systray.MenuItem) {
 	if resp.State == localapi.StateRegistered {
 		linkAvailable = a.updateLinkAccount(ctx)
 		a.mRepair.Hide()
+
+		// Fire a one-shot toast notification on first detection.
+		if linkAvailable {
+			a.maybeNotifyFirstRun()
+		}
 	} else {
 		a.hideLinkAccount()
 
@@ -180,6 +193,27 @@ func (a *trayApp) updateLinkAccount(ctx context.Context) bool {
 	a.mLinkAccount.Show()
 
 	return true
+}
+
+// maybeNotifyFirstRun fires a platform-native toast notification on the first
+// call where linkURL is set. Subsequent calls are no-ops.
+func (a *trayApp) maybeNotifyFirstRun() {
+	if a.notifiedFirstRun {
+		return
+	}
+
+	url := a.linkURL.Load()
+	if url == nil || *url == "" {
+		return
+	}
+
+	a.notifiedFirstRun = true
+
+	if err := toastFunc("Savecraft installed!", "Click to connect your account.", *url); err != nil {
+		if a.logger != nil {
+			a.logger.Error("toast notification", slog.String("error", err.Error()))
+		}
+	}
 }
 
 func (a *trayApp) hideLinkAccount() {

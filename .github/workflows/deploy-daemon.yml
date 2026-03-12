@@ -218,8 +218,10 @@ jobs:
       - name: Install WiX v5
         run: dotnet tool install --global wix --version 5.0.2
 
-      - name: Add WixToolset.Util.wixext
-        run: wix extension add WixToolset.Util.wixext/5.0.2
+      - name: Add WiX extensions
+        run: |
+          wix extension add WixToolset.Util.wixext/5.0.2
+          wix extension add WixToolset.UI.wixext/5.0.2
 
       - name: Build MSI (with signed binaries)
         env:
@@ -233,6 +235,7 @@ jobs:
             -d TrayPath="dist/$env:APP_NAME-tray-windows-amd64.exe" `
             -o "dist/$env:APP_NAME.msi" `
             -ext WixToolset.Util.wixext `
+            -ext WixToolset.UI.wixext `
             install/windows/savecraft.wxs
 
       - name: Sign MSI (Authenticode)

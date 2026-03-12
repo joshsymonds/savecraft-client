@@ -31,6 +31,9 @@
 
     <MediaTemplate EmbedCab="yes" />
 
+    <!-- Show install progress and completion UI -->
+    <UIRef Id="WixUI_Minimal" />
+
     <Feature Id="Main" Title="Savecraft" Level="1">
       <ComponentRef Id="DaemonExe" />
       <ComponentRef Id="TrayExe" />

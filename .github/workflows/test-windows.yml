@@ -52,8 +52,10 @@ jobs:
       - name: Install WiX v5
         run: dotnet tool install --global wix --version 5.0.2
 
-      - name: Add WixToolset.Util.wixext
-        run: wix extension add WixToolset.Util.wixext/5.0.2
+      - name: Add WiX extensions
+        run: |
+          wix extension add WixToolset.Util.wixext/5.0.2
+          wix extension add WixToolset.UI.wixext/5.0.2
 
       - name: Build MSI
         run: |
@@ -64,6 +66,7 @@ jobs:
             -d TrayPath="dist/savecraft-tray-windows-amd64.exe" `
             -o "dist/savecraft.msi" `
             -ext WixToolset.Util.wixext `
+            -ext WixToolset.UI.wixext `
             install/windows/savecraft.wxs
           $msi = Get-Item "dist/savecraft.msi"
           Write-Output "MSI size: $($msi.Length) bytes"
