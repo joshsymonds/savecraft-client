@@ -1,15 +1,13 @@
 package main
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestToastFiresOncePerProcessLifetime(t *testing.T) {
 	var calls []string
 
 	// Replace toast function with a recorder.
 	original := toastFunc
-	toastFunc = func(title, body, clickURL string) error {
+	toastFunc = func(_, _, clickURL string) error {
 		calls = append(calls, clickURL)
 		return nil
 	}
@@ -95,4 +93,3 @@ func TestToastSkipsWhenAlreadyNotified(t *testing.T) {
 		t.Fatalf("expected 0 toast calls when already notified, got %d", calls)
 	}
 }
-

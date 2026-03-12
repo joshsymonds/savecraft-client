@@ -17,7 +17,7 @@ const pollInterval = 3 * time.Second
 
 // toastFunc is the function used to show toast notifications.
 // Replaced in tests to avoid shell dependencies.
-var toastFunc = showToast
+var toastFunc = showToast //nolint:gochecknoglobals // test injection point
 
 // trayApp holds the tray application state.
 type trayApp struct {
