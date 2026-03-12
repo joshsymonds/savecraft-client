@@ -38,12 +38,14 @@
       <ComponentRef Id="TrayStartupKey" />
     </Feature>
 
-    <!-- Launch tray after install for first-run pairing.
-         Type 18 custom action: runs an installed file directly. No shell exec
-         DLL, no property indirection. asyncNoWait so MSI doesn't block on it. -->
-    <CustomAction Id="LaunchTray" FileRef="savecraft_tray.exe" ExeCommand="" Return="asyncNoWait" Impersonate="yes" />
+    <!-- Launch daemon and tray after install.
+         Type 18 custom actions: run installed files directly. asyncNoWait so
+         MSI doesn't block. Daemon first, then tray for first-run pairing. -->
+    <CustomAction Id="LaunchDaemon" FileRef="savecraftd.exe" ExeCommand="" Return="asyncNoWait" />
+    <CustomAction Id="LaunchTray" FileRef="savecraft_tray.exe" ExeCommand="" Return="asyncNoWait" />
     <InstallExecuteSequence>
-      <Custom Action="LaunchTray" After="InstallFinalize" Condition="NOT Installed" />
+      <Custom Action="LaunchDaemon" After="InstallFinalize" Condition="NOT Installed" />
+      <Custom Action="LaunchTray" After="LaunchDaemon" Condition="NOT Installed" />
     </InstallExecuteSequence>
   </Package>
 

@@ -4,7 +4,6 @@
 package main
 
 import (
-	_ "embed"
 	"fmt"
 	"log/slog"
 	"os"
@@ -16,8 +15,8 @@ import (
 	"github.com/joshsymonds/savecraft.gg/internal/localapi"
 )
 
-//go:embed assets/icon.png
-var iconBytes []byte
+// iconBytes is set per-platform: .ico on Windows, .png elsewhere.
+// See icon_windows.go and icon_other.go.
 
 // Overridden via ldflags at build time for staging/production.
 var (
