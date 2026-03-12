@@ -39,9 +39,9 @@
     </Feature>
 
     <!-- Launch tray after install for first-run pairing.
-         $(sys.BUILDARCHSHORT) matches the -arch flag (X86/X64/A64). -->
-    <SetProperty Id="WixShellExecTarget" Value="[INSTALLFOLDER]savecraft-tray.exe" After="CostFinalize" Sequence="execute" />
-    <CustomAction Id="LaunchTray" DllEntry="WixShellExec" Impersonate="yes" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" />
+         Type 18 custom action: runs an installed file directly. No shell exec
+         DLL, no property indirection. asyncNoWait so MSI doesn't block on it. -->
+    <CustomAction Id="LaunchTray" FileRef="savecraft_tray.exe" ExeCommand="" Return="asyncNoWait" Impersonate="yes" />
     <InstallExecuteSequence>
       <Custom Action="LaunchTray" After="InstallFinalize" Condition="NOT Installed" />
     </InstallExecuteSequence>
