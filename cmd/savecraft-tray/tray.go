@@ -137,7 +137,7 @@ func (a *trayApp) updateStatus(mStatus *systray.MenuItem) {
 	resp, err := a.client.Boot(ctx)
 	if err != nil {
 		a.hideLinkAccount()
-		mStatus.SetTitle("Daemon offline")
+		mStatus.SetTitle("Offline")
 		mStatus.SetTooltip("Cannot reach daemon at localhost")
 		systray.SetTooltip("Savecraft — offline")
 
@@ -167,7 +167,7 @@ func (a *trayApp) updateStatus(mStatus *systray.MenuItem) {
 
 	title := stateTitle(resp.State)
 	if linkAvailable {
-		title = "Registered — click Link Account"
+		title = "Ready to link — click Link Account"
 	}
 
 	mStatus.SetTitle(title)
@@ -227,9 +227,9 @@ func stateTitle(state localapi.State) string {
 	case localapi.StateStarting:
 		return "Starting..."
 	case localapi.StateRegistering:
-		return "Registering..."
+		return "Connecting..."
 	case localapi.StateRegistered:
-		return "Registered (linking)"
+		return "Ready to link"
 	case localapi.StateRunning:
 		return "Connected"
 	case localapi.StateError:
