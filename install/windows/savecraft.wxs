@@ -11,7 +11,8 @@
   Launches tray on MSI completion for first-run pairing flow.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
   <Package
     Name="Savecraft"
     Manufacturer="Savecraft"
@@ -32,7 +33,7 @@
     <MediaTemplate EmbedCab="yes" />
 
     <!-- Show install progress and completion UI -->
-    <UIRef Id="WixUI_Minimal" />
+    <ui:WixUI Id="WixUI_Minimal" />
 
     <Feature Id="Main" Title="Savecraft" Level="1">
       <ComponentRef Id="DaemonExe" />
