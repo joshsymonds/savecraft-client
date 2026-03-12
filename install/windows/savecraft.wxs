@@ -39,9 +39,8 @@
     </Feature>
 
     <!-- Launch tray after install for first-run pairing.
-         [#savecraft_tray.exe] resolves to the full installed path.
          $(sys.BUILDARCHSHORT) matches the -arch flag (X86/X64/A64). -->
-    <SetProperty Id="WixShellExecTarget" Value="[#savecraft_tray.exe]" Before="LaunchTray" Sequence="execute" />
+    <SetProperty Id="WixShellExecTarget" Value="[INSTALLFOLDER]savecraft-tray.exe" After="CostFinalize" Sequence="execute" />
     <CustomAction Id="LaunchTray" DllEntry="WixShellExec" Impersonate="yes" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" />
     <InstallExecuteSequence>
       <Custom Action="LaunchTray" After="InstallFinalize" Condition="NOT Installed" />
