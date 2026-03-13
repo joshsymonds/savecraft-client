@@ -93,7 +93,7 @@ from stale state automatically.`,
 				return fmt.Errorf("get executable path: %w", exeErr)
 			}
 
-			trayPath := filepath.Join(filepath.Dir(exePath), appName+"-tray"+trayBinaryExt())
+			trayPath := filepath.Join(filepath.Dir(exePath), "savecraft-tray"+trayBinaryExt())
 			if _, statErr := os.Stat(trayPath); statErr != nil {
 				trayPath = ""
 			}

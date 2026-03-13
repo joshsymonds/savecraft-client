@@ -146,7 +146,7 @@ func runDaemonSubsystems(
 	cfg.Daemon.BinaryPath = binaryPath
 
 	// Derive tray binary path: same directory, predictable name.
-	trayPath := filepath.Join(filepath.Dir(binaryPath), appName+"-tray"+trayBinaryExt())
+	trayPath := filepath.Join(filepath.Dir(binaryPath), "savecraft-tray"+trayBinaryExt())
 	if _, statErr := os.Stat(trayPath); statErr == nil {
 		cfg.Daemon.TrayBinaryPath = trayPath
 	}
