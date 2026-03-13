@@ -190,6 +190,7 @@ jobs:
 
           for game_id in $deploy_plugins; do
             echo "==> Processing plugin: ${game_id} v${VERSION}"
+            pids=()
 
             # Generate manifest (works for both WASM and API plugins)
             just build-plugin "$game_id"
@@ -198,23 +199,25 @@ jobs:
             # Detect plugin source type from plugin.toml
             plugin_source=$(grep '^source' "plugins/${game_id}/plugin.toml" | sed 's/.*=.*"\(.*\)".*/\1/')
 
-            # Upload icon if present
+            # Upload icon if present (background)
             for icon_ext in png svg; do
               icon_file="plugins/${game_id}/icon.${icon_ext}"
               if [ -f "$icon_file" ]; then
-                wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/icon.${icon_ext}" --file "$icon_file" --remote
-                echo "    Uploaded icon.${icon_ext}"
+                wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/icon.${icon_ext}" --file "$icon_file" --remote &
+                pids+=($!)
               fi
             done
 
             if [ "$plugin_source" = "api" ]; then
               # API plugins have no WASM — upload manifest + icon only
-              wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json" --remote
+              wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json" --remote &
+              pids+=($!)
+              for pid in "${pids[@]}"; do wait "$pid" || exit 1; done
               echo "    Published ${game_id} v${VERSION} (API adapter, manifest only)"
               continue
             fi
 
-            # WASM plugin: sign, upload parser + optional reference
+            # WASM plugin: sign, then upload in parallel
             parser_file="plugins/${game_id}/parser.wasm"
             go run ./cmd/savecraft-sign/ "$parser_file" /tmp/signing_key.priv
 
@@ -223,20 +226,27 @@ jobs:
               go run ./cmd/savecraft-sign/ "$ref_file" /tmp/signing_key.priv
             fi
 
-            # Upload to R2
-            wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/parser.wasm" --file "$parser_file" --remote
-            wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/parser.wasm.sig" --file "${parser_file}.sig" --remote
+            # Upload to R2 (all in parallel)
+            wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/parser.wasm" --file "$parser_file" --remote &
+            pids+=($!)
+            wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/parser.wasm.sig" --file "${parser_file}.sig" --remote &
+            pids+=($!)
             if [ -f "$ref_file" ]; then
-              wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/reference.wasm" --file "$ref_file" --remote
-              wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/reference.wasm.sig" --file "${ref_file}.sig" --remote
+              wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/reference.wasm" --file "$ref_file" --remote &
+              pids+=($!)
+              wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/reference.wasm.sig" --file "${ref_file}.sig" --remote &
+              pids+=($!)
 
-              # Deploy reference Worker to WfP dispatch namespace
+              # Deploy reference Worker to WfP dispatch namespace (sequential — needs npm ci + cd)
               cp "$ref_file" reference/reference.wasm
               cd reference && npm ci && npx wrangler deploy --name "${game_id}-reference" --dispatch-namespace "$dispatch_ns" && cd ..
               echo "    Deployed ${game_id}-reference to ${dispatch_ns}"
             fi
-            wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json" --remote
+            wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json" --remote &
+            pids+=($!)
 
+            # Wait for all R2 uploads to finish
+            for pid in "${pids[@]}"; do wait "$pid" || exit 1; done
             echo "    Published ${game_id} v${VERSION}"
           done
 
