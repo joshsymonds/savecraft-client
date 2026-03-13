@@ -40,17 +40,17 @@
       <ComponentRef Id="TrayStartupKey" />
     </Feature>
 
-    <!-- Launch daemon after install. The daemon launches the tray itself
-         once registration completes. We cannot launch the tray directly from
-         InstallExecuteSequence because custom actions run inside the msiexec
-         service context, which lacks access to the user's interactive desktop
-         — Shell_NotifyIcon fails and the tray exits immediately. The headless
-         daemon works fine from this context and can spawn the tray in the
-         user's session via its own process. -->
+    <!-- Launch daemon after install from the UI sequence (not execute sequence).
+         InstallExecuteSequence runs inside the msiexec service process whose
+         Job Object kills all child processes when the install completes.
+         InstallUISequence runs in the user's own process — no Job Object, full
+         desktop access. Scheduling After="ExecuteAction" ensures all files are
+         installed before we try to run them. The daemon then launches the tray
+         itself once registration completes. -->
     <CustomAction Id="LaunchDaemon" FileRef="savecraftd.exe" ExeCommand="" Return="asyncNoWait" />
-    <InstallExecuteSequence>
-      <Custom Action="LaunchDaemon" After="InstallFinalize" Condition="NOT Installed" />
-    </InstallExecuteSequence>
+    <InstallUISequence>
+      <Custom Action="LaunchDaemon" After="ExecuteAction" Condition="NOT Installed" />
+    </InstallUISequence>
   </Package>
 
   <!-- Install to %LOCALAPPDATA%\Savecraft\ (per-user, no elevation) -->
