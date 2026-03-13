@@ -65,14 +65,17 @@ func showPairingDialog(code, linkURL string, paired <-chan struct{}) error {
 
 	w.SetHtml(html)
 
-	// Make the dialog always-on-top so it isn't buried under other windows.
-	// The user dismisses it explicitly via "Link Account" or "Skip for now".
-	setTopmost(w)
-
 	// Watch for pairing completion in a background goroutine.
 	// dialogDone is closed when w.Run() returns (user dismissed), so the
 	// goroutine doesn't leak if the dialog closes before pairing completes.
 	dialogDone := make(chan struct{})
+
+	// Make the dialog always-on-top once the message pump starts and the
+	// window is visible. Calling SetWindowPos before Run() has no effect
+	// because the window isn't shown yet.
+	w.Dispatch(func() {
+		setTopmost(w)
+	})
 
 	go func() {
 		select {
