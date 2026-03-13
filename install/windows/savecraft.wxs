@@ -8,7 +8,7 @@
            -o savecraft.msi savecraft.wxs
 
   Per-user install to %LOCALAPPDATA%\Savecraft\. No admin required.
-  Launches tray on MSI completion for first-run pairing flow.
+  Launches daemon on MSI completion via Task Scheduler (escapes Job Object).
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
@@ -40,33 +40,52 @@
       <ComponentRef Id="TrayStartupKey" />
     </Feature>
 
-    <!-- Launch daemon after first install using ShellExecuteEx (not CreateProcess).
+    <!-- Launch daemon after first install via Task Scheduler.
 
-         WHY NOT Type 18 (FileRef)?
-         Type 18 custom actions use CreateProcess, and the child process inherits
-         the MSI server's Job Object. Windows kills every process in the job when
-         msiexec exits — asyncNoWait does NOT prevent this. This applies to BOTH
-         InstallExecuteSequence (server process) and InstallUISequence (Type 18
-         cannot resolve FileRef paths from the UI sequence anyway).
+         WHY NOT CreateProcess-based approaches (Type 18, ShellExecuteEx)?
+         The MSI's calling context (Add/Remove Programs, SCCM, etc.) may place
+         child processes in a Job Object with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE.
+         Every child — including asyncNoWait and ShellExecuteEx targets — dies
+         when the installer exits. ShellExecuteEx does NOT delegate to explorer;
+         it calls CreateProcess internally and inherits the caller's Job Object.
 
-         WHY WixShellExec WORKS:
-         WixShellExec calls ShellExecuteEx(), which delegates process creation to
-         the Windows Shell (explorer.exe). The launched process is a child of
-         explorer.exe, NOT msiexec — so it is outside the MSI Job Object and
-         survives installer exit. We run it from InstallUISequence (the user's
-         own msiexec client process) After="ExecuteAction" so files are on disk.
-
-         The [#FileId] syntax resolves to the full installed path of the file. -->
-    <Property Id="WixShellExecTarget" Value="[#savecraftd.exe]" />
-    <CustomAction Id="LaunchDaemon"
+         WHY Task Scheduler WORKS:
+         The Task Scheduler service (svchost.exe) creates the process independently,
+         outside any Job Object. Pattern: create a one-time task, run it immediately,
+         delete the task definition. The running process survives task deletion.
+         Works for both interactive and silent (/qn) installs. -->
+    <SetProperty Id="CreateLaunchTask" Before="CreateLaunchTask" Sequence="execute"
+        Value="&quot;[SystemFolder]schtasks.exe&quot; /create /tn &quot;Savecraft_Launch&quot; /tr &quot;\&quot;[INSTALLFOLDER]savecraftd.exe\&quot;&quot; /sc once /st 00:00 /f" />
+    <CustomAction Id="CreateLaunchTask"
                   BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
-                  DllEntry="WixShellExec"
-                  Execute="immediate"
-                  Impersonate="yes"
-                  Return="check" />
-    <InstallUISequence>
-      <Custom Action="LaunchDaemon" After="ExecuteAction" Condition="NOT Installed" />
-    </InstallUISequence>
+                  DllEntry="WixQuietExec"
+                  Execute="deferred"
+                  Return="check"
+                  Impersonate="yes" />
+
+    <SetProperty Id="RunLaunchTask" Before="RunLaunchTask" Sequence="execute"
+        Value="&quot;[SystemFolder]schtasks.exe&quot; /run /tn &quot;Savecraft_Launch&quot;" />
+    <CustomAction Id="RunLaunchTask"
+                  BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
+                  DllEntry="WixQuietExec"
+                  Execute="deferred"
+                  Return="ignore"
+                  Impersonate="yes" />
+
+    <SetProperty Id="DeleteLaunchTask" Before="DeleteLaunchTask" Sequence="execute"
+        Value="&quot;[SystemFolder]schtasks.exe&quot; /delete /tn &quot;Savecraft_Launch&quot; /f" />
+    <CustomAction Id="DeleteLaunchTask"
+                  BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
+                  DllEntry="WixQuietExec"
+                  Execute="deferred"
+                  Return="ignore"
+                  Impersonate="yes" />
+
+    <InstallExecuteSequence>
+      <Custom Action="CreateLaunchTask" Before="InstallFinalize" Condition="NOT Installed" />
+      <Custom Action="RunLaunchTask" After="CreateLaunchTask" Condition="NOT Installed" />
+      <Custom Action="DeleteLaunchTask" After="RunLaunchTask" Condition="NOT Installed" />
+    </InstallExecuteSequence>
   </Package>
 
   <!-- Install to %LOCALAPPDATA%\Savecraft\ (per-user, no elevation) -->
