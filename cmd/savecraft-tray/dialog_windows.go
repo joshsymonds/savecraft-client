@@ -8,6 +8,7 @@ import (
 	"runtime"
 
 	webview2 "github.com/jchv/go-webview2"
+	"golang.org/x/sys/windows"
 )
 
 // showPairingDialog opens a branded WebView2 dialog showing the link code.
@@ -64,6 +65,10 @@ func showPairingDialog(code, linkURL string, paired <-chan struct{}) error {
 
 	w.SetHtml(html)
 
+	// Make the dialog always-on-top so it isn't buried under other windows.
+	// The user dismisses it explicitly via "Link Account" or "Skip for now".
+	setTopmost(w)
+
 	// Watch for pairing completion in a background goroutine.
 	// dialogDone is closed when w.Run() returns (user dismissed), so the
 	// goroutine doesn't leak if the dialog closes before pairing completes.
@@ -84,4 +89,23 @@ func showPairingDialog(code, linkURL string, paired <-chan struct{}) error {
 	close(dialogDone)
 
 	return nil
+}
+
+var procSetWindowPos = windows.NewLazySystemDLL("user32.dll").NewProc("SetWindowPos") //nolint:gochecknoglobals // Windows API proc resolved once
+
+// setTopmost makes the WebView2 window always-on-top using SetWindowPos.
+func setTopmost(w webview2.WebView) {
+	hwnd := uintptr(w.Window())
+	if hwnd == 0 {
+		return
+	}
+
+	const (
+		hwndTopmost = ^uintptr(0) // HWND_TOPMOST = (HWND)-1
+		swpNoMove   = 0x0002
+		swpNoSize   = 0x0001
+	)
+
+	//nolint:errcheck // SetWindowPos failure is non-fatal
+	procSetWindowPos.Call(hwnd, hwndTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize)
 }

@@ -27,7 +27,7 @@ type setupDeps struct {
 	writeEnv       func(path string, vars map[string]string) error
 	removeFile     func(path string) error
 	startDaemon    func() error
-	startTray      func(trayPath string) error
+	startTray      func(trayPath string, args ...string) error
 	boot           func(ctx context.Context) (*localapi.BootResponse, error)
 	link           func(ctx context.Context) (*localapi.LinkResponse, int, error)
 	sleep          func(d time.Duration)
@@ -360,8 +360,11 @@ func httpVerifyToken(ctx context.Context, serverURL, token string) error {
 }
 
 // startTrayProcess launches the tray app as a background process.
-func startTrayProcess(path string) error {
-	trayCmd := exec.CommandContext(context.Background(), path)
+// Extra args (e.g. --link-code, --link-url) are passed through.
+func startTrayProcess(path string, args ...string) error {
+	trayCmd := exec.CommandContext(
+		context.Background(), path, args...,
+	)
 	if err := trayCmd.Start(); err != nil {
 		return fmt.Errorf("start tray: %w", err)
 	}

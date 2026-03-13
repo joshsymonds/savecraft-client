@@ -29,7 +29,7 @@ func newWorkingSetupDeps() setupDeps {
 		writeEnv:    func(_ string, _ map[string]string) error { return nil },
 		removeFile:  func(_ string) error { return nil },
 		startDaemon: func() error { return nil },
-		startTray:   func(_ string) error { return nil },
+		startTray:   func(_ string, _ ...string) error { return nil },
 		boot: func(_ context.Context) (*localapi.BootResponse, error) {
 			return &localapi.BootResponse{State: localapi.StateRunning}, nil
 		},
@@ -239,7 +239,7 @@ func TestRunSetup(t *testing.T) {
 				c.trayPath = "/fake/tray"
 			},
 			deps: func(d *setupDeps) {
-				d.startTray = func(_ string) error {
+				d.startTray = func(_ string, _ ...string) error {
 					return fmt.Errorf("tray binary corrupt")
 				}
 			},

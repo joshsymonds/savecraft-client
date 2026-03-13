@@ -36,6 +36,12 @@ type trayApp struct {
 	// Re-pair menu item — visible only in StateRunning.
 	mRepair *systray.MenuItem
 
+	// initialLinkCode and initialLinkURL are passed via CLI flags when the
+	// daemon launches the tray after a fresh registration. When set, the
+	// pairing dialog opens immediately without waiting for a poll cycle.
+	initialLinkCode string
+	initialLinkURL  string
+
 	// notifiedFirstRun prevents repeated toast notifications within a single
 	// tray process lifetime. Set to true after the first toast fires.
 	notifiedFirstRun bool
@@ -75,6 +81,15 @@ func (a *trayApp) onReady() {
 	systray.AddSeparator()
 
 	mQuit := systray.AddMenuItem("Quit", "Close the tray app")
+
+	// If launched with --link-code/--link-url, show the pairing dialog
+	// immediately without waiting for a poll cycle.
+	if a.initialLinkCode != "" && a.initialLinkURL != "" {
+		a.linkCode.Store(&a.initialLinkCode)
+		a.linkURL.Store(&a.initialLinkURL)
+		a.mLinkAccount.Show()
+		a.maybeNotifyFirstRun()
+	}
 
 	// Handle menu clicks.
 	go a.handleClicks(mCopyLogs, mRestart, mUpdatePlugins, mDashboard, mQuit)
@@ -228,10 +243,11 @@ func (a *trayApp) maybeNotifyFirstRun() {
 	a.notifyFirstRun(*url)
 }
 
+var emptyStr string //nolint:gochecknoglobals // reused sentinel avoids allocation per poll cycle
+
 func (a *trayApp) hideLinkAccount() {
-	empty := ""
-	a.linkURL.Store(&empty)
-	a.linkCode.Store(&empty)
+	a.linkURL.Store(&emptyStr)
+	a.linkCode.Store(&emptyStr)
 	a.mLinkAccount.Hide()
 }
 

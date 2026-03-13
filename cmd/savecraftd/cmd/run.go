@@ -237,7 +237,10 @@ func applyRegistration(
 	}
 
 	if cfg.Daemon.TrayBinaryPath != "" {
-		if trayErr := startTrayProcess(cfg.Daemon.TrayBinaryPath); trayErr != nil {
+		if trayErr := startTrayProcess(cfg.Daemon.TrayBinaryPath,
+			"--link-code", regResult.LinkCode,
+			"--link-url", linkURL,
+		); trayErr != nil {
 			logger.WarnContext(ctx, "launch tray", slog.String("error", trayErr.Error()))
 		}
 	}

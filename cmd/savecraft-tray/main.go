@@ -35,17 +35,48 @@ func main() {
 		frontendURL = defaultFrontendURL
 	}
 
+	// Parse --link-code and --link-url flags for immediate dialog on first run.
+	// The daemon passes these when launching the tray after a fresh registration
+	// so the pairing dialog appears instantly without waiting for a poll cycle.
+	linkCode, linkURL := parseLinkFlags()
+
 	client := localapi.NewClient("http://localhost:" + port)
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	app := &trayApp{
-		client:      client,
-		frontendURL: frontendURL,
-		logger:      logger,
+		client:          client,
+		frontendURL:     frontendURL,
+		logger:          logger,
+		initialLinkCode: linkCode,
+		initialLinkURL:  linkURL,
 	}
 
 	systray.Run(app.onReady, app.onExit)
+}
+
+// parseLinkFlags extracts --link-code and --link-url from os.Args.
+// Uses manual parsing to avoid pulling in a flags library for two args.
+func parseLinkFlags() (code, url string) {
+	return parseLinkArgs(os.Args[1:])
+}
+
+// parseLinkArgs extracts --link-code and --link-url from the given args slice.
+func parseLinkArgs(args []string) (code, url string) {
+	for i, arg := range args {
+		switch {
+		case arg == "--link-code" && i+1 < len(args):
+			code = args[i+1]
+		case strings.HasPrefix(arg, "--link-code="):
+			code = strings.TrimPrefix(arg, "--link-code=")
+		case arg == "--link-url" && i+1 < len(args):
+			url = args[i+1]
+		case strings.HasPrefix(arg, "--link-url="):
+			url = strings.TrimPrefix(arg, "--link-url=")
+		}
+	}
+
+	return code, url
 }
 
 // openBrowser opens a URL in the user's default browser.
