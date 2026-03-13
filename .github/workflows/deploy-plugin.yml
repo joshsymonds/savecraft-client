@@ -188,6 +188,11 @@ jobs:
             dispatch_ns="savecraft-reference-plugins-staging"
           fi
 
+          # Pre-install reference Worker dependencies (used by plugins with reference.wasm)
+          if [ -d reference ]; then
+            cd reference && npm ci && cd ..
+          fi
+
           for game_id in $deploy_plugins; do
             echo "==> Processing plugin: ${game_id} v${VERSION}"
             pids=()
@@ -237,9 +242,9 @@ jobs:
               wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/reference.wasm.sig" --file "${ref_file}.sig" --remote &
               pids+=($!)
 
-              # Deploy reference Worker to WfP dispatch namespace (sequential — needs npm ci + cd)
+              # Deploy reference Worker to WfP dispatch namespace
               cp "$ref_file" reference/reference.wasm
-              cd reference && npm ci && npx wrangler deploy --name "${game_id}-reference" --dispatch-namespace "$dispatch_ns" && cd ..
+              cd reference && npx wrangler deploy --name "${game_id}-reference" --dispatch-namespace "$dispatch_ns" && cd ..
               echo "    Deployed ${game_id}-reference to ${dispatch_ns}"
             fi
             wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json" --remote &
