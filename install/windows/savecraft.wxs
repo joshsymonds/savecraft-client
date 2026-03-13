@@ -55,7 +55,7 @@
          delete the task definition. The running process survives task deletion.
          Works for both interactive and silent (/qn) installs. -->
     <SetProperty Id="CreateLaunchTask" Before="CreateLaunchTask" Sequence="execute"
-        Value="&quot;[SystemFolder]schtasks.exe&quot; /create /tn &quot;Savecraft_Launch&quot; /tr &quot;\&quot;[INSTALLFOLDER]savecraftd.exe\&quot;&quot; /sc once /st 00:00 /f" />
+        Value="&quot;[SystemFolder]schtasks.exe&quot; /create /tn &quot;Savecraft_Launch&quot; /tr &quot;\&quot;[INSTALLFOLDER]savecraftd.exe\&quot; setup&quot; /sc once /st 00:00 /f" />
     <CustomAction Id="CreateLaunchTask"
                   BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
                   DllEntry="WixQuietExec"
