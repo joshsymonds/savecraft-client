@@ -17,7 +17,9 @@ require (
 require (
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/jchv/go-webview2 v0.0.0-20260205173254-56598839c808 // indirect
+	github.com/jchv/go-webview2 v0.0.0-20260205173254-56598839c808
 	github.com/jchv/go-winloader v0.0.0-20250406163304-c1995be93bd1 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 )
+
+replace github.com/jchv/go-webview2 => github.com/joshsymonds/go-webview2 v0.0.0-20260313235041-e1c281c87318

@@ -8,7 +8,6 @@ import (
 	"runtime"
 
 	webview2 "github.com/jchv/go-webview2"
-	"golang.org/x/sys/windows"
 )
 
 // showPairingDialog opens a branded WebView2 dialog showing the link code.
@@ -34,10 +33,11 @@ func showPairingDialog(code, linkURL string, paired <-chan struct{}) error {
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
 		AutoFocus: true,
 		WindowOptions: webview2.WindowOptions{
-			Title:  "Savecraft",
-			Width:  420,
-			Height: 480,
-			Center: true,
+			Title:   "Savecraft",
+			Width:   420,
+			Height:  480,
+			Center:  true,
+			Topmost: true,
 		},
 	})
 	if w == nil {
@@ -70,13 +70,6 @@ func showPairingDialog(code, linkURL string, paired <-chan struct{}) error {
 	// goroutine doesn't leak if the dialog closes before pairing completes.
 	dialogDone := make(chan struct{})
 
-	// Make the dialog always-on-top once the message pump starts and the
-	// window is visible. Calling SetWindowPos before Run() has no effect
-	// because the window isn't shown yet.
-	w.Dispatch(func() {
-		setTopmost(w)
-	})
-
 	go func() {
 		select {
 		case <-paired:
@@ -92,27 +85,4 @@ func showPairingDialog(code, linkURL string, paired <-chan struct{}) error {
 	close(dialogDone)
 
 	return nil
-}
-
-var procSetWindowPos = windows.NewLazySystemDLL("user32.dll").NewProc("SetWindowPos") //nolint:gochecknoglobals // Windows API proc resolved once
-
-// setTopmost makes the WebView2 window always-on-top using SetWindowPos.
-func setTopmost(w webview2.WebView) {
-	hwnd := uintptr(w.Window())
-	if hwnd == 0 {
-		return
-	}
-
-	const (
-		hwndTopmost   = ^uintptr(0) // HWND_TOPMOST = (HWND)-1
-		swpNoMove     = 0x0002
-		swpNoSize     = 0x0001
-		swpNoActivate = 0x0010
-	)
-
-	//nolint:errcheck // SetWindowPos failure is non-fatal
-	procSetWindowPos.Call(
-		hwnd, hwndTopmost, 0, 0, 0, 0,
-		uintptr(swpNoMove|swpNoSize|swpNoActivate),
-	)
 }
