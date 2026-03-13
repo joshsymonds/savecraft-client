@@ -128,7 +128,7 @@ jobs:
 
   build:
     name: Build (Linux + macOS)
-    needs: [environment, test]
+    needs: [environment]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -155,6 +155,22 @@ jobs:
           just build-daemon darwin amd64 "$VERSION" "$SERVER_URL" "$INSTALL_URL" "$APP_NAME" "$STATUS_PORT" "$FRONTEND_URL"
           just build-daemon darwin arm64 "$VERSION" "$SERVER_URL" "$INSTALL_URL" "$APP_NAME" "$STATUS_PORT" "$FRONTEND_URL"
 
+      - name: Ed25519 sign binaries
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
+          APP_NAME: ${{ needs.environment.outputs.app_name }}
+        run: |
+          echo "$SIGNING_KEY" | base64 -d > /tmp/signing_key.priv
+          for f in dist/"${APP_NAME}"-daemon-*; do
+            [ -f "$f" ] || continue
+            [[ "$f" == *.sig ]] && continue
+            go run ./cmd/savecraft-sign/ "$f" /tmp/signing_key.priv
+          done
+
+      - name: Clean up signing key
+        if: always()
+        run: rm -f /tmp/signing_key.priv
+
       - uses: actions/upload-artifact@v4
         with:
           name: daemon-artifacts
@@ -163,7 +179,7 @@ jobs:
 
   build-windows:
     name: Build (Windows + MSI)
-    needs: [environment, test]
+    needs: [environment]
     runs-on: windows-latest
     environment: signing
     steps:
@@ -250,6 +266,24 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
+      - name: Ed25519 sign binaries
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
+          APP_NAME: ${{ needs.environment.outputs.app_name }}
+        shell: bash
+        run: |
+          echo "$SIGNING_KEY" | base64 -d > /tmp/signing_key.priv
+          for f in dist/"${APP_NAME}"-daemon-windows-* dist/"${APP_NAME}"-tray-windows-*; do
+            [ -f "$f" ] || continue
+            [[ "$f" == *.sig ]] && continue
+            go run ./cmd/savecraft-sign/ "$f" /tmp/signing_key.priv
+          done
+
+      - name: Clean up signing key
+        if: always()
+        shell: bash
+        run: rm -f /tmp/signing_key.priv
+
       - uses: actions/upload-artifact@v4
         with:
           name: windows-artifacts
@@ -258,16 +292,12 @@ jobs:
             dist/${{ needs.environment.outputs.app_name }}-tray-windows-*
             dist/${{ needs.environment.outputs.app_name }}.msi
 
-  sign:
-    name: Sign
-    needs: [environment, build, build-windows]
+  upload-r2:
+    name: Upload to R2
+    needs: [environment, build, build-windows, test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.26"
 
       - uses: actions/download-artifact@v4
         with:
@@ -279,51 +309,12 @@ jobs:
           name: windows-artifacts
           path: dist
 
-      - name: Decode signing key
-        run: echo "$SIGNING_KEY" | base64 -d > /tmp/signing_key.priv
-        env:
-          SIGNING_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
-
-      - name: Sign binaries
-        env:
-          APP_NAME: ${{ needs.environment.outputs.app_name }}
-        run: |
-          for f in dist/"${APP_NAME}"-daemon-* dist/"${APP_NAME}"-tray-*; do
-            [ -f "$f" ] || continue
-            go run ./cmd/savecraft-sign/ "$f" /tmp/signing_key.priv
-          done
-
       - name: Generate checksums
         env:
           APP_NAME: ${{ needs.environment.outputs.app_name }}
         run: |
           cd dist
-          sha256sum "${APP_NAME}"-daemon-* "${APP_NAME}"-tray-* "${APP_NAME}.msi" > checksums-sha256.txt
-
-      - name: Clean up signing key
-        if: always()
-        run: rm -f /tmp/signing_key.priv
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: signed-daemon-artifacts
-          path: |
-            dist/${{ needs.environment.outputs.app_name }}-daemon-*
-            dist/${{ needs.environment.outputs.app_name }}-tray-*
-            dist/${{ needs.environment.outputs.app_name }}.msi
-            dist/checksums-sha256.txt
-
-  upload-r2:
-    name: Upload to R2
-    needs: [environment, sign]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: signed-daemon-artifacts
-          path: dist
+          find . -maxdepth 1 \( -name "${APP_NAME}-daemon-*" -o -name "${APP_NAME}-tray-*" -o -name "${APP_NAME}.msi" \) ! -name '*.sig' -exec sha256sum {} + > checksums-sha256.txt
 
       - name: Install wrangler
         run: npm install -g wrangler
@@ -382,7 +373,7 @@ jobs:
 
           cat dist/daemon-manifest.json
 
-      - name: Upload binaries to R2
+      - name: Upload to R2
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -390,35 +381,25 @@ jobs:
           VERSION: ${{ needs.environment.outputs.version }}
           APP_NAME: ${{ needs.environment.outputs.app_name }}
         run: |
+          pids=()
           for f in dist/"${APP_NAME}"-daemon-* dist/"${APP_NAME}"-tray-*; do
             [ -f "$f" ] || continue
             filename=$(basename "$f")
-            # Versioned (immutable archive)
-            wrangler r2 object put "${R2_BUCKET}/daemon/v${VERSION}/${filename}" --file="$f" --remote
-            # Unversioned (latest alias for install.sh)
-            wrangler r2 object put "${R2_BUCKET}/daemon/${filename}" --file="$f" --remote
+            wrangler r2 object put "${R2_BUCKET}/daemon/v${VERSION}/${filename}" --file="$f" --remote &
+            pids+=($!)
+            wrangler r2 object put "${R2_BUCKET}/daemon/${filename}" --file="$f" --remote &
+            pids+=($!)
           done
-
-      - name: Upload MSI to R2
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          R2_BUCKET: ${{ needs.environment.outputs.r2_bucket }}
-          VERSION: ${{ needs.environment.outputs.version }}
-          APP_NAME: ${{ needs.environment.outputs.app_name }}
-        run: |
-          # Versioned (immutable archive)
-          wrangler r2 object put "${R2_BUCKET}/daemon/v${VERSION}/${APP_NAME}.msi" --file="dist/${APP_NAME}.msi" --remote
-          # Unversioned (latest for install page)
-          wrangler r2 object put "${R2_BUCKET}/daemon/${APP_NAME}.msi" --file="dist/${APP_NAME}.msi" --remote
-
-      - name: Upload manifest to R2
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          R2_BUCKET: ${{ needs.environment.outputs.r2_bucket }}
-        run: |
-          wrangler r2 object put "${R2_BUCKET}/daemon/manifest.json" --file="dist/daemon-manifest.json" --remote
+          # MSI: versioned + unversioned
+          wrangler r2 object put "${R2_BUCKET}/daemon/v${VERSION}/${APP_NAME}.msi" --file="dist/${APP_NAME}.msi" --remote &
+          pids+=($!)
+          wrangler r2 object put "${R2_BUCKET}/daemon/${APP_NAME}.msi" --file="dist/${APP_NAME}.msi" --remote &
+          pids+=($!)
+          # Manifest
+          wrangler r2 object put "${R2_BUCKET}/daemon/manifest.json" --file="dist/daemon-manifest.json" --remote &
+          pids+=($!)
+          # Wait for all uploads, fail if any failed
+          for pid in "${pids[@]}"; do wait "$pid" || exit 1; done
 
       - name: Notify Discord (deploy)
         if: success()
@@ -438,7 +419,7 @@ jobs:
 
   release:
     name: GitHub Release
-    needs: [environment, sign]
+    needs: [environment, build, build-windows, test]
     if: needs.environment.outputs.is_production == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -448,8 +429,20 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: signed-daemon-artifacts
+          name: daemon-artifacts
           path: dist
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-artifacts
+          path: dist
+
+      - name: Generate checksums
+        env:
+          APP_NAME: ${{ needs.environment.outputs.app_name }}
+        run: |
+          cd dist
+          find . -maxdepth 1 \( -name "${APP_NAME}-daemon-*" -o -name "${APP_NAME}-tray-*" -o -name "${APP_NAME}.msi" \) ! -name '*.sig' -exec sha256sum {} + > checksums-sha256.txt
 
       - name: Find previous daemon tag
         id: prev
