@@ -60,7 +60,7 @@
                   BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
                   DllEntry="WixQuietExec"
                   Execute="deferred"
-                  Return="check"
+                  Return="ignore"
                   Impersonate="yes" />
 
     <SetProperty Id="RunLaunchTask" Before="RunLaunchTask" Sequence="execute"
@@ -82,9 +82,9 @@
                   Impersonate="yes" />
 
     <InstallExecuteSequence>
-      <Custom Action="CreateLaunchTask" Before="InstallFinalize" Condition="NOT Installed" />
-      <Custom Action="RunLaunchTask" After="CreateLaunchTask" Condition="NOT Installed" />
-      <Custom Action="DeleteLaunchTask" After="RunLaunchTask" Condition="NOT Installed" />
+      <Custom Action="CreateLaunchTask" Before="InstallFinalize" Condition="NOT REMOVE" />
+      <Custom Action="RunLaunchTask" After="CreateLaunchTask" Condition="NOT REMOVE" />
+      <Custom Action="DeleteLaunchTask" After="RunLaunchTask" Condition="NOT REMOVE" />
     </InstallExecuteSequence>
   </Package>
 
