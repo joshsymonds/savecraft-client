@@ -40,14 +40,16 @@
       <ComponentRef Id="TrayStartupKey" />
     </Feature>
 
-    <!-- Launch daemon and tray after install.
-         Type 18 custom actions: run installed files directly. asyncNoWait so
-         MSI doesn't block. Daemon first, then tray for first-run pairing. -->
+    <!-- Launch daemon after install. The daemon launches the tray itself
+         once registration completes. We cannot launch the tray directly from
+         InstallExecuteSequence because custom actions run inside the msiexec
+         service context, which lacks access to the user's interactive desktop
+         — Shell_NotifyIcon fails and the tray exits immediately. The headless
+         daemon works fine from this context and can spawn the tray in the
+         user's session via its own process. -->
     <CustomAction Id="LaunchDaemon" FileRef="savecraftd.exe" ExeCommand="" Return="asyncNoWait" />
-    <CustomAction Id="LaunchTray" FileRef="savecraft_tray.exe" ExeCommand="" Return="asyncNoWait" />
     <InstallExecuteSequence>
       <Custom Action="LaunchDaemon" After="InstallFinalize" Condition="NOT Installed" />
-      <Custom Action="LaunchTray" After="LaunchDaemon" Condition="NOT Installed" />
     </InstallExecuteSequence>
   </Package>
 

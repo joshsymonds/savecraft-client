@@ -166,21 +166,7 @@ func runDaemonSubsystems(
 
 	// If newly registered, set the initial link code for display.
 	if newlyRegistered && regResult != nil {
-		linkExpiry, parseErr := time.Parse(time.RFC3339, regResult.LinkCodeExpiresAt)
-		if parseErr != nil {
-			linkExpiry = time.Now().Add(20 * time.Minute)
-		}
-		dmn.SetInitialLinkCode(regResult.LinkCode, linkExpiry)
-
-		linkURL := localapi.BuildLinkURL(frontendURL, regResult.LinkCode)
-		api.SetRegistered(regResult.LinkCode, linkURL, regResult.LinkCodeExpiresAt)
-		logger.InfoContext(ctx, "source registered",
-			slog.String("source_uuid", regResult.SourceUUID),
-			slog.String("link_url", linkURL),
-		)
-		if svcmgr.Interactive() {
-			fmt.Fprintf(os.Stderr, "\n  Link this source: %s\n\n", linkURL)
-		}
+		applyRegistration(ctx, cfg, dmn, api, regResult, frontendURL, logger)
 	}
 
 	// Set up link callbacks so the daemon notifies the local API of state changes.
@@ -215,6 +201,46 @@ func runDaemonSubsystems(
 	}
 
 	return nil
+}
+
+// applyRegistration configures the daemon and local API after a fresh registration,
+// and launches the tray app. The MSI cannot launch the tray directly because
+// InstallExecuteSequence custom actions run inside the msiexec service context
+// without access to the user's interactive desktop (Shell_NotifyIcon fails).
+// The daemon runs fine headless from that context and spawns the tray here.
+// On subsequent logins, both processes start from their HKCU Run keys.
+func applyRegistration(
+	ctx context.Context,
+	cfg *appConfig,
+	dmn *daemon.Daemon,
+	api *localapi.Server,
+	regResult *registerResult,
+	frontendURL string,
+	logger *slog.Logger,
+) {
+	linkExpiry, parseErr := time.Parse(time.RFC3339, regResult.LinkCodeExpiresAt)
+	if parseErr != nil {
+		linkExpiry = time.Now().Add(20 * time.Minute)
+	}
+
+	dmn.SetInitialLinkCode(regResult.LinkCode, linkExpiry)
+
+	linkURL := localapi.BuildLinkURL(frontendURL, regResult.LinkCode)
+	api.SetRegistered(regResult.LinkCode, linkURL, regResult.LinkCodeExpiresAt)
+	logger.InfoContext(ctx, "source registered",
+		slog.String("source_uuid", regResult.SourceUUID),
+		slog.String("link_url", linkURL),
+	)
+
+	if svcmgr.Interactive() {
+		fmt.Fprintf(os.Stderr, "\n  Link this source: %s\n\n", linkURL)
+	}
+
+	if cfg.Daemon.TrayBinaryPath != "" {
+		if trayErr := startTrayProcess(cfg.Daemon.TrayBinaryPath); trayErr != nil {
+			logger.WarnContext(ctx, "launch tray", slog.String("error", trayErr.Error()))
+		}
+	}
 }
 
 // wireRepairCallback sets up the repair callback on the local API server.

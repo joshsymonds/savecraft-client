@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"runtime"
 
 	webview2 "github.com/jchv/go-webview2"
 )
@@ -17,6 +18,13 @@ import (
 //   - linkURL: the URL to open when the user clicks "Link Account"
 //   - paired:  closed by the caller when the daemon reaches StateRunning
 func showPairingDialog(code, linkURL string, paired <-chan struct{}) error {
+	// Pin this goroutine to a single OS thread for the lifetime of the dialog.
+	// WebView2 uses COM (STA) and its message pump must run on the same thread
+	// that created the window. Without this, Go's scheduler can migrate the
+	// goroutine between OS threads, causing SetHtml/Run to silently fail
+	// (blank window).
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	html, err := renderDialogHTML(code)
 	if err != nil {
 		return fmt.Errorf("render dialog HTML: %w", err)
