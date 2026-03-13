@@ -40,14 +40,30 @@
       <ComponentRef Id="TrayStartupKey" />
     </Feature>
 
-    <!-- Launch daemon after install from the UI sequence (not execute sequence).
-         InstallExecuteSequence runs inside the msiexec service process whose
-         Job Object kills all child processes when the install completes.
-         InstallUISequence runs in the user's own process — no Job Object, full
-         desktop access. Scheduling After="ExecuteAction" ensures all files are
-         installed before we try to run them. The daemon then launches the tray
-         itself once registration completes. -->
-    <CustomAction Id="LaunchDaemon" FileRef="savecraftd.exe" ExeCommand="" Return="asyncNoWait" />
+    <!-- Launch daemon after first install using ShellExecuteEx (not CreateProcess).
+
+         WHY NOT Type 18 (FileRef)?
+         Type 18 custom actions use CreateProcess, and the child process inherits
+         the MSI server's Job Object. Windows kills every process in the job when
+         msiexec exits — asyncNoWait does NOT prevent this. This applies to BOTH
+         InstallExecuteSequence (server process) and InstallUISequence (Type 18
+         cannot resolve FileRef paths from the UI sequence anyway).
+
+         WHY WixShellExec WORKS:
+         WixShellExec calls ShellExecuteEx(), which delegates process creation to
+         the Windows Shell (explorer.exe). The launched process is a child of
+         explorer.exe, NOT msiexec — so it is outside the MSI Job Object and
+         survives installer exit. We run it from InstallUISequence (the user's
+         own msiexec client process) After="ExecuteAction" so files are on disk.
+
+         The [#FileId] syntax resolves to the full installed path of the file. -->
+    <Property Id="WixShellExecTarget" Value="[#savecraftd.exe]" />
+    <CustomAction Id="LaunchDaemon"
+                  BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
+                  DllEntry="WixShellExec"
+                  Execute="immediate"
+                  Impersonate="yes"
+                  Return="check" />
     <InstallUISequence>
       <Custom Action="LaunchDaemon" After="ExecuteAction" Condition="NOT Installed" />
     </InstallUISequence>
