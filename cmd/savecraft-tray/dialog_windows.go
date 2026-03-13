@@ -104,11 +104,15 @@ func setTopmost(w webview2.WebView) {
 	}
 
 	const (
-		hwndTopmost = ^uintptr(0) // HWND_TOPMOST = (HWND)-1
-		swpNoMove   = 0x0002
-		swpNoSize   = 0x0001
+		hwndTopmost   = ^uintptr(0) // HWND_TOPMOST = (HWND)-1
+		swpNoMove     = 0x0002
+		swpNoSize     = 0x0001
+		swpNoActivate = 0x0010
 	)
 
 	//nolint:errcheck // SetWindowPos failure is non-fatal
-	procSetWindowPos.Call(hwnd, hwndTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize)
+	procSetWindowPos.Call(
+		hwnd, hwndTopmost, 0, 0, 0, 0,
+		uintptr(swpNoMove|swpNoSize|swpNoActivate),
+	)
 }
