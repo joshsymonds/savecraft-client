@@ -87,3 +87,6 @@ jobs:
 
       - name: Run svcmgr tests
         run: go test -v ./internal/svcmgr/...
+
+      - name: Run tray tests
+        run: go test -v ./cmd/savecraft-tray/...

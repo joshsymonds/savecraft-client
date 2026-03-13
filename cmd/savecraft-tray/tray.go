@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -27,9 +28,10 @@ type trayApp struct {
 	cancel      context.CancelFunc
 
 	// Link Account menu item — created at startup, shown/hidden dynamically.
-	// linkURL is accessed from both pollState and handleClicks goroutines.
+	// linkURL and linkCode are accessed from both pollState and handleClicks goroutines.
 	mLinkAccount *systray.MenuItem
 	linkURL      atomic.Pointer[string]
+	linkCode     atomic.Pointer[string]
 
 	// Re-pair menu item — visible only in StateRunning.
 	mRepair *systray.MenuItem
@@ -37,6 +39,11 @@ type trayApp struct {
 	// notifiedFirstRun prevents repeated toast notifications within a single
 	// tray process lifetime. Set to true after the first toast fires.
 	notifiedFirstRun bool
+
+	// pairedCh is created when the pairing dialog opens and closed when
+	// StateRunning is detected, signaling the dialog to auto-close.
+	pairedMu sync.Mutex
+	pairedCh chan struct{}
 }
 
 func (a *trayApp) onReady() {
@@ -160,6 +167,7 @@ func (a *trayApp) updateStatus(mStatus *systray.MenuItem) {
 
 		if resp.State == localapi.StateRunning {
 			a.mRepair.Show()
+			a.closePairedCh()
 		} else {
 			a.mRepair.Hide()
 		}
@@ -190,13 +198,15 @@ func (a *trayApp) updateLinkAccount(ctx context.Context) bool {
 	}
 
 	a.linkURL.Store(&linkResp.LinkURL)
+	a.linkCode.Store(&linkResp.LinkCode)
 	a.mLinkAccount.Show()
 
 	return true
 }
 
-// maybeNotifyFirstRun fires a platform-native toast notification on the first
-// call where linkURL is set. Subsequent calls are no-ops.
+// maybeNotifyFirstRun fires a first-run notification on the first call where
+// linkURL is set. On Windows, opens a branded WebView2 dialog; on other
+// platforms, fires a native toast notification. Subsequent calls are no-ops.
 func (a *trayApp) maybeNotifyFirstRun() {
 	if a.notifiedFirstRun {
 		return
@@ -207,19 +217,33 @@ func (a *trayApp) maybeNotifyFirstRun() {
 		return
 	}
 
-	a.notifiedFirstRun = true
+	// Create pairedCh BEFORE setting notifiedFirstRun, so closePairedCh
+	// (called from pollState on StateRunning) always finds the channel
+	// if notifiedFirstRun is true.
+	a.pairedMu.Lock()
+	a.pairedCh = make(chan struct{})
+	a.pairedMu.Unlock()
 
-	if err := toastFunc("Savecraft installed!", "Click to connect your account.", *url); err != nil {
-		if a.logger != nil {
-			a.logger.Error("toast notification", slog.String("error", err.Error()))
-		}
-	}
+	a.notifiedFirstRun = true
+	a.notifyFirstRun(*url)
 }
 
 func (a *trayApp) hideLinkAccount() {
 	empty := ""
 	a.linkURL.Store(&empty)
+	a.linkCode.Store(&empty)
 	a.mLinkAccount.Hide()
+}
+
+// closePairedCh signals the pairing dialog (if open) to auto-close.
+func (a *trayApp) closePairedCh() {
+	a.pairedMu.Lock()
+	defer a.pairedMu.Unlock()
+
+	if a.pairedCh != nil {
+		close(a.pairedCh)
+		a.pairedCh = nil
+	}
 }
 
 func stateTitle(state localapi.State) string {

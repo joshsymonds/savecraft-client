@@ -32,6 +32,11 @@ func TestToastFiresOncePerProcessLifetime(t *testing.T) {
 		t.Error("notifiedFirstRun should be true after first toast")
 	}
 
+	// pairedCh must be created so closePairedCh can signal the dialog.
+	if app.pairedCh == nil {
+		t.Error("pairedCh should be non-nil after maybeNotifyFirstRun")
+	}
+
 	// Second call should NOT fire the toast.
 	app.maybeNotifyFirstRun()
 
