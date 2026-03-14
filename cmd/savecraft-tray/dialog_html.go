@@ -297,7 +297,8 @@ const dialogTemplate = `<!DOCTYPE html>
   <script>
     function onLinkClick() {
       openLink();
-      closeDialog();
+      // Delay close so the openLink RPC can dispatch before WM_QUIT.
+      setTimeout(function() { closeDialog(); }, 250);
     }
 
     function onCloseClick() {
