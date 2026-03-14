@@ -296,8 +296,8 @@ const dialogTemplate = `<!DOCTYPE html>
 
   <script>
     function onLinkClick() {
-      // Open browser, then close the dialog.
-      openLink().then(function() { closeDialog(); });
+      openLink();
+      closeDialog();
     }
 
     function onCloseClick() {
