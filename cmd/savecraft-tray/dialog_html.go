@@ -296,12 +296,8 @@ const dialogTemplate = `<!DOCTYPE html>
 
   <script>
     function onLinkClick() {
-      // Call Go binding to open browser.
-      openLink().then(function() {
-        // Transition to waiting state.
-        document.getElementById('link-btn').classList.add('hidden');
-        document.getElementById('waiting').classList.remove('hidden');
-      });
+      // Open browser, then close the dialog.
+      openLink().then(function() { closeDialog(); });
     }
 
     function onCloseClick() {
