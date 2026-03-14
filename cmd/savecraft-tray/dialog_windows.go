@@ -8,7 +8,25 @@ import (
 	"runtime"
 
 	webview2 "github.com/jchv/go-webview2"
+	"golang.org/x/sys/windows"
 )
+
+var procPostMessageW = windows.NewLazySystemDLL("user32.dll").NewProc("PostMessageW") //nolint:gochecknoglobals // Windows API proc resolved once
+
+const wmClose = 0x0010
+
+// postClose sends WM_CLOSE to the dialog's window. Unlike Terminate()
+// (which calls PostQuitMessage — thread-local and useless from a goroutine),
+// PostMessageW is thread-safe and follows the same teardown path as the
+// native X button: WM_CLOSE → DestroyWindow → WM_DESTROY → Terminate.
+func postClose(w webview2.WebView) {
+	hwnd := uintptr(w.Window())
+	if hwnd == 0 {
+		return
+	}
+	//nolint:errcheck // PostMessageW failure is non-fatal
+	procPostMessageW.Call(hwnd, wmClose, 0, 0)
+}
 
 // showPairingDialog opens a branded WebView2 dialog showing the link code.
 // It blocks until the dialog is closed (by user or when paired closes).
@@ -48,21 +66,20 @@ func showPairingDialog(code, linkURL string, paired <-chan struct{}) error {
 	// Fixed size, no resize.
 	w.SetSize(420, 480, webview2.HintFixed)
 
-	// Bind Go functions callable from JS.
-	// openLink opens the browser and then terminates the dialog. Closing from
-	// Go after the browser launch ensures the promise-resolution Dispatch is
-	// already queued before PostQuitMessage, so WebView2 shuts down cleanly.
+	// Bind Go functions callable from JS. Bindings run on arbitrary
+	// goroutines, so we use postClose (PostMessageW WM_CLOSE) instead of
+	// w.Terminate() (PostQuitMessage) which is thread-local.
 	if err := w.Bind("openLink", func() {
 		if browserErr := openBrowser(linkURL); browserErr != nil {
 			slog.Error("open browser from dialog", slog.String("error", browserErr.Error()))
 		}
-		w.Terminate()
+		postClose(w)
 	}); err != nil {
 		return fmt.Errorf("bind openLink: %w", err)
 	}
 
 	if err := w.Bind("closeDialog", func() {
-		w.Terminate()
+		postClose(w)
 	}); err != nil {
 		return fmt.Errorf("bind closeDialog: %w", err)
 	}
