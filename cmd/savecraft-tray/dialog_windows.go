@@ -49,10 +49,14 @@ func showPairingDialog(code, linkURL string, paired <-chan struct{}) error {
 	w.SetSize(420, 480, webview2.HintFixed)
 
 	// Bind Go functions callable from JS.
+	// openLink opens the browser and then terminates the dialog. Closing from
+	// Go after the browser launch ensures the promise-resolution Dispatch is
+	// already queued before PostQuitMessage, so WebView2 shuts down cleanly.
 	if err := w.Bind("openLink", func() {
 		if browserErr := openBrowser(linkURL); browserErr != nil {
 			slog.Error("open browser from dialog", slog.String("error", browserErr.Error()))
 		}
+		w.Terminate()
 	}); err != nil {
 		return fmt.Errorf("bind openLink: %w", err)
 	}
