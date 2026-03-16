@@ -2641,13 +2641,15 @@ func (x *SourceInfo) GetDevice() string {
 }
 
 type GameInfo struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	GameId        string                 `protobuf:"bytes,1,opt,name=game_id,json=gameId,proto3" json:"game_id,omitempty"`
-	GameName      string                 `protobuf:"bytes,2,opt,name=game_name,json=gameName,proto3" json:"game_name,omitempty"`
-	Status        GameStatusEnum         `protobuf:"varint,3,opt,name=status,proto3,enum=savecraft.v1.GameStatusEnum" json:"status,omitempty"`
-	Saves         []*SaveInfo            `protobuf:"bytes,4,rep,name=saves,proto3" json:"saves,omitempty"`
-	LastActivity  *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=last_activity,json=lastActivity,proto3" json:"last_activity,omitempty"`
-	Path          string                 `protobuf:"bytes,6,opt,name=path,proto3" json:"path,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	GameId       string                 `protobuf:"bytes,1,opt,name=game_id,json=gameId,proto3" json:"game_id,omitempty"`
+	GameName     string                 `protobuf:"bytes,2,opt,name=game_name,json=gameName,proto3" json:"game_name,omitempty"`
+	Status       GameStatusEnum         `protobuf:"varint,3,opt,name=status,proto3,enum=savecraft.v1.GameStatusEnum" json:"status,omitempty"`
+	Saves        []*SaveInfo            `protobuf:"bytes,4,rep,name=saves,proto3" json:"saves,omitempty"`
+	LastActivity *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=last_activity,json=lastActivity,proto3" json:"last_activity,omitempty"`
+	Path         string                 `protobuf:"bytes,6,opt,name=path,proto3" json:"path,omitempty"`
+	// Human-readable error message when status is ERROR (e.g. "token_expired: Battle.net token expired").
+	Error         string `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2720,6 +2722,13 @@ func (x *GameInfo) GetLastActivity() *timestamppb.Timestamp {
 func (x *GameInfo) GetPath() string {
 	if x != nil {
 		return x.Path
+	}
+	return ""
+}
+
+func (x *GameInfo) GetError() string {
+	if x != nil {
+		return x.Error
 	}
 	return ""
 }
@@ -3874,14 +3883,15 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\x02os\x18\n" +
 	" \x01(\tR\x02os\x12\x12\n" +
 	"\x04arch\x18\v \x01(\tR\x04arch\x12\x16\n" +
-	"\x06device\x18\f \x01(\tR\x06device\"\xf9\x01\n" +
+	"\x06device\x18\f \x01(\tR\x06device\"\x8f\x02\n" +
 	"\bGameInfo\x12\x17\n" +
 	"\agame_id\x18\x01 \x01(\tR\x06gameId\x12\x1b\n" +
 	"\tgame_name\x18\x02 \x01(\tR\bgameName\x124\n" +
 	"\x06status\x18\x03 \x01(\x0e2\x1c.savecraft.v1.GameStatusEnumR\x06status\x12,\n" +
 	"\x05saves\x18\x04 \x03(\v2\x16.savecraft.v1.SaveInfoR\x05saves\x12?\n" +
 	"\rlast_activity\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\flastActivity\x12\x12\n" +
-	"\x04path\x18\x06 \x01(\tR\x04path\"\xb8\x01\n" +
+	"\x04path\x18\x06 \x01(\tR\x04path\x12\x14\n" +
+	"\x05error\x18\a \x01(\tR\x05error\"\xb8\x01\n" +
 	"\bSaveInfo\x12\x1b\n" +
 	"\tsave_uuid\x18\x01 \x01(\tR\bsaveUuid\x126\n" +
 	"\bidentity\x18\x02 \x01(\v2\x1a.savecraft.v1.SaveIdentityR\bidentity\x12\x18\n" +

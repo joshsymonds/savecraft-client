@@ -319,6 +319,8 @@ message GameInfo {
   repeated SaveInfo saves = 4;
   google.protobuf.Timestamp last_activity = 5;
   string path = 6;
+  // Human-readable error message when status is ERROR (e.g. "token_expired: Battle.net token expired").
+  string error = 7;
 }
 
 enum GameStatusEnum {
