@@ -82,9 +82,9 @@ func (m *Manager) EnsurePlugin(ctx context.Context, gameID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Check local directory override first.
+	// Check local directory override first (per-game subdirectory).
 	if m.localDir != "" {
-		wasmPath := filepath.Join(m.localDir, "parser.wasm")
+		wasmPath := filepath.Join(m.localDir, gameID, "parser.wasm")
 		if _, err := os.Stat(wasmPath); err == nil {
 			return m.loadFromLocal(ctx, gameID, wasmPath)
 		}

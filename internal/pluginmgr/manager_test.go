@@ -196,8 +196,12 @@ func TestEnsurePlugin_CacheHit(t *testing.T) {
 
 func TestEnsurePlugin_LocalOverride(t *testing.T) {
 	localDir := t.TempDir()
+	gameDir := filepath.Join(localDir, "d2r")
+	if err := os.MkdirAll(gameDir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
 	wasm := []byte("local wasm")
-	wasmPath := filepath.Join(localDir, "parser.wasm")
+	wasmPath := filepath.Join(gameDir, "parser.wasm")
 	if err := os.WriteFile(wasmPath, wasm, 0o600); err != nil {
 		t.Fatalf("write local wasm: %v", err)
 	}
@@ -218,6 +222,104 @@ func TestEnsurePlugin_LocalOverride(t *testing.T) {
 	loader.mu.Unlock()
 	if len(loaded) != 1 || loaded[0] != "d2r" {
 		t.Errorf("loaded = %v, want [d2r]", loaded)
+	}
+}
+
+func TestEnsurePlugin_LocalOverrideMultipleGames(t *testing.T) {
+	localDir := t.TempDir()
+	for _, gameID := range []string{"d2r", "rimworld"} {
+		gameDir := filepath.Join(localDir, gameID)
+		if err := os.MkdirAll(gameDir, 0o700); err != nil {
+			t.Fatalf("mkdir %s: %v", gameID, err)
+		}
+		wasm := []byte("local wasm " + gameID)
+		if err := os.WriteFile(filepath.Join(gameDir, "parser.wasm"), wasm, 0o600); err != nil {
+			t.Fatalf("write %s: %v", gameID, err)
+		}
+	}
+
+	loader := &fakeLoader{}
+	mgr := NewManager(nil, NewCache(t.TempDir()), loader, nil, testLogger())
+	mgr.SetLocalDir(localDir)
+
+	for _, gameID := range []string{"d2r", "rimworld"} {
+		if err := mgr.EnsurePlugin(context.Background(), gameID); err != nil {
+			t.Fatalf("EnsurePlugin(%s): %v", gameID, err)
+		}
+	}
+
+	loader.mu.Lock()
+	loaded := append([]string{}, loader.loaded...)
+	loader.mu.Unlock()
+	if len(loaded) != 2 {
+		t.Fatalf("loaded = %v, want 2 plugins", loaded)
+	}
+	// Both should have been loaded from local dir.
+	got := map[string]bool{}
+	for _, g := range loaded {
+		got[g] = true
+	}
+	if !got["d2r"] || !got["rimworld"] {
+		t.Errorf("loaded = %v, want d2r and rimworld", loaded)
+	}
+}
+
+func TestEnsurePlugin_LocalOverrideFallthrough(t *testing.T) {
+	// localDir has d2r but not rimworld — rimworld should fall through to remote.
+	localDir := t.TempDir()
+	gameDir := filepath.Join(localDir, "d2r")
+	if err := os.MkdirAll(gameDir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(gameDir, "parser.wasm"), []byte("local d2r"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	pub, priv := generateTestKeys(t)
+	remoteWasm := []byte("remote rimworld")
+	remoteSig := signing.Sign(priv, remoteWasm)
+	hash := sha256.Sum256(remoteWasm)
+
+	reg := &fakeRegistry{
+		manifest: map[string]PluginInfo{
+			"rimworld": {
+				GameID:  "rimworld",
+				Version: "1.0.0",
+				SHA256:  fmt.Sprintf("%x", hash),
+				URL:     pluginURL,
+			},
+		},
+		files: map[string][]byte{
+			pluginURL:          remoteWasm,
+			pluginURL + ".sig": remoteSig,
+		},
+	}
+
+	loader := &fakeLoader{}
+	mgr := NewManager(reg, NewCache(t.TempDir()), loader, pub, testLogger())
+	mgr.SetLocalDir(localDir)
+
+	// d2r loads from local (no sig, no public key needed for local without .sig file).
+	mgrNoVerify := NewManager(reg, NewCache(t.TempDir()), loader, nil, testLogger())
+	mgrNoVerify.SetLocalDir(localDir)
+	if err := mgrNoVerify.EnsurePlugin(context.Background(), "d2r"); err != nil {
+		t.Fatalf("EnsurePlugin(d2r): %v", err)
+	}
+
+	// rimworld loads from remote.
+	if err := mgr.EnsurePlugin(context.Background(), "rimworld"); err != nil {
+		t.Fatalf("EnsurePlugin(rimworld): %v", err)
+	}
+
+	loader.mu.Lock()
+	loaded := append([]string{}, loader.loaded...)
+	loader.mu.Unlock()
+	got := map[string]bool{}
+	for _, g := range loaded {
+		got[g] = true
+	}
+	if !got["d2r"] || !got["rimworld"] {
+		t.Errorf("loaded = %v, want both d2r and rimworld", loaded)
 	}
 }
 
@@ -392,11 +494,15 @@ func TestEnsurePlugin_LoaderError(t *testing.T) {
 func TestEnsurePlugin_LocalOverrideWithSig(t *testing.T) {
 	pub, priv := generateTestKeys(t)
 	localDir := t.TempDir()
+	gameDir := filepath.Join(localDir, "d2r")
+	if err := os.MkdirAll(gameDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	wasm := []byte("local wasm with sig")
 	sig := signing.Sign(priv, wasm)
 
-	wasmPath := filepath.Join(localDir, "parser.wasm")
-	sigPath := filepath.Join(localDir, "parser.wasm.sig")
+	wasmPath := filepath.Join(gameDir, "parser.wasm")
+	sigPath := filepath.Join(gameDir, "parser.wasm.sig")
 	if err := os.WriteFile(wasmPath, wasm, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -425,11 +531,15 @@ func TestEnsurePlugin_LocalOverrideWithSig(t *testing.T) {
 func TestEnsurePlugin_LocalOverrideBadSig(t *testing.T) {
 	pub, _ := generateTestKeys(t)
 	localDir := t.TempDir()
+	gameDir := filepath.Join(localDir, "d2r")
+	if err := os.MkdirAll(gameDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	wasm := []byte("local wasm bad sig")
 	badSig := make([]byte, ed25519.SignatureSize)
 
-	wasmPath := filepath.Join(localDir, "parser.wasm")
-	sigPath := filepath.Join(localDir, "parser.wasm.sig")
+	wasmPath := filepath.Join(gameDir, "parser.wasm")
+	sigPath := filepath.Join(gameDir, "parser.wasm.sig")
 	if err := os.WriteFile(wasmPath, wasm, 0o600); err != nil {
 		t.Fatal(err)
 	}
