@@ -2918,3 +2918,136 @@ func countEventType(ws *fakeWSClient, eventType string) int {
 	}
 	return count
 }
+
+func TestPluginReloadChannel_ReloadsAndRescans(t *testing.T) {
+	ws := newFakeWSClient()
+	ws.connected = true
+
+	runner := &fakeRunner{
+		results: map[string]*GameState{
+			"d2r": {
+				Identity: Identity{SaveName: "Hero", GameID: "d2r"},
+				Summary:  "Test Hero",
+				Sections: map[string]Section{
+					"header": {
+						Description: "Header",
+						Data:        jsontext.Value(`{"level":1}`),
+					},
+				},
+			},
+		},
+	}
+
+	fsys := &fakeFS{
+		files: map[string][]byte{
+			"/saves/d2r/Hero.d2s": []byte("save data"),
+		},
+		dirs: map[string][]string{
+			"/saves/d2r": {"Hero.d2s"},
+		},
+	}
+
+	pm := &fakePluginManager{
+		manifests: map[string]pluginmgr.PluginInfo{
+			"d2r": {GameID: "d2r", Name: "Diablo II: Resurrected"},
+		},
+	}
+
+	cfg := Config{
+		SourceID:   "test",
+		SourceUUID: "test-uuid",
+		Version:    "0.1.0",
+		Games: map[string]GameConfig{
+			"d2r": {
+				SavePath:       "/saves/d2r",
+				FileExtensions: []string{".d2s"},
+				Enabled:        true,
+			},
+		},
+	}
+
+	watcher := newFakeWatcher()
+	dmn := New(cfg, fsys, watcher, runner, ws, pm, nil, testLogger())
+
+	reloadCh := make(chan string, 1)
+	dmn.SetPluginReloadCh(reloadCh)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Run the daemon in a goroutine.
+	errCh := make(chan error, 1)
+	go func() { errCh <- dmn.Run(ctx) }()
+
+	// Wait for daemon to start (it sends SourceOnline).
+	time.Sleep(100 * time.Millisecond)
+
+	// Send plugin reload event.
+	reloadCh <- "d2r"
+
+	// Wait for processing.
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify EnsurePlugin was called for d2r reload.
+	pm.mu.Lock()
+	ensured := slices.Clone(pm.ensured)
+	pm.mu.Unlock()
+
+	d2rCount := 0
+	for _, g := range ensured {
+		if g == "d2r" {
+			d2rCount++
+		}
+	}
+	// Should be called at least twice: once at startup, once for reload.
+	if d2rCount < 2 {
+		t.Errorf("EnsurePlugin(d2r) called %d times, want >= 2", d2rCount)
+	}
+
+	// Verify runner was called (re-parse after reload).
+	runner.mu.Lock()
+	calls := slices.Clone(runner.calls)
+	runner.mu.Unlock()
+
+	d2rRunCount := 0
+	for _, c := range calls {
+		if c.GameID == "d2r" {
+			d2rRunCount++
+		}
+	}
+	// At least 2: initial scan + re-parse after reload.
+	if d2rRunCount < 2 {
+		t.Errorf("Runner.Run(d2r) called %d times, want >= 2", d2rRunCount)
+	}
+
+	cancel()
+	<-errCh
+}
+
+func TestPluginReloadChannel_NilDoesNotPanic(t *testing.T) {
+	// When no pluginReloadCh is set, the daemon should work normally.
+	ws := newFakeWSClient()
+	ws.connected = true
+
+	cfg := Config{
+		SourceID: "test",
+		Version:  "0.1.0",
+		Games:    map[string]GameConfig{},
+	}
+
+	dmn := New(
+		cfg, &fakeFS{dirs: map[string][]string{}},
+		newFakeWatcher(), nil, ws, nil, nil, testLogger(),
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() { errCh <- dmn.Run(ctx) }()
+
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+}

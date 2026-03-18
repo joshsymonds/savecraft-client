@@ -238,6 +238,10 @@ type Daemon struct {
 	// Sent by UpdatePlugins (local API callback) and handlePluginAvailable.
 	pluginUpdateResetCh chan struct{}
 
+	// pluginReloadCh receives game IDs from the PluginWatcher when a local
+	// plugin WASM file changes on disk. Nil when local plugin dir is not set.
+	pluginReloadCh <-chan string
+
 	// lastPushedHash caches SHA-256 of the last successfully pushed PushSave
 	// proto bytes per file path. On reconnect or re-parse, if the hash matches
 	// the cached value the push is skipped (no bandwidth, no server work).
@@ -286,6 +290,13 @@ func New(
 		pluginUpdateResetCh: make(chan struct{}, 1),
 		lastPushedHash:      make(map[string][32]byte),
 	}
+}
+
+// SetPluginReloadCh sets the channel that receives game IDs when a local
+// plugin WASM file changes on disk. The daemon will reload the plugin and
+// re-parse tracked saves for the game.
+func (d *Daemon) SetPluginReloadCh(ch <-chan string) {
+	d.pluginReloadCh = ch
 }
 
 // SetRestartFunc sets the function called to restart the daemon after a
@@ -407,7 +418,10 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 	}()
 
 	d.announceOnline(ctx)
+	return d.eventLoop(ctx)
+}
 
+func (d *Daemon) eventLoop(ctx context.Context) error {
 	// Always create the plugin update ticker — the reset channel may fire
 	// even when plugins are nil (the handler guards against that).
 	updateTicker := time.NewTicker(pluginUpdateInterval)
@@ -437,6 +451,8 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 			d.handleFileEvent(ctx, ev)
 		case msg := <-d.ws.Messages():
 			d.handleCommand(ctx, msg)
+		case gameID := <-d.pluginReloadCh:
+			d.handlePluginReload(ctx, gameID)
 		case <-updateCh:
 			d.checkPluginUpdates(ctx)
 		case <-selfUpdateCh:
@@ -576,6 +592,33 @@ func (d *Daemon) checkPluginUpdates(ctx context.Context) {
 			GameId: gameID,
 		}}})
 	}
+}
+
+// handlePluginReload is called when the PluginWatcher detects a local WASM
+// file change. It reloads the plugin via EnsurePlugin (which re-reads from
+// the local dir) and re-parses all tracked saves for the game.
+func (d *Daemon) handlePluginReload(ctx context.Context, gameID string) {
+	d.log.InfoContext(ctx, "local plugin changed, reloading",
+		slog.String("game_id", gameID),
+	)
+
+	if !d.ensurePluginReady(ctx, gameID) {
+		return
+	}
+
+	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PluginUpdated{PluginUpdated: &pb.PluginUpdated{
+		GameId: gameID,
+	}}})
+
+	// Re-parse tracked saves for this game.
+	d.mu.RLock()
+	gameCfg, ok := d.cfg.Games[gameID]
+	d.mu.RUnlock()
+	if !ok {
+		return
+	}
+
+	d.rescanQuiet(ctx, gameID, gameCfg)
 }
 
 // ensurePluginReady downloads/verifies the plugin for gameID if a

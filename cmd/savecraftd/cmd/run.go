@@ -14,6 +14,7 @@ import (
 	"github.com/joshsymonds/savecraft.gg/internal/daemon"
 	"github.com/joshsymonds/savecraft.gg/internal/envfile"
 	"github.com/joshsymonds/savecraft.gg/internal/localapi"
+	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
 	"github.com/joshsymonds/savecraft.gg/internal/selfupdate"
 	"github.com/joshsymonds/savecraft.gg/internal/svcmgr"
 )
@@ -159,6 +160,29 @@ func runDaemonSubsystems(
 
 	dmn := daemon.New(cfg.Daemon, subsystems.fsys, subsystems.watcher, subsystems.runner,
 		subsystems.ws, subsystems.plugins, subsystems.updater, logger)
+
+	// Start plugin watcher for local dev auto-reload when SAVECRAFT_PLUGIN_DIR is set.
+	if cfg.PluginDir != "" {
+		reloadCh := make(chan string, 10)
+		pw, pwErr := pluginmgr.NewPluginWatcher(cfg.PluginDir, func(gameID string) {
+			select {
+			case reloadCh <- gameID:
+			default:
+				logger.Warn("plugin reload channel full, skipping", slog.String("game_id", gameID))
+			}
+		})
+		if pwErr != nil {
+			logger.WarnContext(ctx, "failed to start plugin watcher", slog.String("error", pwErr.Error()))
+		} else {
+			dmn.SetPluginReloadCh(reloadCh)
+			defer func() {
+				if closeErr := pw.Close(); closeErr != nil {
+					logger.ErrorContext(ctx, "close plugin watcher", slog.String("error", closeErr.Error()))
+				}
+			}()
+			logger.InfoContext(ctx, "plugin watcher started", slog.String("plugin_dir", cfg.PluginDir))
+		}
+	}
 
 	// Set restart function for self-update. On Windows, this spawns the new
 	// binary before exit. On Linux, systemd handles restart.
