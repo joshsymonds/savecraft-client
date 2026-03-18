@@ -2980,45 +2980,39 @@ func TestPluginReloadChannel_ReloadsAndRescans(t *testing.T) {
 	go func() { errCh <- dmn.Run(ctx) }()
 
 	// Wait for daemon to start (it sends SourceOnline).
-	time.Sleep(100 * time.Millisecond)
+	waitFor(t, func() bool { return len(ws.sentEventTypes()) > 0 })
 
 	// Send plugin reload event.
 	reloadCh <- "d2r"
 
-	// Wait for processing.
-	time.Sleep(200 * time.Millisecond)
-
-	// Verify EnsurePlugin was called for d2r reload.
-	pm.mu.Lock()
-	ensured := slices.Clone(pm.ensured)
-	pm.mu.Unlock()
-
-	d2rCount := 0
-	for _, g := range ensured {
-		if g == "d2r" {
-			d2rCount++
+	// Wait for EnsurePlugin to be called at least twice (startup + reload).
+	d2rEnsureCount := func() int {
+		pm.mu.Lock()
+		defer pm.mu.Unlock()
+		count := 0
+		for _, g := range pm.ensured {
+			if g == "d2r" {
+				count++
+			}
 		}
+		return count
 	}
-	// Should be called at least twice: once at startup, once for reload.
-	if d2rCount < 2 {
-		t.Errorf("EnsurePlugin(d2r) called %d times, want >= 2", d2rCount)
-	}
+	waitFor(t, func() bool { return d2rEnsureCount() >= 2 })
 
 	// Verify runner was called (re-parse after reload).
-	runner.mu.Lock()
-	calls := slices.Clone(runner.calls)
-	runner.mu.Unlock()
-
-	d2rRunCount := 0
-	for _, c := range calls {
-		if c.GameID == "d2r" {
-			d2rRunCount++
+	d2rRunCount := func() int {
+		runner.mu.Lock()
+		defer runner.mu.Unlock()
+		count := 0
+		for _, c := range runner.calls {
+			if c.GameID == "d2r" {
+				count++
+			}
 		}
+		return count
 	}
 	// At least 2: initial scan + re-parse after reload.
-	if d2rRunCount < 2 {
-		t.Errorf("Runner.Run(d2r) called %d times, want >= 2", d2rRunCount)
-	}
+	waitFor(t, func() bool { return d2rRunCount() >= 2 })
 
 	cancel()
 	<-errCh
@@ -3044,7 +3038,7 @@ func TestPluginReloadChannel_NilDoesNotPanic(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() { errCh <- dmn.Run(ctx) }()
 
-	time.Sleep(100 * time.Millisecond)
+	waitFor(t, func() bool { return len(ws.sentEventTypes()) > 0 })
 	cancel()
 
 	if err := <-errCh; err != nil {

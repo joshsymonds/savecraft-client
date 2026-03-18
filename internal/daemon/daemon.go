@@ -326,6 +326,14 @@ func (d *Daemon) UpdatePlugins(ctx context.Context) ([]string, error) {
 				Version: "", // version is logged by pluginmgr; proto field is informational
 			}},
 		})
+
+		// Re-parse tracked saves with the updated plugin.
+		d.mu.RLock()
+		gameCfg, ok := d.cfg.Games[gameID]
+		d.mu.RUnlock()
+		if ok {
+			d.rescanQuiet(ctx, gameID, gameCfg)
+		}
 	}
 
 	// Signal the event loop to reset the periodic timer (non-blocking).

@@ -93,8 +93,24 @@ func TestPluginWatcher_DebounceRapidWrites(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	// Wait for debounce to settle.
-	time.Sleep(500 * time.Millisecond)
+	// Wait for exactly 1 callback via polling (more robust than fixed sleep).
+	deadline := time.After(3 * time.Second)
+	for {
+		mu.Lock()
+		n := len(reloaded)
+		mu.Unlock()
+		if n > 0 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("timed out waiting for debounced callback")
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+
+	// Give extra time to ensure no additional callbacks fire.
+	time.Sleep(300 * time.Millisecond)
 
 	mu.Lock()
 	defer mu.Unlock()

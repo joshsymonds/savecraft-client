@@ -87,7 +87,7 @@ func (m *Manager) EnsurePlugin(ctx context.Context, gameID string) error {
 	if m.localDir != "" {
 		wasmPath := filepath.Join(m.localDir, gameID, "parser.wasm")
 		if _, err := os.Stat(wasmPath); err == nil {
-			return m.loadFromLocal(ctx, gameID, wasmPath)
+			return m.loadFromLocal(ctx, gameID, wasmPath, nil)
 		}
 	}
 
@@ -249,7 +249,7 @@ func (m *Manager) checkLocalPlugins(ctx context.Context) []string {
 			continue // Unchanged.
 		}
 
-		if loadErr := m.loadFromLocal(ctx, gameID, wasmPath); loadErr != nil {
+		if loadErr := m.loadFromLocal(ctx, gameID, wasmPath, wasmBytes); loadErr != nil {
 			m.logger.ErrorContext(ctx, "failed to reload local plugin",
 				slog.String("game_id", gameID),
 				slog.String("error", loadErr.Error()),
@@ -411,12 +411,19 @@ func (m *Manager) loadPlugin(
 	return nil
 }
 
+// loadFromLocal loads a plugin from the local directory. When preReadWasm is
+// non-nil, it is used directly instead of reading the file from disk (avoids
+// a double read when the caller already read the file for hash comparison).
 func (m *Manager) loadFromLocal(
-	ctx context.Context, gameID, wasmPath string,
+	ctx context.Context, gameID, wasmPath string, preReadWasm []byte,
 ) error {
-	wasm, err := os.ReadFile(filepath.Clean(wasmPath))
-	if err != nil {
-		return fmt.Errorf("read local plugin %s: %w", gameID, err)
+	wasm := preReadWasm
+	if wasm == nil {
+		var err error
+		wasm, err = os.ReadFile(filepath.Clean(wasmPath))
+		if err != nil {
+			return fmt.Errorf("read local plugin %s: %w", gameID, err)
+		}
 	}
 
 	var sig []byte

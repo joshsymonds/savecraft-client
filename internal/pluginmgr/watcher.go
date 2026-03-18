@@ -3,6 +3,8 @@ package pluginmgr
 import (
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -21,6 +23,11 @@ func WithWatcherDebounce(d time.Duration) WatcherOption {
 	return func(pw *PluginWatcher) { pw.debounce = d }
 }
 
+// WithWatcherLogger sets the logger for the PluginWatcher.
+func WithWatcherLogger(l *slog.Logger) WatcherOption {
+	return func(pw *PluginWatcher) { pw.logger = l }
+}
+
 // PluginWatcher watches a local plugin directory for parser.wasm changes
 // and invokes a callback with the affected game ID.
 type PluginWatcher struct {
@@ -28,6 +35,7 @@ type PluginWatcher struct {
 	localDir string
 	callback func(gameID string)
 	debounce time.Duration
+	logger   *slog.Logger
 
 	mu        sync.Mutex
 	timers    map[string]*time.Timer // gameID → active debounce timer
@@ -50,6 +58,7 @@ func NewPluginWatcher(
 		localDir: localDir,
 		callback: callback,
 		debounce: defaultWatcherDebounce,
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
 		timers:   make(map[string]*time.Timer),
 		done:     make(chan struct{}),
 	}
@@ -109,10 +118,11 @@ func (pw *PluginWatcher) loop() {
 				return
 			}
 			pw.handleEvent(ev)
-		case _, ok := <-pw.inner.Errors:
+		case err, ok := <-pw.inner.Errors:
 			if !ok {
 				return
 			}
+			pw.logger.Warn("fsnotify error", slog.String("error", err.Error()))
 		}
 	}
 }

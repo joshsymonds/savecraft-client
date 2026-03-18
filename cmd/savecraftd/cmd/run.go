@@ -170,7 +170,7 @@ func runDaemonSubsystems(
 			default:
 				logger.Warn("plugin reload channel full, skipping", slog.String("game_id", gameID))
 			}
-		})
+		}, pluginmgr.WithWatcherLogger(logger))
 		if pwErr != nil {
 			logger.WarnContext(ctx, "failed to start plugin watcher", slog.String("error", pwErr.Error()))
 		} else {
