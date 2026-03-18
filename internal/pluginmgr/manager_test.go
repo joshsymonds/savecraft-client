@@ -1096,3 +1096,185 @@ func TestCheckForUpdates_SHA256MismatchDownloads(t *testing.T) {
 		t.Error("cache should have version 2.0.0 after download")
 	}
 }
+
+func TestCheckForUpdates_LocalPluginChanged(t *testing.T) {
+	localDir := t.TempDir()
+	gameDir := filepath.Join(localDir, "d2r")
+	if err := os.MkdirAll(gameDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	wasmV1 := []byte("local wasm v1")
+	if err := os.WriteFile(filepath.Join(gameDir, "parser.wasm"), wasmV1, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	loader := &fakeLoader{}
+	mgr := NewManager(nil, NewCache(t.TempDir()), loader, nil, testLogger())
+	mgr.SetLocalDir(localDir)
+
+	// Initial load via EnsurePlugin.
+	if err := mgr.EnsurePlugin(context.Background(), "d2r"); err != nil {
+		t.Fatalf("EnsurePlugin: %v", err)
+	}
+
+	// Change the WASM on disk.
+	wasmV2 := []byte("local wasm v2 changed")
+	if err := os.WriteFile(filepath.Join(gameDir, "parser.wasm"), wasmV2, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// CheckForUpdates should detect the change and reload.
+	updated, err := mgr.CheckForUpdates(context.Background())
+	if err != nil {
+		t.Fatalf("CheckForUpdates: %v", err)
+	}
+
+	if len(updated) != 1 || updated[0] != "d2r" {
+		t.Errorf("updated = %v, want [d2r]", updated)
+	}
+
+	// Should have loaded twice total: once from EnsurePlugin, once from CheckForUpdates.
+	loader.mu.Lock()
+	loaded := append([]string{}, loader.loaded...)
+	loader.mu.Unlock()
+	d2rLoads := 0
+	for _, g := range loaded {
+		if g == "d2r" {
+			d2rLoads++
+		}
+	}
+	if d2rLoads != 2 {
+		t.Errorf("d2r load count = %d, want 2", d2rLoads)
+	}
+}
+
+func TestCheckForUpdates_LocalPluginUnchanged(t *testing.T) {
+	localDir := t.TempDir()
+	gameDir := filepath.Join(localDir, "d2r")
+	if err := os.MkdirAll(gameDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	wasm := []byte("local wasm unchanged")
+	if err := os.WriteFile(filepath.Join(gameDir, "parser.wasm"), wasm, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	loader := &fakeLoader{}
+	mgr := NewManager(nil, NewCache(t.TempDir()), loader, nil, testLogger())
+	mgr.SetLocalDir(localDir)
+
+	// Initial load.
+	if err := mgr.EnsurePlugin(context.Background(), "d2r"); err != nil {
+		t.Fatalf("EnsurePlugin: %v", err)
+	}
+
+	// CheckForUpdates with unchanged file should NOT reload.
+	updated, err := mgr.CheckForUpdates(context.Background())
+	if err != nil {
+		t.Fatalf("CheckForUpdates: %v", err)
+	}
+
+	if len(updated) != 0 {
+		t.Errorf("updated = %v, want empty (unchanged)", updated)
+	}
+
+	// Only one load total (the initial EnsurePlugin).
+	loader.mu.Lock()
+	loaded := append([]string{}, loader.loaded...)
+	loader.mu.Unlock()
+	d2rLoads := 0
+	for _, g := range loaded {
+		if g == "d2r" {
+			d2rLoads++
+		}
+	}
+	if d2rLoads != 1 {
+		t.Errorf("d2r load count = %d, want 1 (no reload for unchanged)", d2rLoads)
+	}
+}
+
+func TestCheckForUpdates_LocalAndRemoteMixed(t *testing.T) {
+	// d2r is local, rimworld is remote. Both should be checked.
+	localDir := t.TempDir()
+	gameDir := filepath.Join(localDir, "d2r")
+	if err := os.MkdirAll(gameDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	localWasmV1 := []byte("local d2r v1")
+	if err := os.WriteFile(filepath.Join(gameDir, "parser.wasm"), localWasmV1, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	pub, priv := generateTestKeys(t)
+	remoteWasm := []byte("remote rimworld")
+	remoteSig := signing.Sign(priv, remoteWasm)
+	hash := sha256.Sum256(remoteWasm)
+	remoteWasm2 := []byte("remote rimworld v2")
+	remoteSig2 := signing.Sign(priv, remoteWasm2)
+	hash2 := sha256.Sum256(remoteWasm2)
+
+	reg := &fakeRegistry{
+		manifest: map[string]PluginInfo{
+			"rimworld": {
+				GameID:  "rimworld",
+				Version: "1.0.0",
+				SHA256:  fmt.Sprintf("%x", hash),
+				URL:     pluginURL,
+			},
+		},
+		files: map[string][]byte{
+			pluginURL:          remoteWasm,
+			pluginURL + ".sig": remoteSig,
+		},
+	}
+
+	loader := &fakeLoader{}
+	cache := NewCache(t.TempDir())
+
+	// Initial load: d2r from local (no pub key needed), rimworld from remote.
+	mgr := NewManager(reg, cache, loader, pub, testLogger())
+	mgr.SetLocalDir(localDir)
+
+	// EnsurePlugin for d2r — but we need no sig verification for local.
+	// Use a separate manager with no public key for the local-only load.
+	mgrNoKey := NewManager(reg, cache, loader, nil, testLogger())
+	mgrNoKey.SetLocalDir(localDir)
+	if err := mgrNoKey.EnsurePlugin(context.Background(), "d2r"); err != nil {
+		t.Fatalf("EnsurePlugin(d2r): %v", err)
+	}
+	if err := mgr.EnsurePlugin(context.Background(), "rimworld"); err != nil {
+		t.Fatalf("EnsurePlugin(rimworld): %v", err)
+	}
+
+	// Change local d2r, update remote rimworld manifest.
+	localWasmV2 := []byte("local d2r v2")
+	if err := os.WriteFile(filepath.Join(gameDir, "parser.wasm"), localWasmV2, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reg.manifest["rimworld"] = PluginInfo{
+		GameID:  "rimworld",
+		Version: "2.0.0",
+		SHA256:  fmt.Sprintf("%x", hash2),
+		URL:     pluginURL,
+	}
+	reg.files[pluginURL] = remoteWasm2
+	reg.files[pluginURL+".sig"] = remoteSig2
+
+	// CheckForUpdates should reload d2r (local changed) and rimworld (remote updated).
+	// Use mgrNoKey so local d2r doesn't need sig verification.
+	updated, err := mgrNoKey.CheckForUpdates(context.Background())
+	if err != nil {
+		t.Fatalf("CheckForUpdates: %v", err)
+	}
+
+	got := map[string]bool{}
+	for _, g := range updated {
+		got[g] = true
+	}
+	if !got["d2r"] {
+		t.Error("d2r should be in updated list (local changed)")
+	}
+	if !got["rimworld"] {
+		t.Error("rimworld should be in updated list (remote updated)")
+	}
+}

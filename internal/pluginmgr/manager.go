@@ -24,14 +24,15 @@ type PluginLoader interface {
 
 // Manager orchestrates plugin download, verification, caching, and loading.
 type Manager struct {
-	registry  Registry
-	cache     *Cache
-	loader    PluginLoader
-	publicKey ed25519.PublicKey
-	manifest  map[string]PluginInfo
-	localDir  string
-	logger    *slog.Logger
-	mu        sync.Mutex
+	registry    Registry
+	cache       *Cache
+	loader      PluginLoader
+	publicKey   ed25519.PublicKey
+	manifest    map[string]PluginInfo
+	localDir    string
+	localHashes map[string]string // SHA-256 of last-loaded local WASM per gameID
+	logger      *slog.Logger
+	mu          sync.Mutex
 }
 
 // NewManager creates a Manager with the given dependencies.
@@ -132,13 +133,43 @@ func (m *Manager) EnsurePlugin(ctx context.Context, gameID string) error {
 }
 
 // CheckForUpdates compares cached versions against the manifest
-// and re-downloads stale plugins.
+// and re-downloads stale plugins. When localDir is set, local plugins
+// are checked for on-disk changes first; remote plugins are checked after.
 func (m *Manager) CheckForUpdates(
 	ctx context.Context,
 ) ([]string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	var updated []string
+	localGames := map[string]bool{}
+
+	// Check local directory plugins for changes.
+	if m.localDir != "" {
+		localUpdated := m.checkLocalPlugins(ctx)
+		for _, gameID := range localUpdated {
+			localGames[gameID] = true
+		}
+		updated = append(updated, localUpdated...)
+	}
+
+	// Check remote plugins (skip games handled locally).
+	if m.registry != nil {
+		remoteUpdated, err := m.checkRemotePlugins(ctx, localGames)
+		if err != nil {
+			return updated, err
+		}
+		updated = append(updated, remoteUpdated...)
+	}
+
+	return updated, nil
+}
+
+// checkRemotePlugins fetches the remote manifest and re-downloads stale plugins,
+// skipping any gameIDs in the skip set (already handled locally). Must be called with mu held.
+func (m *Manager) checkRemotePlugins(
+	ctx context.Context, skip map[string]bool,
+) ([]string, error) {
 	manifest, err := m.registry.FetchManifest(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("fetch manifest: %w", err)
@@ -147,6 +178,10 @@ func (m *Manager) CheckForUpdates(
 
 	var updated []string
 	for gameID, info := range manifest {
+		if skip[gameID] {
+			continue
+		}
+
 		if m.cache.HasVersion(gameID, info.Version) {
 			continue
 		}
@@ -179,8 +214,51 @@ func (m *Manager) CheckForUpdates(
 			updated = append(updated, gameID)
 		}
 	}
-
 	return updated, nil
+}
+
+// checkLocalPlugins scans localDir for plugin subdirectories and reloads
+// any whose WASM file has changed since last load. Must be called with mu held.
+func (m *Manager) checkLocalPlugins(ctx context.Context) []string {
+	entries, err := os.ReadDir(m.localDir)
+	if err != nil {
+		m.logger.WarnContext(ctx, "failed to read local plugin dir",
+			slog.String("path", m.localDir),
+			slog.String("error", err.Error()),
+		)
+		return nil
+	}
+
+	var updated []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		gameID := entry.Name()
+		wasmPath := filepath.Join(m.localDir, gameID, "parser.wasm")
+
+		wasmBytes, readErr := os.ReadFile(filepath.Clean(wasmPath))
+		if readErr != nil {
+			continue // No parser.wasm in this subdir, skip.
+		}
+
+		hash := sha256.Sum256(wasmBytes)
+		hashStr := fmt.Sprintf("%x", hash)
+
+		if m.localHashes != nil && m.localHashes[gameID] == hashStr {
+			continue // Unchanged.
+		}
+
+		if loadErr := m.loadFromLocal(ctx, gameID, wasmPath); loadErr != nil {
+			m.logger.ErrorContext(ctx, "failed to reload local plugin",
+				slog.String("game_id", gameID),
+				slog.String("error", loadErr.Error()),
+			)
+			continue
+		}
+		updated = append(updated, gameID)
+	}
+	return updated
 }
 
 func (m *Manager) resolveManifestEntry(
@@ -363,5 +441,15 @@ func (m *Manager) loadFromLocal(
 		slog.String("game_id", gameID),
 		slog.String("path", wasmPath),
 	)
-	return m.loadPlugin(ctx, gameID, wasm, sig)
+	if loadErr := m.loadPlugin(ctx, gameID, wasm, sig); loadErr != nil {
+		return loadErr
+	}
+
+	// Track hash for change detection in CheckForUpdates.
+	hash := sha256.Sum256(wasm)
+	if m.localHashes == nil {
+		m.localHashes = make(map[string]string)
+	}
+	m.localHashes[gameID] = fmt.Sprintf("%x", hash)
+	return nil
 }
