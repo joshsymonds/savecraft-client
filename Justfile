@@ -293,5 +293,9 @@ lint: lint-go lint-worker lint-web lint-site lint-sh fmt-go-check fmt-worker-che
 # Run all tests
 test: test-go test-worker test-reference-worker test-web test-site test-install-worker test-install-docker
 
+# Show production stats from D1: just stats 1h
+stats window="24h":
+    ./scripts/stats.sh {{window}}
+
 # Check everything: lint, generate, format, test
 check: proto-lint proto lint test
