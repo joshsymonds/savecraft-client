@@ -17,6 +17,10 @@
 </p>
 
 <p align="center">
+  <video src="https://github.com/user-attachments/assets/a44e59dd-b622-413f-a27a-6670cf51d74a" />
+</p>
+
+<p align="center">
   Savecraft gives AI assistants access to your actual game state via <a href="https://modelcontextprotocol.io/">MCP</a>.<br />
   Player 2 for every game you play alone.
 </p>
