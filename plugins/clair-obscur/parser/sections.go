@@ -127,19 +127,19 @@ func buildCharacterSection(name string, props gvas.Properties) map[string]any {
 	equipment := buildEquipment(props)
 
 	result := map[string]any{
-		"name":                    name,
-		"level":                   level,
-		"experience":              experience,
-		"hp":                      hp,
-		"mp":                      mp,
-		"available_action_points": ap,
-		"excluded":                excluded,
-		"lumina_from_consumables": lumina,
-		"attributes":              attributes,
-		"equipped_skills":         equippedSkills,
-		"unlocked_skills":         unlockedSkills,
+		"name":                     name,
+		"level":                    level,
+		"experience":               experience,
+		"hp":                       hp,
+		"mp":                       mp,
+		"available_action_points":  ap,
+		"excluded":                 excluded,
+		"lumina_from_consumables":  lumina,
+		"attributes":               attributes,
+		"equipped_skills":          equippedSkills,
+		"unlocked_skills":          unlockedSkills,
 		"equipped_lumina_passives": equippedPassives,
-		"equipment":               equipment,
+		"equipment":                equipment,
 	}
 	return result
 }

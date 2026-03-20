@@ -396,4 +396,3 @@ func TestEnumMapping(t *testing.T) {
 		})
 	}
 }
-

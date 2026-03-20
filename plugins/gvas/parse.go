@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"strings"
 )
 
 const gvasMagic = 0x53415647
@@ -818,17 +817,6 @@ func mapKeyString(v Value) string {
 func FindMapEntry(entries []MapEntry, key string) *MapEntry {
 	for i := range entries {
 		if mapKeyString(entries[i].Key) == key {
-			return &entries[i]
-		}
-	}
-	return nil
-}
-
-// FindMapEntryPrefix looks up an entry where the key string starts with prefix.
-func FindMapEntryPrefix(entries []MapEntry, prefix string) *MapEntry {
-	for i := range entries {
-		k := mapKeyString(entries[i].Key)
-		if strings.HasPrefix(k, prefix) {
 			return &entries[i]
 		}
 	}
