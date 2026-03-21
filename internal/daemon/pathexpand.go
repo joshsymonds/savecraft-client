@@ -62,9 +62,11 @@ func hasGlobMeta(path string) bool {
 // is expanded). This covers the common case of per-user subdirectories
 // like Steam ID folders.
 //
-// Only directories are included in the result. If the glob matches nothing,
-// the original pattern is returned so callers can report the path in errors.
-func resolveGlob(fsys FS, pattern string) []string {
+// Directories whose names match any entry in excludeDirs (case-insensitive)
+// are skipped. Only directories are included in the result. If the glob
+// matches nothing, the original pattern is returned so callers can report
+// the path in errors.
+func resolveGlob(fsys FS, pattern string, excludeDirs []string) []string {
 	if !hasGlobMeta(pattern) {
 		return []string{pattern}
 	}
@@ -90,6 +92,9 @@ func resolveGlob(fsys FS, pattern string) []string {
 		if matchErr != nil || !matched {
 			continue
 		}
+		if isExcludedDir(entry.Name(), excludeDirs) {
+			continue
+		}
 		full := filepath.Join(parentDir, entry.Name())
 		// Only include directories.
 		info, statErr := fsys.Stat(full)
@@ -105,4 +110,15 @@ func resolveGlob(fsys FS, pattern string) []string {
 
 	sort.Strings(matches)
 	return matches
+}
+
+// isExcludedDir checks if a directory name matches any entry in the
+// exclude list (case-insensitive).
+func isExcludedDir(name string, excludeDirs []string) bool {
+	for _, excluded := range excludeDirs {
+		if strings.EqualFold(name, excluded) {
+			return true
+		}
+	}
+	return false
 }

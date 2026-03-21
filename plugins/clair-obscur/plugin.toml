@@ -7,6 +7,7 @@ channel = "alpha"
 coverage = "partial"
 file_extensions = [".sav"]
 file_patterns = ["EXPEDITION_*"]
+exclude_dirs = ["Backup"]
 homepage = "https://savecraft.gg/plugins/clair-obscur"
 
 limitations = [

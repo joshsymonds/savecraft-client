@@ -104,6 +104,7 @@ type GameConfig struct {
 	SavePath       string   `json:"savePath"`
 	FileExtensions []string `json:"fileExtensions"`
 	FilePatterns   []string `json:"filePatterns,omitempty"`
+	ExcludeDirs    []string `json:"excludeDirs,omitempty"`
 	Enabled        bool     `json:"enabled"`
 }
 
@@ -182,6 +183,7 @@ type DiscoveredGame struct {
 	FileCount      int      `json:"fileCount"`
 	FileExtensions []string `json:"fileExtensions"`
 	FilePatterns   []string `json:"filePatterns,omitempty"`
+	ExcludeDirs    []string `json:"excludeDirs,omitempty"`
 }
 
 // --- Daemon ---
@@ -679,7 +681,7 @@ func (d *Daemon) discoverGames(ctx context.Context) {
 		}
 
 		expanded := expandPath(pathTemplate)
-		dirs := resolveGlob(d.fs, expanded)
+		dirs := resolveGlob(d.fs, expanded, info.ExcludeDirs)
 
 		// Check that at least one resolved path is a valid directory.
 		anyValid := false
@@ -713,6 +715,7 @@ func (d *Daemon) discoverGames(ctx context.Context) {
 			FileCount:      totalMatching,
 			FileExtensions: info.FileExtensions,
 			FilePatterns:   info.FilePatterns,
+			ExcludeDirs:    info.ExcludeDirs,
 		})
 	}
 
@@ -725,6 +728,7 @@ func (d *Daemon) discoverGames(ctx context.Context) {
 			FileCount:      int32(game.FileCount), // #nosec G115 -- bounded by filesystem limits
 			FileExtensions: game.FileExtensions,
 			FilePatterns:   game.FilePatterns,
+			ExcludeDirs:    game.ExcludeDirs,
 		}
 	}
 	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_GamesDiscovered{GamesDiscovered: &pb.GamesDiscovered{
@@ -738,7 +742,7 @@ func (d *Daemon) discoverGames(ctx context.Context) {
 func (d *Daemon) rescanQuiet(
 	ctx context.Context, gameID string, cfg GameConfig,
 ) bool {
-	dirs := resolveGlob(d.fs, cfg.SavePath)
+	dirs := resolveGlob(d.fs, cfg.SavePath, cfg.ExcludeDirs)
 
 	// Check if any resolved path is already watched.
 	d.mu.RLock()
@@ -780,7 +784,7 @@ func (d *Daemon) scanGame(
 	}
 
 	displayName := d.gameName(ctx, gameID)
-	dirs := resolveGlob(d.fs, cfg.SavePath)
+	dirs := resolveGlob(d.fs, cfg.SavePath, cfg.ExcludeDirs)
 
 	d.log.InfoContext(
 		ctx,
@@ -1315,8 +1319,8 @@ type configGameResult struct {
 }
 
 // buildGameResult checks if a resolved path is a valid directory.
-func (d *Daemon) buildGameResult(resolvedPath string) configGameResult {
-	dirs := resolveGlob(d.fs, resolvedPath)
+func (d *Daemon) buildGameResult(resolvedPath string, excludeDirs []string) configGameResult {
+	dirs := resolveGlob(d.fs, resolvedPath, excludeDirs)
 	for _, dir := range dirs {
 		info, err := d.fs.Stat(dir)
 		if err != nil || !info.IsDir() {
@@ -1344,6 +1348,7 @@ func (d *Daemon) handleConfigUpdate(
 			Enabled:        newGame.Enabled,
 			FileExtensions: newGame.FileExtensions,
 			FilePatterns:   newGame.FilePatterns,
+			ExcludeDirs:    newGame.ExcludeDirs,
 		}
 
 		d.mu.Lock()
@@ -1380,7 +1385,7 @@ func (d *Daemon) handleConfigUpdate(
 				continue
 			}
 			d.scanGame(ctx, gameID, gameCfg, false)
-			results[gameID] = d.buildGameResult(resolvedPath)
+			results[gameID] = d.buildGameResult(resolvedPath, gameCfg.ExcludeDirs)
 		case oldCfg.SavePath != resolvedPath:
 			d.log.InfoContext(
 				ctx,
@@ -1399,7 +1404,7 @@ func (d *Daemon) handleConfigUpdate(
 				continue
 			}
 			d.scanGame(ctx, gameID, gameCfg, false)
-			results[gameID] = d.buildGameResult(resolvedPath)
+			results[gameID] = d.buildGameResult(resolvedPath, gameCfg.ExcludeDirs)
 		default:
 			// No change needed — game already configured with same path.
 			results[gameID] = configGameResult{Success: true, ResolvedPath: resolvedPath}
@@ -1457,7 +1462,7 @@ func (d *Daemon) removeStaleGames(ctx context.Context, newGames map[string]*pb.G
 }
 
 func (d *Daemon) unwatchGame(ctx context.Context, savePath string) {
-	dirs := resolveGlob(d.fs, savePath)
+	dirs := resolveGlob(d.fs, savePath, nil)
 
 	d.mu.Lock()
 	var toRemove []string
@@ -1486,7 +1491,7 @@ func (d *Daemon) handleTestPath(ctx context.Context, gameID, path string) {
 	gameCfg := d.cfg.Games[gameID]
 	d.mu.RUnlock()
 
-	dirs := resolveGlob(d.fs, path)
+	dirs := resolveGlob(d.fs, path, gameCfg.ExcludeDirs)
 	var allFileNames []string
 	for _, dir := range dirs {
 		info, err := d.fs.Stat(dir)

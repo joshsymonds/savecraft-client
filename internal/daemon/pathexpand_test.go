@@ -87,7 +87,7 @@ func TestResolveGlob_NoGlob(t *testing.T) {
 	fs := &fakeFS{
 		dirs: map[string][]string{"/saves/d2r": {"Atmus.d2s"}},
 	}
-	got := resolveGlob(fs, "/saves/d2r")
+	got := resolveGlob(fs, "/saves/d2r", nil)
 	if len(got) != 1 || got[0] != "/saves/d2r" {
 		t.Errorf("resolveGlob(non-glob) = %v, want [/saves/d2r]", got)
 	}
@@ -106,7 +106,7 @@ func TestResolveGlob_Wildcard(t *testing.T) {
 			"/saves/67890/EXPEDITION_0.sav": []byte("save2"),
 		},
 	}
-	got := resolveGlob(fs, "/saves/*")
+	got := resolveGlob(fs, "/saves/*", nil)
 	// Should return only directories, sorted.
 	want := []string{"/saves/12345", "/saves/67890"}
 	if len(got) != len(want) {
@@ -123,7 +123,7 @@ func TestResolveGlob_NoMatch(t *testing.T) {
 	fs := &fakeFS{
 		dirs: map[string][]string{"/saves": {}},
 	}
-	got := resolveGlob(fs, "/saves/*")
+	got := resolveGlob(fs, "/saves/*", nil)
 	// Returns original pattern when nothing matches.
 	if len(got) != 1 || got[0] != "/saves/*" {
 		t.Errorf("resolveGlob(no match) = %v, want [/saves/*]", got)
@@ -139,7 +139,7 @@ func TestResolveGlob_QuestionMark(t *testing.T) {
 			"/saves/xyz": {"save.sav"},
 		},
 	}
-	got := resolveGlob(fs, "/saves/a?")
+	got := resolveGlob(fs, "/saves/a?", nil)
 	want := []string{filepath.Join("/saves", "ab"), filepath.Join("/saves", "ac")}
 	if len(got) != len(want) {
 		t.Fatalf("resolveGlob(/saves/a?) returned %d results, want %d: %v", len(got), len(want), got)
@@ -160,7 +160,7 @@ func TestResolveGlob_BracketPattern(t *testing.T) {
 			"/saves/gamma": {"save.sav"},
 		},
 	}
-	got := resolveGlob(fs, "/saves/[ab]*")
+	got := resolveGlob(fs, "/saves/[ab]*", nil)
 	want := []string{filepath.Join("/saves", "alpha"), filepath.Join("/saves", "beta")}
 	if len(got) != len(want) {
 		t.Fatalf("resolveGlob(/saves/[ab]*) returned %d results, want %d: %v", len(got), len(want), got)
@@ -177,9 +177,64 @@ func TestResolveGlob_NestedGlobReturnsPattern(t *testing.T) {
 		dirs: map[string][]string{"/saves": {"dir1"}},
 	}
 	// Nested glob (parent has metachar) should return pattern as-is.
-	got := resolveGlob(fs, "/*/saves")
+	got := resolveGlob(fs, "/*/saves", nil)
 	if len(got) != 1 || got[0] != "/*/saves" {
 		t.Errorf("resolveGlob(nested glob) = %v, want [/*/saves]", got)
+	}
+}
+
+func TestResolveGlob_ExcludeDirs(t *testing.T) {
+	fs := &fakeFS{
+		dirs: map[string][]string{
+			"/saves":        {"12345", "Backup", "67890"},
+			"/saves/12345":  {"EXPEDITION_0.sav"},
+			"/saves/Backup": {"EXPEDITION_0.sav"},
+			"/saves/67890":  {"EXPEDITION_0.sav"},
+		},
+	}
+	got := resolveGlob(fs, "/saves/*", []string{"Backup"})
+	want := []string{"/saves/12345", "/saves/67890"}
+	if len(got) != len(want) {
+		t.Fatalf("resolveGlob with exclude returned %d results, want %d: %v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("resolveGlob with exclude[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestResolveGlob_ExcludeDirsCaseInsensitive(t *testing.T) {
+	fs := &fakeFS{
+		dirs: map[string][]string{
+			"/saves":        {"12345", "BACKUP", "backup"},
+			"/saves/12345":  {"save.sav"},
+			"/saves/BACKUP": {"save.sav"},
+			"/saves/backup": {"save.sav"},
+		},
+	}
+	got := resolveGlob(fs, "/saves/*", []string{"Backup"})
+	want := []string{"/saves/12345"}
+	if len(got) != len(want) {
+		t.Fatalf("resolveGlob case-insensitive exclude returned %d results, want %d: %v", len(got), len(want), got)
+	}
+	if got[0] != want[0] {
+		t.Errorf("resolveGlob case-insensitive exclude = %v, want %v", got, want)
+	}
+}
+
+func TestResolveGlob_EmptyExcludeDirs(t *testing.T) {
+	fs := &fakeFS{
+		dirs: map[string][]string{
+			"/saves":        {"12345", "Backup"},
+			"/saves/12345":  {"save.sav"},
+			"/saves/Backup": {"save.sav"},
+		},
+	}
+	// Empty exclude list should not filter anything.
+	got := resolveGlob(fs, "/saves/*", []string{})
+	if len(got) != 2 {
+		t.Fatalf("resolveGlob with empty exclude returned %d results, want 2: %v", len(got), got)
 	}
 }
 
