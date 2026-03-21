@@ -101,7 +101,7 @@ func buildCharacterSection(name string, props gvas.Properties) map[string]any {
 	}
 
 	// Equipped skills
-	var equippedSkills []string
+	equippedSkills := make([]string, 0)
 	for _, elem := range props.GetArrayPrefix("EquippedSkills") {
 		if s := valueString(elem); s != "" {
 			equippedSkills = append(equippedSkills, s)
@@ -109,7 +109,7 @@ func buildCharacterSection(name string, props gvas.Properties) map[string]any {
 	}
 
 	// Unlocked skills
-	var unlockedSkills []string
+	unlockedSkills := make([]string, 0)
 	for _, elem := range props.GetArrayPrefix("UnlockedSkills") {
 		if s := valueString(elem); s != "" {
 			unlockedSkills = append(unlockedSkills, s)
@@ -117,7 +117,7 @@ func buildCharacterSection(name string, props gvas.Properties) map[string]any {
 	}
 
 	// Equipped Lumina passives
-	var equippedPassives []string
+	equippedPassives := make([]string, 0)
 	for _, elem := range props.GetArrayPrefix("EquippedPassiveEffects") {
 		if s := valueString(elem); s != "" {
 			equippedPassives = append(equippedPassives, s)
@@ -148,7 +148,7 @@ func buildCharacterSection(name string, props gvas.Properties) map[string]any {
 // buildEquipment extracts weapon and pictos from EquippedItemsPerSlot.
 func buildEquipment(props gvas.Properties) map[string]any {
 	result := map[string]any{}
-	var pictos []string
+	pictos := make([]string, 0)
 
 	for _, entry := range props.GetMapPrefix("EquippedItemsPerSlot") {
 		itemName := valueString(entry.Value)
@@ -172,9 +172,7 @@ func buildEquipment(props gvas.Properties) map[string]any {
 		}
 	}
 
-	if len(pictos) > 0 {
-		result["pictos"] = pictos
-	}
+	result["pictos"] = pictos
 	return result
 }
 
@@ -232,8 +230,9 @@ func buildInventorySection(save *gvas.Save) map[string]any {
 func buildProgressionSection(save *gvas.Save) map[string]any {
 	props := save.Properties
 
-	// Quests
+	// Quests — only include InProgress and Completed to avoid token waste.
 	quests := map[string]any{}
+	notStartedCount := 0
 	for _, entry := range props.GetMap("QuestStatuses") {
 		questName := valueString(entry.Key)
 		if questName == "" {
@@ -246,6 +245,11 @@ func buildProgressionSection(save *gvas.Save) map[string]any {
 
 		questStatusEnum := sv.Properties.GetByteEnumPrefix("QuestStatus")
 		status := mapEnum(questStatusEnum, questStatusNames)
+
+		if status == "NotStarted" {
+			notStartedCount++
+			continue
+		}
 
 		objectivesCompleted := 0
 		for _, objEntry := range sv.Properties.GetMapPrefix("ObjectivesStatus") {
@@ -263,8 +267,8 @@ func buildProgressionSection(save *gvas.Save) map[string]any {
 	}
 
 	// Exploration capacities
-	var explorationCaps []string
-	var worldMapCaps []string
+	explorationCaps := make([]string, 0)
+	worldMapCaps := make([]string, 0)
 
 	exploStruct := props.GetStruct("ExplorationProgression")
 	if exploStruct != nil {
@@ -285,7 +289,7 @@ func buildProgressionSection(save *gvas.Save) map[string]any {
 	encounteredEnemies := len(props.GetMap("EncounteredEnemies"))
 
 	// Visited locations
-	var visitedLocations []string
+	visitedLocations := make([]string, 0)
 	for _, elem := range props.GetArray("VisitedLevelRowNames") {
 		if s := valueString(elem); s != "" {
 			visitedLocations = append(visitedLocations, s)
@@ -295,7 +299,8 @@ func buildProgressionSection(save *gvas.Save) map[string]any {
 	return map[string]any{
 		"description": "Quest progress, exploration unlocks, enemy encounters",
 		"data": map[string]any{
-			"quests": quests,
+			"quests":             quests,
+			"quests_not_started": notStartedCount,
 			"exploration": map[string]any{
 				"exploration_capacities": explorationCaps,
 				"world_map_capacities":   worldMapCaps,
