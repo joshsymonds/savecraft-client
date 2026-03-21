@@ -491,6 +491,79 @@ func TestEnsurePlugin_LoaderError(t *testing.T) {
 	}
 }
 
+// evolvingRegistry returns an empty manifest on the first call, then includes
+// the game on subsequent calls — simulating a plugin deployed after daemon start.
+type evolvingRegistry struct {
+	calls    int
+	manifest map[string]PluginInfo
+	files    map[string][]byte
+	mu       sync.Mutex
+}
+
+func (r *evolvingRegistry) FetchManifest(_ context.Context) (map[string]PluginInfo, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls++
+	if r.calls == 1 {
+		return map[string]PluginInfo{}, nil
+	}
+	return r.manifest, nil
+}
+
+func (r *evolvingRegistry) Download(_ context.Context, url string) ([]byte, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	data, ok := r.files[url]
+	if !ok {
+		return nil, fmt.Errorf("not found: %s", url)
+	}
+	return data, nil
+}
+
+func TestEnsurePlugin_RefetchesManifestForUnknownGame(t *testing.T) {
+	_, priv := generateTestKeys(t)
+	wasm := []byte("clair obscur wasm")
+	sig, hash := signAndHash(t, priv, wasm)
+
+	reg := &evolvingRegistry{
+		manifest: map[string]PluginInfo{
+			"clair-obscur": {
+				GameID:  "clair-obscur",
+				Version: "1.0.0",
+				SHA256:  hash,
+				URL:     pluginURL,
+			},
+		},
+		files: map[string][]byte{
+			pluginURL:          wasm,
+			pluginURL + ".sig": sig,
+		},
+	}
+
+	loader := &fakeLoader{}
+	mgr := NewManager(reg, NewCache(t.TempDir()), loader, nil, testLogger())
+
+	// First call: manifest is empty, but re-fetch finds the game.
+	err := mgr.EnsurePlugin(context.Background(), "clair-obscur")
+	if err != nil {
+		t.Fatalf("expected success after manifest re-fetch, got: %v", err)
+	}
+
+	reg.mu.Lock()
+	calls := reg.calls
+	reg.mu.Unlock()
+	if calls != 2 {
+		t.Errorf("expected 2 manifest fetches (initial + re-fetch), got %d", calls)
+	}
+
+	loader.mu.Lock()
+	loaded := append([]string{}, loader.loaded...)
+	loader.mu.Unlock()
+	if len(loaded) != 1 || loaded[0] != "clair-obscur" {
+		t.Errorf("expected [clair-obscur] loaded, got %v", loaded)
+	}
+}
+
 func TestEnsurePlugin_LocalOverrideWithSig(t *testing.T) {
 	pub, priv := generateTestKeys(t)
 	localDir := t.TempDir()

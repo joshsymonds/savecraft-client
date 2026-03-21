@@ -273,6 +273,22 @@ func (m *Manager) resolveManifestEntry(
 	}
 
 	info, ok := m.manifest[gameID]
+	if ok {
+		return info, nil
+	}
+
+	// Game not in cached manifest — re-fetch in case a new plugin was
+	// deployed after the daemon started.
+	m.logger.InfoContext(ctx, "plugin not in cached manifest, re-fetching",
+		slog.String("game_id", gameID),
+	)
+	manifest, err := m.registry.FetchManifest(ctx)
+	if err != nil {
+		return PluginInfo{}, fmt.Errorf("fetch manifest: %w", err)
+	}
+	m.manifest = manifest
+
+	info, ok = m.manifest[gameID]
 	if !ok {
 		return PluginInfo{}, fmt.Errorf("unknown plugin: %s", gameID)
 	}
