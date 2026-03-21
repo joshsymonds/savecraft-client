@@ -575,7 +575,8 @@ func (d *Daemon) announceOnline(ctx context.Context) {
 
 // autoApplyGracePeriod is how long after detecting an update the daemon waits
 // before auto-applying. Gives the tray time to show the update badge.
-const autoApplyGracePeriod = 15 * time.Minute
+// Variable (not const) so tests can shorten it.
+var autoApplyGracePeriod = 15 * time.Minute //nolint:gochecknoglobals // test injection point
 
 func (d *Daemon) checkSelfUpdate(ctx context.Context) {
 	if d.updater == nil {

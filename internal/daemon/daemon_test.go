@@ -3243,3 +3243,80 @@ func TestApplyPendingUpdate_NoopWhenNoPending(t *testing.T) {
 		t.Errorf("updater.Apply called %d times, want 0", calls)
 	}
 }
+
+func TestCheckSelfUpdate_AutoApplyTimerFires(t *testing.T) {
+	// Shorten the grace period for testing.
+	orig := autoApplyGracePeriod
+	autoApplyGracePeriod = 50 * time.Millisecond
+	t.Cleanup(func() { autoApplyGracePeriod = orig })
+
+	ws := newFakeWSClient()
+	updater := &fakeUpdater{
+		checkResult: &CheckResult{
+			Daemon: &UpdateInfo{
+				Version:      "0.4.0",
+				URL:          "https://example.com/daemon",
+				SignatureURL: "https://example.com/daemon.sig",
+				SHA256:       "deadbeef",
+			},
+		},
+	}
+
+	cfg := Config{
+		SourceID:   "deck",
+		Version:    "0.2.0",
+		BinaryPath: "/usr/local/bin/savecraft-daemon",
+		Games:      map[string]GameConfig{},
+	}
+
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, updater, testLogger())
+	d.exitFunc = func(_ int) {}
+
+	d.checkSelfUpdate(context.Background())
+
+	// Pending update should be stored immediately.
+	if v := d.PendingVersion(); v != "0.4.0" {
+		t.Fatalf("PendingVersion() = %q, want 0.4.0", v)
+	}
+
+	// Wait for the auto-apply timer to fire.
+	waitFor(t, func() bool {
+		return d.PendingVersion() == ""
+	})
+
+	// Verify the update was applied.
+	updater.mu.Lock()
+	calls := len(updater.applyCalls)
+	updater.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("updater.Apply called %d times after auto-apply, want 1", calls)
+	}
+	if updater.applyCalls[0].Info.Version != "0.4.0" {
+		t.Errorf("applied version = %s, want 0.4.0", updater.applyCalls[0].Info.Version)
+	}
+}
+
+func TestCheckSelfUpdate_NoTimerWhenNoUpdate(t *testing.T) {
+	ws := newFakeWSClient()
+	updater := &fakeUpdater{checkResult: nil}
+
+	d := New(
+		Config{SourceID: "deck", Version: "0.2.0", Games: map[string]GameConfig{}},
+		&fakeFS{}, newFakeWatcher(), &fakeRunner{}, ws,
+		&fakePluginManager{}, updater, testLogger(),
+	)
+
+	d.checkSelfUpdate(context.Background())
+
+	// No update detected — PendingVersion should be empty and no timer scheduled.
+	if v := d.PendingVersion(); v != "" {
+		t.Errorf("PendingVersion() = %q, want empty", v)
+	}
+
+	d.mu.RLock()
+	hasTimer := d.autoApplyTimer != nil
+	d.mu.RUnlock()
+	if hasTimer {
+		t.Error("autoApplyTimer should be nil when no update detected")
+	}
+}
