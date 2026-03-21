@@ -19,10 +19,11 @@ func buildAllSections(save *gvas.Save) map[string]any {
 	}
 
 	for _, entry := range save.Properties.GetMap("CharactersCollection") {
-		name := valueString(entry.Key)
-		if name == "" {
+		rawName := valueString(entry.Key)
+		if rawName == "" {
 			continue
 		}
+		name := displayName(rawName)
 		sv, ok := entry.Value.(gvas.StructValue)
 		if !ok {
 			continue
@@ -50,7 +51,7 @@ func buildOverviewSection(save *gvas.Save) map[string]any {
 
 	var characters []string
 	for _, entry := range props.GetMap("CharactersCollection") {
-		name := valueString(entry.Key)
+		name := displayName(valueString(entry.Key))
 		if name != "" {
 			characters = append(characters, name)
 		}
@@ -185,7 +186,7 @@ func buildPartySection(save *gvas.Save) map[string]any {
 		if !ok {
 			continue
 		}
-		charName := sv.Properties.GetStringPrefix("CharacterHardcodedName")
+		charName := displayName(sv.Properties.GetStringPrefix("CharacterHardcodedName"))
 		formationEnum := sv.Properties.GetByteEnumPrefix("Formation")
 		formation := mapEnum(formationEnum, formationTypeNames)
 
@@ -348,7 +349,7 @@ func buildSummary(save *gvas.Save) string {
 		if !ok {
 			continue
 		}
-		name := sv.Properties.GetStringPrefix("CharacterHardcodedName")
+		name := displayName(sv.Properties.GetStringPrefix("CharacterHardcodedName"))
 		if name != "" {
 			partyNames = append(partyNames, name)
 		}
@@ -403,7 +404,7 @@ func buildSaveName(save *gvas.Save) string {
 	if len(partyArr) > 0 {
 		sv, ok := partyArr[0].(gvas.StructValue)
 		if ok {
-			name := sv.Properties.GetStringPrefix("CharacterHardcodedName")
+			name := displayName(sv.Properties.GetStringPrefix("CharacterHardcodedName"))
 			if name != "" {
 				return name + "'s Expedition"
 			}

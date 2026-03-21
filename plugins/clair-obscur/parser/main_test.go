@@ -370,6 +370,26 @@ func TestBuildSaveName(t *testing.T) {
 	}
 }
 
+func TestDisplayName(t *testing.T) {
+	tests := []struct {
+		internal string
+		want     string
+	}{
+		{"Frey", "Gustave"},
+		{"Lune", "Lune"},
+		{"Maelle", "Maelle"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.internal, func(t *testing.T) {
+			got := displayName(tt.internal)
+			if got != tt.want {
+				t.Errorf("displayName(%q) = %q, want %q", tt.internal, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestEnumMapping(t *testing.T) {
 	tests := []struct {
 		input string

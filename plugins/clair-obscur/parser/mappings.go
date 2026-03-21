@@ -64,6 +64,21 @@ var difficultyNames = map[string]string{
 	"NewEnumerator2": "Hard",
 }
 
+// characterDisplayNames maps internal character names to their in-game names.
+// "Frey" was the protagonist's development name; the released game uses "Gustave".
+var characterDisplayNames = map[string]string{
+	"Frey": "Gustave",
+}
+
+// displayName returns the player-facing name for a character,
+// correcting any internal/development names.
+func displayName(internal string) string {
+	if name, ok := characterDisplayNames[internal]; ok {
+		return name
+	}
+	return internal
+}
+
 // mapEnum resolves "EnumType::Value" to a human name using a mapping table.
 // Returns the original string if no mapping is found.
 func mapEnum(val string, names map[string]string) string {
