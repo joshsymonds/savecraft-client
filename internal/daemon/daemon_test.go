@@ -159,6 +159,7 @@ type runCall struct {
 func (r *fakeRunner) Run(
 	_ context.Context,
 	gameID string,
+	_ string,
 	saveBytes []byte,
 	onStatus func(string),
 ) (*GameState, error) {

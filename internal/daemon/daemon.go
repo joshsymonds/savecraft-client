@@ -121,6 +121,7 @@ type Runner interface {
 	Run(
 		ctx context.Context,
 		gameID string,
+		fileName string,
 		saveBytes []byte,
 		onStatus func(string),
 	) (*GameState, error)
@@ -980,7 +981,7 @@ func (d *Daemon) parseAndPush(
 		}}})
 	}
 
-	state, err := d.runner.Run(ctx, gameID, saveBytes, onStatus)
+	state, err := d.runner.Run(ctx, gameID, fileName, saveBytes, onStatus)
 	if err != nil {
 		errorType := "PARSE_ERROR_TYPE_PARSE_ERROR"
 		if pluginErr, ok := errors.AsType[*PluginError](err); ok {

@@ -92,6 +92,7 @@ func (wr *WazeroRunner) LoadPlugin(ctx context.Context, gameID string, wasmBytes
 func (wr *WazeroRunner) Run(
 	ctx context.Context,
 	gameID string,
+	fileName string,
 	saveBytes []byte,
 	onStatus func(string),
 ) (*daemon.GameState, error) {
@@ -111,7 +112,7 @@ func (wr *WazeroRunner) Run(
 		WithStdin(bytes.NewReader(saveBytes)).
 		WithStdout(stdoutW).
 		WithStderr(&stderr).
-		WithArgs(gameID) // argv[0]
+		WithArgs(gameID, fileName) // argv[0]=gameID, argv[1]=fileName
 
 	var (
 		result   *daemon.GameState

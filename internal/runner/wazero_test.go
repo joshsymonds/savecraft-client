@@ -60,7 +60,7 @@ func TestWazeroRunner_EchoPlugin(t *testing.T) {
 	}
 
 	input := []byte("Hammerdin\nLevel 89 Paladin")
-	state, runErr := runner.Run(ctx, "echo", input, onStatus)
+	state, runErr := runner.Run(ctx, "echo", "test.sav", input, onStatus)
 	if runErr != nil {
 		t.Fatalf("run: %v", runErr)
 	}
@@ -100,7 +100,7 @@ func TestWazeroRunner_EchoPlugin_EmptyInput(t *testing.T) {
 		t.Fatalf("load plugin: %v", loadErr)
 	}
 
-	state, runErr := runner.Run(ctx, "echo", []byte{}, nil)
+	state, runErr := runner.Run(ctx, "echo", "test.sav", []byte{}, nil)
 	if runErr != nil {
 		t.Fatalf("run: %v", runErr)
 	}
@@ -127,7 +127,7 @@ func TestWazeroRunner_EchoPlugin_ConcurrentRuns(t *testing.T) {
 	errc := make(chan error, 3)
 	for _, name := range []string{"Alice", "Bob", "Charlie"} {
 		go func() {
-			state, runErr := runner.Run(ctx, "echo", []byte(name), nil)
+			state, runErr := runner.Run(ctx, "echo", "test.sav", []byte(name), nil)
 			if runErr != nil {
 				errc <- runErr
 				return
@@ -165,7 +165,7 @@ func TestWazeroRunner_ErrorPlugin(t *testing.T) {
 		t.Fatalf("load plugin: %v", loadErr)
 	}
 
-	_, runErr := runner.Run(ctx, "error", []byte("anything"), nil)
+	_, runErr := runner.Run(ctx, "error", "test.sav", []byte("anything"), nil)
 	if runErr == nil {
 		t.Fatal("expected error from error plugin")
 	}
@@ -191,7 +191,7 @@ func TestWazeroRunner_NoPlugin(t *testing.T) {
 	}
 	defer runner.Close(ctx)
 
-	_, runErr := runner.Run(ctx, "nonexistent", []byte("data"), nil)
+	_, runErr := runner.Run(ctx, "nonexistent", "test.sav", []byte("data"), nil)
 	if runErr == nil {
 		t.Error("expected error for missing plugin")
 	}
@@ -226,7 +226,7 @@ func TestWazeroRunner_NoopPlugin_NoResult(t *testing.T) {
 		t.Fatalf("load plugin: %v", loadErr)
 	}
 
-	_, runErr := runner.Run(ctx, "noop", []byte("data"), nil)
+	_, runErr := runner.Run(ctx, "noop", "test.sav", []byte("data"), nil)
 	if runErr == nil {
 		t.Fatal("expected error for plugin with no result")
 	}
@@ -249,7 +249,7 @@ func TestWazeroRunner_CrashPlugin_NonZeroExit(t *testing.T) {
 		t.Fatalf("load plugin: %v", loadErr)
 	}
 
-	_, runErr := runner.Run(ctx, "crash", []byte("data"), nil)
+	_, runErr := runner.Run(ctx, "crash", "test.sav", []byte("data"), nil)
 	if runErr == nil {
 		t.Fatal("expected error from crashing plugin")
 	}

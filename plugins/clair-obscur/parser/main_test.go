@@ -390,6 +390,30 @@ func TestDisplayName(t *testing.T) {
 	}
 }
 
+func TestIsGameSave(t *testing.T) {
+	tests := []struct {
+		fileName string
+		want     bool
+	}{
+		{"EXPEDITION_0.sav", true},
+		{"EXPEDITION_1.sav", true},
+		{"EXPEDITION_0_2026_3_20_23_18_12.sav", true},
+		{"EnhancedInputUserSettings.sav", false},
+		{"PlatformSaveData.sav", false},
+		{"SavesContainer.sav", false},
+		{"SharedGameUserSettings.sav", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.fileName, func(t *testing.T) {
+			got := isGameSave(tt.fileName)
+			if got != tt.want {
+				t.Errorf("isGameSave(%q) = %v, want %v", tt.fileName, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestEnumMapping(t *testing.T) {
 	tests := []struct {
 		input string
