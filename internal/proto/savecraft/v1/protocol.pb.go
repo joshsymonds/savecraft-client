@@ -133,6 +133,53 @@ func (GameStatusEnum) EnumDescriptor() ([]byte, []int) {
 	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{1}
 }
 
+// Why a PushSave was rejected by the server.
+type PushSaveError int32
+
+const (
+	PushSaveError_PUSH_SAVE_ERROR_UNSPECIFIED  PushSaveError = 0
+	PushSaveError_PUSH_SAVE_ERROR_GAME_REMOVED PushSaveError = 1
+)
+
+// Enum value maps for PushSaveError.
+var (
+	PushSaveError_name = map[int32]string{
+		0: "PUSH_SAVE_ERROR_UNSPECIFIED",
+		1: "PUSH_SAVE_ERROR_GAME_REMOVED",
+	}
+	PushSaveError_value = map[string]int32{
+		"PUSH_SAVE_ERROR_UNSPECIFIED":  0,
+		"PUSH_SAVE_ERROR_GAME_REMOVED": 1,
+	}
+)
+
+func (x PushSaveError) Enum() *PushSaveError {
+	p := new(PushSaveError)
+	*p = x
+	return p
+}
+
+func (x PushSaveError) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (PushSaveError) Descriptor() protoreflect.EnumDescriptor {
+	return file_savecraft_v1_protocol_proto_enumTypes[2].Descriptor()
+}
+
+func (PushSaveError) Type() protoreflect.EnumType {
+	return &file_savecraft_v1_protocol_proto_enumTypes[2]
+}
+
+func (x PushSaveError) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use PushSaveError.Descriptor instead.
+func (PushSaveError) EnumDescriptor() ([]byte, []int) {
+	return file_savecraft_v1_protocol_proto_rawDescGZIP(), []int{2}
+}
+
 // Message is the top-level WebSocket envelope for daemon↔server communication.
 // Also used inside RelayedMessage for server→UI relay.
 // The oneof field numbers are grouped by category with gaps for future additions.
@@ -3376,10 +3423,13 @@ func (x *PushSave) GetGameId() string {
 }
 
 // Server response to PushSave with the resolved save UUID.
+// If error is set, the push was rejected and save_uuid/snapshot_timestamp are empty.
 type PushSaveResult struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	SaveUuid          string                 `protobuf:"bytes,1,opt,name=save_uuid,json=saveUuid,proto3" json:"save_uuid,omitempty"`
 	SnapshotTimestamp *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=snapshot_timestamp,json=snapshotTimestamp,proto3" json:"snapshot_timestamp,omitempty"`
+	Error             PushSaveError          `protobuf:"varint,3,opt,name=error,proto3,enum=savecraft.v1.PushSaveError" json:"error,omitempty"`
+	GameId            string                 `protobuf:"bytes,4,opt,name=game_id,json=gameId,proto3" json:"game_id,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -3426,6 +3476,20 @@ func (x *PushSaveResult) GetSnapshotTimestamp() *timestamppb.Timestamp {
 		return x.SnapshotTimestamp
 	}
 	return nil
+}
+
+func (x *PushSaveResult) GetError() PushSaveError {
+	if x != nil {
+		return x.Error
+	}
+	return PushSaveError_PUSH_SAVE_ERROR_UNSPECIFIED
+}
+
+func (x *PushSaveResult) GetGameId() string {
+	if x != nil {
+		return x.GameId
+	}
+	return ""
 }
 
 // Source requests a new link code (replacing any existing one).
@@ -3938,10 +4002,12 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\asummary\x18\x02 \x01(\tR\asummary\x125\n" +
 	"\bsections\x18\x03 \x03(\v2\x19.savecraft.v1.GameSectionR\bsections\x127\n" +
 	"\tparsed_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bparsedAt\x12\x17\n" +
-	"\agame_id\x18\x05 \x01(\tR\x06gameId\"x\n" +
+	"\agame_id\x18\x05 \x01(\tR\x06gameId\"\xc4\x01\n" +
 	"\x0ePushSaveResult\x12\x1b\n" +
 	"\tsave_uuid\x18\x01 \x01(\tR\bsaveUuid\x12I\n" +
-	"\x12snapshot_timestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x11snapshotTimestamp\"\x11\n" +
+	"\x12snapshot_timestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x11snapshotTimestamp\x121\n" +
+	"\x05error\x18\x03 \x01(\x0e2\x1b.savecraft.v1.PushSaveErrorR\x05error\x12\x17\n" +
+	"\agame_id\x18\x04 \x01(\tR\x06gameId\"\x11\n" +
 	"\x0fRefreshLinkCode\"o\n" +
 	"\x15RefreshLinkCodeResult\x12\x1b\n" +
 	"\tlink_code\x18\x01 \x01(\tR\blinkCode\x129\n" +
@@ -3965,7 +4031,10 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\x19GAME_STATUS_ENUM_WATCHING\x10\x02\x12\x1a\n" +
 	"\x16GAME_STATUS_ENUM_ERROR\x10\x03\x12\x1e\n" +
 	"\x1aGAME_STATUS_ENUM_NOT_FOUND\x10\x04\x12\x1f\n" +
-	"\x1bGAME_STATUS_ENUM_ACTIVATING\x10\x05B4Z2github.com/joshsymonds/savecraft.gg/internal/protob\x06proto3"
+	"\x1bGAME_STATUS_ENUM_ACTIVATING\x10\x05*R\n" +
+	"\rPushSaveError\x12\x1f\n" +
+	"\x1bPUSH_SAVE_ERROR_UNSPECIFIED\x10\x00\x12 \n" +
+	"\x1cPUSH_SAVE_ERROR_GAME_REMOVED\x10\x01B4Z2github.com/joshsymonds/savecraft.gg/internal/protob\x06proto3"
 
 var (
 	file_savecraft_v1_protocol_proto_rawDescOnce sync.Once
@@ -3979,138 +4048,140 @@ func file_savecraft_v1_protocol_proto_rawDescGZIP() []byte {
 	return file_savecraft_v1_protocol_proto_rawDescData
 }
 
-var file_savecraft_v1_protocol_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_savecraft_v1_protocol_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
 var file_savecraft_v1_protocol_proto_msgTypes = make([]protoimpl.MessageInfo, 51)
 var file_savecraft_v1_protocol_proto_goTypes = []any{
 	(ParseErrorType)(0),             // 0: savecraft.v1.ParseErrorType
 	(GameStatusEnum)(0),             // 1: savecraft.v1.GameStatusEnum
-	(*Message)(nil),                 // 2: savecraft.v1.Message
-	(*RelayedMessage)(nil),          // 3: savecraft.v1.RelayedMessage
-	(*SourceOnline)(nil),            // 4: savecraft.v1.SourceOnline
-	(*SourceOffline)(nil),           // 5: savecraft.v1.SourceOffline
-	(*SourceHeartbeat)(nil),         // 6: savecraft.v1.SourceHeartbeat
-	(*ScanStarted)(nil),             // 7: savecraft.v1.ScanStarted
-	(*ScanCompleted)(nil),           // 8: savecraft.v1.ScanCompleted
-	(*GameDetected)(nil),            // 9: savecraft.v1.GameDetected
-	(*GameNotFound)(nil),            // 10: savecraft.v1.GameNotFound
-	(*Watching)(nil),                // 11: savecraft.v1.Watching
-	(*GamesDiscovered)(nil),         // 12: savecraft.v1.GamesDiscovered
-	(*DiscoveredGame)(nil),          // 13: savecraft.v1.DiscoveredGame
-	(*ParseStarted)(nil),            // 14: savecraft.v1.ParseStarted
-	(*PluginStatus)(nil),            // 15: savecraft.v1.PluginStatus
-	(*ParseCompleted)(nil),          // 16: savecraft.v1.ParseCompleted
-	(*ParseFailed)(nil),             // 17: savecraft.v1.ParseFailed
-	(*PushStarted)(nil),             // 18: savecraft.v1.PushStarted
-	(*PushCompleted)(nil),           // 19: savecraft.v1.PushCompleted
-	(*PushFailed)(nil),              // 20: savecraft.v1.PushFailed
-	(*PluginUpdated)(nil),           // 21: savecraft.v1.PluginUpdated
-	(*PluginUpdateCheckFailed)(nil), // 22: savecraft.v1.PluginUpdateCheckFailed
-	(*PluginDownloadFailed)(nil),    // 23: savecraft.v1.PluginDownloadFailed
-	(*ConfigUpdate)(nil),            // 24: savecraft.v1.ConfigUpdate
-	(*GameConfig)(nil),              // 25: savecraft.v1.GameConfig
-	(*ConfigResult)(nil),            // 26: savecraft.v1.ConfigResult
-	(*GameConfigResult)(nil),        // 27: savecraft.v1.GameConfigResult
-	(*RescanGame)(nil),              // 28: savecraft.v1.RescanGame
-	(*PluginAvailable)(nil),         // 29: savecraft.v1.PluginAvailable
-	(*DiscoverGames)(nil),           // 30: savecraft.v1.DiscoverGames
-	(*SourceState)(nil),             // 31: savecraft.v1.SourceState
-	(*SourceInfo)(nil),              // 32: savecraft.v1.SourceInfo
-	(*GameInfo)(nil),                // 33: savecraft.v1.GameInfo
-	(*SaveInfo)(nil),                // 34: savecraft.v1.SaveInfo
-	(*TestPath)(nil),                // 35: savecraft.v1.TestPath
-	(*TestPathResult)(nil),          // 36: savecraft.v1.TestPathResult
-	(*SourceUpdateAvailable)(nil),   // 37: savecraft.v1.SourceUpdateAvailable
-	(*SourceUpdateStarted)(nil),     // 38: savecraft.v1.SourceUpdateStarted
-	(*SourceUpdateFailed)(nil),      // 39: savecraft.v1.SourceUpdateFailed
-	(*Register)(nil),                // 40: savecraft.v1.Register
-	(*RegisterResult)(nil),          // 41: savecraft.v1.RegisterResult
-	(*GameSection)(nil),             // 42: savecraft.v1.GameSection
-	(*PushSave)(nil),                // 43: savecraft.v1.PushSave
-	(*PushSaveResult)(nil),          // 44: savecraft.v1.PushSaveResult
-	(*RefreshLinkCode)(nil),         // 45: savecraft.v1.RefreshLinkCode
-	(*RefreshLinkCodeResult)(nil),   // 46: savecraft.v1.RefreshLinkCodeResult
-	(*SourceLinked)(nil),            // 47: savecraft.v1.SourceLinked
-	(*UnlinkSource)(nil),            // 48: savecraft.v1.UnlinkSource
-	(*DeregisterSource)(nil),        // 49: savecraft.v1.DeregisterSource
-	(*SaveIdentity)(nil),            // 50: savecraft.v1.SaveIdentity
-	nil,                             // 51: savecraft.v1.ConfigUpdate.GamesEntry
-	nil,                             // 52: savecraft.v1.ConfigResult.ResultsEntry
-	(*timestamppb.Timestamp)(nil),   // 53: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),         // 54: google.protobuf.Struct
+	(PushSaveError)(0),              // 2: savecraft.v1.PushSaveError
+	(*Message)(nil),                 // 3: savecraft.v1.Message
+	(*RelayedMessage)(nil),          // 4: savecraft.v1.RelayedMessage
+	(*SourceOnline)(nil),            // 5: savecraft.v1.SourceOnline
+	(*SourceOffline)(nil),           // 6: savecraft.v1.SourceOffline
+	(*SourceHeartbeat)(nil),         // 7: savecraft.v1.SourceHeartbeat
+	(*ScanStarted)(nil),             // 8: savecraft.v1.ScanStarted
+	(*ScanCompleted)(nil),           // 9: savecraft.v1.ScanCompleted
+	(*GameDetected)(nil),            // 10: savecraft.v1.GameDetected
+	(*GameNotFound)(nil),            // 11: savecraft.v1.GameNotFound
+	(*Watching)(nil),                // 12: savecraft.v1.Watching
+	(*GamesDiscovered)(nil),         // 13: savecraft.v1.GamesDiscovered
+	(*DiscoveredGame)(nil),          // 14: savecraft.v1.DiscoveredGame
+	(*ParseStarted)(nil),            // 15: savecraft.v1.ParseStarted
+	(*PluginStatus)(nil),            // 16: savecraft.v1.PluginStatus
+	(*ParseCompleted)(nil),          // 17: savecraft.v1.ParseCompleted
+	(*ParseFailed)(nil),             // 18: savecraft.v1.ParseFailed
+	(*PushStarted)(nil),             // 19: savecraft.v1.PushStarted
+	(*PushCompleted)(nil),           // 20: savecraft.v1.PushCompleted
+	(*PushFailed)(nil),              // 21: savecraft.v1.PushFailed
+	(*PluginUpdated)(nil),           // 22: savecraft.v1.PluginUpdated
+	(*PluginUpdateCheckFailed)(nil), // 23: savecraft.v1.PluginUpdateCheckFailed
+	(*PluginDownloadFailed)(nil),    // 24: savecraft.v1.PluginDownloadFailed
+	(*ConfigUpdate)(nil),            // 25: savecraft.v1.ConfigUpdate
+	(*GameConfig)(nil),              // 26: savecraft.v1.GameConfig
+	(*ConfigResult)(nil),            // 27: savecraft.v1.ConfigResult
+	(*GameConfigResult)(nil),        // 28: savecraft.v1.GameConfigResult
+	(*RescanGame)(nil),              // 29: savecraft.v1.RescanGame
+	(*PluginAvailable)(nil),         // 30: savecraft.v1.PluginAvailable
+	(*DiscoverGames)(nil),           // 31: savecraft.v1.DiscoverGames
+	(*SourceState)(nil),             // 32: savecraft.v1.SourceState
+	(*SourceInfo)(nil),              // 33: savecraft.v1.SourceInfo
+	(*GameInfo)(nil),                // 34: savecraft.v1.GameInfo
+	(*SaveInfo)(nil),                // 35: savecraft.v1.SaveInfo
+	(*TestPath)(nil),                // 36: savecraft.v1.TestPath
+	(*TestPathResult)(nil),          // 37: savecraft.v1.TestPathResult
+	(*SourceUpdateAvailable)(nil),   // 38: savecraft.v1.SourceUpdateAvailable
+	(*SourceUpdateStarted)(nil),     // 39: savecraft.v1.SourceUpdateStarted
+	(*SourceUpdateFailed)(nil),      // 40: savecraft.v1.SourceUpdateFailed
+	(*Register)(nil),                // 41: savecraft.v1.Register
+	(*RegisterResult)(nil),          // 42: savecraft.v1.RegisterResult
+	(*GameSection)(nil),             // 43: savecraft.v1.GameSection
+	(*PushSave)(nil),                // 44: savecraft.v1.PushSave
+	(*PushSaveResult)(nil),          // 45: savecraft.v1.PushSaveResult
+	(*RefreshLinkCode)(nil),         // 46: savecraft.v1.RefreshLinkCode
+	(*RefreshLinkCodeResult)(nil),   // 47: savecraft.v1.RefreshLinkCodeResult
+	(*SourceLinked)(nil),            // 48: savecraft.v1.SourceLinked
+	(*UnlinkSource)(nil),            // 49: savecraft.v1.UnlinkSource
+	(*DeregisterSource)(nil),        // 50: savecraft.v1.DeregisterSource
+	(*SaveIdentity)(nil),            // 51: savecraft.v1.SaveIdentity
+	nil,                             // 52: savecraft.v1.ConfigUpdate.GamesEntry
+	nil,                             // 53: savecraft.v1.ConfigResult.ResultsEntry
+	(*timestamppb.Timestamp)(nil),   // 54: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),         // 55: google.protobuf.Struct
 }
 var file_savecraft_v1_protocol_proto_depIdxs = []int32{
-	4,  // 0: savecraft.v1.Message.source_online:type_name -> savecraft.v1.SourceOnline
-	5,  // 1: savecraft.v1.Message.source_offline:type_name -> savecraft.v1.SourceOffline
-	6,  // 2: savecraft.v1.Message.source_heartbeat:type_name -> savecraft.v1.SourceHeartbeat
-	7,  // 3: savecraft.v1.Message.scan_started:type_name -> savecraft.v1.ScanStarted
-	8,  // 4: savecraft.v1.Message.scan_completed:type_name -> savecraft.v1.ScanCompleted
-	9,  // 5: savecraft.v1.Message.game_detected:type_name -> savecraft.v1.GameDetected
-	10, // 6: savecraft.v1.Message.game_not_found:type_name -> savecraft.v1.GameNotFound
-	11, // 7: savecraft.v1.Message.watching:type_name -> savecraft.v1.Watching
-	12, // 8: savecraft.v1.Message.games_discovered:type_name -> savecraft.v1.GamesDiscovered
-	14, // 9: savecraft.v1.Message.parse_started:type_name -> savecraft.v1.ParseStarted
-	15, // 10: savecraft.v1.Message.plugin_status:type_name -> savecraft.v1.PluginStatus
-	16, // 11: savecraft.v1.Message.parse_completed:type_name -> savecraft.v1.ParseCompleted
-	17, // 12: savecraft.v1.Message.parse_failed:type_name -> savecraft.v1.ParseFailed
-	18, // 13: savecraft.v1.Message.push_started:type_name -> savecraft.v1.PushStarted
-	19, // 14: savecraft.v1.Message.push_completed:type_name -> savecraft.v1.PushCompleted
-	20, // 15: savecraft.v1.Message.push_failed:type_name -> savecraft.v1.PushFailed
-	21, // 16: savecraft.v1.Message.plugin_updated:type_name -> savecraft.v1.PluginUpdated
-	37, // 17: savecraft.v1.Message.source_update_available:type_name -> savecraft.v1.SourceUpdateAvailable
-	38, // 18: savecraft.v1.Message.source_update_started:type_name -> savecraft.v1.SourceUpdateStarted
-	39, // 19: savecraft.v1.Message.source_update_failed:type_name -> savecraft.v1.SourceUpdateFailed
-	22, // 20: savecraft.v1.Message.plugin_update_check_failed:type_name -> savecraft.v1.PluginUpdateCheckFailed
-	23, // 21: savecraft.v1.Message.plugin_download_failed:type_name -> savecraft.v1.PluginDownloadFailed
-	24, // 22: savecraft.v1.Message.config_update:type_name -> savecraft.v1.ConfigUpdate
-	28, // 23: savecraft.v1.Message.rescan_game:type_name -> savecraft.v1.RescanGame
-	29, // 24: savecraft.v1.Message.plugin_available:type_name -> savecraft.v1.PluginAvailable
-	30, // 25: savecraft.v1.Message.discover_games:type_name -> savecraft.v1.DiscoverGames
-	26, // 26: savecraft.v1.Message.config_result:type_name -> savecraft.v1.ConfigResult
-	31, // 27: savecraft.v1.Message.source_state:type_name -> savecraft.v1.SourceState
-	35, // 28: savecraft.v1.Message.test_path:type_name -> savecraft.v1.TestPath
-	36, // 29: savecraft.v1.Message.test_path_result:type_name -> savecraft.v1.TestPathResult
-	40, // 30: savecraft.v1.Message.register:type_name -> savecraft.v1.Register
-	41, // 31: savecraft.v1.Message.register_result:type_name -> savecraft.v1.RegisterResult
-	43, // 32: savecraft.v1.Message.push_save:type_name -> savecraft.v1.PushSave
-	44, // 33: savecraft.v1.Message.push_save_result:type_name -> savecraft.v1.PushSaveResult
-	45, // 34: savecraft.v1.Message.refresh_link_code:type_name -> savecraft.v1.RefreshLinkCode
-	46, // 35: savecraft.v1.Message.refresh_link_code_result:type_name -> savecraft.v1.RefreshLinkCodeResult
-	47, // 36: savecraft.v1.Message.source_linked:type_name -> savecraft.v1.SourceLinked
-	48, // 37: savecraft.v1.Message.unlink_source:type_name -> savecraft.v1.UnlinkSource
-	49, // 38: savecraft.v1.Message.deregister_source:type_name -> savecraft.v1.DeregisterSource
-	53, // 39: savecraft.v1.RelayedMessage.server_timestamp:type_name -> google.protobuf.Timestamp
-	2,  // 40: savecraft.v1.RelayedMessage.message:type_name -> savecraft.v1.Message
-	53, // 41: savecraft.v1.SourceOnline.timestamp:type_name -> google.protobuf.Timestamp
-	53, // 42: savecraft.v1.SourceOffline.timestamp:type_name -> google.protobuf.Timestamp
-	13, // 43: savecraft.v1.GamesDiscovered.games:type_name -> savecraft.v1.DiscoveredGame
-	50, // 44: savecraft.v1.ParseCompleted.identity:type_name -> savecraft.v1.SaveIdentity
+	5,  // 0: savecraft.v1.Message.source_online:type_name -> savecraft.v1.SourceOnline
+	6,  // 1: savecraft.v1.Message.source_offline:type_name -> savecraft.v1.SourceOffline
+	7,  // 2: savecraft.v1.Message.source_heartbeat:type_name -> savecraft.v1.SourceHeartbeat
+	8,  // 3: savecraft.v1.Message.scan_started:type_name -> savecraft.v1.ScanStarted
+	9,  // 4: savecraft.v1.Message.scan_completed:type_name -> savecraft.v1.ScanCompleted
+	10, // 5: savecraft.v1.Message.game_detected:type_name -> savecraft.v1.GameDetected
+	11, // 6: savecraft.v1.Message.game_not_found:type_name -> savecraft.v1.GameNotFound
+	12, // 7: savecraft.v1.Message.watching:type_name -> savecraft.v1.Watching
+	13, // 8: savecraft.v1.Message.games_discovered:type_name -> savecraft.v1.GamesDiscovered
+	15, // 9: savecraft.v1.Message.parse_started:type_name -> savecraft.v1.ParseStarted
+	16, // 10: savecraft.v1.Message.plugin_status:type_name -> savecraft.v1.PluginStatus
+	17, // 11: savecraft.v1.Message.parse_completed:type_name -> savecraft.v1.ParseCompleted
+	18, // 12: savecraft.v1.Message.parse_failed:type_name -> savecraft.v1.ParseFailed
+	19, // 13: savecraft.v1.Message.push_started:type_name -> savecraft.v1.PushStarted
+	20, // 14: savecraft.v1.Message.push_completed:type_name -> savecraft.v1.PushCompleted
+	21, // 15: savecraft.v1.Message.push_failed:type_name -> savecraft.v1.PushFailed
+	22, // 16: savecraft.v1.Message.plugin_updated:type_name -> savecraft.v1.PluginUpdated
+	38, // 17: savecraft.v1.Message.source_update_available:type_name -> savecraft.v1.SourceUpdateAvailable
+	39, // 18: savecraft.v1.Message.source_update_started:type_name -> savecraft.v1.SourceUpdateStarted
+	40, // 19: savecraft.v1.Message.source_update_failed:type_name -> savecraft.v1.SourceUpdateFailed
+	23, // 20: savecraft.v1.Message.plugin_update_check_failed:type_name -> savecraft.v1.PluginUpdateCheckFailed
+	24, // 21: savecraft.v1.Message.plugin_download_failed:type_name -> savecraft.v1.PluginDownloadFailed
+	25, // 22: savecraft.v1.Message.config_update:type_name -> savecraft.v1.ConfigUpdate
+	29, // 23: savecraft.v1.Message.rescan_game:type_name -> savecraft.v1.RescanGame
+	30, // 24: savecraft.v1.Message.plugin_available:type_name -> savecraft.v1.PluginAvailable
+	31, // 25: savecraft.v1.Message.discover_games:type_name -> savecraft.v1.DiscoverGames
+	27, // 26: savecraft.v1.Message.config_result:type_name -> savecraft.v1.ConfigResult
+	32, // 27: savecraft.v1.Message.source_state:type_name -> savecraft.v1.SourceState
+	36, // 28: savecraft.v1.Message.test_path:type_name -> savecraft.v1.TestPath
+	37, // 29: savecraft.v1.Message.test_path_result:type_name -> savecraft.v1.TestPathResult
+	41, // 30: savecraft.v1.Message.register:type_name -> savecraft.v1.Register
+	42, // 31: savecraft.v1.Message.register_result:type_name -> savecraft.v1.RegisterResult
+	44, // 32: savecraft.v1.Message.push_save:type_name -> savecraft.v1.PushSave
+	45, // 33: savecraft.v1.Message.push_save_result:type_name -> savecraft.v1.PushSaveResult
+	46, // 34: savecraft.v1.Message.refresh_link_code:type_name -> savecraft.v1.RefreshLinkCode
+	47, // 35: savecraft.v1.Message.refresh_link_code_result:type_name -> savecraft.v1.RefreshLinkCodeResult
+	48, // 36: savecraft.v1.Message.source_linked:type_name -> savecraft.v1.SourceLinked
+	49, // 37: savecraft.v1.Message.unlink_source:type_name -> savecraft.v1.UnlinkSource
+	50, // 38: savecraft.v1.Message.deregister_source:type_name -> savecraft.v1.DeregisterSource
+	54, // 39: savecraft.v1.RelayedMessage.server_timestamp:type_name -> google.protobuf.Timestamp
+	3,  // 40: savecraft.v1.RelayedMessage.message:type_name -> savecraft.v1.Message
+	54, // 41: savecraft.v1.SourceOnline.timestamp:type_name -> google.protobuf.Timestamp
+	54, // 42: savecraft.v1.SourceOffline.timestamp:type_name -> google.protobuf.Timestamp
+	14, // 43: savecraft.v1.GamesDiscovered.games:type_name -> savecraft.v1.DiscoveredGame
+	51, // 44: savecraft.v1.ParseCompleted.identity:type_name -> savecraft.v1.SaveIdentity
 	0,  // 45: savecraft.v1.ParseFailed.error_type:type_name -> savecraft.v1.ParseErrorType
-	50, // 46: savecraft.v1.PushCompleted.identity:type_name -> savecraft.v1.SaveIdentity
-	51, // 47: savecraft.v1.ConfigUpdate.games:type_name -> savecraft.v1.ConfigUpdate.GamesEntry
-	52, // 48: savecraft.v1.ConfigResult.results:type_name -> savecraft.v1.ConfigResult.ResultsEntry
-	32, // 49: savecraft.v1.SourceState.sources:type_name -> savecraft.v1.SourceInfo
-	53, // 50: savecraft.v1.SourceInfo.last_seen:type_name -> google.protobuf.Timestamp
-	33, // 51: savecraft.v1.SourceInfo.games:type_name -> savecraft.v1.GameInfo
+	51, // 46: savecraft.v1.PushCompleted.identity:type_name -> savecraft.v1.SaveIdentity
+	52, // 47: savecraft.v1.ConfigUpdate.games:type_name -> savecraft.v1.ConfigUpdate.GamesEntry
+	53, // 48: savecraft.v1.ConfigResult.results:type_name -> savecraft.v1.ConfigResult.ResultsEntry
+	33, // 49: savecraft.v1.SourceState.sources:type_name -> savecraft.v1.SourceInfo
+	54, // 50: savecraft.v1.SourceInfo.last_seen:type_name -> google.protobuf.Timestamp
+	34, // 51: savecraft.v1.SourceInfo.games:type_name -> savecraft.v1.GameInfo
 	1,  // 52: savecraft.v1.GameInfo.status:type_name -> savecraft.v1.GameStatusEnum
-	34, // 53: savecraft.v1.GameInfo.saves:type_name -> savecraft.v1.SaveInfo
-	53, // 54: savecraft.v1.GameInfo.last_activity:type_name -> google.protobuf.Timestamp
-	50, // 55: savecraft.v1.SaveInfo.identity:type_name -> savecraft.v1.SaveIdentity
-	53, // 56: savecraft.v1.SaveInfo.last_updated:type_name -> google.protobuf.Timestamp
-	53, // 57: savecraft.v1.RegisterResult.link_code_expires_at:type_name -> google.protobuf.Timestamp
-	54, // 58: savecraft.v1.GameSection.data:type_name -> google.protobuf.Struct
-	50, // 59: savecraft.v1.PushSave.identity:type_name -> savecraft.v1.SaveIdentity
-	42, // 60: savecraft.v1.PushSave.sections:type_name -> savecraft.v1.GameSection
-	53, // 61: savecraft.v1.PushSave.parsed_at:type_name -> google.protobuf.Timestamp
-	53, // 62: savecraft.v1.PushSaveResult.snapshot_timestamp:type_name -> google.protobuf.Timestamp
-	53, // 63: savecraft.v1.RefreshLinkCodeResult.expires_at:type_name -> google.protobuf.Timestamp
-	54, // 64: savecraft.v1.SaveIdentity.extra:type_name -> google.protobuf.Struct
-	25, // 65: savecraft.v1.ConfigUpdate.GamesEntry.value:type_name -> savecraft.v1.GameConfig
-	27, // 66: savecraft.v1.ConfigResult.ResultsEntry.value:type_name -> savecraft.v1.GameConfigResult
-	67, // [67:67] is the sub-list for method output_type
-	67, // [67:67] is the sub-list for method input_type
-	67, // [67:67] is the sub-list for extension type_name
-	67, // [67:67] is the sub-list for extension extendee
-	0,  // [0:67] is the sub-list for field type_name
+	35, // 53: savecraft.v1.GameInfo.saves:type_name -> savecraft.v1.SaveInfo
+	54, // 54: savecraft.v1.GameInfo.last_activity:type_name -> google.protobuf.Timestamp
+	51, // 55: savecraft.v1.SaveInfo.identity:type_name -> savecraft.v1.SaveIdentity
+	54, // 56: savecraft.v1.SaveInfo.last_updated:type_name -> google.protobuf.Timestamp
+	54, // 57: savecraft.v1.RegisterResult.link_code_expires_at:type_name -> google.protobuf.Timestamp
+	55, // 58: savecraft.v1.GameSection.data:type_name -> google.protobuf.Struct
+	51, // 59: savecraft.v1.PushSave.identity:type_name -> savecraft.v1.SaveIdentity
+	43, // 60: savecraft.v1.PushSave.sections:type_name -> savecraft.v1.GameSection
+	54, // 61: savecraft.v1.PushSave.parsed_at:type_name -> google.protobuf.Timestamp
+	54, // 62: savecraft.v1.PushSaveResult.snapshot_timestamp:type_name -> google.protobuf.Timestamp
+	2,  // 63: savecraft.v1.PushSaveResult.error:type_name -> savecraft.v1.PushSaveError
+	54, // 64: savecraft.v1.RefreshLinkCodeResult.expires_at:type_name -> google.protobuf.Timestamp
+	55, // 65: savecraft.v1.SaveIdentity.extra:type_name -> google.protobuf.Struct
+	26, // 66: savecraft.v1.ConfigUpdate.GamesEntry.value:type_name -> savecraft.v1.GameConfig
+	28, // 67: savecraft.v1.ConfigResult.ResultsEntry.value:type_name -> savecraft.v1.GameConfigResult
+	68, // [68:68] is the sub-list for method output_type
+	68, // [68:68] is the sub-list for method input_type
+	68, // [68:68] is the sub-list for extension type_name
+	68, // [68:68] is the sub-list for extension extendee
+	0,  // [0:68] is the sub-list for field type_name
 }
 
 func init() { file_savecraft_v1_protocol_proto_init() }
@@ -4164,7 +4235,7 @@ func file_savecraft_v1_protocol_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_savecraft_v1_protocol_proto_rawDesc), len(file_savecraft_v1_protocol_proto_rawDesc)),
-			NumEnums:      2,
+			NumEnums:      3,
 			NumMessages:   51,
 			NumExtensions: 0,
 			NumServices:   0,

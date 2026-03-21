@@ -1146,6 +1146,23 @@ func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
 		d.discoverGames(ctx)
 	case *pb.Message_PushSaveResult:
 		result := cmd.PushSaveResult
+		if result.Error == pb.PushSaveError_PUSH_SAVE_ERROR_GAME_REMOVED {
+			gameID := result.GameId
+			d.mu.Lock()
+			gameCfg, existed := d.cfg.Games[gameID]
+			if existed {
+				delete(d.cfg.Games, gameID)
+			}
+			d.mu.Unlock()
+			if existed {
+				d.log.InfoContext(ctx, "game removed by server",
+					slog.String("game", d.gameName(ctx, gameID)),
+					slog.String("game_id", gameID),
+				)
+				d.unwatchGame(ctx, gameCfg.SavePath)
+			}
+			break
+		}
 		d.log.InfoContext(ctx, "push acknowledged",
 			slog.String("save_uuid", result.SaveUuid),
 		)

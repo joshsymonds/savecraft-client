@@ -1513,6 +1513,68 @@ func TestConfigResult_DisabledGame(t *testing.T) {
 	}
 }
 
+func TestPushSaveResult_GameRemoved_UnwatchesAndRemoves(t *testing.T) {
+	ws := newFakeWSClient()
+	watcher := newFakeWatcher()
+	cfg := d2rConfig()
+
+	d := New(cfg, d2rFS(), watcher, d2rRunner(), ws, &fakePluginManager{}, nil, testLogger())
+	d.watchedDirs["/saves/d2r"] = "d2r"
+
+	// Send PushSaveResult with GAME_REMOVED error
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_PushSaveResult{PushSaveResult: &pb.PushSaveResult{
+		Error:  pb.PushSaveError_PUSH_SAVE_ERROR_GAME_REMOVED,
+		GameId: "d2r",
+	}}})
+	d.handleCommand(context.Background(), cmd)
+
+	// Watcher should have removed the directory.
+	watcher.mu.Lock()
+	removed := slices.Clone(watcher.removed)
+	watcher.mu.Unlock()
+	if !slices.Contains(removed, "/saves/d2r") {
+		t.Errorf("watcher.removed = %v, want /saves/d2r", removed)
+	}
+
+	// watchedDirs should be cleared.
+	if _, ok := d.watchedDirs["/saves/d2r"]; ok {
+		t.Error("watchedDirs still contains /saves/d2r")
+	}
+
+	// Game should be removed from config.
+	if _, ok := d.cfg.Games["d2r"]; ok {
+		t.Error("d2r still in config after GAME_REMOVED")
+	}
+}
+
+func TestPushSaveResult_GameRemoved_UnknownGame(t *testing.T) {
+	ws := newFakeWSClient()
+	watcher := newFakeWatcher()
+	cfg := d2rConfig()
+
+	d := New(cfg, d2rFS(), watcher, d2rRunner(), ws, &fakePluginManager{}, nil, testLogger())
+
+	// Send GAME_REMOVED for a game that isn't in config — should not panic
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_PushSaveResult{PushSaveResult: &pb.PushSaveResult{
+		Error:  pb.PushSaveError_PUSH_SAVE_ERROR_GAME_REMOVED,
+		GameId: "unknown-game",
+	}}})
+	d.handleCommand(context.Background(), cmd)
+
+	// d2r should still be in config (untouched)
+	if _, ok := d.cfg.Games["d2r"]; !ok {
+		t.Error("d2r should still be in config")
+	}
+
+	// No directories should have been removed
+	watcher.mu.Lock()
+	removed := slices.Clone(watcher.removed)
+	watcher.mu.Unlock()
+	if len(removed) != 0 {
+		t.Errorf("watcher.removed = %v, want empty", removed)
+	}
+}
+
 func TestConfigResult_MultipleGames(t *testing.T) {
 	ws := newFakeWSClient()
 	fsys := &fakeFS{

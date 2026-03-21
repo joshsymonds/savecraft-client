@@ -415,9 +415,18 @@ message PushSave {
 }
 
 // Server response to PushSave with the resolved save UUID.
+// If error is set, the push was rejected and save_uuid/snapshot_timestamp are empty.
 message PushSaveResult {
   string save_uuid = 1;
   google.protobuf.Timestamp snapshot_timestamp = 2;
+  PushSaveError error = 3;
+  string game_id = 4;
+}
+
+// Why a PushSave was rejected by the server.
+enum PushSaveError {
+  PUSH_SAVE_ERROR_UNSPECIFIED = 0;
+  PUSH_SAVE_ERROR_GAME_REMOVED = 1;
 }
 
 // --- Source management ---
