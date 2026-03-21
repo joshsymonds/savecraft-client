@@ -564,6 +564,33 @@ func TestEnsurePlugin_RefetchesManifestForUnknownGame(t *testing.T) {
 	}
 }
 
+func TestEnsurePlugin_RefetchStillFailsForUnknownGame(t *testing.T) {
+	// evolvingRegistry always returns empty — game is permanently unknown.
+	reg := &evolvingRegistry{
+		manifest: map[string]PluginInfo{},
+		files:    map[string][]byte{},
+	}
+
+	loader := &fakeLoader{}
+	mgr := NewManager(reg, NewCache(t.TempDir()), loader, nil, testLogger())
+
+	err := mgr.EnsurePlugin(context.Background(), "nonexistent")
+	if err == nil {
+		t.Fatal("expected error for permanently unknown game")
+	}
+	if !strings.Contains(err.Error(), "unknown plugin") {
+		t.Errorf("error = %v, want to contain 'unknown plugin'", err)
+	}
+
+	reg.mu.Lock()
+	calls := reg.calls
+	reg.mu.Unlock()
+	// Initial fetch (empty) + re-fetch (still empty) = 2 calls.
+	if calls != 2 {
+		t.Errorf("expected 2 manifest fetches, got %d", calls)
+	}
+}
+
 func TestEnsurePlugin_LocalOverrideWithSig(t *testing.T) {
 	pub, priv := generateTestKeys(t)
 	localDir := t.TempDir()
