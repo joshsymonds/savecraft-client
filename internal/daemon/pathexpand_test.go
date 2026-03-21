@@ -238,6 +238,30 @@ func TestResolveGlob_EmptyExcludeDirs(t *testing.T) {
 	}
 }
 
+func TestIsExcludedSave(t *testing.T) {
+	tests := []struct {
+		name         string
+		excludeSaves []string
+		want         bool
+	}{
+		{"Atmus.d2s", []string{"Atmus.d2s"}, true},
+		{"Atmus.d2s", []string{"atmus.d2s"}, true},                  // case-insensitive
+		{"ATMUS.D2S", []string{"Atmus.d2s"}, true},                  // case-insensitive
+		{"Blizzara.d2s", []string{"Atmus.d2s"}, false},              // no match
+		{"Atmus.d2s", nil, false},                                   // nil list
+		{"Atmus.d2s", []string{}, false},                            // empty list
+		{"TrapSin.d2s", []string{"Atmus.d2s", "TrapSin.d2s"}, true}, // multiple entries
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isExcludedSave(tt.name, tt.excludeSaves)
+			if got != tt.want {
+				t.Errorf("isExcludedSave(%q, %v) = %v, want %v", tt.name, tt.excludeSaves, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestMatchesPattern(t *testing.T) {
 	tests := []struct {
 		name     string

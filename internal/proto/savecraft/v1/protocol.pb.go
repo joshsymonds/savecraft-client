@@ -139,6 +139,7 @@ type PushSaveError int32
 const (
 	PushSaveError_PUSH_SAVE_ERROR_UNSPECIFIED  PushSaveError = 0
 	PushSaveError_PUSH_SAVE_ERROR_GAME_REMOVED PushSaveError = 1
+	PushSaveError_PUSH_SAVE_ERROR_SAVE_REMOVED PushSaveError = 2
 )
 
 // Enum value maps for PushSaveError.
@@ -146,10 +147,12 @@ var (
 	PushSaveError_name = map[int32]string{
 		0: "PUSH_SAVE_ERROR_UNSPECIFIED",
 		1: "PUSH_SAVE_ERROR_GAME_REMOVED",
+		2: "PUSH_SAVE_ERROR_SAVE_REMOVED",
 	}
 	PushSaveError_value = map[string]int32{
 		"PUSH_SAVE_ERROR_UNSPECIFIED":  0,
 		"PUSH_SAVE_ERROR_GAME_REMOVED": 1,
+		"PUSH_SAVE_ERROR_SAVE_REMOVED": 2,
 	}
 )
 
@@ -2224,6 +2227,7 @@ type GameConfig struct {
 	FileExtensions []string               `protobuf:"bytes,3,rep,name=file_extensions,json=fileExtensions,proto3" json:"file_extensions,omitempty"`
 	FilePatterns   []string               `protobuf:"bytes,4,rep,name=file_patterns,json=filePatterns,proto3" json:"file_patterns,omitempty"`
 	ExcludeDirs    []string               `protobuf:"bytes,5,rep,name=exclude_dirs,json=excludeDirs,proto3" json:"exclude_dirs,omitempty"`
+	ExcludeSaves   []string               `protobuf:"bytes,6,rep,name=exclude_saves,json=excludeSaves,proto3" json:"exclude_saves,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -2289,6 +2293,13 @@ func (x *GameConfig) GetFilePatterns() []string {
 func (x *GameConfig) GetExcludeDirs() []string {
 	if x != nil {
 		return x.ExcludeDirs
+	}
+	return nil
+}
+
+func (x *GameConfig) GetExcludeSaves() []string {
+	if x != nil {
+		return x.ExcludeSaves
 	}
 	return nil
 }
@@ -3940,14 +3951,15 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\n" +
 	"GamesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12.\n" +
-	"\x05value\x18\x02 \x01(\v2\x18.savecraft.v1.GameConfigR\x05value:\x028\x01\"\xb4\x01\n" +
+	"\x05value\x18\x02 \x01(\v2\x18.savecraft.v1.GameConfigR\x05value:\x028\x01\"\xd9\x01\n" +
 	"\n" +
 	"GameConfig\x12\x1b\n" +
 	"\tsave_path\x18\x01 \x01(\tR\bsavePath\x12\x18\n" +
 	"\aenabled\x18\x02 \x01(\bR\aenabled\x12'\n" +
 	"\x0ffile_extensions\x18\x03 \x03(\tR\x0efileExtensions\x12#\n" +
 	"\rfile_patterns\x18\x04 \x03(\tR\ffilePatterns\x12!\n" +
-	"\fexclude_dirs\x18\x05 \x03(\tR\vexcludeDirs\"\xad\x01\n" +
+	"\fexclude_dirs\x18\x05 \x03(\tR\vexcludeDirs\x12#\n" +
+	"\rexclude_saves\x18\x06 \x03(\tR\fexcludeSaves\"\xad\x01\n" +
 	"\fConfigResult\x12A\n" +
 	"\aresults\x18\x01 \x03(\v2'.savecraft.v1.ConfigResult.ResultsEntryR\aresults\x1aZ\n" +
 	"\fResultsEntry\x12\x10\n" +
@@ -4067,10 +4079,11 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\x19GAME_STATUS_ENUM_WATCHING\x10\x02\x12\x1a\n" +
 	"\x16GAME_STATUS_ENUM_ERROR\x10\x03\x12\x1e\n" +
 	"\x1aGAME_STATUS_ENUM_NOT_FOUND\x10\x04\x12\x1f\n" +
-	"\x1bGAME_STATUS_ENUM_ACTIVATING\x10\x05*R\n" +
+	"\x1bGAME_STATUS_ENUM_ACTIVATING\x10\x05*t\n" +
 	"\rPushSaveError\x12\x1f\n" +
 	"\x1bPUSH_SAVE_ERROR_UNSPECIFIED\x10\x00\x12 \n" +
-	"\x1cPUSH_SAVE_ERROR_GAME_REMOVED\x10\x01B4Z2github.com/joshsymonds/savecraft.gg/internal/protob\x06proto3"
+	"\x1cPUSH_SAVE_ERROR_GAME_REMOVED\x10\x01\x12 \n" +
+	"\x1cPUSH_SAVE_ERROR_SAVE_REMOVED\x10\x02B4Z2github.com/joshsymonds/savecraft.gg/internal/protob\x06proto3"
 
 var (
 	file_savecraft_v1_protocol_proto_rawDescOnce sync.Once

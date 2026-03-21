@@ -122,3 +122,14 @@ func isExcludedDir(name string, excludeDirs []string) bool {
 	}
 	return false
 }
+
+// isExcludedSave checks if a save file name matches any entry in the
+// exclude list (case-insensitive).
+func isExcludedSave(name string, excludeSaves []string) bool {
+	for _, excluded := range excludeSaves {
+		if strings.EqualFold(name, excluded) {
+			return true
+		}
+	}
+	return false
+}

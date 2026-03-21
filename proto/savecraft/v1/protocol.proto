@@ -265,6 +265,7 @@ message GameConfig {
   repeated string file_extensions = 3;
   repeated string file_patterns = 4;
   repeated string exclude_dirs = 5;
+  repeated string exclude_saves = 6;
 }
 
 // Per-game result of applying a ConfigUpdate. Sent by daemon after processing.
@@ -431,6 +432,7 @@ message PushSaveResult {
 enum PushSaveError {
   PUSH_SAVE_ERROR_UNSPECIFIED = 0;
   PUSH_SAVE_ERROR_GAME_REMOVED = 1;
+  PUSH_SAVE_ERROR_SAVE_REMOVED = 2;
 }
 
 // --- Source management ---

@@ -105,6 +105,7 @@ type GameConfig struct {
 	FileExtensions []string `json:"fileExtensions"`
 	FilePatterns   []string `json:"filePatterns,omitempty"`
 	ExcludeDirs    []string `json:"excludeDirs,omitempty"`
+	ExcludeSaves   []string `json:"excludeSaves,omitempty"`
 	Enabled        bool     `json:"enabled"`
 }
 
@@ -762,7 +763,7 @@ func (d *Daemon) discoverGames(ctx context.Context) {
 			if readErr != nil {
 				continue
 			}
-			totalMatching += len(d.filterSaveFiles(entries, info.FileExtensions, info.FilePatterns))
+			totalMatching += len(d.filterSaveFiles(entries, info.FileExtensions, info.FilePatterns, nil))
 		}
 		if !anyValid {
 			continue
@@ -830,7 +831,7 @@ func (d *Daemon) rescanQuiet(
 		if err != nil {
 			continue
 		}
-		matchingFiles := d.filterSaveFiles(entries, cfg.FileExtensions, cfg.FilePatterns)
+		matchingFiles := d.filterSaveFiles(entries, cfg.FileExtensions, cfg.FilePatterns, cfg.ExcludeSaves)
 		for _, fileName := range matchingFiles {
 			fullPath := filepath.Join(dir, fileName)
 			d.parseAndPush(ctx, gameID, fullPath, fileName, nil, true)
@@ -864,7 +865,9 @@ func (d *Daemon) scanGame(
 		Path:   cfg.SavePath,
 	}}})
 
-	allDirFiles, allMatchingFiles, validDirs := d.collectSaveFiles(dirs, cfg.FileExtensions, cfg.FilePatterns)
+	allDirFiles, allMatchingFiles, validDirs := d.collectSaveFiles(
+		dirs, cfg.FileExtensions, cfg.FilePatterns, cfg.ExcludeSaves,
+	)
 
 	if validDirs == 0 {
 		d.log.WarnContext(
@@ -949,7 +952,7 @@ type dirFiles struct {
 // collectSaveFiles scans each directory for files matching the given extensions and patterns.
 // Returns the per-directory results, a flat list of all matching file names,
 // and the count of valid directories examined.
-func (d *Daemon) collectSaveFiles(dirs, extensions, patterns []string) ([]dirFiles, []string, int) {
+func (d *Daemon) collectSaveFiles(dirs, extensions, patterns, excludeSaves []string) ([]dirFiles, []string, int) {
 	var result []dirFiles
 	var allFiles []string
 	validDirs := 0
@@ -966,7 +969,7 @@ func (d *Daemon) collectSaveFiles(dirs, extensions, patterns []string) ([]dirFil
 			continue
 		}
 
-		matching := d.filterSaveFiles(entries, extensions, patterns)
+		matching := d.filterSaveFiles(entries, extensions, patterns, excludeSaves)
 		if len(matching) > 0 {
 			result = append(result, dirFiles{dir: dir, files: matching})
 			allFiles = append(allFiles, matching...)
@@ -1005,6 +1008,9 @@ func (d *Daemon) handleFileEvent(ctx context.Context, ev FileEvent) {
 		return
 	}
 	if len(gameCfg.FilePatterns) > 0 && !matchesPattern(fileName, gameCfg.FilePatterns) {
+		return
+	}
+	if isExcludedSave(fileName, gameCfg.ExcludeSaves) {
 		return
 	}
 
@@ -1223,27 +1229,7 @@ func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
 	case *pb.Message_DiscoverGames:
 		d.discoverGames(ctx)
 	case *pb.Message_PushSaveResult:
-		result := cmd.PushSaveResult
-		if result.Error == pb.PushSaveError_PUSH_SAVE_ERROR_GAME_REMOVED {
-			gameID := result.GameId
-			d.mu.Lock()
-			gameCfg, existed := d.cfg.Games[gameID]
-			if existed {
-				delete(d.cfg.Games, gameID)
-			}
-			d.mu.Unlock()
-			if existed {
-				d.log.InfoContext(ctx, "game removed by server",
-					slog.String("game", d.gameName(ctx, gameID)),
-					slog.String("game_id", gameID),
-				)
-				d.unwatchGame(ctx, gameCfg.SavePath)
-			}
-			break
-		}
-		d.log.InfoContext(ctx, "push acknowledged",
-			slog.String("save_uuid", result.SaveUuid),
-		)
+		d.handlePushSaveResult(ctx, cmd.PushSaveResult)
 	case *pb.Message_SourceUpdateAvailable:
 		// Server-pushed updates only contain daemon info.
 		// The tray will update on the next poll-based manifest check.
@@ -1398,6 +1384,36 @@ func (d *Daemon) buildGameResult(resolvedPath string, excludeDirs []string) conf
 	return configGameResult{Error: fmt.Sprintf("path not found: %s", resolvedPath), ResolvedPath: resolvedPath}
 }
 
+func (d *Daemon) handlePushSaveResult(ctx context.Context, result *pb.PushSaveResult) {
+	if result.Error == pb.PushSaveError_PUSH_SAVE_ERROR_GAME_REMOVED {
+		gameID := result.GameId
+		d.mu.Lock()
+		gameCfg, existed := d.cfg.Games[gameID]
+		if existed {
+			delete(d.cfg.Games, gameID)
+		}
+		d.mu.Unlock()
+		if existed {
+			d.log.InfoContext(ctx, "game removed by server",
+				slog.String("game", d.gameName(ctx, gameID)),
+				slog.String("game_id", gameID),
+			)
+			d.unwatchGame(ctx, gameCfg.SavePath)
+		}
+		return
+	}
+	if result.Error == pb.PushSaveError_PUSH_SAVE_ERROR_SAVE_REMOVED {
+		d.log.WarnContext(ctx, "save removed by server",
+			slog.String("game_id", result.GameId),
+			slog.String("save_uuid", result.SaveUuid),
+		)
+		return
+	}
+	d.log.InfoContext(ctx, "push acknowledged",
+		slog.String("save_uuid", result.SaveUuid),
+	)
+}
+
 func (d *Daemon) handleConfigUpdate(
 	ctx context.Context, update *pb.ConfigUpdate,
 ) {
@@ -1415,6 +1431,7 @@ func (d *Daemon) handleConfigUpdate(
 			FileExtensions: newGame.FileExtensions,
 			FilePatterns:   newGame.FilePatterns,
 			ExcludeDirs:    newGame.ExcludeDirs,
+			ExcludeSaves:   newGame.ExcludeSaves,
 		}
 
 		d.mu.Lock()
@@ -1568,7 +1585,10 @@ func (d *Daemon) handleTestPath(ctx context.Context, gameID, path string) {
 		if err != nil {
 			continue
 		}
-		allFileNames = append(allFileNames, d.filterSaveFiles(entries, gameCfg.FileExtensions, gameCfg.FilePatterns)...)
+		allFileNames = append(
+			allFileNames,
+			d.filterSaveFiles(entries, gameCfg.FileExtensions, gameCfg.FilePatterns, gameCfg.ExcludeSaves)...,
+		)
 	}
 
 	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_TestPathResult{TestPathResult: &pb.TestPathResult{
@@ -1581,7 +1601,7 @@ func (d *Daemon) handleTestPath(ctx context.Context, gameID, path string) {
 }
 
 func (d *Daemon) filterSaveFiles(
-	entries []fs.DirEntry, extensions, patterns []string,
+	entries []fs.DirEntry, extensions, patterns, excludeSaves []string,
 ) []string {
 	var names []string
 	for _, entry := range entries {
@@ -1594,6 +1614,9 @@ func (d *Daemon) filterSaveFiles(
 			continue
 		}
 		if len(patterns) > 0 && !matchesPattern(name, patterns) {
+			continue
+		}
+		if isExcludedSave(name, excludeSaves) {
 			continue
 		}
 		names = append(names, name)
