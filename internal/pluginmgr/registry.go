@@ -14,6 +14,7 @@ type PluginInfo struct {
 	URL            string            `json:"url"`
 	DefaultPaths   map[string]string `json:"default_paths"`
 	FileExtensions []string          `json:"file_extensions"`
+	FilePatterns   []string          `json:"file_patterns,omitempty"`
 }
 
 // Registry provides access to the plugin manifest and downloads.

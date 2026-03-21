@@ -9,31 +9,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
 	"github.com/joshsymonds/savecraft.gg/plugins/gvas"
 )
 
-// isGameSave returns true if the filename looks like an actual game save
-// (EXPEDITION_*.sav), not a UE config file (EnhancedInputUserSettings.sav, etc.).
-func isGameSave(fileName string) bool {
-	return strings.HasPrefix(fileName, "EXPEDITION_")
-}
-
 func main() {
 	enc := json.NewEncoder(os.Stdout)
-
-	// argv[1] is the filename, passed by the daemon.
-	fileName := ""
-	if len(os.Args) > 1 {
-		fileName = os.Args[1]
-	}
-
-	// Skip non-save files (UE config files like EnhancedInputUserSettings.sav).
-	if fileName != "" && !isGameSave(fileName) {
-		writeError(enc, "not_a_save", fmt.Sprintf("skipping non-save file: %s", fileName))
-		os.Exit(1)
-	}
 
 	data, err := io.ReadAll(os.Stdin)
 	if err != nil {

@@ -182,3 +182,27 @@ func TestResolveGlob_NestedGlobReturnsPattern(t *testing.T) {
 		t.Errorf("resolveGlob(nested glob) = %v, want [/*/saves]", got)
 	}
 }
+
+func TestMatchesPattern(t *testing.T) {
+	tests := []struct {
+		name     string
+		patterns []string
+		want     bool
+	}{
+		{"EXPEDITION_0.sav", []string{"EXPEDITION_*"}, true},
+		{"EXPEDITION_1.sav", []string{"EXPEDITION_*"}, true},
+		{"EnhancedInputUserSettings.sav", []string{"EXPEDITION_*"}, false},
+		{"PlatformSaveData.sav", []string{"EXPEDITION_*"}, false},
+		{"EXPEDITION_0.sav", []string{"EXPEDITION_*", "SavesContainer*"}, true},
+		{"SavesContainer.sav", []string{"EXPEDITION_*", "SavesContainer*"}, true},
+		{"whatever.sav", []string{}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := matchesPattern(tt.name, tt.patterns)
+			if got != tt.want {
+				t.Errorf("matchesPattern(%q, %v) = %v, want %v", tt.name, tt.patterns, got, tt.want)
+			}
+		})
+	}
+}

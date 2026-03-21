@@ -162,6 +162,7 @@ message DiscoveredGame {
   string path = 3;
   int32 file_count = 4;
   repeated string file_extensions = 5;
+  repeated string file_patterns = 6;
 }
 
 // --- Parse lifecycle ---
@@ -261,6 +262,7 @@ message GameConfig {
   string save_path = 1;
   bool enabled = 2;
   repeated string file_extensions = 3;
+  repeated string file_patterns = 4;
 }
 
 // Per-game result of applying a ConfigUpdate. Sent by daemon after processing.

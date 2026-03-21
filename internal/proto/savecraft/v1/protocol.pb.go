@@ -1460,6 +1460,7 @@ type DiscoveredGame struct {
 	Path           string                 `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
 	FileCount      int32                  `protobuf:"varint,4,opt,name=file_count,json=fileCount,proto3" json:"file_count,omitempty"`
 	FileExtensions []string               `protobuf:"bytes,5,rep,name=file_extensions,json=fileExtensions,proto3" json:"file_extensions,omitempty"`
+	FilePatterns   []string               `protobuf:"bytes,6,rep,name=file_patterns,json=filePatterns,proto3" json:"file_patterns,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1525,6 +1526,13 @@ func (x *DiscoveredGame) GetFileCount() int32 {
 func (x *DiscoveredGame) GetFileExtensions() []string {
 	if x != nil {
 		return x.FileExtensions
+	}
+	return nil
+}
+
+func (x *DiscoveredGame) GetFilePatterns() []string {
+	if x != nil {
+		return x.FilePatterns
 	}
 	return nil
 }
@@ -2206,6 +2214,7 @@ type GameConfig struct {
 	SavePath       string                 `protobuf:"bytes,1,opt,name=save_path,json=savePath,proto3" json:"save_path,omitempty"`
 	Enabled        bool                   `protobuf:"varint,2,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	FileExtensions []string               `protobuf:"bytes,3,rep,name=file_extensions,json=fileExtensions,proto3" json:"file_extensions,omitempty"`
+	FilePatterns   []string               `protobuf:"bytes,4,rep,name=file_patterns,json=filePatterns,proto3" json:"file_patterns,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -2257,6 +2266,13 @@ func (x *GameConfig) GetEnabled() bool {
 func (x *GameConfig) GetFileExtensions() []string {
 	if x != nil {
 		return x.FileExtensions
+	}
+	return nil
+}
+
+func (x *GameConfig) GetFilePatterns() []string {
+	if x != nil {
+		return x.FilePatterns
 	}
 	return nil
 }
@@ -3845,14 +3861,15 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12'\n" +
 	"\x0ffiles_monitored\x18\x03 \x01(\x05R\x0efilesMonitored\"E\n" +
 	"\x0fGamesDiscovered\x122\n" +
-	"\x05games\x18\x01 \x03(\v2\x1c.savecraft.v1.DiscoveredGameR\x05games\"\x99\x01\n" +
+	"\x05games\x18\x01 \x03(\v2\x1c.savecraft.v1.DiscoveredGameR\x05games\"\xbe\x01\n" +
 	"\x0eDiscoveredGame\x12\x17\n" +
 	"\agame_id\x18\x01 \x01(\tR\x06gameId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
 	"\x04path\x18\x03 \x01(\tR\x04path\x12\x1d\n" +
 	"\n" +
 	"file_count\x18\x04 \x01(\x05R\tfileCount\x12'\n" +
-	"\x0ffile_extensions\x18\x05 \x03(\tR\x0efileExtensions\"D\n" +
+	"\x0ffile_extensions\x18\x05 \x03(\tR\x0efileExtensions\x12#\n" +
+	"\rfile_patterns\x18\x06 \x03(\tR\ffilePatterns\"D\n" +
 	"\fParseStarted\x12\x17\n" +
 	"\agame_id\x18\x01 \x01(\tR\x06gameId\x12\x1b\n" +
 	"\tfile_name\x18\x02 \x01(\tR\bfileName\"^\n" +
@@ -3906,12 +3923,13 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\n" +
 	"GamesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12.\n" +
-	"\x05value\x18\x02 \x01(\v2\x18.savecraft.v1.GameConfigR\x05value:\x028\x01\"l\n" +
+	"\x05value\x18\x02 \x01(\v2\x18.savecraft.v1.GameConfigR\x05value:\x028\x01\"\x91\x01\n" +
 	"\n" +
 	"GameConfig\x12\x1b\n" +
 	"\tsave_path\x18\x01 \x01(\tR\bsavePath\x12\x18\n" +
 	"\aenabled\x18\x02 \x01(\bR\aenabled\x12'\n" +
-	"\x0ffile_extensions\x18\x03 \x03(\tR\x0efileExtensions\"\xad\x01\n" +
+	"\x0ffile_extensions\x18\x03 \x03(\tR\x0efileExtensions\x12#\n" +
+	"\rfile_patterns\x18\x04 \x03(\tR\ffilePatterns\"\xad\x01\n" +
 	"\fConfigResult\x12A\n" +
 	"\aresults\x18\x01 \x03(\v2'.savecraft.v1.ConfigResult.ResultsEntryR\aresults\x1aZ\n" +
 	"\fResultsEntry\x12\x10\n" +

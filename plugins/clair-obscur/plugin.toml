@@ -6,6 +6,7 @@ description = "Parses Clair Obscur: Expedition 33 save files — character build
 channel = "alpha"
 coverage = "partial"
 file_extensions = [".sav"]
+file_patterns = ["EXPEDITION_*"]
 homepage = "https://savecraft.gg/plugins/clair-obscur"
 
 limitations = [

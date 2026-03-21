@@ -103,6 +103,7 @@ type Config struct {
 type GameConfig struct {
 	SavePath       string   `json:"savePath"`
 	FileExtensions []string `json:"fileExtensions"`
+	FilePatterns   []string `json:"filePatterns,omitempty"`
 	Enabled        bool     `json:"enabled"`
 }
 
@@ -180,6 +181,7 @@ type DiscoveredGame struct {
 	Path           string   `json:"path"`
 	FileCount      int      `json:"fileCount"`
 	FileExtensions []string `json:"fileExtensions"`
+	FilePatterns   []string `json:"filePatterns,omitempty"`
 }
 
 // --- Daemon ---
@@ -692,7 +694,7 @@ func (d *Daemon) discoverGames(ctx context.Context) {
 			if readErr != nil {
 				continue
 			}
-			totalMatching += len(d.filterByExtension(entries, info.FileExtensions))
+			totalMatching += len(d.filterSaveFiles(entries, info.FileExtensions, info.FilePatterns))
 		}
 		if !anyValid {
 			continue
@@ -710,6 +712,7 @@ func (d *Daemon) discoverGames(ctx context.Context) {
 			Path:           expanded,
 			FileCount:      totalMatching,
 			FileExtensions: info.FileExtensions,
+			FilePatterns:   info.FilePatterns,
 		})
 	}
 
@@ -721,6 +724,7 @@ func (d *Daemon) discoverGames(ctx context.Context) {
 			Path:           game.Path,
 			FileCount:      int32(game.FileCount), // #nosec G115 -- bounded by filesystem limits
 			FileExtensions: game.FileExtensions,
+			FilePatterns:   game.FilePatterns,
 		}
 	}
 	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_GamesDiscovered{GamesDiscovered: &pb.GamesDiscovered{
@@ -756,7 +760,7 @@ func (d *Daemon) rescanQuiet(
 		if err != nil {
 			continue
 		}
-		matchingFiles := d.filterByExtension(entries, cfg.FileExtensions)
+		matchingFiles := d.filterSaveFiles(entries, cfg.FileExtensions, cfg.FilePatterns)
 		for _, fileName := range matchingFiles {
 			fullPath := filepath.Join(dir, fileName)
 			d.parseAndPush(ctx, gameID, fullPath, fileName, nil, true)
@@ -790,7 +794,7 @@ func (d *Daemon) scanGame(
 		Path:   cfg.SavePath,
 	}}})
 
-	allDirFiles, allMatchingFiles, validDirs := d.collectSaveFiles(dirs, cfg.FileExtensions)
+	allDirFiles, allMatchingFiles, validDirs := d.collectSaveFiles(dirs, cfg.FileExtensions, cfg.FilePatterns)
 
 	if validDirs == 0 {
 		d.log.WarnContext(
@@ -872,10 +876,10 @@ type dirFiles struct {
 	files []string
 }
 
-// collectSaveFiles scans each directory for files matching the given extensions.
+// collectSaveFiles scans each directory for files matching the given extensions and patterns.
 // Returns the per-directory results, a flat list of all matching file names,
 // and the count of valid directories examined.
-func (d *Daemon) collectSaveFiles(dirs []string, extensions []string) ([]dirFiles, []string, int) {
+func (d *Daemon) collectSaveFiles(dirs, extensions, patterns []string) ([]dirFiles, []string, int) {
 	var result []dirFiles
 	var allFiles []string
 	validDirs := 0
@@ -892,7 +896,7 @@ func (d *Daemon) collectSaveFiles(dirs []string, extensions []string) ([]dirFile
 			continue
 		}
 
-		matching := d.filterByExtension(entries, extensions)
+		matching := d.filterSaveFiles(entries, extensions, patterns)
 		if len(matching) > 0 {
 			result = append(result, dirFiles{dir: dir, files: matching})
 			allFiles = append(allFiles, matching...)
@@ -925,12 +929,15 @@ func (d *Daemon) handleFileEvent(ctx context.Context, ev FileEvent) {
 	d.mu.RLock()
 	gameCfg := d.cfg.Games[gameID]
 	d.mu.RUnlock()
-	ext := filepath.Ext(ev.Path)
+	fileName := filepath.Base(ev.Path)
+	ext := filepath.Ext(fileName)
 	if !matchesExtension(ext, gameCfg.FileExtensions) {
 		return
 	}
+	if len(gameCfg.FilePatterns) > 0 && !matchesPattern(fileName, gameCfg.FilePatterns) {
+		return
+	}
 
-	fileName := filepath.Base(ev.Path)
 	d.parseAndPush(ctx, gameID, ev.Path, fileName, ev.Data, false)
 }
 
@@ -1336,6 +1343,7 @@ func (d *Daemon) handleConfigUpdate(
 			SavePath:       resolvedPath,
 			Enabled:        newGame.Enabled,
 			FileExtensions: newGame.FileExtensions,
+			FilePatterns:   newGame.FilePatterns,
 		}
 
 		d.mu.Lock()
@@ -1489,7 +1497,7 @@ func (d *Daemon) handleTestPath(ctx context.Context, gameID, path string) {
 		if err != nil {
 			continue
 		}
-		allFileNames = append(allFileNames, d.filterByExtension(entries, gameCfg.FileExtensions)...)
+		allFileNames = append(allFileNames, d.filterSaveFiles(entries, gameCfg.FileExtensions, gameCfg.FilePatterns)...)
 	}
 
 	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_TestPathResult{TestPathResult: &pb.TestPathResult{
@@ -1501,20 +1509,39 @@ func (d *Daemon) handleTestPath(ctx context.Context, gameID, path string) {
 	}}})
 }
 
-func (d *Daemon) filterByExtension(
-	entries []fs.DirEntry, extensions []string,
+func (d *Daemon) filterSaveFiles(
+	entries []fs.DirEntry, extensions, patterns []string,
 ) []string {
 	var names []string
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
-		ext := filepath.Ext(entry.Name())
-		if matchesExtension(ext, extensions) {
-			names = append(names, entry.Name())
+		name := entry.Name()
+		ext := filepath.Ext(name)
+		if !matchesExtension(ext, extensions) {
+			continue
 		}
+		if len(patterns) > 0 && !matchesPattern(name, patterns) {
+			continue
+		}
+		names = append(names, name)
 	}
 	return names
+}
+
+// matchesPattern checks if filename matches any of the given glob patterns.
+func matchesPattern(name string, patterns []string) bool {
+	for _, pat := range patterns {
+		matched, err := filepath.Match(pat, name)
+		if err != nil {
+			continue // malformed pattern — skip
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
 }
 
 func matchesExtension(ext string, extensions []string) bool {
