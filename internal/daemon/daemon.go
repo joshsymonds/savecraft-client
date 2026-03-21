@@ -256,6 +256,15 @@ type Daemon struct {
 	// On subsequent calls (reconnects), discovery and scan messages are
 	// suppressed when nothing has changed.
 	hasAnnounced bool
+
+	// pendingUpdate holds a detected-but-not-yet-applied self-update.
+	// Set by checkSelfUpdate, consumed by ApplyPendingUpdate or the
+	// auto-apply timer. Protected by mu.
+	pendingUpdate *CheckResult
+
+	// autoApplyTimer fires after the grace period to auto-apply a pending
+	// update if the user hasn't manually restarted. Nil when no update pending.
+	autoApplyTimer *time.Timer
 }
 
 type linkCodeResult struct {
@@ -309,6 +318,45 @@ func (d *Daemon) SetPluginReloadCh(ch <-chan string) {
 // systemd handles restart so the default no-op suffices.
 func (d *Daemon) SetRestartFunc(fn func(daemonPath, trayPath string) error) {
 	d.restartFunc = fn
+}
+
+// PendingVersion returns the version string of a detected-but-not-applied
+// update, or "" if none is pending.
+func (d *Daemon) PendingVersion() string {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	if d.pendingUpdate != nil && d.pendingUpdate.Daemon != nil {
+		return d.pendingUpdate.Daemon.Version
+	}
+	return ""
+}
+
+// StorePendingUpdate stores a check result for deferred application.
+// Exported for testability; normally called internally by checkSelfUpdate.
+func (d *Daemon) StorePendingUpdate(result *CheckResult) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.pendingUpdate = result
+}
+
+// ApplyPendingUpdate consumes and applies a stored pending update.
+// If no update is pending, this is a no-op. Called by the local API
+// restart handler or by the auto-apply timer.
+func (d *Daemon) ApplyPendingUpdate(ctx context.Context) {
+	d.mu.Lock()
+	result := d.pendingUpdate
+	d.pendingUpdate = nil
+	if d.autoApplyTimer != nil {
+		d.autoApplyTimer.Stop()
+		d.autoApplyTimer = nil
+	}
+	d.mu.Unlock()
+
+	if result == nil || result.Daemon == nil {
+		return
+	}
+
+	d.applyDaemonUpdate(ctx, result)
 }
 
 // UpdatePlugins triggers an immediate plugin update check and returns
@@ -525,6 +573,10 @@ func (d *Daemon) announceOnline(ctx context.Context) {
 	d.hasAnnounced = true
 }
 
+// autoApplyGracePeriod is how long after detecting an update the daemon waits
+// before auto-applying. Gives the tray time to show the update badge.
+const autoApplyGracePeriod = 15 * time.Minute
+
 func (d *Daemon) checkSelfUpdate(ctx context.Context) {
 	if d.updater == nil {
 		return
@@ -537,7 +589,17 @@ func (d *Daemon) checkSelfUpdate(ctx context.Context) {
 		return
 	}
 	d.log.InfoContext(ctx, "daemon update available", slog.String("new_version", result.Daemon.Version))
-	d.applyDaemonUpdate(ctx, result)
+
+	d.mu.Lock()
+	d.pendingUpdate = result
+	// Cancel any previous auto-apply timer before starting a new one.
+	if d.autoApplyTimer != nil {
+		d.autoApplyTimer.Stop()
+	}
+	d.autoApplyTimer = time.AfterFunc(autoApplyGracePeriod, func() {
+		d.ApplyPendingUpdate(ctx)
+	})
+	d.mu.Unlock()
 }
 
 func (d *Daemon) applyDaemonUpdate(ctx context.Context, result *CheckResult) {

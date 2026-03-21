@@ -16,8 +16,9 @@ const (
 
 // BootResponse is the JSON body returned by GET /boot.
 type BootResponse struct {
-	State State  `json:"state"`
-	Error string `json:"error,omitempty"`
+	State          State  `json:"state"`
+	Error          string `json:"error,omitempty"`
+	PendingVersion string `json:"pendingVersion,omitempty"`
 }
 
 // LinkResponse is the JSON body returned by GET /link.

@@ -1997,7 +1997,7 @@ func TestHandleCommand_DaemonUpdateAvailable_NilUpdater(t *testing.T) {
 	}
 }
 
-func TestCheckSelfUpdate_TriggersApply(t *testing.T) {
+func TestCheckSelfUpdate_StoresAndApplyPendingTriggers(t *testing.T) {
 	ws := newFakeWSClient()
 	updater := &fakeUpdater{
 		checkResult: &CheckResult{
@@ -2017,26 +2017,30 @@ func TestCheckSelfUpdate_TriggersApply(t *testing.T) {
 		Games:      map[string]GameConfig{},
 	}
 
-	d := New(
-		cfg,
-		&fakeFS{},
-		newFakeWatcher(),
-		&fakeRunner{},
-		ws,
-		&fakePluginManager{},
-		updater,
-		testLogger(),
-	)
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, updater, testLogger())
 	var exitCode int
 	d.exitFunc = func(code int) { exitCode = code }
 
+	// Phase 1: check stores but does not apply.
 	d.checkSelfUpdate(context.Background())
 
+	if v := d.PendingVersion(); v != "0.3.0" {
+		t.Fatalf("PendingVersion() = %q after check, want 0.3.0", v)
+	}
+	updater.mu.Lock()
+	if len(updater.applyCalls) != 0 {
+		t.Fatal("Apply called during check phase, want deferred")
+	}
+	updater.mu.Unlock()
+
+	// Phase 2: explicit apply triggers the update.
+	d.ApplyPendingUpdate(context.Background())
+
 	if !slices.Contains(ws.sentEventTypes(), "sourceUpdateStarted") {
-		t.Error("missing sourceUpdateStarted event")
+		t.Error("missing sourceUpdateStarted event after ApplyPendingUpdate")
 	}
 	if !slices.Contains(ws.sentEventTypes(), "sourceOffline") {
-		t.Error("missing sourceOffline after successful update")
+		t.Error("missing sourceOffline after ApplyPendingUpdate")
 	}
 	if exitCode != 0 {
 		t.Errorf("exitFunc called with %d, want 0", exitCode)
@@ -2050,6 +2054,11 @@ func TestCheckSelfUpdate_TriggersApply(t *testing.T) {
 	}
 	if updater.applyCalls[0].Info.Version != "0.3.0" {
 		t.Errorf("version = %s, want 0.3.0", updater.applyCalls[0].Info.Version)
+	}
+
+	// Pending should be consumed.
+	if v := d.PendingVersion(); v != "" {
+		t.Errorf("PendingVersion() after apply = %q, want empty", v)
 	}
 }
 
@@ -3106,5 +3115,131 @@ func TestPluginReloadChannel_NilDoesNotPanic(t *testing.T) {
 
 	if err := <-errCh; err != nil {
 		t.Fatalf("Run error: %v", err)
+	}
+}
+
+func TestCheckSelfUpdate_StoresPendingUpdate(t *testing.T) {
+	ws := newFakeWSClient()
+	updater := &fakeUpdater{
+		checkResult: &CheckResult{
+			Daemon: &UpdateInfo{
+				Version:      "0.3.0",
+				URL:          "https://example.com/daemon",
+				SignatureURL: "https://example.com/daemon.sig",
+				SHA256:       "deadbeef",
+			},
+		},
+	}
+
+	cfg := Config{
+		SourceID:   "deck",
+		Version:    "0.2.0",
+		BinaryPath: "/usr/local/bin/savecraft-daemon",
+		Games:      map[string]GameConfig{},
+	}
+
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, updater, testLogger())
+	d.exitFunc = func(_ int) {}
+
+	d.checkSelfUpdate(context.Background())
+
+	// Should store result, NOT immediately apply.
+	if v := d.PendingVersion(); v != "0.3.0" {
+		t.Errorf("PendingVersion() = %q, want %q", v, "0.3.0")
+	}
+
+	// Should NOT have sent sourceUpdateStarted (no immediate apply).
+	if slices.Contains(ws.sentEventTypes(), "sourceUpdateStarted") {
+		t.Error("should not send sourceUpdateStarted on check (deferred apply)")
+	}
+
+	// Updater.Apply should NOT have been called.
+	updater.mu.Lock()
+	calls := len(updater.applyCalls)
+	updater.mu.Unlock()
+	if calls != 0 {
+		t.Errorf("updater.Apply called %d times, want 0 (deferred)", calls)
+	}
+}
+
+func TestPendingVersion_EmptyWhenNoUpdate(t *testing.T) {
+	d := New(
+		Config{SourceID: "deck", Version: "0.2.0", Games: map[string]GameConfig{}},
+		&fakeFS{}, newFakeWatcher(), &fakeRunner{}, newFakeWSClient(),
+		&fakePluginManager{}, nil, testLogger(),
+	)
+
+	if v := d.PendingVersion(); v != "" {
+		t.Errorf("PendingVersion() = %q, want empty", v)
+	}
+}
+
+func TestApplyPendingUpdate_ConsumesStoredResult(t *testing.T) {
+	ws := newFakeWSClient()
+	updater := &fakeUpdater{}
+
+	cfg := Config{
+		SourceID:   "deck",
+		Version:    "0.2.0",
+		BinaryPath: "/usr/local/bin/savecraft-daemon",
+		Games:      map[string]GameConfig{},
+	}
+
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, updater, testLogger())
+	var exitCode int
+	d.exitFunc = func(code int) { exitCode = code }
+
+	// Store a pending update.
+	d.StorePendingUpdate(&CheckResult{
+		Daemon: &UpdateInfo{
+			Version:      "0.3.0",
+			URL:          "https://example.com/daemon",
+			SignatureURL: "https://example.com/daemon.sig",
+			SHA256:       "deadbeef",
+		},
+	})
+
+	d.ApplyPendingUpdate(context.Background())
+
+	// Should have applied.
+	updater.mu.Lock()
+	calls := len(updater.applyCalls)
+	updater.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("updater.Apply called %d times, want 1", calls)
+	}
+	if updater.applyCalls[0].Info.Version != "0.3.0" {
+		t.Errorf("version = %s, want 0.3.0", updater.applyCalls[0].Info.Version)
+	}
+
+	// Should have consumed the pending update.
+	if v := d.PendingVersion(); v != "" {
+		t.Errorf("PendingVersion() after apply = %q, want empty", v)
+	}
+
+	if exitCode != 0 {
+		t.Errorf("exitFunc called with %d, want 0", exitCode)
+	}
+}
+
+func TestApplyPendingUpdate_NoopWhenNoPending(t *testing.T) {
+	ws := newFakeWSClient()
+	updater := &fakeUpdater{}
+
+	d := New(
+		Config{SourceID: "deck", Version: "0.2.0", Games: map[string]GameConfig{}},
+		&fakeFS{}, newFakeWatcher(), &fakeRunner{}, ws,
+		&fakePluginManager{}, updater, testLogger(),
+	)
+	d.exitFunc = func(_ int) {}
+
+	// Call with no pending update — should be a no-op.
+	d.ApplyPendingUpdate(context.Background())
+
+	updater.mu.Lock()
+	calls := len(updater.applyCalls)
+	updater.mu.Unlock()
+	if calls != 0 {
+		t.Errorf("updater.Apply called %d times, want 0", calls)
 	}
 }

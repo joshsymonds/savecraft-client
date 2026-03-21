@@ -21,11 +21,12 @@ type Server struct {
 	expiresAt string
 	errMsg    string
 
-	ringBuf         *RingBuffer
-	shutdownFn      func()
-	restartFn       func() error
-	repairFn        func(ctx context.Context) (linkCode, linkURL, expiresAt string, err error)
-	updatePluginsFn func(ctx context.Context) ([]string, error)
+	ringBuf          *RingBuffer
+	shutdownFn       func()
+	restartFn        func() error
+	repairFn         func(ctx context.Context) (linkCode, linkURL, expiresAt string, err error)
+	updatePluginsFn  func(ctx context.Context) ([]string, error)
+	pendingVersionFn func() string
 
 	mux    *http.ServeMux
 	srv    *http.Server
@@ -135,6 +136,9 @@ func (s *Server) handleBoot(w http.ResponseWriter, r *http.Request) {
 	if s.errMsg != "" {
 		resp.Error = s.errMsg
 	}
+	if s.pendingVersionFn != nil {
+		resp.PendingVersion = s.pendingVersionFn()
+	}
 
 	s.writeJSON(w, http.StatusOK, resp)
 }
@@ -179,6 +183,16 @@ func (s *Server) SetUpdatePluginsFunc(fn func(ctx context.Context) ([]string, er
 	defer s.mu.Unlock()
 
 	s.updatePluginsFn = fn
+}
+
+// SetPendingVersionFunc sets the function called by GET /boot to check
+// whether a daemon update is available. Returns the pending version string
+// or "" if no update is pending.
+func (s *Server) SetPendingVersionFunc(fn func() string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.pendingVersionFn = fn
 }
 
 func (s *Server) handleUpdatePlugins(w http.ResponseWriter, r *http.Request) {

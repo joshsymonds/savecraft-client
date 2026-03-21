@@ -536,6 +536,43 @@ func TestHandleUpdatePlugins_WrongMethod(t *testing.T) {
 	}
 }
 
+func TestHandleBoot_PendingVersion(t *testing.T) {
+	srv := NewServer("localhost:0", nil)
+	srv.SetState(StateRunning)
+	srv.SetPendingVersionFunc(func() string { return "1.2.3" })
+
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/boot", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	var resp BootResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.PendingVersion != "1.2.3" {
+		t.Errorf("pendingVersion = %q, want %q", resp.PendingVersion, "1.2.3")
+	}
+}
+
+func TestHandleBoot_NoPendingVersion(t *testing.T) {
+	srv := NewServer("localhost:0", nil)
+	srv.SetState(StateRunning)
+
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/boot", nil))
+
+	var resp BootResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.PendingVersion != "" {
+		t.Errorf("pendingVersion = %q, want empty", resp.PendingVersion)
+	}
+}
+
 func TestServer_ConcurrentStateAccess(t *testing.T) {
 	srv := NewServer("localhost:0", nil)
 

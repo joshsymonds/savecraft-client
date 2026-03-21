@@ -212,6 +212,7 @@ func runDaemonSubsystems(
 
 	wireRepairCallback(ctx, dmn, frontendURL, api)
 	api.SetUpdatePluginsFunc(dmn.UpdatePlugins)
+	api.SetPendingVersionFunc(dmn.PendingVersion)
 
 	logger.InfoContext(ctx, "starting daemon",
 		slog.String("server", cfg.ServerURL),
