@@ -19,6 +19,8 @@ import (
 	"github.com/joshsymonds/savecraft.gg/internal/svcmgr"
 )
 
+const osWindows = "windows"
+
 func buildRunFunc(
 	serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL string,
 ) func(cmd *cobra.Command, args []string) error {
@@ -123,10 +125,39 @@ func startLocalAPI(
 
 // trayBinaryExt returns the file extension for binaries on the current platform.
 func trayBinaryExt() string {
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == osWindows {
 		return ".exe"
 	}
 	return ""
+}
+
+// buildRestartFunc creates the restart callback for the local API.
+// It applies a pending self-update if available (downloads, replaces, restarts,
+// exits — never returns). Otherwise falls back to a plain restart via svcmgr
+// (Linux/macOS) or the PowerShell restart script (Windows).
+func buildRestartFunc(dmn *daemon.Daemon, cfg *appConfig, svcCfg svcmgr.Config) func() error {
+	return func() error {
+		// If a pending update exists, apply it. On success this calls
+		// restartFunc + exitFunc and never returns.
+		dmn.ApplyPendingUpdate(context.Background())
+
+		// No pending update — plain restart.
+		if runtime.GOOS == osWindows {
+			// svcmgr restart is not supported on Windows; use the
+			// same PowerShell restart script that self-update uses.
+			if err := selfupdate.RestartDaemon(cfg.Daemon.BinaryPath, cfg.Daemon.TrayBinaryPath); err != nil {
+				return fmt.Errorf("restart daemon: %w", err)
+			}
+			// Schedule exit after a brief delay so the HTTP response
+			// can be written before the process terminates.
+			go func() {
+				time.Sleep(100 * time.Millisecond)
+				os.Exit(0)
+			}()
+			return nil
+		}
+		return svcmgr.Control(svcCfg, "restart")
+	}
 }
 
 // runDaemonSubsystems creates subsystems, wires up repair, and runs the daemon.
@@ -189,31 +220,7 @@ func runDaemonSubsystems(
 	// binary before exit. On Linux, systemd handles restart.
 	dmn.SetRestartFunc(selfupdate.RestartDaemon)
 
-	// Override the placeholder restart callback with one that:
-	// 1. Applies a pending update if available (downloads, replaces, restarts, exits)
-	// 2. Falls back to a plain restart via svcmgr (Linux/macOS) or PowerShell (Windows)
-	api.SetRestartFunc(func() error {
-		// If a pending update exists, apply it. On success this calls
-		// restartFunc + exitFunc and never returns.
-		dmn.ApplyPendingUpdate(context.Background())
-
-		// No pending update — plain restart.
-		if runtime.GOOS == "windows" {
-			// svcmgr restart is not supported on Windows; use the
-			// same PowerShell restart script that self-update uses.
-			if err := selfupdate.RestartDaemon(cfg.Daemon.BinaryPath, cfg.Daemon.TrayBinaryPath); err != nil {
-				return fmt.Errorf("restart daemon: %w", err)
-			}
-			// Schedule exit after a brief delay so the HTTP response
-			// can be written before the process terminates.
-			go func() {
-				time.Sleep(100 * time.Millisecond)
-				os.Exit(0)
-			}()
-			return nil
-		}
-		return svcmgr.Control(svcCfg, "restart")
-	})
+	api.SetRestartFunc(buildRestartFunc(dmn, cfg, svcCfg))
 
 	// If newly registered, set the initial link code for display.
 	if newlyRegistered && regResult != nil {
