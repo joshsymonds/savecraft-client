@@ -36,6 +36,9 @@ type trayApp struct {
 	// Re-pair menu item — visible only in StateRunning.
 	mRepair *systray.MenuItem
 
+	// Restart/upgrade menu item — text changes when an update is pending.
+	mRestart *systray.MenuItem
+
 	// initialLinkCode and initialLinkURL are passed via CLI flags when the
 	// daemon launches the tray after a fresh registration. When set, the
 	// pairing dialog opens immediately without waiting for a poll cycle.
@@ -71,7 +74,7 @@ func (a *trayApp) onReady() {
 	systray.AddSeparator()
 
 	mCopyLogs := systray.AddMenuItem("Copy Logs", "Copy daemon logs to clipboard")
-	mRestart := systray.AddMenuItem("Restart Daemon", "Restart the daemon process")
+	a.mRestart = systray.AddMenuItem("Restart Daemon", "Restart the daemon process")
 	mUpdatePlugins := systray.AddMenuItem("Check for Plugin Updates", "Download the latest plugin versions")
 
 	systray.AddSeparator()
@@ -92,7 +95,7 @@ func (a *trayApp) onReady() {
 	}
 
 	// Handle menu clicks.
-	go a.handleClicks(mCopyLogs, mRestart, mUpdatePlugins, mDashboard, mQuit)
+	go a.handleClicks(mCopyLogs, mUpdatePlugins, mDashboard, mQuit)
 
 	// Poll daemon state.
 	go a.pollState(ctx, mStatus)
@@ -105,7 +108,7 @@ func (a *trayApp) onExit() {
 }
 
 func (a *trayApp) handleClicks(
-	mCopyLogs, mRestart, mUpdatePlugins, mDashboard, mQuit *systray.MenuItem,
+	mCopyLogs, mUpdatePlugins, mDashboard, mQuit *systray.MenuItem,
 ) {
 	for {
 		select {
@@ -119,7 +122,7 @@ func (a *trayApp) handleClicks(
 			a.doRepair()
 		case <-mCopyLogs.ClickedCh:
 			a.doCopyLogs()
-		case <-mRestart.ClickedCh:
+		case <-a.mRestart.ClickedCh:
 			a.doRestart()
 		case <-mUpdatePlugins.ClickedCh:
 			a.doUpdatePlugins()
@@ -186,6 +189,13 @@ func (a *trayApp) updateStatus(mStatus *systray.MenuItem) {
 		} else {
 			a.mRepair.Hide()
 		}
+	}
+
+	// Update restart menu item text based on pending update.
+	if resp.PendingVersion != "" {
+		a.mRestart.SetTitle(fmt.Sprintf("Upgrade to v%s", resp.PendingVersion))
+	} else {
+		a.mRestart.SetTitle("Restart Daemon")
 	}
 
 	title := stateTitle(resp.State)
