@@ -598,6 +598,9 @@ func (d *Daemon) checkSelfUpdate(ctx context.Context) {
 		d.autoApplyTimer.Stop()
 	}
 	d.autoApplyTimer = time.AfterFunc(autoApplyGracePeriod, func() {
+		if ctx.Err() != nil {
+			return
+		}
 		d.ApplyPendingUpdate(ctx)
 	})
 	d.mu.Unlock()

@@ -355,7 +355,8 @@ func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := restartFn(); err != nil {
-		s.writeJSON(w, http.StatusInternalServerError, OKResponse{Error: err.Error()})
+		s.logger.Error("restart failed", slog.String("error", err.Error()))
+		s.writeJSON(w, http.StatusInternalServerError, OKResponse{Error: "restart failed"})
 
 		return
 	}

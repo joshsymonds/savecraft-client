@@ -202,7 +202,7 @@ func runDaemonSubsystems(
 			// svcmgr restart is not supported on Windows; use the
 			// same PowerShell restart script that self-update uses.
 			if err := selfupdate.RestartDaemon(cfg.Daemon.BinaryPath, cfg.Daemon.TrayBinaryPath); err != nil {
-				return err
+				return fmt.Errorf("restart daemon: %w", err)
 			}
 			// Schedule exit after a brief delay so the HTTP response
 			// can be written before the process terminates.

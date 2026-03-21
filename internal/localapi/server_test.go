@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -301,9 +302,9 @@ func TestHandleRestart_CallsCallback(t *testing.T) {
 }
 
 func TestHandleRestart_Error(t *testing.T) {
-	srv := NewServer("localhost:0", nil)
+	srv := NewServer("localhost:0", slog.New(slog.NewTextHandler(io.Discard, nil)))
 	srv.SetRestartFunc(func() error {
-		return fmt.Errorf("restart failed")
+		return fmt.Errorf("powershell: access denied")
 	})
 
 	rec := httptest.NewRecorder()
@@ -320,6 +321,7 @@ func TestHandleRestart_Error(t *testing.T) {
 	if resp.OK {
 		t.Error("ok = true, want false")
 	}
+	// Error message should be sanitized, not the raw internal error.
 	if resp.Error != "restart failed" {
 		t.Errorf("error = %q, want %q", resp.Error, "restart failed")
 	}
