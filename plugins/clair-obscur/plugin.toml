@@ -1,5 +1,6 @@
 game_id = "clair-obscur"
 source = "wasm"
+icon = "icon.png"
 name = "Clair Obscur: Expedition 33"
 description = "Parses Clair Obscur: Expedition 33 save files — character builds, party, inventory, progression"
 channel = "alpha"
@@ -17,6 +18,6 @@ name = "Josh Symonds"
 github = "joshsymonds"
 
 [default_paths]
-windows = "%LOCALAPPDATA%/Sandfall/Saved/SaveGames"
-linux = "~/.local/share/Steam/steamapps/compatdata/1903340/pfx/drive_c/users/steamuser/AppData/Local/Sandfall/Saved/SaveGames"
-darwin = "~/Library/Application Support/Epic/Sandfall/Saved/SaveGames"
+windows = "%LOCALAPPDATA%/Sandfall/Saved/SaveGames/*"
+linux = "~/.local/share/Steam/steamapps/compatdata/1903340/pfx/drive_c/users/steamuser/AppData/Local/Sandfall/Saved/SaveGames/*"
+darwin = "~/Library/Application Support/Epic/Sandfall/Saved/SaveGames/*"

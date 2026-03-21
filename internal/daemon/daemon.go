@@ -675,29 +675,39 @@ func (d *Daemon) discoverGames(ctx context.Context) {
 			continue
 		}
 
-		path := expandPath(pathTemplate)
-		stat, statErr := d.fs.Stat(path)
-		if statErr != nil || !stat.IsDir() {
+		expanded := expandPath(pathTemplate)
+		dirs := resolveGlob(d.fs, expanded)
+
+		// Check that at least one resolved path is a valid directory.
+		anyValid := false
+		totalMatching := 0
+		for _, dir := range dirs {
+			stat, statErr := d.fs.Stat(dir)
+			if statErr != nil || !stat.IsDir() {
+				continue
+			}
+			anyValid = true
+			entries, readErr := d.fs.ReadDir(dir)
+			if readErr != nil {
+				continue
+			}
+			totalMatching += len(d.filterByExtension(entries, info.FileExtensions))
+		}
+		if !anyValid {
 			continue
 		}
 
-		entries, readErr := d.fs.ReadDir(path)
-		if readErr != nil {
-			continue
-		}
-
-		matching := d.filterByExtension(entries, info.FileExtensions)
 		d.log.InfoContext(ctx, "game discovered",
 			slog.String("game_id", gameID),
 			slog.String("name", info.Name),
-			slog.String("path", path),
-			slog.Int("file_count", len(matching)),
+			slog.String("path", expanded),
+			slog.Int("file_count", totalMatching),
 		)
 		discovered = append(discovered, DiscoveredGame{
 			GameID:         gameID,
 			Name:           info.Name,
-			Path:           path,
-			FileCount:      len(matching),
+			Path:           expanded,
+			FileCount:      totalMatching,
 			FileExtensions: info.FileExtensions,
 		})
 	}
@@ -723,22 +733,33 @@ func (d *Daemon) discoverGames(ctx context.Context) {
 func (d *Daemon) rescanQuiet(
 	ctx context.Context, gameID string, cfg GameConfig,
 ) bool {
+	dirs := resolveGlob(d.fs, cfg.SavePath)
+
+	// Check if any resolved path is already watched.
 	d.mu.RLock()
-	_, alreadyWatched := d.watchedDirs[cfg.SavePath]
+	anyWatched := false
+	for _, dir := range dirs {
+		if _, ok := d.watchedDirs[dir]; ok {
+			anyWatched = true
+			break
+		}
+	}
 	d.mu.RUnlock()
 
-	if !alreadyWatched {
+	if !anyWatched {
 		return false
 	}
 
-	entries, err := d.fs.ReadDir(cfg.SavePath)
-	if err != nil {
-		return true
-	}
-	matchingFiles := d.filterByExtension(entries, cfg.FileExtensions)
-	for _, fileName := range matchingFiles {
-		fullPath := filepath.Join(cfg.SavePath, fileName)
-		d.parseAndPush(ctx, gameID, fullPath, fileName, nil, true)
+	for _, dir := range dirs {
+		entries, err := d.fs.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		matchingFiles := d.filterByExtension(entries, cfg.FileExtensions)
+		for _, fileName := range matchingFiles {
+			fullPath := filepath.Join(dir, fileName)
+			d.parseAndPush(ctx, gameID, fullPath, fileName, nil, true)
+		}
 	}
 	return true
 }
@@ -754,6 +775,8 @@ func (d *Daemon) scanGame(
 	}
 
 	displayName := d.gameName(ctx, gameID)
+	dirs := resolveGlob(d.fs, cfg.SavePath)
+
 	d.log.InfoContext(
 		ctx,
 		"scanning game directory",
@@ -766,8 +789,9 @@ func (d *Daemon) scanGame(
 		Path:   cfg.SavePath,
 	}}})
 
-	info, err := d.fs.Stat(cfg.SavePath)
-	if err != nil || !info.IsDir() {
+	allDirFiles, allMatchingFiles, validDirs := d.collectSaveFiles(dirs, cfg.FileExtensions)
+
+	if validDirs == 0 {
 		d.log.WarnContext(
 			ctx,
 			"game directory not found",
@@ -776,39 +800,29 @@ func (d *Daemon) scanGame(
 		)
 		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_GameNotFound{GameNotFound: &pb.GameNotFound{
 			GameId:       gameID,
-			PathsChecked: []string{cfg.SavePath},
+			PathsChecked: dirs,
 		}}})
 		return
 	}
 
-	entries, err := d.fs.ReadDir(cfg.SavePath)
-	if err != nil {
-		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_GameNotFound{GameNotFound: &pb.GameNotFound{
-			GameId:       gameID,
-			PathsChecked: []string{cfg.SavePath},
-		}}})
-		return
-	}
-
-	matchingFiles := d.filterByExtension(entries, cfg.FileExtensions)
 	d.log.InfoContext(ctx, "save files found",
 		slog.String("game", displayName),
 		slog.String("game_id", gameID),
-		slog.Int("count", len(matchingFiles)),
+		slog.Int("count", len(allMatchingFiles)),
 		slog.String("path", cfg.SavePath),
 	)
 
 	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ScanCompleted{ScanCompleted: &pb.ScanCompleted{
 		GameId:     gameID,
 		Path:       cfg.SavePath,
-		FilesFound: int32(len(matchingFiles)), // #nosec G115 -- bounded by filesystem limits
-		FileNames:  matchingFiles,
+		FilesFound: int32(len(allMatchingFiles)), // #nosec G115 -- bounded by filesystem limits
+		FileNames:  allMatchingFiles,
 	}}})
 
-	if len(matchingFiles) == 0 {
+	if len(allMatchingFiles) == 0 {
 		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_GameNotFound{GameNotFound: &pb.GameNotFound{
 			GameId:       gameID,
-			PathsChecked: []string{cfg.SavePath},
+			PathsChecked: dirs,
 		}}})
 		return
 	}
@@ -816,15 +830,18 @@ func (d *Daemon) scanGame(
 	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_GameDetected{GameDetected: &pb.GameDetected{
 		GameId:    gameID,
 		Path:      cfg.SavePath,
-		SaveCount: int32(len(matchingFiles)), // #nosec G115 -- bounded by filesystem limits
+		SaveCount: int32(len(allMatchingFiles)), // #nosec G115 -- bounded by filesystem limits
 	}}})
 
-	if watchErr := d.watcher.Add(cfg.SavePath); watchErr != nil {
-		return
+	// Watch each resolved directory that has matching files.
+	for _, df := range allDirFiles {
+		if watchErr := d.watcher.Add(df.dir); watchErr != nil {
+			continue
+		}
+		d.mu.Lock()
+		d.watchedDirs[df.dir] = gameID
+		d.mu.Unlock()
 	}
-	d.mu.Lock()
-	d.watchedDirs[cfg.SavePath] = gameID
-	d.mu.Unlock()
 
 	d.log.InfoContext(
 		ctx,
@@ -832,18 +849,56 @@ func (d *Daemon) scanGame(
 		slog.String("game", displayName),
 		slog.String("game_id", gameID),
 		slog.String("path", cfg.SavePath),
-		slog.Int("file_count", len(matchingFiles)),
+		slog.Int("file_count", len(allMatchingFiles)),
 	)
 	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_Watching{Watching: &pb.Watching{
 		GameId:         gameID,
 		Path:           cfg.SavePath,
-		FilesMonitored: int32(len(matchingFiles)), // #nosec G115 -- bounded by filesystem limits
+		FilesMonitored: int32(len(allMatchingFiles)), // #nosec G115 -- bounded by filesystem limits
 	}}})
 
-	for _, fileName := range matchingFiles {
-		fullPath := filepath.Join(cfg.SavePath, fileName)
-		d.parseAndPush(ctx, gameID, fullPath, fileName, nil, false)
+	for _, df := range allDirFiles {
+		for _, fileName := range df.files {
+			fullPath := filepath.Join(df.dir, fileName)
+			d.parseAndPush(ctx, gameID, fullPath, fileName, nil, false)
+		}
 	}
+}
+
+// dirFiles pairs a directory path with the save file names found inside it.
+type dirFiles struct {
+	dir   string
+	files []string
+}
+
+// collectSaveFiles scans each directory for files matching the given extensions.
+// Returns the per-directory results, a flat list of all matching file names,
+// and the count of valid directories examined.
+func (d *Daemon) collectSaveFiles(dirs []string, extensions []string) ([]dirFiles, []string, int) {
+	var result []dirFiles
+	var allFiles []string
+	validDirs := 0
+
+	for _, dir := range dirs {
+		info, err := d.fs.Stat(dir)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		validDirs++
+
+		entries, err := d.fs.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+
+		matching := d.filterByExtension(entries, extensions)
+		if len(matching) > 0 {
+			result = append(result, dirFiles{dir: dir, files: matching})
+			allFiles = append(allFiles, matching...)
+		}
+	}
+
+	return result, allFiles, validDirs
 }
 
 func (d *Daemon) handleFileEvent(ctx context.Context, ev FileEvent) {
@@ -1236,17 +1291,16 @@ type configGameResult struct {
 
 // buildGameResult checks if a resolved path is a valid directory.
 func (d *Daemon) buildGameResult(resolvedPath string) configGameResult {
-	info, err := d.fs.Stat(resolvedPath)
-	if err != nil {
-		return configGameResult{Error: fmt.Sprintf("path not found: %s", resolvedPath), ResolvedPath: resolvedPath}
-	}
-	if !info.IsDir() {
-		return configGameResult{
-			Error:        fmt.Sprintf("path is not a directory: %s", resolvedPath),
-			ResolvedPath: resolvedPath,
+	dirs := resolveGlob(d.fs, resolvedPath)
+	for _, dir := range dirs {
+		info, err := d.fs.Stat(dir)
+		if err != nil || !info.IsDir() {
+			continue
 		}
+		// At least one resolved directory exists.
+		return configGameResult{Success: true, ResolvedPath: resolvedPath}
 	}
-	return configGameResult{Success: true, ResolvedPath: resolvedPath}
+	return configGameResult{Error: fmt.Sprintf("path not found: %s", resolvedPath), ResolvedPath: resolvedPath}
 }
 
 func (d *Daemon) handleConfigUpdate(
@@ -1377,55 +1431,55 @@ func (d *Daemon) removeStaleGames(ctx context.Context, newGames map[string]*pb.G
 }
 
 func (d *Daemon) unwatchGame(ctx context.Context, savePath string) {
+	dirs := resolveGlob(d.fs, savePath)
+
 	d.mu.Lock()
-	_, ok := d.watchedDirs[savePath]
-	if !ok {
-		d.mu.Unlock()
-		return
+	var toRemove []string
+	for _, dir := range dirs {
+		if _, ok := d.watchedDirs[dir]; ok {
+			delete(d.watchedDirs, dir)
+			toRemove = append(toRemove, dir)
+		}
 	}
-	delete(d.watchedDirs, savePath)
 	d.mu.Unlock()
 
-	if removeErr := d.watcher.Remove(savePath); removeErr != nil {
-		d.log.DebugContext(
-			ctx,
-			"watcher remove failed",
-			slog.String("save_path", savePath),
-			slog.String("error", removeErr.Error()),
-		)
+	for _, dir := range toRemove {
+		if removeErr := d.watcher.Remove(dir); removeErr != nil {
+			d.log.DebugContext(
+				ctx,
+				"watcher remove failed",
+				slog.String("save_path", dir),
+				slog.String("error", removeErr.Error()),
+			)
+		}
 	}
 }
 
 func (d *Daemon) handleTestPath(ctx context.Context, gameID, path string) {
-	info, err := d.fs.Stat(path)
-	if err != nil || !info.IsDir() {
-		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_TestPathResult{TestPathResult: &pb.TestPathResult{
-			GameId: gameID,
-			Path:   path,
-		}}})
-		return
-	}
-
-	entries, err := d.fs.ReadDir(path)
-	if err != nil {
-		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_TestPathResult{TestPathResult: &pb.TestPathResult{
-			GameId: gameID,
-			Path:   path,
-		}}})
-		return
-	}
-
 	d.mu.RLock()
 	gameCfg := d.cfg.Games[gameID]
 	d.mu.RUnlock()
-	fileNames := d.filterByExtension(entries, gameCfg.FileExtensions)
+
+	dirs := resolveGlob(d.fs, path)
+	var allFileNames []string
+	for _, dir := range dirs {
+		info, err := d.fs.Stat(dir)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		entries, err := d.fs.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		allFileNames = append(allFileNames, d.filterByExtension(entries, gameCfg.FileExtensions)...)
+	}
 
 	d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_TestPathResult{TestPathResult: &pb.TestPathResult{
 		GameId:     gameID,
 		Path:       path,
-		Valid:      len(fileNames) > 0,
-		FilesFound: int32(len(fileNames)), // #nosec G115 -- bounded by filesystem limits
-		FileNames:  fileNames,
+		Valid:      len(allFileNames) > 0,
+		FilesFound: int32(len(allFileNames)), // #nosec G115 -- bounded by filesystem limits
+		FileNames:  allFileNames,
 	}}})
 }
 
