@@ -94,7 +94,7 @@ func runDaemonLoop(
 		return fmt.Errorf("auto-register: %w", regErr)
 	}
 
-	return runDaemonSubsystems(ctx, cfg, appName, frontendURL, api, regResult, registered, logger)
+	return runDaemonSubsystems(ctx, cfg, svcCfg, appName, frontendURL, api, regResult, registered, logger)
 }
 
 // startLocalAPI creates and starts the local API server.
@@ -133,6 +133,7 @@ func trayBinaryExt() string {
 func runDaemonSubsystems(
 	ctx context.Context,
 	cfg *appConfig,
+	svcCfg svcmgr.Config,
 	appName, frontendURL string,
 	api *localapi.Server,
 	regResult *registerResult,
@@ -187,6 +188,32 @@ func runDaemonSubsystems(
 	// Set restart function for self-update. On Windows, this spawns the new
 	// binary before exit. On Linux, systemd handles restart.
 	dmn.SetRestartFunc(selfupdate.RestartDaemon)
+
+	// Override the placeholder restart callback with one that:
+	// 1. Applies a pending update if available (downloads, replaces, restarts, exits)
+	// 2. Falls back to a plain restart via svcmgr (Linux/macOS) or PowerShell (Windows)
+	api.SetRestartFunc(func() error {
+		// If a pending update exists, apply it. On success this calls
+		// restartFunc + exitFunc and never returns.
+		dmn.ApplyPendingUpdate(context.Background())
+
+		// No pending update — plain restart.
+		if runtime.GOOS == "windows" {
+			// svcmgr restart is not supported on Windows; use the
+			// same PowerShell restart script that self-update uses.
+			if err := selfupdate.RestartDaemon(cfg.Daemon.BinaryPath, cfg.Daemon.TrayBinaryPath); err != nil {
+				return err
+			}
+			// Schedule exit after a brief delay so the HTTP response
+			// can be written before the process terminates.
+			go func() {
+				time.Sleep(100 * time.Millisecond)
+				os.Exit(0)
+			}()
+			return nil
+		}
+		return svcmgr.Control(svcCfg, "restart")
+	})
 
 	// If newly registered, set the initial link code for display.
 	if newlyRegistered && regResult != nil {
