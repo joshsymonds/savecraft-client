@@ -1,0 +1,17 @@
+game_id = "rimworld"
+source = "mod"
+icon = "icon.png"
+name = "RimWorld"
+description = "In-game Harmony mod pushes full colony state on every save — colonists, resources, research, mood, health, defenses, farming, factions, and more"
+channel = "alpha"
+coverage = "full"
+homepage = "https://savecraft.gg/plugins/rimworld"
+
+limitations = [
+  "Modded content (added stats, custom hediffs) not yet parsed — vanilla data only",
+  "Large colonies (30+ colonists) may cause brief frame hitch during data collection",
+]
+
+[author]
+name = "Josh Symonds"
+github = "joshsymonds"

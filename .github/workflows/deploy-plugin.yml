@@ -213,12 +213,12 @@ jobs:
               fi
             done
 
-            if [ "$plugin_source" = "api" ]; then
-              # API plugins have no WASM — upload manifest + icon only
+            if [ "$plugin_source" = "api" ] || [ "$plugin_source" = "mod" ]; then
+              # API and mod plugins have no WASM — upload manifest + icon only
               wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json" --remote &
               pids+=($!)
               for pid in "${pids[@]}"; do wait "$pid" || exit 1; done
-              echo "    Published ${game_id} v${VERSION} (API adapter, manifest only)"
+              echo "    Published ${game_id} v${VERSION} (${plugin_source} plugin, manifest only)"
               continue
             fi
 
