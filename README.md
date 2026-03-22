@@ -45,17 +45,17 @@ The daemon auto-detects supported games and starts syncing. Ask your AI about yo
 
 ```
   ┌─────────────────────┐            ┌───────────────────────────┐
-  │  Gaming Device       │   HTTPS    │  Cloudflare               │
-  │                      │  ───────>  │                           │
-  │  savecraftd          │   push     │  Push API ──> R2 Storage  │
-  │  - fs watcher        │            │                           │
-  │  - WASM plugin       │  <──────>  │  SourceHub DO (WebSocket)  │
-  │    runtime (wazero)  │    WS      │                           │
+  │  Gaming Device      │   HTTPS    │  Cloudflare               │
+  │                     │  ───────>  │                           │
+  │  savecraftd         │   push     │  Push API ──> R2 Storage  │
+  │  - fs watcher       │            │                           │
+  │  - WASM plugin      │  <──────>  │  SourceHub DO (WebSocket) │
+  │    runtime (wazero) │    WS      │                           │
   └─────────────────────┘            │  MCP Server ──> AI Tools  │
-                                      └───────────────────────────┘
-  ┌─────────────────────┐                        │
-  │  Claude / ChatGPT /  │  <──── MCP ──────────┘
-  │  Gemini              │
+                                     └───────────────────────────┘
+  ┌─────────────────────┐                       │
+  │  Claude / ChatGPT / │   <──── MCP ──────────┘
+  │  Gemini             │
   └─────────────────────┘
 ```
 
