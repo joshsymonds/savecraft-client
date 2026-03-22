@@ -66,7 +66,7 @@ type msg struct {
 // via closures, so we use a synchronized map to route events to the
 // correct channel.
 var (
-	windowChMu sync.RWMutex                       //nolint:gochecknoglobals // required by wndProc callback
+	windowChMu sync.RWMutex                    //nolint:gochecknoglobals // required by wndProc callback
 	windowChs  = map[uintptr]chan<- struct{}{} //nolint:gochecknoglobals // required by wndProc callback
 )
 
