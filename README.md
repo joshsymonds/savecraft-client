@@ -5,7 +5,7 @@
 <h1 align="center">Savecraft</h1>
 
 <p align="center">
-  <strong>Your saves, your AI, your edge.</strong>
+  <strong>MCP server for game save files.</strong>
 </p>
 
 <p align="center">
@@ -20,20 +20,26 @@
   <video src="https://github.com/user-attachments/assets/a44e59dd-b622-413f-a27a-6670cf51d74a" />
 </p>
 
-<p align="center">
-  Savecraft gives AI assistants access to your actual game state via <a href="https://modelcontextprotocol.io/">MCP</a>.<br />
-  Player 2 for every game you play alone.
-</p>
+Savecraft watches your game saves, parses them into structured data, and serves it to AI assistants via [MCP](https://modelcontextprotocol.io/). Claude, ChatGPT, or Gemini can read your characters, gear, skills, and progress - real data, updated live.
 
 ---
 
-Most games worth caring about are played solo. The best moments — the lucky drop, the build finally clicking, the boss that took twenty attempts — happen with nobody watching. Savecraft means there's always someone who knows the context. You don't explain what a Shael is or why Perfection matters. The AI already knows your character, your gear, your goals.
+## Quick Start
 
-**Optimize:** "Am I hitting the 125% FCR breakpoint?" / "Compare my build to the Maxroll guide."
+**1. Install the daemon**
 
-**Talk:** "Another Countess run and ZERO SHAELS." / "I JUST FOUND A BER RUNE."
+Linux / Steam Deck:
+```bash
+curl -sSL https://install.savecraft.gg | bash
+```
 
-Same tools, same data. The conversation goes wherever you take it.
+Windows / Mac: download from [install.savecraft.gg](https://install.savecraft.gg)
+
+**2. Connect your AI**
+
+Sign in at [my.savecraft.gg](https://my.savecraft.gg) to get your MCP connector URL, then add it to your AI assistant's MCP settings ([Claude](https://claude.ai), [ChatGPT](https://chatgpt.com), [Gemini](https://gemini.google.com)).
+
+The daemon auto-detects supported games and starts syncing. Ask your AI about your character, your build, or your last run - it already has the data.
 
 ## How It Works
 
@@ -54,20 +60,8 @@ Same tools, same data. The conversation goes wherever you take it.
 ```
 
 1. **Daemon watches** your save files. Detects changes via fsnotify with debounce + hash dedup.
-2. **WASM plugins parse** saves into structured JSON. Sandboxed via wazero — plugins can't touch your filesystem or network. Ed25519 signed.
-3. **AI reads your state** through MCP tools. Section-level granularity — the AI fetches only what it needs to answer your question.
-
-## Tech Stack
-
-| Component | Technology |
-|-----------|-----------|
-| Daemon | Go, wazero (WASM runtime), fsnotify, nhooyr.io/websocket |
-| Cloud | Cloudflare Workers, Durable Objects, R2, D1 (SQLite/FTS5) |
-| Auth | Clerk (OAuth, JWT, magic links) |
-| Frontend | SvelteKit, TypeScript |
-| Plugins | Go compiled to WASI Preview 1, ndjson stdout contract |
-| Protocol | Protobuf (buf codegen to Go + TypeScript) |
-| Build | just, nix devenv + direnv |
+2. **WASM plugins parse** saves into structured JSON. Sandboxed via wazero - plugins can't touch your filesystem or network. Ed25519 signed.
+3. **AI reads your state** through MCP tools. Section-level granularity - the AI fetches only what it needs to answer your question.
 
 ## MCP Tools
 
@@ -82,9 +76,9 @@ Same tools, same data. The conversation goes wherever you take it.
 | `create_note` / `update_note` / `delete_note` | Manage notes via AI conversation |
 | `query_reference` | Execute reference data computations (drop rates, build math) |
 
-## Plugins
+## Supported Games
 
-Plugins are WASM binaries that parse game save files. They read raw bytes on stdin, emit ndjson on stdout, and cannot access the filesystem or network. Each plugin is Ed25519 signed and verified before loading. Plugins can optionally ship a second WASM binary (`reference.wasm`) for server-side computation — drop calculators, gift databases, crop planners — deployed via Workers for Platforms.
+Plugins are sandboxed WASM binaries that parse save files. They read raw bytes on stdin, emit structured JSON on stdout, and cannot access your filesystem or network. Each plugin is Ed25519 signed and verified before loading. Plugins can optionally ship a `reference.wasm` for server-side computation: drop calculators, gift databases, crop planners - deployed via Workers for Platforms.
 
 | Game | Format | Reference Modules | Status | Author |
 |------|--------|-------------------|--------|--------|
@@ -96,18 +90,9 @@ Plugins are WASM binaries that parse game save files. They read raw bytes on std
 
 **Planned API adapters** (no daemon required): Path of Exile 2, WoW (Battle.net API), FFXIV
 
-**Planned mod integrations:** Rimworld, Minecraft, Terraria (mod-as-device — mod pushes directly, no daemon), Factorio (mod-as-emitter — mod writes JSON, daemon relays)
+**Planned mod integrations:** Rimworld, Minecraft, Terraria (mod-as-device: mod pushes directly, no daemon), Factorio (mod-as-emitter: mod writes JSON, daemon relays)
 
-### Writing a Plugin
-
-Plugins speak a simple contract:
-
-```
-stdin:  raw save file bytes
-stdout: ndjson lines — {"type": "status"|"result"|"error", ...}
-```
-
-Write a parser in Go (or Rust, Zig, anything targeting WASI Preview 1), compile to `.wasm`, add a `plugin.toml` with metadata. See [`plugins/echo/`](plugins/echo/) for a minimal reference and [`plugins/d2r/`](plugins/d2r/) for a real-world parser.
+Want to add a game? See the [plugin development guide](docs/plugin-development.md).
 
 ## Project Structure
 
@@ -123,7 +108,7 @@ savecraft.gg/
 │   ├── selfupdate/       # Daemon self-update mechanism
 │   └── signing/          # Ed25519 plugin signature verification
 ├── worker/               # Cloudflare Worker + Durable Object (TypeScript)
-├── reference/            # Reference Worker — WASI shim for server-side plugin computation (WfP)
+├── reference/            # Reference Worker - WASI shim for server-side plugin computation (WfP)
 ├── web/                  # SvelteKit frontend
 ├── plugins/              # WASM plugin sources (parser + optional reference per game)
 ├── proto/                # Protobuf protocol definitions
@@ -146,6 +131,18 @@ just dev-worker      # Start Worker dev server (Miniflare)
 
 See [`docs/overview.md`](docs/overview.md) for the system architecture, or browse `docs/` for component-specific documentation.
 
+## Tech Stack
+
+| Component | Technology |
+|-----------|-----------|
+| Daemon | Go, wazero (WASM runtime), fsnotify, nhooyr.io/websocket |
+| Cloud | Cloudflare Workers, Durable Objects, R2, D1 (SQLite/FTS5) |
+| Auth | Clerk (OAuth, JWT, magic links) |
+| Frontend | SvelteKit, TypeScript |
+| Plugins | Go compiled to WASI Preview 1, ndjson stdout contract |
+| Protocol | Protobuf (buf codegen to Go + TypeScript) |
+| Build | just, nix devenv + direnv |
+
 ## Security
 
 - **WASM sandboxed:** Plugins cannot access filesystem, network, or environment. stdin in, JSON out.
@@ -161,5 +158,5 @@ See [`docs/overview.md`](docs/overview.md) for the system architecture, or brows
 ---
 
 <p align="center">
-  <sub>savecraft.gg — by <a href="https://joshsymonds.com">@joshsymonds</a> · <a href="https://savecraft.gg/privacy">Privacy Policy</a></sub>
+  <sub>savecraft.gg - by <a href="https://joshsymonds.com">@joshsymonds</a> · <a href="https://savecraft.gg/privacy">Privacy Policy</a></sub>
 </p>
