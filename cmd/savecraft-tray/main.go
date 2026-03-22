@@ -44,10 +44,17 @@ func main() {
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
+	sup := newSupervisor(buildStartDaemonFunc(logger))
+	sup.toastFunc = func(title, body, clickURL string) {
+		_ = showToast(title, body, clickURL)
+	}
+	sup.logger = logger
+
 	app := &trayApp{
 		client:          client,
 		frontendURL:     frontendURL,
 		logger:          logger,
+		sup:             sup,
 		initialLinkCode: linkCode,
 		initialLinkURL:  linkURL,
 	}

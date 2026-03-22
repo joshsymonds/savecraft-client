@@ -15,6 +15,7 @@ import (
 	"github.com/joshsymonds/savecraft.gg/internal/envfile"
 	"github.com/joshsymonds/savecraft.gg/internal/localapi"
 	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
+	"github.com/joshsymonds/savecraft.gg/internal/power"
 	"github.com/joshsymonds/savecraft.gg/internal/selfupdate"
 	"github.com/joshsymonds/savecraft.gg/internal/svcmgr"
 )
@@ -215,6 +216,13 @@ func runDaemonSubsystems(
 			logger.InfoContext(ctx, "plugin watcher started", slog.String("plugin_dir", cfg.PluginDir))
 		}
 	}
+
+	// Start power event monitor for sleep/wake detection.
+	// On Windows, signals on resume so the daemon can force-reconnect its WebSocket.
+	// On other platforms, returns a nil channel (no-op).
+	powerCh, powerStop := power.Monitor(ctx)
+	defer powerStop()
+	dmn.SetPowerResumeCh(powerCh)
 
 	// Set restart function for self-update. On Windows, this spawns the new
 	// binary before exit. On Linux, systemd handles restart.

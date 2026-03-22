@@ -237,6 +237,86 @@ func TestReconnected_SignalsAfterReconnect(t *testing.T) {
 	}
 }
 
+func TestForceReconnect_TriggersImmediateReconnect(t *testing.T) {
+	conns := make(chan *websocket.Conn, 5)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+		if err != nil {
+			return
+		}
+		conns <- conn
+		for {
+			_, _, readErr := conn.Read(r.Context())
+			if readErr != nil {
+				return
+			}
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	// Use a long reconnect base so that without ForceReconnect, the test
+	// would time out waiting for the backoff delay.
+	client := connectClient(t, wsURL(srv.URL),
+		WithReconnect(30*time.Second, 30*time.Second),
+	)
+
+	// Consume initial connection.
+	<-conns
+
+	// Force reconnect — should close current conn and reconnect immediately,
+	// NOT wait for the 30s backoff.
+	client.ForceReconnect()
+
+	select {
+	case <-conns:
+		// Reconnected within a reasonable time — ForceReconnect bypassed backoff.
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for reconnect — ForceReconnect did not bypass backoff")
+	}
+
+	// Verify Reconnected() channel signals.
+	select {
+	case <-client.Reconnected():
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for Reconnected() signal after ForceReconnect")
+	}
+}
+
+func TestForceReconnect_Idempotent(t *testing.T) {
+	conns := make(chan *websocket.Conn, 5)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+		if err != nil {
+			return
+		}
+		conns <- conn
+		for {
+			_, _, readErr := conn.Read(r.Context())
+			if readErr != nil {
+				return
+			}
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	client := connectClient(t, wsURL(srv.URL),
+		WithReconnect(30*time.Second, 30*time.Second),
+	)
+	<-conns
+
+	// Multiple rapid calls should not panic or deadlock.
+	client.ForceReconnect()
+	client.ForceReconnect()
+	client.ForceReconnect()
+
+	// Should still reconnect exactly once.
+	select {
+	case <-conns:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for reconnect after multiple ForceReconnect calls")
+	}
+}
+
 func TestClose_Idempotent(t *testing.T) {
 	srv := echoServer(t)
 

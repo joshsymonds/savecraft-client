@@ -46,10 +46,11 @@ type Client struct {
 	token     string
 	log       *slog.Logger
 
-	mu          sync.Mutex
-	conn        *websocket.Conn
-	connReady   chan struct{}
-	reconnected chan struct{}
+	mu             sync.Mutex
+	conn           *websocket.Conn
+	connReady      chan struct{}
+	reconnected    chan struct{}
+	forceReconnect chan struct{}
 
 	messages  chan []byte
 	done      chan struct{}
@@ -65,16 +66,17 @@ type Client struct {
 // New creates a WebSocket Client targeting the given server URL.
 func New(serverURL, token string, opts ...Option) *Client {
 	client := &Client{
-		serverURL:     serverURL,
-		token:         token,
-		log:           slog.New(slog.NewTextHandler(io.Discard, nil)),
-		messages:      make(chan []byte, 64),
-		reconnected:   make(chan struct{}, 1),
-		done:          make(chan struct{}),
-		reconnectBase: defaultReconnectBase,
-		reconnectMax:  defaultReconnectMax,
-		dialTimeout:   defaultDialTimeout,
-		writeTimeout:  defaultWriteTimeout,
+		serverURL:      serverURL,
+		token:          token,
+		log:            slog.New(slog.NewTextHandler(io.Discard, nil)),
+		messages:       make(chan []byte, 64),
+		reconnected:    make(chan struct{}, 1),
+		forceReconnect: make(chan struct{}, 1),
+		done:           make(chan struct{}),
+		reconnectBase:  defaultReconnectBase,
+		reconnectMax:   defaultReconnectMax,
+		dialTimeout:    defaultDialTimeout,
+		writeTimeout:   defaultWriteTimeout,
 	}
 	for _, opt := range opts {
 		opt(client)
@@ -135,6 +137,32 @@ func (c *Client) Messages() <-chan []byte { return c.messages }
 // The channel is buffered (size 1) so a signal is never lost, but only the most
 // recent reconnect is retained if the consumer is slow.
 func (c *Client) Reconnected() <-chan struct{} { return c.reconnected }
+
+// ForceReconnect closes the current connection (if any) and signals the
+// reconnect loop to skip its backoff delay. Use this after events like
+// resume-from-sleep where the connection is dead but the process is alive.
+// Safe to call multiple times rapidly — the signal is buffered and non-blocking.
+func (c *Client) ForceReconnect() {
+	c.log.Info("force reconnect requested")
+
+	c.mu.Lock()
+	if c.conn != nil {
+		if closeErr := c.conn.Close(websocket.StatusGoingAway, "force reconnect"); closeErr != nil {
+			c.log.Debug("close for force reconnect failed", slog.String("error", closeErr.Error()))
+		}
+		// Deliberately not nilling c.conn here. The readLoop holds a local
+		// copy of conn and will get a read error from the closed connection,
+		// which triggers reconnect(). If we nil c.conn, readLoop can enter
+		// a tight spin (conn == nil but connReady already closed).
+	}
+	c.mu.Unlock()
+
+	// Non-blocking send — if one signal is already pending, skip.
+	select {
+	case c.forceReconnect <- struct{}{}:
+	default:
+	}
+}
 
 // Close shuts down the client, closing the connection and stopping the read loop.
 func (c *Client) Close() error {
@@ -218,6 +246,9 @@ func (c *Client) reconnect() {
 		case <-c.done:
 			timer.Stop()
 			return
+		case <-c.forceReconnect:
+			timer.Stop()
+			c.log.Info("force reconnect signal received, skipping backoff")
 		case <-timer.C:
 		}
 

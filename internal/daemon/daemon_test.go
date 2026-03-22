@@ -217,6 +217,7 @@ func (ws *fakeWSClient) Send(msg []byte) error {
 
 func (ws *fakeWSClient) Messages() <-chan []byte      { return ws.messages }
 func (ws *fakeWSClient) Reconnected() <-chan struct{} { return ws.reconnected }
+func (ws *fakeWSClient) ForceReconnect()              {}
 func (ws *fakeWSClient) Close() error                 { return nil }
 func (ws *fakeWSClient) Connected() bool              { return ws.connected }
 

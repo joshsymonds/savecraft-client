@@ -136,6 +136,7 @@ type WSClient interface {
 	Send(msg []byte) error
 	Messages() <-chan []byte
 	Reconnected() <-chan struct{}
+	ForceReconnect()
 	Close() error
 	Connected() bool
 }
@@ -266,6 +267,10 @@ type Daemon struct {
 	// autoApplyTimer fires after the grace period to auto-apply a pending
 	// update if the user hasn't manually restarted. Nil when no update pending.
 	autoApplyTimer *time.Timer
+
+	// powerResumeCh receives a signal when the OS resumes from sleep/hibernate.
+	// On Windows, this is wired to WM_POWERBROADCAST; nil on other platforms.
+	powerResumeCh <-chan struct{}
 }
 
 type linkCodeResult struct {
@@ -312,6 +317,12 @@ func New(
 // re-parse tracked saves for the game.
 func (d *Daemon) SetPluginReloadCh(ch <-chan string) {
 	d.pluginReloadCh = ch
+}
+
+// SetPowerResumeCh sets the channel that signals OS resume from sleep/hibernate.
+// On resume, the daemon forces an immediate WebSocket reconnect.
+func (d *Daemon) SetPowerResumeCh(ch <-chan struct{}) {
+	d.powerResumeCh = ch
 }
 
 // SetRestartFunc sets the function called to restart the daemon after a
@@ -526,6 +537,9 @@ func (d *Daemon) eventLoop(ctx context.Context) error {
 		case <-d.ws.Reconnected():
 			d.log.InfoContext(ctx, "websocket reconnected, re-announcing")
 			d.announceOnline(ctx)
+		case <-d.powerResumeCh:
+			d.log.InfoContext(ctx, "power resume detected, forcing websocket reconnect")
+			d.ws.ForceReconnect()
 		}
 	}
 }

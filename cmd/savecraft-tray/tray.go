@@ -26,6 +26,7 @@ type trayApp struct {
 	frontendURL string
 	logger      *slog.Logger
 	cancel      context.CancelFunc
+	sup         *supervisor
 
 	// Link Account menu item — created at startup, shown/hidden dynamically.
 	// linkURL and linkCode are accessed from both pollState and handleClicks goroutines.
@@ -162,11 +163,26 @@ func (a *trayApp) updateStatus(mStatus *systray.MenuItem) {
 	resp, err := a.client.Boot(ctx)
 	if err != nil {
 		a.hideLinkAccount()
-		mStatus.SetTitle("Offline")
-		mStatus.SetTooltip("Cannot reach daemon at localhost")
-		systray.SetTooltip("Savecraft — offline")
+
+		if a.sup != nil {
+			a.sup.onDaemonUnreachable()
+		}
+
+		if a.sup != nil && a.sup.restarting() {
+			mStatus.SetTitle("Starting...")
+			mStatus.SetTooltip("Restarting daemon")
+			systray.SetTooltip("Savecraft — starting")
+		} else {
+			mStatus.SetTitle("Offline")
+			mStatus.SetTooltip("Cannot reach daemon at localhost")
+			systray.SetTooltip("Savecraft — offline")
+		}
 
 		return
+	}
+
+	if a.sup != nil {
+		a.sup.onDaemonReachable()
 	}
 
 	// When registered, poll /link for the pairing URL.
