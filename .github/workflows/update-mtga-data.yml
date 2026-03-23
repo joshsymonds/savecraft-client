@@ -1,0 +1,90 @@
+name: Update MTGA Reference Data
+
+on:
+  schedule:
+    - cron: "0 6 * * 0" # Every Sunday at 6 AM UTC
+  workflow_dispatch: {}
+
+# All pipelines are idempotent — safe to re-run every week even if upstream
+# data hasn't changed. Re-downloading is cheap and avoids needing to push
+# hash commits through branch protection.
+
+jobs:
+  update-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Populate staging D1 + Vectorize
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          go run ./plugins/mtga/tools/rules-fetch/ \
+            --d1-database-id=0147892e-82e6-413e-a0ef-52f6d8787fdf \
+            --vectorize-index=mtga-rules-staging
+
+      - name: Populate production D1 + Vectorize
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          go run ./plugins/mtga/tools/rules-fetch/ \
+            --d1-database-id=df241bb0-9b7d-48e5-a4d4-f84ebf09e6e5 \
+            --vectorize-index=mtga-rules
+
+  update-cards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Populate staging D1 + Vectorize
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          go run ./plugins/mtga/tools/scryfall-fetch/ \
+            --d1-database-id=0147892e-82e6-413e-a0ef-52f6d8787fdf \
+            --vectorize-index=mtga-cards-staging
+
+      - name: Populate production D1 + Vectorize
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          go run ./plugins/mtga/tools/scryfall-fetch/ \
+            --d1-database-id=df241bb0-9b7d-48e5-a4d4-f84ebf09e6e5 \
+            --vectorize-index=mtga-cards
+
+  update-draft-ratings:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Populate staging D1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          go run ./plugins/mtga/tools/17lands-fetch/ \
+            --d1-database-id=0147892e-82e6-413e-a0ef-52f6d8787fdf
+
+      - name: Populate production D1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          go run ./plugins/mtga/tools/17lands-fetch/ \
+            --d1-database-id=df241bb0-9b7d-48e5-a4d4-f84ebf09e6e5
