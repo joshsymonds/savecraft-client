@@ -6,12 +6,11 @@ on:
   workflow_dispatch: {}
 
 # All pipelines are idempotent — safe to re-run every week even if upstream
-# data hasn't changed. Re-downloading is cheap and avoids needing to push
-# hash commits through branch protection.
+# data hasn't changed. D1 bulk import deduplicates by etag (skips if same
+# data already imported). Re-downloading upstream data is cheap.
 #
-# Each job downloads upstream data once, then pushes to both staging and
-# production D1/Vectorize. Draft ratings fan out per-set for parallelism
-# (each set is ~100-200MB of CSV from 17Lands).
+# Each job downloads once, then pushes to staging then production D1.
+# 17lands-fetch downloads all 18 sets concurrently via goroutines.
 
 jobs:
   update-rules:
@@ -70,10 +69,6 @@ jobs:
 
   update-draft-ratings:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        set: [FDN, DSK, BLB, OTJ, MKM, LCI, WOE, MOM, ONE, BRO, DMU, SNC, NEO, VOW, MID, AFR, STX, KHM]
-    name: "draft-ratings (${{ matrix.set }})"
     steps:
       - uses: actions/checkout@v4
 
@@ -87,7 +82,6 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           go run ./plugins/mtga/tools/17lands-fetch/ \
-            --set=${{ matrix.set }} \
             --d1-database-id=0147892e-82e6-413e-a0ef-52f6d8787fdf
 
       - name: Populate production D1
@@ -96,5 +90,4 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           go run ./plugins/mtga/tools/17lands-fetch/ \
-            --set=${{ matrix.set }} \
             --d1-database-id=df241bb0-9b7d-48e5-a4d4-f84ebf09e6e5
