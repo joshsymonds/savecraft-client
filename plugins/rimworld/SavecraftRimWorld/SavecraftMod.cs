@@ -129,8 +129,6 @@ namespace SavecraftRimWorld
             runner.Register(new FactionsCollector());
             runner.Register(new ThreatsCollector());
             runner.Register(new AnimalsCollector());
-            // Optional
-            runner.Register(new NotableItemsCollector());
             // Dynamic per-colonist sections
             runner.Register(new ColonistDetailCollector());
             SavecraftMod.Connection.SetCollectorRunner(runner);
