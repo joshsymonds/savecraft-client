@@ -29,8 +29,9 @@ namespace SavecraftRimWorld.Connection
     public class SavecraftConnection
     {
         const int ReconnectBaseMs = 1000;
-        const int ReconnectMaxMs = 60000;
+        const int ReconnectMaxMs = 300000; // 5 minutes max between retries
         const int BackoffMultiplier = 2;
+        const int MaxConsecutiveFailures = 10; // Stop retrying after 10 consecutive failures
         const int DialTimeoutMs = 10000;
         const int WriteTimeoutMs = 5000;
         const int ReceiveBufferSize = 65536;
@@ -105,9 +106,21 @@ namespace SavecraftRimWorld.Connection
         /// <summary>
         /// Start the connection lifecycle. If no credentials exist, registers first.
         /// Then connects to /ws/daemon with the stored token.
+        /// Safe to call multiple times (e.g., on game reload) — stops existing connection first.
         /// </summary>
         public void Start()
         {
+            // Stop any existing connection loop before starting a new one.
+            // FinalizeInit() calls Start() on every game load, so without this guard,
+            // each load orphans the previous ConnectionLoop task and its socket.
+            if (cts != null)
+            {
+                cts.Cancel();
+                socket?.Dispose();
+                socket = null;
+                status = ConnectionStatus.Disconnected;
+            }
+
             cts = new CancellationTokenSource();
             Task.Run(() => ConnectionLoop(cts.Token));
         }
@@ -216,6 +229,7 @@ namespace SavecraftRimWorld.Connection
             }
 
             var delay = ReconnectBaseMs;
+            var consecutiveFailures = 0;
 
             while (!ct.IsCancellationRequested)
             {
@@ -224,8 +238,9 @@ namespace SavecraftRimWorld.Connection
                     status = ConnectionStatus.Connecting;
                     await Connect(ct);
 
-                    // Reset backoff on successful connection
+                    // Reset backoff and failure count on successful connection
                     delay = ReconnectBaseMs;
+                    consecutiveFailures = 0;
                     status = settings.IsLinked ? ConnectionStatus.Linked : ConnectionStatus.Connected;
 
                     Log.Message("[Savecraft] Connected to server.");
@@ -238,6 +253,7 @@ namespace SavecraftRimWorld.Connection
                 catch (Exception ex)
                 {
                     Log.Warning($"[Savecraft] Connection lost: {ex.Message}");
+                    consecutiveFailures++;
                 }
 
                 // Clean up old socket
@@ -247,7 +263,13 @@ namespace SavecraftRimWorld.Connection
 
                 if (ct.IsCancellationRequested) return;
 
-                Log.Warning($"[Savecraft] Reconnecting in {delay}ms...");
+                if (consecutiveFailures >= MaxConsecutiveFailures)
+                {
+                    Log.Error($"[Savecraft] {MaxConsecutiveFailures} consecutive connection failures, giving up. Restart the game to retry.");
+                    return;
+                }
+
+                Log.Warning($"[Savecraft] Reconnecting in {delay / 1000}s...");
                 try
                 {
                     await Task.Delay(delay, ct);
@@ -375,30 +397,32 @@ namespace SavecraftRimWorld.Connection
             while (!ct.IsCancellationRequested && socket?.State == WebSocketState.Open)
             {
                 // Accumulate multi-frame messages
-                var ms = new System.IO.MemoryStream();
-                WebSocketReceiveResult result;
-                do
+                using (var ms = new System.IO.MemoryStream())
                 {
-                    result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
-                    if (result.MessageType == WebSocketMessageType.Close)
+                    WebSocketReceiveResult result;
+                    do
                     {
-                        Log.Message("[Savecraft] Server closed connection.");
-                        return;
+                        result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
+                        if (result.MessageType == WebSocketMessageType.Close)
+                        {
+                            Log.Message("[Savecraft] Server closed connection.");
+                            return;
+                        }
+                        ms.Write(buffer, 0, result.Count);
                     }
-                    ms.Write(buffer, 0, result.Count);
-                }
-                while (!result.EndOfMessage);
+                    while (!result.EndOfMessage);
 
-                if (result.MessageType != WebSocketMessageType.Binary) continue;
+                    if (result.MessageType != WebSocketMessageType.Binary) continue;
 
-                try
-                {
-                    var msg = Message.Parser.ParseFrom(ms.GetBuffer(), 0, (int)ms.Length);
-                    HandleMessage(msg);
-                }
-                catch (Exception ex)
-                {
-                    Log.Warning($"[Savecraft] Failed to parse message: {ex.Message}");
+                    try
+                    {
+                        var msg = Message.Parser.ParseFrom(ms.GetBuffer(), 0, (int)ms.Length);
+                        HandleMessage(msg);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Warning($"[Savecraft] Failed to parse message: {ex.Message}");
+                    }
                 }
             }
         }
