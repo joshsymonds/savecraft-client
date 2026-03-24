@@ -358,7 +358,7 @@ test:
     done
     exit $failed
 
-# Update MTGA reference data (rules, cards, draft ratings): just update-mtga staging
+# Update MTGA reference data (local game data + remote D1/Vectorize): just update-mtga staging
 update-mtga env:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -374,6 +374,8 @@ update-mtga env:
         echo "Usage: just update-mtga staging|production" >&2
         exit 1
     fi
+    echo "==> Generating parser card data from MTGA game database"
+    cd plugins/mtga && just fetch-carddb && cd ../..
     echo "==> Updating rules ({{env}})"
     go run ./plugins/mtga/tools/rules-fetch/ \
         --d1-database-id="$d1" --vectorize-index="$rules_vec"
