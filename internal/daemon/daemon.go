@@ -2,6 +2,8 @@
 package daemon
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -1232,7 +1234,7 @@ func (d *Daemon) pushState(
 		)
 		return
 	}
-	if sendErr := d.ws.Send(data); sendErr != nil {
+	if sendErr := d.sendCompressed(data); sendErr != nil {
 		d.log.WarnContext(ctx, "failed to send message", slog.String("error", sendErr.Error()))
 		return
 	}
@@ -1685,9 +1687,23 @@ func (d *Daemon) sendMessage(ctx context.Context, msg *pb.Message) {
 		d.log.ErrorContext(ctx, "failed to marshal proto message", slog.String("error", err.Error()))
 		return
 	}
-	if sendErr := d.ws.Send(data); sendErr != nil {
+	if sendErr := d.sendCompressed(data); sendErr != nil {
 		d.log.WarnContext(ctx, "failed to send message", slog.String("error", sendErr.Error()))
 	}
+}
+
+// sendCompressed gzip-compresses data and sends it over the WebSocket.
+func (d *Daemon) sendCompressed(data []byte) error {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(data); err != nil {
+		gz.Close()
+		return fmt.Errorf("gzip write: %w", err)
+	}
+	if err := gz.Close(); err != nil {
+		return fmt.Errorf("gzip close: %w", err)
+	}
+	return d.ws.Send(buf.Bytes())
 }
 
 // toParseErrorType converts a string error type to the proto enum.

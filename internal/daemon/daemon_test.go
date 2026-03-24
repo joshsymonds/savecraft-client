@@ -1,6 +1,8 @@
 package daemon
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"encoding/json/jsontext"
@@ -291,14 +293,34 @@ func protoTypeName(msg *pb.Message) string {
 	}
 }
 
+// decodeProto gunzips (if needed) and unmarshals a proto Message from sent bytes.
+func decodeProto(data []byte) (*pb.Message, error) {
+	raw := data
+	if len(data) >= 2 && data[0] == 0x1f && data[1] == 0x8b {
+		r, err := gzip.NewReader(bytes.NewReader(data))
+		if err != nil {
+			return nil, err
+		}
+		defer r.Close()
+		raw, err = io.ReadAll(r)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var msg pb.Message
+	if err := proto.Unmarshal(raw, &msg); err != nil {
+		return nil, err
+	}
+	return &msg, nil
+}
+
 func (ws *fakeWSClient) sentEventTypes() []string {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 	var types []string
 	for _, data := range ws.sent {
-		var msg pb.Message
-		if proto.Unmarshal(data, &msg) == nil {
-			types = append(types, protoTypeName(&msg))
+		if msg, err := decodeProto(data); err == nil {
+			types = append(types, protoTypeName(msg))
 		}
 	}
 	return types
@@ -310,15 +332,15 @@ func (ws *fakeWSClient) sentProto(eventType string, index int) *pb.Message {
 	defer ws.mu.Unlock()
 	count := 0
 	for _, data := range ws.sent {
-		var msg pb.Message
-		if proto.Unmarshal(data, &msg) != nil {
+		msg, err := decodeProto(data)
+		if err != nil {
 			continue
 		}
-		if protoTypeName(&msg) != eventType {
+		if protoTypeName(msg) != eventType {
 			continue
 		}
 		if count == index {
-			if cloned, ok := proto.Clone(&msg).(*pb.Message); ok {
+			if cloned, ok := proto.Clone(msg).(*pb.Message); ok {
 				return cloned
 			}
 			return nil
@@ -2382,11 +2404,11 @@ func TestSendEvent_HeartbeatWireFormat(t *testing.T) {
 		t.Fatalf("sent %d messages, want 1", len(ws.sent))
 	}
 
-	var msg pb.Message
-	if err := proto.Unmarshal(ws.sent[0], &msg); err != nil {
-		t.Fatalf("unmarshal: %v", err)
+	decoded, err := decodeProto(ws.sent[0])
+	if err != nil {
+		t.Fatalf("decode: %v", err)
 	}
-	hb := msg.GetSourceHeartbeat()
+	hb := decoded.GetSourceHeartbeat()
 	ok := hb != nil
 	if !ok {
 		t.Fatal("missing sourceHeartbeat payload")
@@ -2879,6 +2901,29 @@ func TestParseAndPush_OnlyChangedSectionsSent(t *testing.T) {
 	for _, n := range allNames {
 		if !wantNames[n] {
 			t.Errorf("unexpected section name in AllSectionNames: %q", n)
+		}
+	}
+}
+
+func TestSentMessagesAreGzipCompressed(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := d2rRunner()
+	fsys := d2rFS()
+	cfg := d2rConfig()
+
+	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil, false)
+
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+
+	for i, data := range ws.sent {
+		if len(data) < 2 {
+			t.Errorf("message %d is too short (%d bytes)", i, len(data))
+			continue
+		}
+		if data[0] != 0x1f || data[1] != 0x8b {
+			t.Errorf("message %d is not gzip-compressed (magic bytes: %#x %#x)", i, data[0], data[1])
 		}
 	}
 }
