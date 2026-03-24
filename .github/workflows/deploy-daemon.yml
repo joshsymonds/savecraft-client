@@ -314,7 +314,7 @@ jobs:
           APP_NAME: ${{ needs.environment.outputs.app_name }}
         run: |
           cd dist
-          find . -maxdepth 1 \( -name "${APP_NAME}-daemon-*" -o -name "${APP_NAME}-tray-*" -o -name "${APP_NAME}.msi" \) ! -name '*.sig' -exec sha256sum {} + > checksums-sha256.txt
+          find . -maxdepth 1 \( -name "${APP_NAME}-daemon-*" -o -name "${APP_NAME}-tray-*" -o -name "${APP_NAME}.msi" \) ! -name '*.sig' -printf '%f\n' | xargs sha256sum > checksums-sha256.txt
 
       - name: Install wrangler
         run: npm install -g wrangler
@@ -335,7 +335,7 @@ jobs:
           # Build platforms and tray objects from checksums
           platforms="{}"
           tray="{}"
-          while IFS='  ' read -r hash filename; do
+          while read -r hash filename; do
             # Skip sig files, MSI, and checksums file itself
             case "$filename" in
               *.sig|*.msi|checksums-*) continue ;;
@@ -442,7 +442,7 @@ jobs:
           APP_NAME: ${{ needs.environment.outputs.app_name }}
         run: |
           cd dist
-          find . -maxdepth 1 \( -name "${APP_NAME}-daemon-*" -o -name "${APP_NAME}-tray-*" -o -name "${APP_NAME}.msi" \) ! -name '*.sig' -exec sha256sum {} + > checksums-sha256.txt
+          find . -maxdepth 1 \( -name "${APP_NAME}-daemon-*" -o -name "${APP_NAME}-tray-*" -o -name "${APP_NAME}.msi" \) ! -name '*.sig' -printf '%f\n' | xargs sha256sum > checksums-sha256.txt
 
       - name: Find previous daemon tag
         id: prev
