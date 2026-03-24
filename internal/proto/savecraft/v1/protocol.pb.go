@@ -3390,14 +3390,19 @@ func (x *GameSection) GetData() *structpb.Struct {
 
 // Source pushing parsed save data to the server over WebSocket.
 type PushSave struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Identity      *SaveIdentity          `protobuf:"bytes,1,opt,name=identity,proto3" json:"identity,omitempty"`
-	Summary       string                 `protobuf:"bytes,2,opt,name=summary,proto3" json:"summary,omitempty"`
-	Sections      []*GameSection         `protobuf:"bytes,3,rep,name=sections,proto3" json:"sections,omitempty"`
-	ParsedAt      *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=parsed_at,json=parsedAt,proto3" json:"parsed_at,omitempty"`
-	GameId        string                 `protobuf:"bytes,5,opt,name=game_id,json=gameId,proto3" json:"game_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Identity *SaveIdentity          `protobuf:"bytes,1,opt,name=identity,proto3" json:"identity,omitempty"`
+	Summary  string                 `protobuf:"bytes,2,opt,name=summary,proto3" json:"summary,omitempty"`
+	Sections []*GameSection         `protobuf:"bytes,3,rep,name=sections,proto3" json:"sections,omitempty"`
+	ParsedAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=parsed_at,json=parsedAt,proto3" json:"parsed_at,omitempty"`
+	GameId   string                 `protobuf:"bytes,5,opt,name=game_id,json=gameId,proto3" json:"game_id,omitempty"`
+	// Complete list of section names the plugin currently produces.
+	// Sections stored in D1 whose names are not in this list are deleted
+	// (the plugin stopped emitting them). When empty, no deletion occurs
+	// — this preserves backwards compatibility with older daemons.
+	AllSectionNames []string `protobuf:"bytes,6,rep,name=all_section_names,json=allSectionNames,proto3" json:"all_section_names,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *PushSave) Reset() {
@@ -3463,6 +3468,13 @@ func (x *PushSave) GetGameId() string {
 		return x.GameId
 	}
 	return ""
+}
+
+func (x *PushSave) GetAllSectionNames() []string {
+	if x != nil {
+		return x.AllSectionNames
+	}
+	return nil
 }
 
 // Server response to PushSave with the resolved save UUID.
@@ -4044,13 +4056,14 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\vGameSection\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12+\n" +
-	"\x04data\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x04data\"\xe5\x01\n" +
+	"\x04data\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x04data\"\x91\x02\n" +
 	"\bPushSave\x126\n" +
 	"\bidentity\x18\x01 \x01(\v2\x1a.savecraft.v1.SaveIdentityR\bidentity\x12\x18\n" +
 	"\asummary\x18\x02 \x01(\tR\asummary\x125\n" +
 	"\bsections\x18\x03 \x03(\v2\x19.savecraft.v1.GameSectionR\bsections\x127\n" +
 	"\tparsed_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bparsedAt\x12\x17\n" +
-	"\agame_id\x18\x05 \x01(\tR\x06gameId\"\xc4\x01\n" +
+	"\agame_id\x18\x05 \x01(\tR\x06gameId\x12*\n" +
+	"\x11all_section_names\x18\x06 \x03(\tR\x0fallSectionNames\"\xc4\x01\n" +
 	"\x0ePushSaveResult\x12\x1b\n" +
 	"\tsave_uuid\x18\x01 \x01(\tR\bsaveUuid\x12I\n" +
 	"\x12snapshot_timestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x11snapshotTimestamp\x121\n" +

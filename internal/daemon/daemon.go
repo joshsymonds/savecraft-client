@@ -1209,12 +1209,19 @@ func (d *Daemon) pushState(
 		slog.Int("sections_total", len(sections)),
 	)
 
+	// Build full section name list so the worker can delete stale sections.
+	allNames := make([]string, len(sections))
+	for i, s := range sections {
+		allNames[i] = s.Name
+	}
+
 	pushSave := &pb.PushSave{
-		Identity: toProtoIdentity(state.Identity),
-		Summary:  state.Summary,
-		Sections: changed,
-		GameId:   gameID,
-		ParsedAt: timestamppb.Now(),
+		Identity:        toProtoIdentity(state.Identity),
+		Summary:         state.Summary,
+		Sections:        changed,
+		GameId:          gameID,
+		ParsedAt:        timestamppb.Now(),
+		AllSectionNames: allNames,
 	}
 	msg := &pb.Message{Payload: &pb.Message_PushSave{PushSave: pushSave}}
 	data, err := opts.Marshal(msg)

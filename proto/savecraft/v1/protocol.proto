@@ -417,6 +417,12 @@ message PushSave {
   repeated GameSection sections = 3;
   google.protobuf.Timestamp parsed_at = 4;
   string game_id = 5;
+
+  // Complete list of section names the plugin currently produces.
+  // Sections stored in D1 whose names are not in this list are deleted
+  // (the plugin stopped emitting them). When empty, no deletion occurs
+  // — this preserves backwards compatibility with older daemons.
+  repeated string all_section_names = 6;
 }
 
 // Server response to PushSave with the resolved save UUID.

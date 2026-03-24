@@ -2869,6 +2869,18 @@ func TestParseAndPush_OnlyChangedSectionsSent(t *testing.T) {
 	if ps2.Sections[0].Name != "game_log" {
 		t.Errorf("second push: section name = %q, want %q", ps2.Sections[0].Name, "game_log")
 	}
+
+	// AllSectionNames should always contain all 3 names, even on partial push.
+	allNames := ps2.GetAllSectionNames()
+	if len(allNames) != 3 {
+		t.Errorf("second push: AllSectionNames has %d entries, want 3", len(allNames))
+	}
+	wantNames := map[string]bool{"decks": true, "game_log": true, "rank": true}
+	for _, n := range allNames {
+		if !wantNames[n] {
+			t.Errorf("unexpected section name in AllSectionNames: %q", n)
+		}
+	}
 }
 
 func TestUpdatePlugins_Success(t *testing.T) {
