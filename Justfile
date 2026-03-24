@@ -287,11 +287,76 @@ fmt-go-check:
         exit 1
     fi
 
-# Lint everything (mirrors CI lint steps, no tests)
-lint: lint-go lint-worker lint-web lint-site lint-sh fmt-go-check fmt-worker-check fmt-web-check fmt-site-check fmt-sh-check check-web check-site
+# Lint everything in parallel (mirrors CI lint steps, no tests)
+lint:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    tmpdir=$(mktemp -d)
+    trap 'rm -rf "$tmpdir"' EXIT
+    pids=()
+    names=()
+    run() {
+        local name=$1; shift
+        "$@" >"$tmpdir/$name.out" 2>&1 &
+        pids+=($!)
+        names+=("$name")
+    }
+    run lint-go        just lint-go
+    run lint-worker    just lint-worker
+    run lint-web       just lint-web
+    run lint-site      just lint-site
+    run lint-sh        just lint-sh
+    run fmt-go-check   just fmt-go-check
+    run fmt-worker     just fmt-worker-check
+    run fmt-web        just fmt-web-check
+    run fmt-site       just fmt-site-check
+    run fmt-sh         just fmt-sh-check
+    run check-web      just check-web
+    run check-site     just check-site
+    failed=0
+    for i in "${!pids[@]}"; do
+        if ! wait "${pids[$i]}"; then
+            echo "==> FAIL: ${names[$i]}"
+            cat "$tmpdir/${names[$i]}.out"
+            failed=1
+        else
+            echo "==> OK: ${names[$i]}"
+        fi
+    done
+    exit $failed
 
-# Run all tests
-test: test-go test-worker test-reference-worker test-web test-site test-install-worker test-install-docker
+# Run all tests in parallel
+test:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    tmpdir=$(mktemp -d)
+    trap 'rm -rf "$tmpdir"' EXIT
+    pids=()
+    names=()
+    run() {
+        local name=$1; shift
+        "$@" >"$tmpdir/$name.out" 2>&1 &
+        pids+=($!)
+        names+=("$name")
+    }
+    run test-go              just test-go
+    run test-worker          just test-worker
+    run test-reference       just test-reference-worker
+    run test-web             just test-web
+    run test-site            just test-site
+    run test-install-worker  just test-install-worker
+    run test-install-docker  just test-install-docker
+    failed=0
+    for i in "${!pids[@]}"; do
+        if ! wait "${pids[$i]}"; then
+            echo "==> FAIL: ${names[$i]}"
+            cat "$tmpdir/${names[$i]}.out"
+            failed=1
+        else
+            echo "==> OK: ${names[$i]}"
+        fi
+    done
+    exit $failed
 
 # Update MTGA reference data (rules, cards, draft ratings): just update-mtga staging
 update-mtga env:
@@ -324,5 +389,32 @@ update-mtga env:
 stats window="24h":
     ./scripts/stats.sh {{window}}
 
-# Check everything: lint, generate, format, test
-check: proto-lint proto lint test
+# Check everything: lint, generate, format, test (in parallel)
+check:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    tmpdir=$(mktemp -d)
+    trap 'rm -rf "$tmpdir"' EXIT
+    pids=()
+    names=()
+    run() {
+        local name=$1; shift
+        "$@" >"$tmpdir/$name.out" 2>&1 &
+        pids+=($!)
+        names+=("$name")
+    }
+    run proto-lint  just proto-lint
+    run proto       just proto
+    run lint        just lint
+    run test        just test
+    failed=0
+    for i in "${!pids[@]}"; do
+        if ! wait "${pids[$i]}"; then
+            echo "==> FAIL: ${names[$i]}"
+            cat "$tmpdir/${names[$i]}.out"
+            failed=1
+        else
+            echo "==> OK: ${names[$i]}"
+        fi
+    done
+    exit $failed
