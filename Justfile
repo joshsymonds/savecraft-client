@@ -293,6 +293,33 @@ lint: lint-go lint-worker lint-web lint-site lint-sh fmt-go-check fmt-worker-che
 # Run all tests
 test: test-go test-worker test-reference-worker test-web test-site test-install-worker test-install-docker
 
+# Update MTGA reference data (rules, cards, draft ratings): just update-mtga staging
+update-mtga env:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ "{{env}}" == "production" ]]; then
+        d1="df241bb0-9b7d-48e5-a4d4-f84ebf09e6e5"
+        rules_vec="mtga-rules"
+        cards_vec="mtga-cards"
+    elif [[ "{{env}}" == "staging" ]]; then
+        d1="0147892e-82e6-413e-a0ef-52f6d8787fdf"
+        rules_vec="mtga-rules-staging"
+        cards_vec="mtga-cards-staging"
+    else
+        echo "Usage: just update-mtga staging|production" >&2
+        exit 1
+    fi
+    echo "==> Updating rules ({{env}})"
+    go run ./plugins/mtga/tools/rules-fetch/ \
+        --d1-database-id="$d1" --vectorize-index="$rules_vec"
+    echo "==> Updating cards ({{env}})"
+    go run ./plugins/mtga/tools/scryfall-fetch/ \
+        --d1-database-id="$d1" --vectorize-index="$cards_vec"
+    echo "==> Updating draft ratings ({{env}})"
+    go run ./plugins/mtga/tools/17lands-fetch/ \
+        --d1-database-id="$d1"
+    echo "==> Done"
+
 # Show production stats from D1: just stats 1h
 stats window="24h":
     ./scripts/stats.sh {{window}}
