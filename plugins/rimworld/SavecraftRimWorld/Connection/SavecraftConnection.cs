@@ -289,6 +289,7 @@ namespace SavecraftRimWorld.Connection
             status = ConnectionStatus.Connecting;
 
             var registerUrl = settings.ServerUrl.TrimEnd('/') + "/ws/register";
+            Log.Message($"[Savecraft] Registration endpoint: {registerUrl}");
 
             using (var ws = new ClientWebSocket())
             using (var dialTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
@@ -434,10 +435,18 @@ namespace SavecraftRimWorld.Connection
                 case Message.PayloadOneofCase.SourceLinked:
                     EnqueueMainThread(() =>
                     {
+                        var alreadyLinked = settings.IsLinked;
                         settings.IsLinked = true;
                         settings.LinkCode = "";
                         settings.Write();
                         status = ConnectionStatus.Linked;
+
+                        if (alreadyLinked)
+                        {
+                            Log.Message("[Savecraft] Duplicate SourceLinked received, suppressing notification.");
+                            return;
+                        }
+
                         Log.Message("[Savecraft] Source linked to user account!");
                         Find.LetterStack.ReceiveLetter(
                             "Savecraft Linked",
@@ -450,6 +459,18 @@ namespace SavecraftRimWorld.Connection
                     var linkResult = msg.RefreshLinkCodeResult;
                     EnqueueMainThread(() =>
                     {
+                        if (settings.IsLinked)
+                        {
+                            Log.Message("[Savecraft] Ignoring stale link code, already linked.");
+                            return;
+                        }
+
+                        if (settings.LinkCode == linkResult.LinkCode)
+                        {
+                            Log.Message("[Savecraft] Duplicate link code received, suppressing notification.");
+                            return;
+                        }
+
                         settings.LinkCode = linkResult.LinkCode;
                         settings.Write();
                         Log.Message($"[Savecraft] New link code: {linkResult.LinkCode}");

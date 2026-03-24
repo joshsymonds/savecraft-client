@@ -13,6 +13,8 @@ namespace SavecraftRimWorld.Collectors
     /// </summary>
     public class SkillsAndWorkCollector : ICollector
     {
+        static readonly HashSet<string> warnedMissingKeys = new HashSet<string>();
+
         public string SectionName => "skills_and_work";
 
         public string Description =>
@@ -44,7 +46,8 @@ namespace SavecraftRimWorld.Collectors
                         var passionStr = skill.passion == Passion.Major ? "!!"
                             : skill.passion == Passion.Minor ? "!"
                             : "";
-                        skills.Set(skill.def.label, $"{skill.Level}{passionStr}{(skill.TotallyDisabled ? " (disabled)" : "")}");
+                        var key = SafeLabel("skill", skill?.def?.label, skill?.def?.defName, pawn);
+                        skills.Set(key, $"{skill.Level}{passionStr}{(skill.TotallyDisabled ? " (disabled)" : "")}");
                     }
                 }
                 p.Set("skills", skills);
@@ -55,10 +58,11 @@ namespace SavecraftRimWorld.Collectors
                 {
                     foreach (var wt in workTypes)
                     {
+                        var key = SafeLabel("work_type", wt?.label, wt?.defName, pawn);
                         if (pawn.WorkTypeIsDisabled(wt))
-                            work.Set(wt.label, "incapable");
+                            work.Set(key, "incapable");
                         else
-                            work.Set(wt.label, pawn.workSettings.GetPriority(wt));
+                            work.Set(key, pawn.workSettings.GetPriority(wt));
                     }
                 }
                 p.Set("work_priorities", work);
@@ -69,6 +73,25 @@ namespace SavecraftRimWorld.Collectors
             s.SetList("colonists", colonists);
             s.Set("count", colonists.Count);
             return s;
+        }
+
+        /// <summary>
+        /// Returns label if non-empty, otherwise falls back to defName with a one-time warning.
+        /// Modded skills/work types sometimes have null labels.
+        /// </summary>
+        static string SafeLabel(string kind, string label, string defName, Pawn pawn)
+        {
+            if (!string.IsNullOrWhiteSpace(label))
+                return label;
+
+            var fallback = !string.IsNullOrWhiteSpace(defName) ? defName : $"unnamed_{kind}";
+            var key = $"{kind}:{fallback}";
+            if (warnedMissingKeys.Add(key))
+            {
+                var pawnName = pawn?.Name?.ToStringShort ?? "Unknown";
+                Log.Warning($"[Savecraft] {kind} label missing for pawn '{pawnName}', using fallback '{fallback}'.");
+            }
+            return fallback;
         }
     }
 }

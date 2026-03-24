@@ -84,7 +84,7 @@ namespace SavecraftRimWorld
 
     public class SavecraftSettings : ModSettings
     {
-        public string ServerUrl = "wss://savecraft.gg";
+        public string ServerUrl = "wss://api.savecraft.gg";
         public string SourceUuid = "";
         public string SourceToken = "";
         public string LinkCode = "";
@@ -92,7 +92,7 @@ namespace SavecraftRimWorld
 
         public override void ExposeData()
         {
-            Scribe_Values.Look(ref ServerUrl, "serverUrl", "wss://savecraft.gg");
+            Scribe_Values.Look(ref ServerUrl, "serverUrl", "wss://api.savecraft.gg");
             Scribe_Values.Look(ref SourceUuid, "sourceUuid", "");
             Scribe_Values.Look(ref SourceToken, "sourceToken", "");
             Scribe_Values.Look(ref LinkCode, "linkCode", "");

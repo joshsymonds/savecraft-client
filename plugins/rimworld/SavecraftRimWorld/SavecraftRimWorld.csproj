@@ -5,32 +5,44 @@
     <OutputPath>..\Assemblies\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
-    <DebugType>portable</DebugType>
+    <Deterministic>true</Deterministic>
+    <PathMap>$(MSBuildProjectDirectory)=/_/plugins/rimworld/SavecraftRimWorld</PathMap>
+    <DebugType Condition="'$(Configuration)' == 'Release'">embedded</DebugType>
+    <DebugType Condition="'$(Configuration)' != 'Release'">portable</DebugType>
+
+    <!-- Resolve RimWorld managed DLLs: env var > default Linux Steam path > .reference fallback -->
+    <RimWorldManagedDir Condition="'$(RimWorldManagedDir)' == '' and '$(RIMWORLD_MANAGED_DIR)' != ''">$(RIMWORLD_MANAGED_DIR)</RimWorldManagedDir>
+    <RimWorldInstallDir Condition="'$(RimWorldInstallDir)' == '' and '$(RIMWORLD_INSTALL_DIR)' != ''">$(RIMWORLD_INSTALL_DIR)</RimWorldInstallDir>
+
+    <RimWorldManagedDir Condition="'$(RimWorldManagedDir)' == '' and '$(RimWorldInstallDir)' != '' and Exists('$(RimWorldInstallDir)/RimWorldLinux_Data/Managed/Assembly-CSharp.dll')">$(RimWorldInstallDir)/RimWorldLinux_Data/Managed</RimWorldManagedDir>
+    <RimWorldManagedDir Condition="'$(RimWorldManagedDir)' == '' and Exists('$(HOME)/.local/share/Steam/steamapps/common/RimWorld/RimWorldLinux_Data/Managed/Assembly-CSharp.dll')">$(HOME)/.local/share/Steam/steamapps/common/RimWorld/RimWorldLinux_Data/Managed</RimWorldManagedDir>
+    <RimWorldManagedDir Condition="'$(RimWorldManagedDir)' == '' and Exists('../../../.reference/RimWorldDLLs/Assembly-CSharp.dll')">../../../.reference/RimWorldDLLs</RimWorldManagedDir>
+
     <!-- Use real game DLLs when available, fall back to Krafs ref stubs for CI -->
-    <UseGameDlls Condition="Exists('../../../.reference/RimWorldDLLs/Assembly-CSharp.dll')">true</UseGameDlls>
+    <UseGameDlls Condition="'$(UseGameDlls)' == '' and Exists('$(RimWorldManagedDir)/Assembly-CSharp.dll')">true</UseGameDlls>
     <UseGameDlls Condition="'$(UseGameDlls)' == ''">false</UseGameDlls>
   </PropertyGroup>
 
   <!-- Real game DLLs (local dev with game installed) -->
   <ItemGroup Condition="'$(UseGameDlls)' == 'true'">
     <Reference Include="Assembly-CSharp">
-      <HintPath>../../../.reference/RimWorldDLLs/Assembly-CSharp.dll</HintPath>
+      <HintPath>$(RimWorldManagedDir)/Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Assembly-CSharp-firstpass">
-      <HintPath>../../../.reference/RimWorldDLLs/Assembly-CSharp-firstpass.dll</HintPath>
+      <HintPath>$(RimWorldManagedDir)/Assembly-CSharp-firstpass.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine">
-      <HintPath>../../../.reference/RimWorldDLLs/UnityEngine.dll</HintPath>
+      <HintPath>$(RimWorldManagedDir)/UnityEngine.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>../../../.reference/RimWorldDLLs/UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>$(RimWorldManagedDir)/UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.IMGUIModule">
-      <HintPath>../../../.reference/RimWorldDLLs/UnityEngine.IMGUIModule.dll</HintPath>
+      <HintPath>$(RimWorldManagedDir)/UnityEngine.IMGUIModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
@@ -55,5 +67,10 @@
       SourceFiles="$(NuGetPackageRoot)google.protobuf/3.29.3/lib/net45/Google.Protobuf.dll"
       DestinationFolder="$(OutputPath)"
       SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Release builds should not leave stale external PDBs in the shipping folder -->
+  <Target Name="RemoveReleasePdb" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+    <Delete Files="$(OutputPath)SavecraftRimWorld.pdb" />
   </Target>
 </Project>
