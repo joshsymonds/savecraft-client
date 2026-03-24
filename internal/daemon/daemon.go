@@ -249,10 +249,11 @@ type Daemon struct {
 	// plugin WASM file changes on disk. Nil when local plugin dir is not set.
 	pluginReloadCh <-chan string
 
-	// lastPushedHash caches SHA-256 of the last successfully pushed PushSave
-	// proto bytes per file path. On reconnect or re-parse, if the hash matches
-	// the cached value the push is skipped (no bandwidth, no server work).
-	lastPushedHash map[string][32]byte
+	// lastPushedSectionHashes caches per-section SHA-256 hashes of the last
+	// successfully pushed GameSection proto bytes, keyed by file path then
+	// section name. On re-parse, only sections whose hash changed are included
+	// in the PushSave. If no sections changed, the push is skipped entirely.
+	lastPushedSectionHashes map[string]map[string][32]byte
 
 	// hasAnnounced is set after the first announceOnline completes.
 	// On subsequent calls (reconnects), discovery and scan messages are
@@ -308,7 +309,7 @@ func New(
 		configDir:           defaultConfigDir(),
 		pendingLinkCode:     make(chan linkCodeResult, 1),
 		pluginUpdateResetCh: make(chan struct{}, 1),
-		lastPushedHash:      make(map[string][32]byte),
+		lastPushedSectionHashes: make(map[string]map[string][32]byte),
 	}
 }
 
@@ -1169,27 +1170,30 @@ func (d *Daemon) pushState(
 		return strings.Compare(a.Name, b.Name)
 	})
 
-	pushSave := &pb.PushSave{
-		Identity: toProtoIdentity(state.Identity),
-		Summary:  state.Summary,
-		Sections: sections,
-		GameId:   gameID,
+	// Hash each section individually and filter to only changed sections.
+	opts := proto.MarshalOptions{Deterministic: true}
+	prevHashes := d.lastPushedSectionHashes[filePath]
+	newHashes := make(map[string][32]byte, len(sections))
+	var changed []*pb.GameSection
+
+	for _, s := range sections {
+		sectionBytes, err := opts.Marshal(s)
+		if err != nil {
+			d.log.ErrorContext(ctx, "failed to marshal section for hashing",
+				slog.String("game_id", gameID),
+				slog.String("section", s.Name),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+		h := sha256.Sum256(sectionBytes)
+		newHashes[s.Name] = h
+		if prev, ok := prevHashes[s.Name]; !ok || prev != h {
+			changed = append(changed, s)
+		}
 	}
 
-	// Hash the PushSave content (excluding ParsedAt which changes every time).
-	// Skip push if output matches the last successful push for this file.
-	// Use deterministic marshaling so map field ordering is stable.
-	pushBytes, err := proto.MarshalOptions{Deterministic: true}.Marshal(pushSave)
-	if err != nil {
-		d.log.ErrorContext(ctx, "failed to marshal PushSave for hashing",
-			slog.String("game_id", gameID),
-			slog.String("error", err.Error()),
-		)
-		return
-	}
-	newHash := sha256.Sum256(pushBytes)
-
-	if prevHash, ok := d.lastPushedHash[filePath]; ok && prevHash == newHash {
+	if len(changed) == 0 {
 		d.log.DebugContext(ctx, "save data unchanged, skipping push",
 			slog.String("game_id", gameID),
 			slog.String("file_path", filePath),
@@ -1201,12 +1205,19 @@ func (d *Daemon) pushState(
 		slog.String("game", d.gameName(ctx, gameID)),
 		slog.String("game_id", gameID),
 		slog.String("summary", state.Summary),
-		slog.Int("sections", len(sections)),
+		slog.Int("sections_changed", len(changed)),
+		slog.Int("sections_total", len(sections)),
 	)
 
-	pushSave.ParsedAt = timestamppb.Now()
+	pushSave := &pb.PushSave{
+		Identity: toProtoIdentity(state.Identity),
+		Summary:  state.Summary,
+		Sections: changed,
+		GameId:   gameID,
+		ParsedAt: timestamppb.Now(),
+	}
 	msg := &pb.Message{Payload: &pb.Message_PushSave{PushSave: pushSave}}
-	data, err := proto.MarshalOptions{Deterministic: true}.Marshal(msg)
+	data, err := opts.Marshal(msg)
 	if err != nil {
 		d.log.ErrorContext(ctx, "failed to marshal PushSave message",
 			slog.String("game_id", gameID),
@@ -1218,7 +1229,7 @@ func (d *Daemon) pushState(
 		d.log.WarnContext(ctx, "failed to send message", slog.String("error", sendErr.Error()))
 		return
 	}
-	d.lastPushedHash[filePath] = newHash
+	d.lastPushedSectionHashes[filePath] = newHashes
 }
 
 func (d *Daemon) handleCommand(ctx context.Context, data []byte) {

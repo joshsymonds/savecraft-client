@@ -2764,7 +2764,7 @@ func TestParseAndPush_PushesWhenOutputChanges(t *testing.T) {
 }
 
 func TestParseAndPush_HashUpdatedOnlyAfterSuccessfulPush(t *testing.T) {
-	t.Run("caches hash after successful send", func(t *testing.T) {
+	t.Run("caches section hashes after successful send", func(t *testing.T) {
 		ws := newFakeWSClient()
 		runner := d2rRunner()
 		fsys := d2rFS()
@@ -2774,15 +2774,15 @@ func TestParseAndPush_HashUpdatedOnlyAfterSuccessfulPush(t *testing.T) {
 
 		d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil, false)
 
-		if len(d.lastPushedHash) != 1 {
-			t.Fatalf("lastPushedHash has %d entries, want 1", len(d.lastPushedHash))
+		if len(d.lastPushedSectionHashes) != 1 {
+			t.Fatalf("lastPushedSectionHashes has %d entries, want 1", len(d.lastPushedSectionHashes))
 		}
-		hash, ok := d.lastPushedHash["/saves/d2r/Hammerdin.d2s"]
+		sectionHashes, ok := d.lastPushedSectionHashes["/saves/d2r/Hammerdin.d2s"]
 		if !ok {
-			t.Fatal("lastPushedHash missing entry for /saves/d2r/Hammerdin.d2s")
+			t.Fatal("lastPushedSectionHashes missing entry for /saves/d2r/Hammerdin.d2s")
 		}
-		if hash == [32]byte{} {
-			t.Error("lastPushedHash should not be zero")
+		if len(sectionHashes) == 0 {
+			t.Error("section hashes should not be empty")
 		}
 	})
 
@@ -2797,10 +2797,78 @@ func TestParseAndPush_HashUpdatedOnlyAfterSuccessfulPush(t *testing.T) {
 
 		d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil, false)
 
-		if len(d.lastPushedHash) != 0 {
-			t.Errorf("lastPushedHash has %d entries, want 0 (send failed, should not cache)", len(d.lastPushedHash))
+		if len(d.lastPushedSectionHashes) != 0 {
+			t.Errorf("lastPushedSectionHashes has %d entries, want 0 (send failed, should not cache)", len(d.lastPushedSectionHashes))
 		}
 	})
+}
+
+func TestParseAndPush_OnlyChangedSectionsSent(t *testing.T) {
+	ws := newFakeWSClient()
+
+	state1 := &GameState{
+		Identity: Identity{SaveName: "Player", GameID: "mtga"},
+		Summary:  "Player, Gold 4",
+		Sections: map[string]Section{
+			"decks":     {Description: "Deck lists", Data: jsontext.Value(`{"count":80}`)},
+			"rank":      {Description: "Rank info", Data: jsontext.Value(`{"class":"Gold"}`)},
+			"game_log":  {Description: "Game log", Data: jsontext.Value(`{"games":1}`)},
+		},
+	}
+	// State 2: only game_log changed.
+	state2 := &GameState{
+		Identity: Identity{SaveName: "Player", GameID: "mtga"},
+		Summary:  "Player, Gold 4",
+		Sections: map[string]Section{
+			"decks":     {Description: "Deck lists", Data: jsontext.Value(`{"count":80}`)},
+			"rank":      {Description: "Rank info", Data: jsontext.Value(`{"class":"Gold"}`)},
+			"game_log":  {Description: "Game log", Data: jsontext.Value(`{"games":2}`)},
+		},
+	}
+
+	runner := &fakeRunner{results: map[string]*GameState{"mtga": state1}}
+	cfg := Config{
+		SourceID: "test-source",
+		Version:  "0.1.0",
+		Games: map[string]GameConfig{
+			"mtga": {SavePath: "/saves/mtga", FileExtensions: []string{".log"}, Enabled: true},
+		},
+	}
+	fsys := &fakeFS{files: map[string][]byte{"/saves/mtga/Player.log": []byte("data")}}
+
+	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+
+	// First push — all 3 sections should be sent.
+	d.parseAndPush(context.Background(), "mtga", "/saves/mtga/Player.log", "Player.log", nil, false)
+
+	push1 := ws.sentProto("pushSave", 0)
+	if push1 == nil {
+		t.Fatal("first push not sent")
+	}
+	ps1 := push1.GetPushSave()
+	if len(ps1.Sections) != 3 {
+		t.Errorf("first push: got %d sections, want 3", len(ps1.Sections))
+	}
+
+	// Change runner output so only game_log differs.
+	runner.mu.Lock()
+	runner.results["mtga"] = state2
+	runner.mu.Unlock()
+
+	// Second push — only game_log should be sent.
+	d.parseAndPush(context.Background(), "mtga", "/saves/mtga/Player.log", "Player.log", nil, false)
+
+	push2 := ws.sentProto("pushSave", 1)
+	if push2 == nil {
+		t.Fatal("second push not sent")
+	}
+	ps2 := push2.GetPushSave()
+	if len(ps2.Sections) != 1 {
+		t.Errorf("second push: got %d sections, want 1 (only changed)", len(ps2.Sections))
+	}
+	if ps2.Sections[0].Name != "game_log" {
+		t.Errorf("second push: section name = %q, want %q", ps2.Sections[0].Name, "game_log")
+	}
 }
 
 func TestUpdatePlugins_Success(t *testing.T) {
