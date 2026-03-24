@@ -2820,7 +2820,8 @@ func TestParseAndPush_HashUpdatedOnlyAfterSuccessfulPush(t *testing.T) {
 		d.parseAndPush(context.Background(), "d2r", "/saves/d2r/Hammerdin.d2s", "Hammerdin.d2s", nil, false)
 
 		if len(d.lastPushedSectionHashes) != 0 {
-			t.Errorf("lastPushedSectionHashes has %d entries, want 0 (send failed, should not cache)", len(d.lastPushedSectionHashes))
+			t.Errorf("lastPushedSectionHashes has %d entries, want 0 (send failed, should not cache)",
+				len(d.lastPushedSectionHashes))
 		}
 	})
 }
@@ -2832,9 +2833,9 @@ func TestParseAndPush_OnlyChangedSectionsSent(t *testing.T) {
 		Identity: Identity{SaveName: "Player", GameID: "mtga"},
 		Summary:  "Player, Gold 4",
 		Sections: map[string]Section{
-			"decks":     {Description: "Deck lists", Data: jsontext.Value(`{"count":80}`)},
-			"rank":      {Description: "Rank info", Data: jsontext.Value(`{"class":"Gold"}`)},
-			"game_log":  {Description: "Game log", Data: jsontext.Value(`{"games":1}`)},
+			"decks":    {Description: "Deck lists", Data: jsontext.Value(`{"count":80}`)},
+			"rank":     {Description: "Rank info", Data: jsontext.Value(`{"class":"Gold"}`)},
+			"game_log": {Description: "Game log", Data: jsontext.Value(`{"games":1}`)},
 		},
 	}
 	// State 2: only game_log changed.
@@ -2842,9 +2843,9 @@ func TestParseAndPush_OnlyChangedSectionsSent(t *testing.T) {
 		Identity: Identity{SaveName: "Player", GameID: "mtga"},
 		Summary:  "Player, Gold 4",
 		Sections: map[string]Section{
-			"decks":     {Description: "Deck lists", Data: jsontext.Value(`{"count":80}`)},
-			"rank":      {Description: "Rank info", Data: jsontext.Value(`{"class":"Gold"}`)},
-			"game_log":  {Description: "Game log", Data: jsontext.Value(`{"games":2}`)},
+			"decks":    {Description: "Deck lists", Data: jsontext.Value(`{"count":80}`)},
+			"rank":     {Description: "Rank info", Data: jsontext.Value(`{"class":"Gold"}`)},
+			"game_log": {Description: "Game log", Data: jsontext.Value(`{"games":2}`)},
 		},
 	}
 

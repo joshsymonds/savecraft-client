@@ -297,20 +297,20 @@ func New(
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	return &Daemon{
-		cfg:                 cfg,
-		fs:                  fsys,
-		watcher:             watcher,
-		runner:              runner,
-		ws:                  ws,
-		plugins:             plugins,
-		updater:             updater,
-		log:                 log,
-		exitFunc:            os.Exit,
-		restartFunc:         func(string, string) error { return nil },
-		watchedDirs:         make(map[string]string),
-		configDir:           defaultConfigDir(),
-		pendingLinkCode:     make(chan linkCodeResult, 1),
-		pluginUpdateResetCh: make(chan struct{}, 1),
+		cfg:                     cfg,
+		fs:                      fsys,
+		watcher:                 watcher,
+		runner:                  runner,
+		ws:                      ws,
+		plugins:                 plugins,
+		updater:                 updater,
+		log:                     log,
+		exitFunc:                os.Exit,
+		restartFunc:             func(string, string) error { return nil },
+		watchedDirs:             make(map[string]string),
+		configDir:               defaultConfigDir(),
+		pendingLinkCode:         make(chan linkCodeResult, 1),
+		pluginUpdateResetCh:     make(chan struct{}, 1),
 		lastPushedSectionHashes: make(map[string]map[string][32]byte),
 	}
 }
@@ -1172,29 +1172,7 @@ func (d *Daemon) pushState(
 		return strings.Compare(a.Name, b.Name)
 	})
 
-	// Hash each section individually and filter to only changed sections.
-	opts := proto.MarshalOptions{Deterministic: true}
-	prevHashes := d.lastPushedSectionHashes[filePath]
-	newHashes := make(map[string][32]byte, len(sections))
-	var changed []*pb.GameSection
-
-	for _, s := range sections {
-		sectionBytes, err := opts.Marshal(s)
-		if err != nil {
-			d.log.ErrorContext(ctx, "failed to marshal section for hashing",
-				slog.String("game_id", gameID),
-				slog.String("section", s.Name),
-				slog.String("error", err.Error()),
-			)
-			continue
-		}
-		h := sha256.Sum256(sectionBytes)
-		newHashes[s.Name] = h
-		if prev, ok := prevHashes[s.Name]; !ok || prev != h {
-			changed = append(changed, s)
-		}
-	}
-
+	changed, newHashes := d.filterChangedSections(ctx, gameID, filePath, sections)
 	if len(changed) == 0 {
 		d.log.DebugContext(ctx, "save data unchanged, skipping push",
 			slog.String("game_id", gameID),
@@ -1211,10 +1189,9 @@ func (d *Daemon) pushState(
 		slog.Int("sections_total", len(sections)),
 	)
 
-	// Build full section name list so the worker can delete stale sections.
 	allNames := make([]string, len(sections))
-	for i, s := range sections {
-		allNames[i] = s.Name
+	for i, section := range sections {
+		allNames[i] = section.Name
 	}
 
 	pushSave := &pb.PushSave{
@@ -1225,6 +1202,7 @@ func (d *Daemon) pushState(
 		ParsedAt:        timestamppb.Now(),
 		AllSectionNames: allNames,
 	}
+	opts := proto.MarshalOptions{Deterministic: true}
 	msg := &pb.Message{Payload: &pb.Message_PushSave{PushSave: pushSave}}
 	data, err := opts.Marshal(msg)
 	if err != nil {
@@ -1239,6 +1217,35 @@ func (d *Daemon) pushState(
 		return
 	}
 	d.lastPushedSectionHashes[filePath] = newHashes
+}
+
+// filterChangedSections hashes each section individually and returns only those
+// whose content differs from the last successful push for this file path.
+func (d *Daemon) filterChangedSections(
+	ctx context.Context, gameID, filePath string, sections []*pb.GameSection,
+) ([]*pb.GameSection, map[string][32]byte) {
+	opts := proto.MarshalOptions{Deterministic: true}
+	prevHashes := d.lastPushedSectionHashes[filePath]
+	newHashes := make(map[string][32]byte, len(sections))
+	var changed []*pb.GameSection
+
+	for _, section := range sections {
+		sectionBytes, err := opts.Marshal(section)
+		if err != nil {
+			d.log.ErrorContext(ctx, "failed to marshal section for hashing",
+				slog.String("game_id", gameID),
+				slog.String("section", section.Name),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+		h := sha256.Sum256(sectionBytes)
+		newHashes[section.Name] = h
+		if prev, ok := prevHashes[section.Name]; !ok || prev != h {
+			changed = append(changed, section)
+		}
+	}
+	return changed, newHashes
 }
 
 func (d *Daemon) handleCommand(ctx context.Context, data []byte) {
@@ -1589,6 +1596,16 @@ func (d *Daemon) unwatchGame(ctx context.Context, savePath string) {
 			toRemove = append(toRemove, dir)
 		}
 	}
+
+	// Evict cached section hashes for files in unwatched directories.
+	for filePath := range d.lastPushedSectionHashes {
+		for _, dir := range dirs {
+			if strings.HasPrefix(filePath, dir+"/") || strings.HasPrefix(filePath, dir+"\\") {
+				delete(d.lastPushedSectionHashes, filePath)
+				break
+			}
+		}
+	}
 	d.mu.Unlock()
 
 	for _, dir := range toRemove {
@@ -1697,13 +1714,15 @@ func (d *Daemon) sendCompressed(data []byte) error {
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	if _, err := gz.Write(data); err != nil {
-		gz.Close()
-		return fmt.Errorf("gzip write: %w", err)
+		return errors.Join(fmt.Errorf("gzip write: %w", err), gz.Close())
 	}
 	if err := gz.Close(); err != nil {
 		return fmt.Errorf("gzip close: %w", err)
 	}
-	return d.ws.Send(buf.Bytes())
+	if err := d.ws.Send(buf.Bytes()); err != nil {
+		return fmt.Errorf("ws send: %w", err)
+	}
+	return nil
 }
 
 // toParseErrorType converts a string error type to the proto enum.
