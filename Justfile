@@ -362,6 +362,7 @@ test:
 update-mtga env:
     #!/usr/bin/env bash
     set -euo pipefail
+    cf_account="cc0a94bb7aff760efd48b49ce983fe97"
     if [[ "{{env}}" == "production" ]]; then
         d1="df241bb0-9b7d-48e5-a4d4-f84ebf09e6e5"
         rules_vec="mtga-rules"
@@ -374,18 +375,35 @@ update-mtga env:
         echo "Usage: just update-mtga staging|production" >&2
         exit 1
     fi
-    echo "==> Generating parser card data from MTGA game database"
-    cd plugins/mtga && just fetch-carddb && cd ../..
-    echo "==> Updating rules ({{env}})"
+
+    echo "==> Phase 1: carddb + rules + cards (parallel, {{env}})"
+    (cd plugins/mtga && just fetch-carddb) 2>&1 | sed 's/^/  [carddb] /' &
+    pid_carddb=$!
     go run ./plugins/mtga/tools/rules-fetch/ \
-        --d1-database-id="$d1" --vectorize-index="$rules_vec"
-    echo "==> Updating cards ({{env}})"
+        --cf-account-id="$cf_account" --d1-database-id="$d1" --vectorize-index="$rules_vec" 2>&1 | sed 's/^/  [rules] /' &
+    pid_rules=$!
     go run ./plugins/mtga/tools/scryfall-fetch/ \
-        --d1-database-id="$d1" --vectorize-index="$cards_vec"
-    echo "==> Updating draft ratings ({{env}})"
+        --cf-account-id="$cf_account" --d1-database-id="$d1" --vectorize-index="$cards_vec" 2>&1 | sed 's/^/  [cards] /' &
+    pid_cards=$!
+
+    fail=0
+    wait $pid_carddb || fail=1
+    wait $pid_rules || fail=1
+    wait $pid_cards || fail=1
+    if [ $fail -ne 0 ]; then
+        echo "Phase 1 failed" >&2
+        exit 1
+    fi
+
+    echo "==> Phase 2: card roles ({{env}})"
+    go run ./plugins/mtga/tools/tagger-fetch/ \
+        --cf-account-id="$cf_account" --d1-database-id="$d1" 2>&1 | sed 's/^/  [roles] /'
+
+    echo "==> Phase 3: draft ratings ({{env}})"
     go run ./plugins/mtga/tools/17lands-fetch/ \
-        --d1-database-id="$d1"
-    echo "==> Done"
+        --cf-account-id="$cf_account" --d1-database-id="$d1" 2>&1 | sed 's/^/  [17lands] /'
+
+    echo "==> Done ({{env}})"
 
 # Show production stats from D1: just stats 1h
 stats window="24h":

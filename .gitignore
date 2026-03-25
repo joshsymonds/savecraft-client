@@ -18,6 +18,10 @@ worker/.dev.vars
 /savecraft-tray
 /savecraft-tray.exe
 /plugin-manifest
+/rules-fetch
+/scryfall-fetch
+/tagger-fetch
+/17lands-fetch
 
 # Compiled WASM plugins and binaries
 plugins/**/*.wasm
