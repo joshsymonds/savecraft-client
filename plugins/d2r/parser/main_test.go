@@ -37,43 +37,43 @@ func loadStash(t *testing.T) *d2s.SharedStash {
 // so we can test it without os.Stdout/os.Exit.
 func buildAllSections(save *d2s.D2S) map[string]any {
 	sections := map[string]any{
-		"character": map[string]any{
-			"description": "Character overview",
+		"character_overview": map[string]any{
+			"description": "Character identity: name, class, level, difficulty, mercenary status — fetch first to orient on who this character is",
 			"data":        buildCharacterSection(save),
 		},
 		"attributes": map[string]any{
-			"description": "Character attributes and stats",
+			"description": "Base stats (str/dex/vit/energy), HP/mana/stamina pools, unspent stat/skill points — use to check stat allocation or respec needs",
 			"data":        buildAttributesSection(save),
 		},
 		"skills": map[string]any{
-			"description": "Skill allocations",
+			"description": "Allocated skill points by name and level — use to evaluate build, suggest respec, or identify synergies",
 			"data":        map[string]any{"skills": buildSkillsSection(save)},
 		},
 		"equipment": map[string]any{
-			"description": "Equipped items",
+			"description": "Currently equipped items with slot, properties, and sockets — use to evaluate gear, suggest upgrades, or check runeword bases",
 			"data":        map[string]any{"equipment": buildEquipmentSection(save)},
 		},
 		"inventory": map[string]any{
-			"description": "Inventory, stash, and cube items",
+			"description": "Items in inventory, personal stash, and Horadric Cube — use to find crafting materials, charms, or items to equip",
 			"data":        buildInventorySection(save),
 		},
 	}
 
 	if len(save.MercItems) > 0 {
 		sections["mercenary"] = map[string]any{
-			"description": "Mercenary equipment",
+			"description": "Mercenary equipped items with properties — use to evaluate merc gear or suggest upgrades",
 			"data":        map[string]any{"mercenary": buildItemList(save.MercItems)},
 		}
 	}
 	if len(save.CorpseItems) > 0 {
 		sections["corpse"] = map[string]any{
-			"description": "Items on character's corpse (died and hasn't retrieved body)",
+			"description": "Items on character's corpse (died and hasn't retrieved body) — check when character appears undergeared",
 			"data":        map[string]any{"corpse": buildItemList(save.CorpseItems)},
 		}
 	}
 	if save.GolemItem != nil {
 		sections["golem"] = map[string]any{
-			"description": "Iron Golem item (Necromancer golem created from this item)",
+			"description": "Iron Golem source item (Necromancer) — check to avoid accidentally overwriting a valuable golem",
 			"data":        buildItemMap(*save.GolemItem),
 		}
 	}
@@ -219,7 +219,7 @@ func TestBuildAllSections_Atmus(t *testing.T) {
 	sections := buildAllSections(save)
 
 	// Standard sections always present.
-	for _, name := range []string{"character", "attributes", "skills", "equipment", "inventory"} {
+	for _, name := range []string{"character_overview", "attributes", "skills", "equipment", "inventory"} {
 		sec, ok := sections[name].(map[string]any)
 		if !ok {
 			t.Errorf("missing section %q", name)

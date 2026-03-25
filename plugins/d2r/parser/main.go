@@ -80,7 +80,13 @@ func handleCharacter(enc *json.Encoder, data []byte) {
 		os.Exit(1)
 	}
 
-	writeStatusf(enc, "Character: %s, Level %d %s", save.Header.Name, save.Attributes.Level, save.Header.Class)
+	writeStatusf(
+		enc,
+		"Character: %s, Level %d %s",
+		save.Header.Name,
+		save.Attributes.Level,
+		save.Header.Class,
+	)
 
 	socketed := 0
 	for _, item := range save.Items {
@@ -95,51 +101,51 @@ func handleCharacter(enc *json.Encoder, data []byte) {
 	}
 
 	sections := map[string]any{
-		"character": map[string]any{
-			"description": "Character overview",
+		"character_overview": map[string]any{
+			"description": "Character identity: name, class, level, difficulty, mercenary status — fetch first to orient on who this character is",
 			"data":        buildCharacterSection(save),
 		},
 		"attributes": map[string]any{
-			"description": "Character attributes and stats",
+			"description": "Base stats (str/dex/vit/energy), HP/mana/stamina pools, unspent stat/skill points — use to check stat allocation or respec needs",
 			"data":        buildAttributesSection(save),
 		},
 		"skills": map[string]any{
-			"description": "Skill allocations",
+			"description": "Allocated skill points by name and level — use to evaluate build, suggest respec, or identify synergies",
 			"data":        map[string]any{"skills": buildSkillsSection(save)},
 		},
 		"equipment": map[string]any{
-			"description": "Equipped items",
+			"description": "Currently equipped items with slot, properties, and sockets — use to evaluate gear, suggest upgrades, or check runeword bases",
 			"data":        map[string]any{"equipment": buildEquipmentSection(save)},
 		},
 		"inventory": map[string]any{
-			"description": "Inventory, stash, and cube items",
+			"description": "Items in inventory, personal stash, and Horadric Cube — use to find crafting materials, charms, or items to equip",
 			"data":        buildInventorySection(save),
 		},
 	}
 
 	// Computed/aggregated stats from equipped items + charms.
 	sections["totals"] = map[string]any{
-		"description": "Aggregated character stats: resistances (per difficulty), magic find, gold find, faster cast rate, faster hit recovery, attack speed, run/walk speed, crushing blow, deadly strike, open wounds, life/mana leech, skill bonuses — with FCR/FHR/IAS breakpoints. Includes mercenary totals.",
+		"description": "Aggregated character stats: resistances (per difficulty), magic find, gold find, faster cast rate, faster hit recovery, attack speed, run/walk speed, crushing blow, deadly strike, open wounds, life/mana leech, skill bonuses — with FCR/FHR/IAS breakpoints. Includes mercenary totals. Use to evaluate gear upgrades or check breakpoints.",
 		"data":        d2s.ComputeStats(save),
 	}
 
 	if len(save.MercItems) > 0 {
 		sections["mercenary"] = map[string]any{
-			"description": "Mercenary equipment",
+			"description": "Mercenary equipped items with properties — use to evaluate merc gear or suggest upgrades",
 			"data":        map[string]any{"mercenary": buildItemList(save.MercItems)},
 		}
 	}
 
 	if len(save.CorpseItems) > 0 {
 		sections["corpse"] = map[string]any{
-			"description": "Items on character's corpse (died and hasn't retrieved body)",
+			"description": "Items on character's corpse (died and hasn't retrieved body) — check when character appears undergeared",
 			"data":        map[string]any{"corpse": buildItemList(save.CorpseItems)},
 		}
 	}
 
 	if save.GolemItem != nil {
 		sections["golem"] = map[string]any{
-			"description": "Iron Golem item (Necromancer golem created from this item)",
+			"description": "Iron Golem source item (Necromancer) — check to avoid accidentally overwriting a valuable golem",
 			"data":        buildItemMap(*save.GolemItem),
 		}
 	}
@@ -455,7 +461,11 @@ func formatProperty(a d2s.MagicAttribute) string {
 	// Aura: Values = [skillID, level].
 	case 151:
 		if len(a.Values) >= 2 {
-			return fmt.Sprintf("Level %d %s Aura When Equipped", a.Values[1], skillOrID(a.Values[0]))
+			return fmt.Sprintf(
+				"Level %d %s Aura When Equipped",
+				a.Values[1],
+				skillOrID(a.Values[0]),
+			)
 		}
 
 	// Skilltab: Values = [tabIndex, classID, bonus].
@@ -545,7 +555,7 @@ func buildStashSummary(stash *d2s.SharedStash) string {
 func buildStashSections(stash *d2s.SharedStash) map[string]any {
 	sections := map[string]any{
 		"overview": map[string]any{
-			"description": "Shared stash overview",
+			"description": "Shared stash summary: gold, version, tab count — fetch first to see what tabs are available, then fetch individual tab sections",
 			"data": map[string]any{
 				"gold":    stash.Gold,
 				"version": stash.Version,
@@ -571,8 +581,12 @@ func buildStashSections(stash *d2s.SharedStash) map[string]any {
 
 		key := fmt.Sprintf("tab%d", tabNum)
 		sections[key] = map[string]any{
-			"description": fmt.Sprintf("Stash tab %d (%s)", tabNum, tabType),
-			"data":        map[string]any{"items": buildItemList(tab.Items)},
+			"description": fmt.Sprintf(
+				"Stash tab %d (%s) — full item list with properties, use to find specific items or evaluate stored gear",
+				tabNum,
+				tabType,
+			),
+			"data": map[string]any{"items": buildItemList(tab.Items)},
 		}
 	}
 

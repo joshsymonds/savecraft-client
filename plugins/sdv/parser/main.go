@@ -357,40 +357,186 @@ func skillLevel(xp int) int {
 }
 
 func buildSections(save *SaveGame) map[string]any {
-	return map[string]any{
+	sections := map[string]any{
 		"character": map[string]any{
-			"description": "Character overview, skills, and basic stats",
+			"description": "Skills, professions, XP, mastery — fetch to evaluate skill builds or answer 'what level is my farming?'",
 			"data":        buildCharacterSection(save),
 		},
 		"social": map[string]any{
-			"description": "NPC relationships, friendship levels, marriage, and children",
+			"description": "NPC friendship points, heart levels, gift tracking, marriage, children — fetch for gift/relationship advice",
 			"data":        buildSocialSection(save),
 		},
 		"inventory": map[string]any{
-			"description": "Backpack contents, tools with upgrade levels, and weapons",
+			"description": "Backpack contents with tool upgrade levels, weapons, item stacks and quality — fetch to evaluate gear or plan upgrades",
 			"data":        buildInventorySection(save),
 		},
 		"bundles": map[string]any{
-			"description": "Community center bundles or Joja route, per-room and per-bundle completion",
+			"description": "Community center (or Joja) bundle completion per room and per item slot — fetch to plan which items to gather next",
 			"data":        buildBundlesSection(save),
 		},
 		"collections": map[string]any{
-			"description": "Fish caught, cooking/crafting recipes, items shipped, and museum donations",
+			"description": "Fish caught, cooking/crafting recipe progress, shipping log, museum donations — fetch to find completion gaps or plan what to collect next",
 			"data":        buildCollectionsSection(save),
 		},
 		"progress": map[string]any{
-			"description": "Stardrops, golden walnuts, quests, special orders, and monster slayer goals",
+			"description": "Stardrops, golden walnuts, quests, special orders, monster slayer goals — fetch for endgame/completionist tracking",
 			"data":        buildProgressSection(save),
 		},
 		"perfection": map[string]any{
-			"description": "Perfection percentage breakdown by category with points earned",
+			"description": "Perfection tracker percentage breakdown by category with points earned — fetch to identify lowest-scoring categories to prioritize",
 			"data":        buildPerfectionSection(save),
 		},
 		"farm": map[string]any{
-			"description": "Farm buildings, crops, sprinkler zones, scarecrows, and machines",
+			"description": "Farm buildings, active crops, sprinkler coverage zones, scarecrows, machines — fetch for farm layout planning or crop advice",
 			"data":        buildFarmSection(save),
 		},
 	}
+
+	// Build the overview section last so it can reference other section names.
+	sections["player_summary"] = map[string]any{
+		"description": "Farmer identity, date, money, skill levels, key progression milestones, and index of available sections — always shown first",
+		"data":        buildPlayerSummarySection(save, sections),
+	}
+
+	return sections
+}
+
+func buildPlayerSummarySection(save *SaveGame, sections map[string]any) map[string]any {
+	p := save.Player
+	season := capitalizeFirst(save.CurrentSeason)
+
+	// Skill levels as a compact map.
+	skills := map[string]int{}
+	for i, xp := range p.ExperiencePoints.Values {
+		skills[skillName(i)] = skillLevel(xp)
+	}
+
+	// Professions list.
+	professions := make([]string, 0, len(p.Professions.Values))
+	for _, id := range p.Professions.Values {
+		professions = append(professions, professionName(id))
+	}
+
+	// Community center / Joja progress summary.
+	bundleData := sections["bundles"].(map[string]any)["data"].(map[string]any)
+	ccComplete := bundleData["complete"].(bool)
+	ccRoute := bundleData["route"].(string)
+	roomsComplete := 0
+	roomsTotal := 0
+	if rooms, ok := bundleData["rooms"].([]map[string]any); ok {
+		roomsTotal = len(rooms)
+		for _, r := range rooms {
+			if r["complete"] == true {
+				roomsComplete++
+			}
+		}
+	}
+
+	// Perfection snapshot.
+	perfData := sections["perfection"].(map[string]any)["data"].(map[string]any)
+	perfPct := perfData["percentage"].(float64)
+
+	// Key relationship summary: spouse + heart counts.
+	spouse := p.Spouse
+	maxedFriends := 0
+	totalFriends := 0
+	for _, item := range p.FriendshipData {
+		if ignoredNPCs[item.Key] {
+			continue
+		}
+		totalFriends++
+		threshold := 2500
+		if datableNPCs[item.Key] {
+			threshold = 2000
+		}
+		if item.Friendship.Points >= threshold {
+			maxedFriends++
+		}
+	}
+
+	// Farm summary.
+	farmData := sections["farm"].(map[string]any)["data"].(map[string]any)
+	farmSummary, _ := farmData["summary"].(map[string]any)
+
+	// Build section index: name + description for each sibling section.
+	type sectionEntry struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+	sectionIndex := make([]sectionEntry, 0, len(sections))
+	for name, sec := range sections {
+		if name == "player_summary" {
+			continue
+		}
+		if secMap, ok := sec.(map[string]any); ok {
+			desc, _ := secMap["description"].(string)
+			sectionIndex = append(sectionIndex, sectionEntry{Name: name, Description: desc})
+		}
+	}
+	// Sort for deterministic output.
+	for i := 0; i < len(sectionIndex); i++ {
+		for j := i + 1; j < len(sectionIndex); j++ {
+			if sectionIndex[j].Name < sectionIndex[i].Name {
+				sectionIndex[i], sectionIndex[j] = sectionIndex[j], sectionIndex[i]
+			}
+		}
+	}
+
+	hours := float64(p.MillisecondsPlayed) / 3600000.0
+
+	result := map[string]any{
+		"farmer":   p.Name,
+		"farmName": p.FarmName,
+		"farmType": farmTypeName(save.WhichFarm),
+		"date": map[string]any{
+			"year":   p.Year,
+			"season": season,
+			"day":    p.DayOfMonth,
+		},
+		"money":            p.Money,
+		"totalMoneyEarned": p.TotalMoneyEarned,
+		"playtimeHours":    fmt.Sprintf("%.1f", hours),
+		"gameVersion":      save.GameVersion,
+		"skills":           skills,
+		"professions":      professions,
+		"communityCenter": map[string]any{
+			"route":         ccRoute,
+			"complete":      ccComplete,
+			"roomsComplete": roomsComplete,
+			"roomsTotal":    roomsTotal,
+		},
+		"perfectionPct": perfPct,
+		"social": map[string]any{
+			"spouse":       spouse,
+			"maxedFriends": maxedFriends,
+			"totalFriends": totalFriends,
+		},
+		"farm": map[string]any{
+			"totalBuildings":  farmSummary["totalBuildings"],
+			"totalCrops":      farmSummary["totalCrops"],
+			"totalSprinklers": farmSummary["totalSprinklers"],
+		},
+		"stardropsFound": len(stardropFlagsFound(save)),
+		"stardropsTotal": len(stardropFlags),
+		"sections":       sectionIndex,
+	}
+
+	return result
+}
+
+// stardropFlagsFound returns the list of stardrop sources the player has found.
+func stardropFlagsFound(save *SaveGame) []string {
+	mailSet := map[string]bool{}
+	for _, m := range save.Player.MailReceived.Values {
+		mailSet[m] = true
+	}
+	found := make([]string, 0)
+	for _, sd := range stardropFlags {
+		if mailSet[sd.flag] {
+			found = append(found, sd.source)
+		}
+	}
+	return found
 }
 
 // ignoredNPCs are non-social characters that appear in friendshipData but shouldn't be shown.

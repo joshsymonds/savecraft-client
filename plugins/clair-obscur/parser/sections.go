@@ -32,7 +32,7 @@ func buildAllSections(save *gvas.Save) map[string]any {
 		level := sv.Properties.GetIntPrefix("CurrentLevel")
 		sectionKey := fmt.Sprintf("character:%s", name)
 		sections[sectionKey] = map[string]any{
-			"description": fmt.Sprintf("%s -- Level %d build: attributes, skills, Lumina, equipment", name, level),
+			"description": fmt.Sprintf("%s (Level %d) — fetch for full build: attribute spread, equipped/unlocked skills, Lumina passives, weapon, and pictos", name, level),
 			"data":        charData,
 		}
 	}
@@ -49,12 +49,21 @@ func buildOverviewSection(save *gvas.Save) map[string]any {
 	gold := props.GetInt("Gold")
 	mapName := props.GetString("MapToLoad")
 
-	var characters []string
+	var characters []map[string]any
 	for _, entry := range props.GetMap("CharactersCollection") {
 		name := displayName(valueString(entry.Key))
-		if name != "" {
-			characters = append(characters, name)
+		if name == "" {
+			continue
 		}
+		level := int32(0)
+		if sv, ok := entry.Value.(gvas.StructValue); ok {
+			level = sv.Properties.GetIntPrefix("CurrentLevel")
+		}
+		characters = append(characters, map[string]any{
+			"name":    name,
+			"level":   level,
+			"section": fmt.Sprintf("character:%s", name),
+		})
 	}
 
 	difficulty := "Unknown"
@@ -67,7 +76,7 @@ func buildOverviewSection(save *gvas.Save) map[string]any {
 	}
 
 	return map[string]any{
-		"description": "Save metadata: playtime, NG+ cycle, current location, gold, characters",
+		"description": "Start here — playtime, NG+ cycle, location, gold, difficulty, and index of character sections to fetch for build details",
 		"data": map[string]any{
 			"playtime_hours":   hours,
 			"playtime_seconds": int(timePlayed),
@@ -195,7 +204,7 @@ func buildPartySection(save *gvas.Save) map[string]any {
 	}
 
 	return map[string]any{
-		"description": "Active party composition",
+		"description": "Current party lineup and formations — use to see who is active before recommending team composition changes",
 		"data": map[string]any{
 			"members": members,
 		},
@@ -217,7 +226,7 @@ func buildInventorySection(save *gvas.Save) map[string]any {
 	}
 
 	return map[string]any{
-		"description": "All items and quantities",
+		"description": "Full item inventory with quantities — use to check available consumables, materials, or key items before recommending upgrades or crafting",
 		"data": map[string]any{
 			"gold":        gold,
 			"total_items": len(items),
@@ -297,7 +306,7 @@ func buildProgressionSection(save *gvas.Save) map[string]any {
 	}
 
 	return map[string]any{
-		"description": "Quest progress, exploration unlocks, enemy encounters",
+		"description": "Quest statuses, exploration/world map unlocks, enemy encounter counts, visited locations — use to gauge story progress or find missed content",
 		"data": map[string]any{
 			"quests":             quests,
 			"quests_not_started": notStartedCount,
@@ -336,7 +345,7 @@ func buildWeaponsSection(save *gvas.Save) map[string]any {
 	})
 
 	return map[string]any{
-		"description": "Weapon and picto progression levels",
+		"description": "All weapon and picto upgrade levels sorted by highest — use to evaluate gear investment and recommend what to level next",
 		"data": map[string]any{
 			"progressions": progressions,
 		},

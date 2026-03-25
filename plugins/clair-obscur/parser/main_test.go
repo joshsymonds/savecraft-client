@@ -91,13 +91,28 @@ func TestOverviewSection(t *testing.T) {
 		t.Errorf("playtime_hours = %f, want ~57.1", hours)
 	}
 
-	// Characters list should have 5 entries.
-	chars, ok := data["characters"].([]string)
+	// Characters list should have 5 entries with section pointers.
+	chars, ok := data["characters"].([]map[string]any)
 	if !ok {
-		t.Fatalf("characters is %T, want []string", data["characters"])
+		t.Fatalf("characters is %T, want []map[string]any", data["characters"])
 	}
 	if len(chars) != 5 {
 		t.Errorf("characters count = %d, want 5", len(chars))
+	}
+	// Each character entry should have name, level, and section keys.
+	for _, c := range chars {
+		if _, ok := c["name"]; !ok {
+			t.Errorf("character entry missing 'name': %v", c)
+		}
+		if _, ok := c["level"]; !ok {
+			t.Errorf("character entry missing 'level': %v", c)
+		}
+		sec, ok := c["section"].(string)
+		if !ok {
+			t.Errorf("character entry missing 'section': %v", c)
+		} else if !strings.HasPrefix(sec, "character:") {
+			t.Errorf("section %q does not start with 'character:'", sec)
+		}
 	}
 }
 

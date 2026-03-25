@@ -1066,6 +1066,155 @@ func TestFarmSectionPerfection(t *testing.T) {
 	}
 }
 
+func TestPlayerSummarySection(t *testing.T) {
+	data, err := os.ReadFile("../testdata/TestSave")
+	if err != nil {
+		t.Fatalf("reading test fixture: %v", err)
+	}
+
+	save, err := parseSave(data)
+	if err != nil {
+		t.Fatalf("parseSave: %v", err)
+	}
+
+	sections := buildSections(save)
+	summarySection, ok := sections["player_summary"].(map[string]any)
+	if !ok {
+		t.Fatal("player_summary section missing")
+	}
+	sd := summarySection["data"].(map[string]any)
+
+	// Identity fields
+	if sd["farmer"] != "Test" {
+		t.Errorf("farmer = %v, want %q", sd["farmer"], "Test")
+	}
+	if sd["farmName"] != "Test" {
+		t.Errorf("farmName = %v, want %q", sd["farmName"], "Test")
+	}
+	if sd["farmType"] != "Hill-top" {
+		t.Errorf("farmType = %v, want %q", sd["farmType"], "Hill-top")
+	}
+
+	// Date
+	dateMap := sd["date"].(map[string]any)
+	if dateMap["year"] != 1 {
+		t.Errorf("date.year = %v, want 1", dateMap["year"])
+	}
+	if dateMap["season"] != "Spring" {
+		t.Errorf("date.season = %v, want %q", dateMap["season"], "Spring")
+	}
+	if dateMap["day"] != 6 {
+		t.Errorf("date.day = %v, want 6", dateMap["day"])
+	}
+
+	// Money
+	if sd["money"] != 1285 {
+		t.Errorf("money = %v, want 1285", sd["money"])
+	}
+
+	// Skills map
+	skills := sd["skills"].(map[string]int)
+	if skills["Farming"] != 1 {
+		t.Errorf("skills[Farming] = %d, want 1", skills["Farming"])
+	}
+
+	// Community center
+	cc := sd["communityCenter"].(map[string]any)
+	if cc["route"] != "Community Center" {
+		t.Errorf("communityCenter.route = %v, want %q", cc["route"], "Community Center")
+	}
+	if cc["complete"] != false {
+		t.Errorf("communityCenter.complete = %v, want false", cc["complete"])
+	}
+
+	// Perfection
+	perfPct, ok := sd["perfectionPct"].(float64)
+	if !ok {
+		t.Fatalf("perfectionPct type = %T, want float64", sd["perfectionPct"])
+	}
+	if perfPct < 0 || perfPct > 10 {
+		t.Errorf("perfectionPct = %.1f, want 0-10 for early game", perfPct)
+	}
+
+	// Sections index
+	sectionIndex, ok := sd["sections"].([]struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	})
+	if !ok {
+		// It's stored as the struct type, try via JSON round-trip
+		raw, _ := json.Marshal(sd["sections"])
+		var idx []map[string]any
+		if err := json.Unmarshal(raw, &idx); err != nil {
+			t.Fatalf("sections index: %v", err)
+		}
+		if len(idx) < 7 {
+			t.Errorf("sections index count = %d, want >= 7", len(idx))
+		}
+		// Verify each entry has name and description
+		for _, entry := range idx {
+			if _, ok := entry["name"].(string); !ok {
+				t.Errorf("section index entry missing name: %v", entry)
+			}
+			if _, ok := entry["description"].(string); !ok {
+				t.Errorf("section index entry missing description: %v", entry)
+			}
+		}
+	} else if len(sectionIndex) < 7 {
+		t.Errorf("sections index count = %d, want >= 7", len(sectionIndex))
+	}
+
+	// Size check: overview must be under 15KB
+	raw, _ := json.Marshal(sd)
+	if len(raw) > 15*1024 {
+		t.Errorf("player_summary data = %d bytes, want < 15KB", len(raw))
+	}
+}
+
+func TestPlayerSummarySectionPerfection(t *testing.T) {
+	data, err := os.ReadFile("../testdata/PerfectionSave")
+	if err != nil {
+		t.Fatalf("reading test fixture: %v", err)
+	}
+
+	save, err := parseSave(data)
+	if err != nil {
+		t.Fatalf("parseSave: %v", err)
+	}
+
+	sections := buildSections(save)
+	sd := sections["player_summary"].(map[string]any)["data"].(map[string]any)
+
+	// Perfection should be high
+	perfPct := sd["perfectionPct"].(float64)
+	if perfPct < 90 {
+		t.Errorf("perfectionPct = %.1f, want >= 90", perfPct)
+	}
+
+	// Community center should be complete
+	cc := sd["communityCenter"].(map[string]any)
+	if cc["complete"] != true {
+		t.Errorf("communityCenter.complete = %v, want true", cc["complete"])
+	}
+
+	// All skills should be level 10
+	skills := sd["skills"].(map[string]int)
+	for name, level := range skills {
+		if name == "Luck" {
+			continue // Luck skill doesn't level normally
+		}
+		if level != 10 {
+			t.Errorf("skills[%s] = %d, want 10", name, level)
+		}
+	}
+
+	// Size check
+	raw, _ := json.Marshal(sd)
+	if len(raw) > 15*1024 {
+		t.Errorf("player_summary data = %d bytes, want < 15KB", len(raw))
+	}
+}
+
 func TestFarmTypeName(t *testing.T) {
 	tests := []struct {
 		id   int
