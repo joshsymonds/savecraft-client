@@ -84,13 +84,15 @@ jobs:
             just build-plugin "$game_id"
           done
 
-      - name: Install reference Worker dependencies
-        if: steps.changed.outputs.plugins != ''
-        run: cd reference && npm ci
-
       - name: Test reference Worker infrastructure
         if: steps.changed.outputs.plugins != ''
-        run: just test-reference-worker
+        run: |
+          # Only test if at least one plugin produced a reference.wasm
+          if ls plugins/*/reference.wasm 1>/dev/null 2>&1; then
+            cd reference && npm ci && just test
+          else
+            echo "No reference.wasm found, skipping reference worker tests"
+          fi
 
   deploy:
     name: Sign and upload
