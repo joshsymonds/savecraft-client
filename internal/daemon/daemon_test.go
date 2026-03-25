@@ -3406,18 +3406,15 @@ func TestCheckSelfUpdate_AutoApplyTimerFires(t *testing.T) {
 		t.Fatalf("PendingVersion() = %q, want 0.4.0", v)
 	}
 
-	// Wait for the auto-apply timer to fire.
+	// Wait for the auto-apply timer to fire and Apply to be called.
+	// We wait on applyCalls rather than PendingVersion because PendingVersion
+	// clears before Apply is invoked, causing a race.
 	waitFor(t, func() bool {
-		return d.PendingVersion() == ""
+		updater.mu.Lock()
+		n := len(updater.applyCalls)
+		updater.mu.Unlock()
+		return n == 1
 	})
-
-	// Verify the update was applied.
-	updater.mu.Lock()
-	calls := len(updater.applyCalls)
-	updater.mu.Unlock()
-	if calls != 1 {
-		t.Fatalf("updater.Apply called %d times after auto-apply, want 1", calls)
-	}
 	if updater.applyCalls[0].Info.Version != "0.4.0" {
 		t.Errorf("applied version = %s, want 0.4.0", updater.applyCalls[0].Info.Version)
 	}
