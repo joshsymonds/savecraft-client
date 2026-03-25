@@ -116,7 +116,7 @@
         Key="Software\Microsoft\Windows\CurrentVersion\Run"
         Name="Savecraft Daemon"
         Type="string"
-        Value="[INSTALLFOLDER]savecraftd.exe"
+        Value="&quot;[INSTALLFOLDER]savecraftd.exe&quot; run"
         KeyPath="yes" />
     </Component>
   </Fragment>
@@ -129,7 +129,7 @@
         Key="Software\Microsoft\Windows\CurrentVersion\Run"
         Name="Savecraft Tray"
         Type="string"
-        Value="[INSTALLFOLDER]savecraft-tray.exe"
+        Value="&quot;[INSTALLFOLDER]savecraft-tray.exe&quot;"
         KeyPath="yes" />
     </Component>
   </Fragment>

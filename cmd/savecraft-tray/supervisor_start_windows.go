@@ -11,7 +11,7 @@ import (
 	"syscall"
 )
 
-const daemonBinaryName = "savecraft-daemon.exe"
+const daemonBinaryName = "savecraftd.exe"
 
 // buildStartDaemonFunc returns a function that spawns the daemon as a detached
 // process. The daemon binary is located relative to the tray binary (same directory).

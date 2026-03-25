@@ -25,6 +25,12 @@ var (
 )
 
 func main() {
+	release, singleErr := acquireSingleton()
+	if singleErr != nil {
+		os.Exit(0)
+	}
+	defer release()
+
 	port := os.Getenv("SAVECRAFT_STATUS_PORT")
 	if port == "" {
 		port = defaultStatusPort

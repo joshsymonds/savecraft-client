@@ -80,12 +80,12 @@ func serviceStart(_ Config, _ commandRunner) error {
 	return startProcess(exePath)
 }
 
-func serviceStop(cfg Config, run commandRunner) error {
-	binaryName := cfg.AppName + "-daemon.exe"
-
-	out, err := run("taskkill", "/IM", binaryName, "/F")
+func serviceStop(_ Config, run commandRunner) error {
+	// Binary name matches the Go package (cmd/savecraftd/) and the WiX
+	// installed filename, not the Config.Name service identifier.
+	out, err := run("taskkill", "/IM", "savecraftd.exe", "/F")
 	if err != nil {
-		return fmt.Errorf("taskkill %s: %s: %w", binaryName, string(out), err)
+		return fmt.Errorf("taskkill savecraftd.exe: %s: %w", string(out), err)
 	}
 
 	return nil

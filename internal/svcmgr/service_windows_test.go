@@ -133,7 +133,7 @@ func TestServiceStop_CallsTaskkill(t *testing.T) {
 		t.Fatalf("expected 1 command, got %d: %v", len(commands), commands)
 	}
 
-	want := "taskkill /IM savecraft-test-daemon.exe /F"
+	want := "taskkill /IM savecraftd.exe /F"
 	if commands[0] != want {
 		t.Errorf("command = %q, want %q", commands[0], want)
 	}
