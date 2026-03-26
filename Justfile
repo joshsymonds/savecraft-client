@@ -405,6 +405,30 @@ update-mtga env:
 
     echo "==> Done ({{env}})"
 
+# Retry failed D1 imports from cached SQL files (no CSV reprocessing)
+update-mtga-retry env:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cf_account="cc0a94bb7aff760efd48b49ce983fe97"
+    if [[ "{{env}}" == "production" ]]; then
+        d1="df241bb0-9b7d-48e5-a4d4-f84ebf09e6e5"
+    elif [[ "{{env}}" == "staging" ]]; then
+        d1="0147892e-82e6-413e-a0ef-52f6d8787fdf"
+    else
+        echo "Usage: just update-mtga-retry staging|production" >&2
+        exit 1
+    fi
+
+    echo "==> Retrying tagger roles ({{env}})"
+    go run ./plugins/mtga/tools/tagger-fetch/ \
+        --retry --cf-account-id="$cf_account" --d1-database-id="$d1" 2>&1 | sed 's/^/  [roles] /'
+
+    echo "==> Retrying draft ratings + synergies ({{env}})"
+    go run ./plugins/mtga/tools/17lands-fetch/ \
+        --retry --cf-account-id="$cf_account" --d1-database-id="$d1" 2>&1 | sed 's/^/  [17lands] /'
+
+    echo "==> Retry done ({{env}})"
+
 # Show production stats from D1: just stats 1h
 stats window="24h":
     ./scripts/stats.sh {{window}}
