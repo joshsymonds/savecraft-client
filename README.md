@@ -82,15 +82,18 @@ Plugins are sandboxed WASM binaries that parse save files. They read raw bytes o
 
 | Game | Format | Reference Modules | Status | Author |
 |------|--------|-------------------|--------|--------|
+| [Clair Obscur: Expedition 33](plugins/clair-obscur/) | Save file (WASM) | — | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [Diablo II: Resurrected](plugins/d2r/) | `.d2s` / `.d2i` binary | Drop Calculator | Beta | [@joshsymonds](https://github.com/joshsymonds) |
+| [Magic: The Gathering Arena](plugins/mtga/) | `Player.log` | Rules Search, Card Search, Card Stats, Draft Advisor, Deck Health & Cut Advisor, Collection Diff, Mana Base, Draft Ratings | Beta | [@joshsymonds](https://github.com/joshsymonds) |
+| [RimWorld](plugins/rimworld/) | In-game mod | — | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [Stardew Valley](plugins/sdv/) | XML save directory | Gift Preferences, Crop Planner | Beta | [@joshsymonds](https://github.com/joshsymonds) |
-| [Victoria 3](plugins/vic3/) | `.v3` (Clausewitz) | Game Rules Database | Scaffold | [@joshsymonds](https://github.com/joshsymonds) |
+| [World of Warcraft](plugins/wow/) | Battle.net API | — | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 
 **Planned save-file parsers:** Stellaris/CK3 (Clausewitz), Baldur's Gate 3 (.lsv), Elden Ring (.sl2), Civilization VI, Bethesda games (.ess)
 
-**Planned API adapters** (no daemon required): Path of Exile 2, WoW (Battle.net API), FFXIV
+**Planned API adapters** (no daemon required): Path of Exile 2, FFXIV
 
-**Planned mod integrations:** Rimworld, Minecraft, Terraria (mod-as-device: mod pushes directly, no daemon), Factorio (mod-as-emitter: mod writes JSON, daemon relays)
+**Planned mod integrations:** Minecraft, Terraria (mod-as-device: mod pushes directly, no daemon), Factorio (mod-as-emitter: mod writes JSON, daemon relays)
 
 Want to add a game? See the [plugin development guide](docs/plugin-development.md).
 
