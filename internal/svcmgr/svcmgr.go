@@ -64,7 +64,6 @@ func New(cfg Config, run RunFunc) *Program {
 
 // Start launches the run function in a background goroutine.
 func (p *Program) Start() {
-	//nolint:gosec // cancel is stored in p.cancel and called by Stop()
 	ctx, cancel := context.WithCancel(context.Background())
 	p.cancel = cancel
 
