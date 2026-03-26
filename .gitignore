@@ -1,6 +1,5 @@
 # devenv
 .devenv/
-.devenv.flake.nix
 
 # direnv
 .direnv/
@@ -40,6 +39,7 @@ node_modules/
 
 # Storybook
 web/storybook-static/
+site/storybook-static/
 web/screenshots/
 
 # Cloudflare
