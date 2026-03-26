@@ -39,9 +39,9 @@ test-go:
 test-go-race:
     go test -race ./...
 
-# Run Worker tests
+# Run Worker tests (4 parallel shards, each with its own Miniflare)
 test-worker:
-    cd worker && npm test
+    cd worker && npm run test:shard
 
 # Run reference Worker infrastructure tests (copies D2R wasm, then tests WASI shim)
 test-reference-worker:
