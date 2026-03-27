@@ -21,7 +21,7 @@ namespace SavecraftRimWorld
 
     public class SavecraftMod : Mod
     {
-        public const string Version = "0.1.0";
+        public const string Version = "1.0.0";
 
         // Savecraft brand colors
         static readonly Color PanelBg = new Color(0.039f, 0.055f, 0.180f, 1f);       // #0a0e2e

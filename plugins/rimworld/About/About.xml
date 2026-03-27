@@ -12,13 +12,29 @@
        Steam Workshop description uses BBCode, set separately via web editor. -->
   <description>Your AI is making things up about your colony. Savecraft fixes that.
 
-Savecraft connects your colony to Claude and ChatGPT. Colonists, mood, resources, research, defenses, rooms, factions, threats. Real data from your actual save, updated live. No more invented stats.
+Savecraft connects your colony to Claude and ChatGPT. Colonists, mood, resources, research, defenses, rooms, factions, threats -- real data from your actual save, updated live.
 
 &lt;size=24&gt;What it does&lt;/size&gt;
 
-On every save, Savecraft reads your colony state and sends it to your AI. Every colonist with their full backstory, skills, mood modifiers, health, and gear. Your stockpile, power grid, growing zones, room quality, faction relations, raid threat level. 14 sections of structured data, not a screenshot or a summary.
+On every save, Savecraft reads your colony state and sends it to your AI:
 
-Your AI also gets &lt;b&gt;reference modules&lt;/b&gt; that know RimWorld's actual formulas. Surgery success chances. Crop yield per tile. Ranged and melee DPS. Material stats at quality. Drug production economics. Raid point scaling. Gene complexity budgets. Research prerequisite chains with time estimates. Real math, not vibes.
+  • Every colonist: backstory, traits, skills, passions, mood with all modifiers, health, equipment
+  • Resources: full stockpile inventory, food supply in nutrition-days, medicine by type
+  • Research: current project with progress, completed techs, available projects
+  • Mood and health reports: break risk, worst modifiers, injuries, diseases, immunity
+  • Infrastructure: power grid, growing zones, room quality, defenses
+  • World: faction relations, raid threat level, recent incidents, animals
+
+Your AI also gets &lt;b&gt;reference modules&lt;/b&gt; that know RimWorld's actual formulas:
+
+  • Surgery success calculator (skill, bed, medicine, lighting)
+  • Crop optimizer (nutrition/day and silver/day per soil)
+  • Combat calculator (ranged and melee DPS, accuracy at distance)
+  • Material lookup (final stats at any quality)
+  • Drug production economics and addiction risk
+  • Raid point estimator from colony wealth
+  • Gene builder with conflict detection
+  • Research navigator with time estimates
 
 &lt;size=24&gt;Setup&lt;/size&gt;
 
@@ -28,15 +44,13 @@ Your AI also gets &lt;b&gt;reference modules&lt;/b&gt; that know RimWorld's actu
 4. Add the Savecraft integration in Claude or ChatGPT
 5. Ask about your colony
 
-&lt;size=24&gt;Compatibility&lt;/size&gt;
+&lt;size=18&gt;Compatibility&lt;/size&gt;
+RimWorld 1.5 and 1.6, all DLCs. Safe to add or remove mid-save. One Harmony patch (GameDataSaveLoader.SaveGame), works alongside other mods. Modded content not yet parsed.
 
-RimWorld 1.5 and 1.6. All DLCs. Safe to add or remove mid-save. One Harmony patch on GameDataSaveLoader.SaveGame, no conflicts. Works alongside other mods. Modded content not yet parsed.
-
-&lt;size=24&gt;Privacy&lt;/size&gt;
-
-Savecraft sends structured game state (colonist stats, resources, research) to its server. No save files, no filesystem paths, no personal data. Fully open source.
+&lt;size=18&gt;Privacy&lt;/size&gt;
+Sends structured game state to Savecraft's server for your AI to read. No save files, no filesystem paths, no personal data. Open source.
 
 https://savecraft.gg
 https://github.com/joshsymonds/savecraft.gg
-https://discord.gg/savecraft</description>
+https://discord.gg/YnC8stpEmF</description>
 </ModMetaData>
