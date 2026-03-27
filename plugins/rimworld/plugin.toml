@@ -15,3 +15,86 @@ limitations = [
 [author]
 name = "Josh Symonds"
 github = "joshsymonds"
+
+[reference.modules.surgery]
+name = "Surgery Success Calculator"
+description = "Calculate true surgery success probability from surgeon skill, bed type, quality, room cleanliness, medicine, and operation difficulty. Implements the exact formula from Recipe_Surgery.CheckSurgeryFail."
+
+[reference.modules.crops]
+name = "Crop Production Optimizer"
+description = "Compute nutrition/day/tile and silver/day/tile for any crop on any soil type, accounting for fertility sensitivity, temperature growth curves, and rest periods. Includes tiles-per-colonist estimates."
+
+[reference.modules.combat]
+name = "Weapon & Armor Combat Calculator"
+description = "Compute ranged DPS at any distance (accuracy interpolation across 4 range breakpoints), melee true DPS via weighted verb selection, and armor damage reduction expected values."
+
+[reference.modules.materials]
+name = "Material & Item Stat Lookup"
+description = "Look up final stats for any item-material-quality combination using the three-layer multiplication: base stat, material factor, and quality multiplier."
+
+[reference.modules.drugs]
+name = "Drug Economy & Addiction Analyzer"
+description = "Compute silver/day for drug production chains (crop to processed drug), silver per raw material, and addiction risk data including tolerance thresholds and safe dose intervals."
+
+[reference.modules.raids]
+name = "Colony Wealth & Raid Threat Estimator"
+description = "Convert colony wealth to expected raid points using the piecewise wealth curve from StorytellerUtility, with per-colonist point scaling and building wealth at 50% factor."
+
+[reference.modules.genes]
+name = "Gene Metabolism & Xenotype Builder"
+description = "Validate xenogerm builds against complexity and metabolism budgets, detect gene conflicts via exclusion tags, and tally archite capsule requirements."
+
+[reference.modules.research]
+name = "Research Tree & Crafting Chain Navigator"
+description = "Traverse research prerequisite chains with total costs, applying tech level multipliers for tribal starts. Includes research speed estimation."
+
+[reference.modules.surgery.attribution]
+author = "Josh Symonds"
+data_sources = [
+  { name = "Recipe_Surgery.cs", origin = "RimWorld decompiled source" },
+  { name = "Stats_Pawns_WorkMedical.xml", origin = "RimWorld XML Defs" },
+]
+
+[reference.modules.crops.attribution]
+author = "Josh Symonds"
+data_sources = [
+  { name = "Plants_Cultivated_Farm.xml", origin = "RimWorld XML Defs" },
+  { name = "Plant.cs", origin = "RimWorld decompiled source" },
+]
+
+[reference.modules.combat.attribution]
+author = "Josh Symonds"
+data_sources = [
+  { name = "RangedIndustrial.xml", origin = "RimWorld XML Defs" },
+  { name = "MeleeMedieval.xml", origin = "RimWorld XML Defs" },
+]
+
+[reference.modules.materials.attribution]
+author = "Josh Symonds"
+data_sources = [
+  { name = "Items_Resource_Stuff.xml", origin = "RimWorld XML Defs" },
+]
+
+[reference.modules.drugs.attribution]
+author = "Josh Symonds"
+data_sources = [
+  { name = "Core/Drugs/*.xml", origin = "RimWorld XML Defs" },
+]
+
+[reference.modules.raids.attribution]
+author = "Josh Symonds"
+data_sources = [
+  { name = "StorytellerUtility.cs", origin = "RimWorld decompiled source" },
+]
+
+[reference.modules.genes.attribution]
+author = "Josh Symonds"
+data_sources = [
+  { name = "Biotech/GeneDefs/*.xml", origin = "RimWorld XML Defs (Biotech DLC)" },
+]
+
+[reference.modules.research.attribution]
+author = "Josh Symonds"
+data_sources = [
+  { name = "ResearchProjectDefs/*.xml", origin = "RimWorld XML Defs" },
+]

@@ -85,7 +85,7 @@ Plugins are sandboxed WASM binaries that parse save files. They read raw bytes o
 | [Clair Obscur: Expedition 33](plugins/clair-obscur/) | Save file (WASM) | — | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [Diablo II: Resurrected](plugins/d2r/) | `.d2s` / `.d2i` binary | Drop Calculator | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [Magic: The Gathering Arena](plugins/mtga/) | `Player.log` | Rules Search, Card Search, Card Stats, Draft Advisor, Deck Health & Cut Advisor, Collection Diff, Mana Base, Draft Ratings | Beta | [@joshsymonds](https://github.com/joshsymonds) |
-| [RimWorld](plugins/rimworld/) | In-game mod | — | Beta | [@joshsymonds](https://github.com/joshsymonds) |
+| [RimWorld](plugins/rimworld/) | In-game mod | Surgery Calculator, Crop Optimizer, Combat Calculator, Material Lookup, Drug Analyzer, Raid Estimator, Gene Builder, Research Navigator | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [Stardew Valley](plugins/sdv/) | XML save directory | Gift Preferences, Crop Planner | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [World of Warcraft](plugins/wow/) | Battle.net API | — | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 
