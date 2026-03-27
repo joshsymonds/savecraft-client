@@ -64,6 +64,14 @@ namespace SavecraftRimWorld.Connection
         public string LastSyncError => lastSyncError;
         public ConcurrentQueue<Action> MainThreadQueue => mainThreadQueue;
 
+        /// <summary>
+        /// Reset sync state to Idle so a new sync can be visually triggered (e.g., Test Push).
+        /// </summary>
+        public void ResetSyncState()
+        {
+            syncState = SyncState.Idle;
+        }
+
         public SavecraftConnection(SavecraftSettings settings)
         {
             this.settings = settings;
