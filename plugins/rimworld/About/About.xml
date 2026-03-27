@@ -51,7 +51,8 @@ Your AI also gets access to computation tools that know RimWorld's actual formul
 1. Subscribe to this mod and enable it
 2. Start a game — the mod registers automatically and shows a link code
 3. Enter the code at savecraft.gg to connect your colony
-4. Open Claude or ChatGPT — they can now see your actual colony state
+4. Connect Savecraft to your AI — add the Savecraft MCP integration in Claude or ChatGPT
+5. Ask about your colony — your AI can now see your actual game state
 
 Data syncs automatically on every save (autosave and manual). The mod connects to Savecraft's server via WebSocket and sends parsed colony data as structured sections. No save files leave your machine — only the parsed data.
 
