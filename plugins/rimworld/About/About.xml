@@ -8,7 +8,76 @@
     <li>1.5</li>
     <li>1.6</li>
   </supportedVersions>
-  <description>Connects your colony to Savecraft, giving AI assistants real-time access to your colony state for optimization advice, explanation, and companionship.
+  <description>Your AI is making things up about your colony. Savecraft fixes that.
 
-Subscribe, link your source in the Savecraft dashboard, and ask your AI about your colony.</description>
+This mod connects your colony to Claude and ChatGPT so they can see your actual game state — colonists, skills, mood, resources, research, defenses, and more. Real data, updated on every save. No more invented stats or wrong advice.
+
+[h1]What your AI sees[/h1]
+
+[list]
+[*] [b]Colony overview[/b] — wealth breakdown, storyteller, difficulty, date, colonist count
+[*] [b]Every colonist[/b] — backstory, traits, all skills with passions, mood with every modifier, health, equipment, apparel with quality
+[*] [b]Resources[/b] — full stockpile inventory, food supply in nutrition-days, medicine by type
+[*] [b]Research[/b] — current project with progress, completed list, available projects by tech level
+[*] [b]Mood report[/b] — break thresholds, risk levels, best and worst modifiers per colonist
+[*] [b]Health report[/b] — injuries, diseases, immunity progress, bleeding, pain, consciousness
+[*] [b]Skills and work[/b] — all priorities, passions, incapable-of flags for optimization
+[*] [b]Power grid[/b] — generators, batteries, consumption, surplus/deficit
+[*] [b]Farming[/b] — growing zones, crop progress, expected yield, soil fertility
+[*] [b]Defenses[/b] — turrets, traps, wall materials and counts
+[*] [b]Rooms[/b] — role, temperature, impressiveness, beauty, cleanliness
+[*] [b]Factions[/b] — relations, goodwill, hostile status
+[*] [b]Threats[/b] — wealth-based raid points, recent incidents
+[*] [b]Animals[/b] — species, bonded colonist, training, pregnancy
+[/list]
+
+[h1]Reference modules[/h1]
+
+Your AI also gets access to computation tools that know RimWorld's actual formulas:
+
+[list]
+[*] [b]Surgery calculator[/b] — exact success chance from surgeon skill, bed, medicine, lighting
+[*] [b]Crop optimizer[/b] — nutrition/day and silver/day per crop-soil combination
+[*] [b]Combat calculator[/b] — ranged and melee DPS with accuracy at distance, armor penetration
+[*] [b]Material lookup[/b] — final stats for any item-material-quality combination
+[*] [b]Drug analyzer[/b] — production silver/day, addiction risk, safe usage intervals
+[*] [b]Raid estimator[/b] — expected raid points from colony wealth and colonist count
+[*] [b]Gene builder[/b] — xenogerm validation, complexity/metabolism budgets, conflict detection
+[*] [b]Research navigator[/b] — prerequisite chains, total costs, speed estimates by researcher skill
+[/list]
+
+[h1]How it works[/h1]
+
+1. Subscribe to this mod and enable it
+2. Start a game — the mod registers automatically and shows a link code
+3. Enter the code at savecraft.gg to connect your colony
+4. Open Claude or ChatGPT — they can now see your actual colony state
+
+Data syncs automatically on every save (autosave and manual). The mod connects to Savecraft's server via WebSocket and sends parsed colony data as structured sections. No save files leave your machine — only the parsed data.
+
+[h1]Compatibility[/h1]
+
+[list]
+[*] RimWorld 1.5 and 1.6
+[*] All DLCs supported (Royalty, Ideology, Biotech, Anomaly)
+[*] Safe to add or remove mid-save
+[*] No Harmony conflicts — patches only GameDataSaveLoader.SaveGame
+[*] Works alongside other mods, though modded content (custom stats, hediffs) is not yet parsed
+[/list]
+
+[h1]Performance[/h1]
+
+Data collection runs on the main thread after each save. Most colonies process in under 50ms. Large colonies (30+ colonists) may see a brief hitch. Network transfer happens on a background thread and does not affect gameplay.
+
+[h1]Privacy[/h1]
+
+Savecraft sends structured game state (colonist stats, resources, research) to its server for your AI to read. No save files, no filesystem paths, no personal data. The mod is open source: https://github.com/joshsymonds/savecraft.gg
+
+[h1]Links[/h1]
+
+[list]
+[*] Website: https://savecraft.gg
+[*] Source: https://github.com/joshsymonds/savecraft.gg
+[*] Discord: https://discord.gg/savecraft
+[/list]</description>
 </ModMetaData>
