@@ -8,77 +8,68 @@
     <li>1.5</li>
     <li>1.6</li>
   </supportedVersions>
+  <!-- In-game description uses Unity Rich Text (angle-bracket tags).
+       Steam Workshop description uses BBCode and must be set separately
+       via the Steam web editor after uploading. -->
   <description>Your AI is making things up about your colony. Savecraft fixes that.
 
 This mod connects your colony to Claude and ChatGPT so they can see your actual game state — colonists, skills, mood, resources, research, defenses, and more. Real data, updated on every save. No more invented stats or wrong advice.
 
-[h1]What your AI sees[/h1]
+&lt;size=24&gt;What your AI sees&lt;/size&gt;
 
-[list]
-[*] [b]Colony overview[/b] — wealth breakdown, storyteller, difficulty, date, colonist count
-[*] [b]Every colonist[/b] — backstory, traits, all skills with passions, mood with every modifier, health, equipment, apparel with quality
-[*] [b]Resources[/b] — full stockpile inventory, food supply in nutrition-days, medicine by type
-[*] [b]Research[/b] — current project with progress, completed list, available projects by tech level
-[*] [b]Mood report[/b] — break thresholds, risk levels, best and worst modifiers per colonist
-[*] [b]Health report[/b] — injuries, diseases, immunity progress, bleeding, pain, consciousness
-[*] [b]Skills and work[/b] — all priorities, passions, incapable-of flags for optimization
-[*] [b]Power grid[/b] — generators, batteries, consumption, surplus/deficit
-[*] [b]Farming[/b] — growing zones, crop progress, expected yield, soil fertility
-[*] [b]Defenses[/b] — turrets, traps, wall materials and counts
-[*] [b]Rooms[/b] — role, temperature, impressiveness, beauty, cleanliness
-[*] [b]Factions[/b] — relations, goodwill, hostile status
-[*] [b]Threats[/b] — wealth-based raid points, recent incidents
-[*] [b]Animals[/b] — species, bonded colonist, training, pregnancy
-[/list]
+  &lt;b&gt;Colony overview&lt;/b&gt; — wealth, storyteller, difficulty, date, colonist count
+  &lt;b&gt;Every colonist&lt;/b&gt; — backstory, traits, skills, mood, health, equipment
+  &lt;b&gt;Resources&lt;/b&gt; — full stockpile, food supply in nutrition-days, medicine
+  &lt;b&gt;Research&lt;/b&gt; — current project, completed list, available by tech level
+  &lt;b&gt;Mood report&lt;/b&gt; — break thresholds, risk levels, modifiers per colonist
+  &lt;b&gt;Health report&lt;/b&gt; — injuries, diseases, immunity, bleeding, pain
+  &lt;b&gt;Skills and work&lt;/b&gt; — priorities, passions, incapable-of flags
+  &lt;b&gt;Power grid&lt;/b&gt; — generators, batteries, consumption, surplus/deficit
+  &lt;b&gt;Farming&lt;/b&gt; — growing zones, crop progress, yield, soil fertility
+  &lt;b&gt;Defenses&lt;/b&gt; — turrets, traps, wall materials and counts
+  &lt;b&gt;Rooms&lt;/b&gt; — role, temperature, impressiveness, beauty, cleanliness
+  &lt;b&gt;Factions&lt;/b&gt; — relations, goodwill, hostile status
+  &lt;b&gt;Threats&lt;/b&gt; — wealth-based raid points, recent incidents
+  &lt;b&gt;Animals&lt;/b&gt; — species, bonded colonist, training, pregnancy
 
-[h1]Reference modules[/h1]
+&lt;size=24&gt;Reference modules&lt;/size&gt;
 
-Your AI also gets access to computation tools that know RimWorld's actual formulas:
+Your AI also gets computation tools that know RimWorld's actual formulas:
 
-[list]
-[*] [b]Surgery calculator[/b] — exact success chance from surgeon skill, bed, medicine, lighting
-[*] [b]Crop optimizer[/b] — nutrition/day and silver/day per crop-soil combination
-[*] [b]Combat calculator[/b] — ranged and melee DPS with accuracy at distance, armor penetration
-[*] [b]Material lookup[/b] — final stats for any item-material-quality combination
-[*] [b]Drug analyzer[/b] — production silver/day, addiction risk, safe usage intervals
-[*] [b]Raid estimator[/b] — expected raid points from colony wealth and colonist count
-[*] [b]Gene builder[/b] — xenogerm validation, complexity/metabolism budgets, conflict detection
-[*] [b]Research navigator[/b] — prerequisite chains, total costs, speed estimates by researcher skill
-[/list]
+  &lt;b&gt;Surgery calculator&lt;/b&gt; — success chance from skill, bed, medicine, lighting
+  &lt;b&gt;Crop optimizer&lt;/b&gt; — nutrition/day and silver/day per crop-soil combo
+  &lt;b&gt;Combat calculator&lt;/b&gt; — ranged and melee DPS, accuracy, armor penetration
+  &lt;b&gt;Material lookup&lt;/b&gt; — final stats for any item-material-quality combo
+  &lt;b&gt;Drug analyzer&lt;/b&gt; — production silver/day, addiction risk, safe intervals
+  &lt;b&gt;Raid estimator&lt;/b&gt; — expected raid points from wealth and colonist count
+  &lt;b&gt;Gene builder&lt;/b&gt; — xenogerm validation, complexity/metabolism budgets
+  &lt;b&gt;Research navigator&lt;/b&gt; — prerequisite chains, costs, speed estimates
 
-[h1]How it works[/h1]
+&lt;size=24&gt;How it works&lt;/size&gt;
 
 1. Subscribe to this mod and enable it
-2. Start a game — the mod registers automatically and shows a link code
+2. Start a game — the mod registers and shows a link code
 3. Enter the code at savecraft.gg to connect your colony
-4. Connect Savecraft to your AI — add the Savecraft MCP integration in Claude or ChatGPT
-5. Ask about your colony — your AI can now see your actual game state
+4. Add the Savecraft MCP integration in Claude or ChatGPT
+5. Ask about your colony — your AI sees your actual game state
 
-Data syncs automatically on every save (autosave and manual). The mod connects to Savecraft's server via WebSocket and sends parsed colony data as structured sections. No save files leave your machine — only the parsed data.
+Data syncs on every save. No save files leave your machine — only parsed data.
 
-[h1]Compatibility[/h1]
+&lt;size=24&gt;Compatibility&lt;/size&gt;
 
-[list]
-[*] RimWorld 1.5 and 1.6
-[*] All DLCs supported (Royalty, Ideology, Biotech, Anomaly)
-[*] Safe to add or remove mid-save
-[*] No Harmony conflicts — patches only GameDataSaveLoader.SaveGame
-[*] Works alongside other mods, though modded content (custom stats, hediffs) is not yet parsed
-[/list]
+  RimWorld 1.5 and 1.6
+  All DLCs supported (Royalty, Ideology, Biotech, Anomaly)
+  Safe to add or remove mid-save
+  No Harmony conflicts — patches only GameDataSaveLoader.SaveGame
+  Works alongside other mods (modded content not yet parsed)
 
-[h1]Performance[/h1]
+&lt;size=24&gt;Privacy&lt;/size&gt;
 
-Data collection runs on the main thread after each save. Most colonies process in under 50ms. Large colonies (30+ colonists) may see a brief hitch. Network transfer happens on a background thread and does not affect gameplay.
+Savecraft sends structured game state to its server for your AI to read. No save files, no filesystem paths, no personal data. Open source: https://github.com/joshsymonds/savecraft.gg
 
-[h1]Privacy[/h1]
+&lt;size=24&gt;Links&lt;/size&gt;
 
-Savecraft sends structured game state (colonist stats, resources, research) to its server for your AI to read. No save files, no filesystem paths, no personal data. The mod is open source: https://github.com/joshsymonds/savecraft.gg
-
-[h1]Links[/h1]
-
-[list]
-[*] Website: https://savecraft.gg
-[*] Source: https://github.com/joshsymonds/savecraft.gg
-[*] Discord: https://discord.gg/savecraft
-[/list]</description>
+  Website: https://savecraft.gg
+  Source: https://github.com/joshsymonds/savecraft.gg
+  Discord: https://discord.gg/savecraft</description>
 </ModMetaData>
