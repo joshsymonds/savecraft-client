@@ -376,9 +376,22 @@ update-mtga env:
         exit 1
     fi
 
-    echo "==> Phase 1: carddb + rules + cards (parallel, {{env}})"
-    (cd plugins/mtga && just fetch-carddb) 2>&1 | sed 's/^/  [carddb] /' &
-    pid_carddb=$!
+    # Phase 0: mtga-carddb must complete first — it populates mtga_cards from
+    # the MTGA client database. scryfall-fetch enriches these rows.
+    db=".reference/mtga-carddb/Raw_CardDatabase.mtga"
+    if [ ! -f "$db" ]; then
+        echo "MTGA card database not found at $db" >&2
+        echo "Copy Raw_CardDatabase_*.mtga from your MTGA install:" >&2
+        echo "  MTGA_Data/Downloads/Raw/Raw_CardDatabase_*.mtga" >&2
+        echo "To: .reference/mtga-carddb/Raw_CardDatabase.mtga" >&2
+        exit 1
+    fi
+    echo "==> Phase 0: MTGA card data ({{env}})"
+    go run ./plugins/mtga/tools/mtga-carddb/ \
+        --card-db="$db" --cf-account-id="$cf_account" --d1-database-id="$d1" \
+        --cf-api-token="$CLOUDFLARE_API_TOKEN" 2>&1 | sed 's/^/  [carddb] /'
+
+    echo "==> Phase 1: rules + scryfall enrichment (parallel, {{env}})"
     go run ./plugins/mtga/tools/rules-fetch/ \
         --cf-account-id="$cf_account" --d1-database-id="$d1" --vectorize-index="$rules_vec" 2>&1 | sed 's/^/  [rules] /' &
     pid_rules=$!
@@ -387,7 +400,6 @@ update-mtga env:
     pid_cards=$!
 
     fail=0
-    wait $pid_carddb || fail=1
     wait $pid_rules || fail=1
     wait $pid_cards || fail=1
     if [ $fail -ne 0 ]; then
