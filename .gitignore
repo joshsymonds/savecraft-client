@@ -78,3 +78,4 @@ deployment-status.json
 # Demo account reset script and fixture data
 scripts/reset-demo.sh
 scripts/fixtures/
+Player.log
