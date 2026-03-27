@@ -53,8 +53,12 @@ namespace SavecraftRimWorld.Connection
         CancellationTokenSource cts;
         volatile ConnectionStatus status = ConnectionStatus.Disconnected;
         volatile SyncState syncState = SyncState.Idle;
+        // These fields are written from background threads and read from the UI thread.
+        // lastSectionCount is volatile for atomicity. DateTime (64-bit struct) can tear on
+        // 32-bit runtimes but only produces a harmless nonsensical display for one frame.
+        // lastSyncError is a reference type (atomic assignment on all .NET runtimes).
         DateTime lastSyncTime;
-        int lastSectionCount;
+        volatile int lastSectionCount;
         string lastSyncError;
 
         public ConnectionStatus Status => status;
@@ -164,6 +168,9 @@ namespace SavecraftRimWorld.Connection
 
         /// <summary>
         /// Gracefully disconnect. Sends SourceOffline before closing.
+        /// RimWorld's GameComponent has no shutdown hook, so this is not called automatically.
+        /// The server detects disconnection via WebSocket close/timeout. This method exists
+        /// for explicit shutdown scenarios (e.g., future mod unload support).
         /// </summary>
         public void Stop()
         {
@@ -416,7 +423,7 @@ namespace SavecraftRimWorld.Connection
             {
                 SourceOnline = new SourceOnline
                 {
-                    Version = "0.1.0",
+                    Version = SavecraftMod.Version,
                     Timestamp = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTime(DateTime.UtcNow),
                     Platform = "rimworld",
                     Os = Environment.OSVersion.ToString(),
@@ -431,11 +438,12 @@ namespace SavecraftRimWorld.Connection
         async Task ReceiveLoop(CancellationToken ct)
         {
             var buffer = new byte[ReceiveBufferSize];
+            var ms = new System.IO.MemoryStream();
 
             while (!ct.IsCancellationRequested && socket?.State == WebSocketState.Open)
             {
                 // Accumulate multi-frame messages
-                using (var ms = new System.IO.MemoryStream())
+                ms.SetLength(0);
                 {
                     WebSocketReceiveResult result;
                     do

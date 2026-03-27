@@ -108,7 +108,7 @@ namespace SavecraftRimWorld
         void DrawStatusPanel(Listing_Standard listing)
         {
             // Panel background with border
-            const float panelHeight = 90f;
+            const float panelHeight = 112f;
             const float padding = 10f;
             const float lineHeight = 22f;
             var panelRect = listing.GetRect(panelHeight);
@@ -167,6 +167,22 @@ namespace SavecraftRimWorld
                 : "Sections: —";
             var sectionRect = new Rect(x + 16f, y, w - 16f, lineHeight);
             Widgets.Label(sectionRect, sectionText);
+            y += lineHeight;
+
+            // Sync state (only shown when actively syncing or on error)
+            var syncState = Connection.CurrentSyncState;
+            if (syncState == SyncState.Syncing)
+            {
+                GUI.color = StatusYellow;
+                var stateRect = new Rect(x + 16f, y, w - 16f, lineHeight);
+                Widgets.Label(stateRect, "Syncing...");
+            }
+            else if (syncState == SyncState.Error && !string.IsNullOrEmpty(Connection.LastSyncError))
+            {
+                GUI.color = StatusRed;
+                var stateRect = new Rect(x + 16f, y, w - 16f, lineHeight);
+                Widgets.Label(stateRect, $"Sync error: {Connection.LastSyncError}");
+            }
 
             GUI.color = prevColor;
             Text.Font = prevFont;
@@ -232,9 +248,10 @@ namespace SavecraftRimWorld
             var buttonRect = listing.GetRect(30f);
             float buttonWidth = (buttonRect.width - 8f) / 2f;
 
-            // Test Push button
+            // Test Push button (debounced — disabled while sync in progress)
+            var isSyncing = Connection.CurrentSyncState == SyncState.Syncing;
             var testRect = new Rect(buttonRect.x, buttonRect.y, buttonWidth, 30f);
-            if (Widgets.ButtonText(testRect, "Test Push"))
+            if (Widgets.ButtonText(testRect, isSyncing ? "Syncing..." : "Test Push") && !isSyncing)
             {
                 Connection.ResetSyncState();
                 Connection.OnSave();

@@ -97,8 +97,9 @@ namespace SavecraftRimWorld.Collectors
             var colonyName = Find.CurrentMap?.info?.parent?.Label
                 ?? Find.World?.info?.name
                 ?? "Unknown Colony";
-            var identity = BuildIdentity(colonyName);
-            var summary = BuildSummary(colonyName);
+            var ctx = ColonyContext.Capture();
+            var identity = BuildIdentity(colonyName, ctx);
+            var summary = BuildSummary(colonyName, ctx);
 
             var pushSave = new PushSave
             {
@@ -112,25 +113,58 @@ namespace SavecraftRimWorld.Collectors
             return new Message { PushSave = pushSave };
         }
 
-        SaveIdentity BuildIdentity(string colonyName)
+        /// <summary>
+        /// Shared game state snapshot used by both BuildIdentity and BuildSummary,
+        /// avoiding duplicate lookups of the same properties.
+        /// </summary>
+        struct ColonyContext
+        {
+            public Map Map;
+            public int TicksGame;
+            public float Longitude;
+            public int ColonistCount;
+            public double Wealth;
+            public int Year;
+            public string Quadrum;
+            public int Day;
+            public string Storyteller;
+            public string Difficulty;
+
+            public static ColonyContext Capture()
+            {
+                var map = Find.CurrentMap;
+                var ticksGame = Find.TickManager?.TicksGame ?? 0;
+                var longitude = map?.Tile != null
+                    ? Find.WorldGrid.LongLatOf(map.Tile).x
+                    : 0f;
+
+                return new ColonyContext
+                {
+                    Map = map,
+                    TicksGame = ticksGame,
+                    Longitude = longitude,
+                    ColonistCount = map?.mapPawns?.FreeColonistsCount ?? 0,
+                    Wealth = Math.Round(map?.wealthWatcher?.WealthTotal ?? 0),
+                    Year = GenDate.Year(ticksGame, longitude),
+                    Quadrum = GenDate.Quadrum(ticksGame, longitude).Label(),
+                    Day = GenDate.DayOfQuadrum(ticksGame, longitude) + 1,
+                    Storyteller = Find.Storyteller?.def?.label ?? "Unknown",
+                    Difficulty = GetDifficultyLabel() ?? "Unknown"
+                };
+            }
+        }
+
+        SaveIdentity BuildIdentity(string colonyName, ColonyContext ctx)
         {
             var extra = StructHelper.NewStruct();
             extra.Set("seed", Find.World?.info?.seedString ?? "");
-            extra.Set("storyteller", Find.Storyteller?.def?.label ?? "");
-            extra.Set("difficulty", GetDifficultyLabel() ?? "");
-
-            var ticksGame = Find.TickManager?.TicksGame ?? 0;
-            var longitude = Find.CurrentMap?.Tile != null
-                ? Find.WorldGrid.LongLatOf(Find.CurrentMap.Tile).x
-                : 0f;
-
-            extra.Set("year", GenDate.Year(ticksGame, longitude));
-            extra.Set("quadrum", GenDate.Quadrum(ticksGame, longitude).Label());
-            extra.Set("day", GenDate.DayOfQuadrum(ticksGame, longitude) + 1);
-
-            var map = Find.CurrentMap;
-            extra.Set("colonist_count", map?.mapPawns?.FreeColonistsCount ?? 0);
-            extra.Set("colony_wealth", Math.Round(map?.wealthWatcher?.WealthTotal ?? 0));
+            extra.Set("storyteller", ctx.Storyteller);
+            extra.Set("difficulty", ctx.Difficulty);
+            extra.Set("year", ctx.Year);
+            extra.Set("quadrum", ctx.Quadrum);
+            extra.Set("day", ctx.Day);
+            extra.Set("colonist_count", ctx.ColonistCount);
+            extra.Set("colony_wealth", ctx.Wealth);
 
             return new SaveIdentity
             {
@@ -148,26 +182,13 @@ namespace SavecraftRimWorld.Collectors
         {
             object difficulty = Find.Storyteller?.difficulty;
             if (difficulty == null) return "Unknown";
-            // At runtime, Storyteller.difficulty is DifficultyDef (a Def subclass with .label).
-            // The Krafs ref assemblies mis-type it as Difficulty (the settings class).
-            // Cast through object to bypass compile-time type checking.
             if (difficulty is Def def) return def.label;
             return difficulty.ToString();
         }
 
-        string BuildSummary(string colonyName)
+        string BuildSummary(string colonyName, ColonyContext ctx)
         {
-            var map = Find.CurrentMap;
-            var colonistCount = map?.mapPawns?.FreeColonistsCount ?? 0;
-            var ticksGame = Find.TickManager?.TicksGame ?? 0;
-            var longitude = map?.Tile != null ? Find.WorldGrid.LongLatOf(map.Tile).x : 0f;
-            var year = GenDate.Year(ticksGame, longitude);
-            var quadrum = GenDate.Quadrum(ticksGame, longitude).Label();
-            var storyteller = Find.Storyteller?.def?.label ?? "Unknown";
-            var difficulty = GetDifficultyLabel() ?? "Unknown";
-            var wealth = Math.Round(map?.wealthWatcher?.WealthTotal ?? 0);
-
-            return $"{colonyName} — {colonistCount} colonists, Year {year} {quadrum}, {storyteller} {difficulty} — Colony Wealth {wealth:N0}";
+            return $"{colonyName} — {ctx.ColonistCount} colonists, Year {ctx.Year} {ctx.Quadrum}, {ctx.Storyteller} {ctx.Difficulty} — Colony Wealth {ctx.Wealth:N0}";
         }
     }
 }
