@@ -20,6 +20,14 @@ namespace SavecraftRimWorld.Connection
         Linked
     }
 
+    public enum SyncState
+    {
+        Idle,
+        Syncing,
+        Success,
+        Error
+    }
+
     /// <summary>
     /// Manages the WebSocket connection to Savecraft's server.
     /// Handles registration, authentication, reconnection, and message dispatch.
@@ -44,8 +52,16 @@ namespace SavecraftRimWorld.Connection
         ClientWebSocket socket;
         CancellationTokenSource cts;
         volatile ConnectionStatus status = ConnectionStatus.Disconnected;
+        volatile SyncState syncState = SyncState.Idle;
+        DateTime lastSyncTime;
+        int lastSectionCount;
+        string lastSyncError;
 
         public ConnectionStatus Status => status;
+        public SyncState CurrentSyncState => syncState;
+        public DateTime LastSyncTime => lastSyncTime;
+        public int LastSectionCount => lastSectionCount;
+        public string LastSyncError => lastSyncError;
         public ConcurrentQueue<Action> MainThreadQueue => mainThreadQueue;
 
         public SavecraftConnection(SavecraftSettings settings)
@@ -81,6 +97,7 @@ namespace SavecraftRimWorld.Connection
             }
 
             // Enqueue collector execution on main thread
+            syncState = SyncState.Syncing;
             EnqueueMainThread(() =>
             {
                 try
@@ -88,16 +105,28 @@ namespace SavecraftRimWorld.Connection
                     var msg = collectorRunner.BuildPushSave();
                     if (msg != null)
                     {
+                        lastSectionCount = msg.PushSave?.Sections.Count ?? 0;
                         // Send on background thread with error logging
                         Task.Run(async () =>
                         {
                             try { await SendAsync(msg); }
-                            catch (Exception sendEx) { Log.Error($"[Savecraft] Send failed: {sendEx}"); }
+                            catch (Exception sendEx)
+                            {
+                                syncState = SyncState.Error;
+                                lastSyncError = sendEx.Message;
+                                Log.Error($"[Savecraft] Send failed: {sendEx}");
+                            }
                         });
+                    }
+                    else
+                    {
+                        syncState = SyncState.Idle;
                     }
                 }
                 catch (Exception ex)
                 {
+                    syncState = SyncState.Error;
+                    lastSyncError = ex.Message;
                     Log.Error($"[Savecraft] Failed to build push: {ex}");
                 }
             });
@@ -483,6 +512,8 @@ namespace SavecraftRimWorld.Connection
 
                 case Message.PayloadOneofCase.PushSaveResult:
                     var pushResult = msg.PushSaveResult;
+                    syncState = SyncState.Success;
+                    lastSyncTime = DateTime.UtcNow;
                     Log.Message($"[Savecraft] Save pushed successfully (save_uuid: {pushResult.SaveUuid}).");
                     break;
 
