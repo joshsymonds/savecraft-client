@@ -3,7 +3,6 @@ using HarmonyLib;
 using RimWorld;
 using SavecraftRimWorld.Collectors;
 using SavecraftRimWorld.Connection;
-using SavecraftRimWorld.UI;
 using UnityEngine;
 using Verse;
 
@@ -286,8 +285,6 @@ namespace SavecraftRimWorld
 
     public class SavecraftGameComponent : GameComponent
     {
-        readonly SyncOverlay syncOverlay = new SyncOverlay();
-
         public SavecraftGameComponent(Game game) { }
 
         public override void FinalizeInit()
@@ -334,11 +331,6 @@ namespace SavecraftRimWorld
                     Log.Error($"[Savecraft] Main thread callback error: {ex}");
                 }
             }
-        }
-
-        public override void GameComponentOnGUI()
-        {
-            syncOverlay.OnGUI();
         }
     }
 }
