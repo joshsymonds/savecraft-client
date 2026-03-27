@@ -12,7 +12,13 @@ namespace SavecraftRimWorld.UI
     public class SyncOverlay
     {
         const float IconSize = 32f;
-        const float Margin = 8f;
+        // Position just above the bottom tab bar (35px from bottom) and left of
+        // the GlobalControls column (200px from right edge). On Steam Deck 1280x800
+        // this places the icon at roughly (1038, 723) — visually anchored to the
+        // bottom-right UI cluster without overlapping any vanilla elements.
+        const float BottomTabBarHeight = 35f;
+        const float GlobalControlsWidth = 200f;
+        const float Padding = 10f;
         const float FadeInDuration = 0.3f;
         const float FadeOutDuration = 0.5f;
         const float SuccessHoldDuration = 2f;
@@ -63,8 +69,8 @@ namespace SavecraftRimWorld.UI
             GUI.color = tint;
 
             var rect = new Rect(
-                UnityEngine.Screen.width - IconSize - Margin,
-                UnityEngine.Screen.height - IconSize - Margin,
+                UnityEngine.Screen.width - GlobalControlsWidth - IconSize - Padding,
+                UnityEngine.Screen.height - BottomTabBarHeight - IconSize - Padding,
                 IconSize,
                 IconSize);
             GUI.DrawTexture(rect, icon);
