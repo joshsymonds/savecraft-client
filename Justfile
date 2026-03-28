@@ -177,9 +177,17 @@ upload-daemon env app_name="savecraft":
 dev-web:
     cd web && npm run dev
 
-# Start Storybook
+# Start Storybook (web dashboard components)
 storybook:
     cd web && npm run storybook
+
+# Build MCP App views → worker/src/mcp/views.gen.ts
+build-views:
+    cd views && npx tsx scripts/build.ts
+
+# Start Storybook (MCP App views)
+storybook-views:
+    cd views && npm run storybook
 
 # Generate Ed25519 keypair for plugin signing
 keygen:
