@@ -6,6 +6,7 @@ description = "In-game Harmony mod pushes full colony state on every save — co
 channel = "alpha"
 coverage = "full"
 homepage = "https://savecraft.gg/plugins/rimworld"
+workshop_url = "https://steamcommunity.com/sharedfiles/filedetails/?id=3693580596"
 
 limitations = [
   "Modded content (added stats, custom hediffs) not yet parsed — vanilla data only",
