@@ -15,6 +15,9 @@ limitations = [
   "Inventory items not categorized by type (no type tags in save data)",
 ]
 
+[attribution]
+sources = ["kepler"]
+
 [author]
 name = "Josh Symonds"
 github = "joshsymonds"

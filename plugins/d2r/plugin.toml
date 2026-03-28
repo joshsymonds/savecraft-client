@@ -12,6 +12,9 @@ limitations = [
   "Only Reign of the Warlock (v105) saves — classic LoD not supported",
 ]
 
+[attribution]
+sources = ["blizzard"]
+
 [author]
 name = "Josh Symonds"
 github = "joshsymonds"
@@ -24,10 +27,3 @@ darwin = "~/Library/Application Support/Diablo II Resurrected"
 [reference.modules.drop_calc]
 name = "Drop Calculator"
 description = "Compute drop probabilities for any item from any farmable source, accounting for Magic Find, player count, and treasure class mechanics."
-
-[reference.modules.drop_calc.attribution]
-author = "Josh Symonds"
-data_sources = [
-  { name = "TreasureClassEx.txt", origin = "Diablo II game data tables" },
-  { name = "ItemRatio.txt", origin = "Diablo II game data tables" },
-]

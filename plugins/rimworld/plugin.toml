@@ -13,6 +13,9 @@ limitations = [
   "Large colonies (30+ colonists) may cause brief frame hitch during data collection",
 ]
 
+[attribution]
+sources = ["ludeon"]
+
 [author]
 name = "Josh Symonds"
 github = "joshsymonds"
@@ -48,54 +51,3 @@ description = "Validate xenogerm builds against complexity and metabolism budget
 [reference.modules.research]
 name = "Research Tree & Crafting Chain Navigator"
 description = "Traverse research prerequisite chains with total costs, applying tech level multipliers for tribal starts. Includes research speed estimation."
-
-[reference.modules.surgery.attribution]
-author = "Josh Symonds"
-data_sources = [
-  { name = "Recipe_Surgery.cs", origin = "RimWorld decompiled source" },
-  { name = "Stats_Pawns_WorkMedical.xml", origin = "RimWorld XML Defs" },
-]
-
-[reference.modules.crops.attribution]
-author = "Josh Symonds"
-data_sources = [
-  { name = "Plants_Cultivated_Farm.xml", origin = "RimWorld XML Defs" },
-  { name = "Plant.cs", origin = "RimWorld decompiled source" },
-]
-
-[reference.modules.combat.attribution]
-author = "Josh Symonds"
-data_sources = [
-  { name = "RangedIndustrial.xml", origin = "RimWorld XML Defs" },
-  { name = "MeleeMedieval.xml", origin = "RimWorld XML Defs" },
-]
-
-[reference.modules.materials.attribution]
-author = "Josh Symonds"
-data_sources = [
-  { name = "Items_Resource_Stuff.xml", origin = "RimWorld XML Defs" },
-]
-
-[reference.modules.drugs.attribution]
-author = "Josh Symonds"
-data_sources = [
-  { name = "Core/Drugs/*.xml", origin = "RimWorld XML Defs" },
-]
-
-[reference.modules.raids.attribution]
-author = "Josh Symonds"
-data_sources = [
-  { name = "StorytellerUtility.cs", origin = "RimWorld decompiled source" },
-]
-
-[reference.modules.genes.attribution]
-author = "Josh Symonds"
-data_sources = [
-  { name = "Biotech/GeneDefs/*.xml", origin = "RimWorld XML Defs (Biotech DLC)" },
-]
-
-[reference.modules.research.attribution]
-author = "Josh Symonds"
-data_sources = [
-  { name = "ResearchProjectDefs/*.xml", origin = "RimWorld XML Defs" },
-]

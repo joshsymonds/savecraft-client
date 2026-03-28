@@ -13,6 +13,9 @@ limitations = [
   "Directory-based save discovery requires daemon enhancement (pending)",
 ]
 
+[attribution]
+sources = ["concernedape"]
+
 [author]
 name = "Josh Symonds"
 github = "joshsymonds"
@@ -26,20 +29,6 @@ darwin = "~/.config/StardewValley/Saves"
 name = "Gift Preferences"
 description = "Look up NPC gift preferences by villager name or item name. Includes universal and personal taste data from Stardew Valley 1.6."
 
-[reference.modules.gift_preferences.attribution]
-author = "Josh Symonds"
-data_sources = [
-  { name = "NPCGiftTastes", origin = "Stardew Valley 1.6 game data via wiki" },
-  { name = "Objects", origin = "Stardew Valley game data via aftonsteps/stardewdata (MIT)" },
-]
-
 [reference.modules.crop_planner]
 name = "Crop Planner"
 description = "Look up crop growth data, profitability, fertilizer effects, and artisan goods values. Use 'crop' for a specific crop's full analysis, or 'season' for all crops ranked by gold/day."
-
-[reference.modules.crop_planner.attribution]
-author = "Josh Symonds"
-data_sources = [
-  { name = "Crop_data", origin = "Stardew Valley 1.6 game data via wiki" },
-  { name = "Objects", origin = "Stardew Valley game data via aftonsteps/stardewdata (MIT)" },
-]
