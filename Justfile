@@ -43,6 +43,10 @@ test-go-race:
 test-worker:
     cd worker && npm run test:shard
 
+# Run MCP App view component tests (vitest + @testing-library/svelte)
+test-views:
+    cd views && npm test
+
 # Run reference Worker infrastructure tests (copies D2R wasm, then tests WASI shim)
 test-reference-worker:
     cd reference && just test
@@ -349,6 +353,7 @@ test:
     }
     run test-go              just test-go
     run test-worker          just test-worker
+    run test-views           just test-views
     run test-reference       just test-reference-worker
     run test-web             just test-web
     run test-site            just test-site
