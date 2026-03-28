@@ -15,6 +15,10 @@ on:
       - '.github/workflows/deploy-daemon.yml'
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
   id-token: write  # Required for Azure OIDC federated auth

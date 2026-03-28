@@ -20,6 +20,10 @@ on:
         required: true
         type: string
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
@@ -196,7 +200,7 @@ jobs:
             go run ./cmd/plugin-manifest/ --version "$VERSION" "plugins/${game_id}"
 
             # Detect plugin source type from plugin.toml
-            plugin_source=$(grep '^source' "plugins/${game_id}/plugin.toml" | sed 's/.*=.*"\(.*\)".*/\1/')
+            plugin_source=$(grep '^source *=' "plugins/${game_id}/plugin.toml" | sed 's/.*=.*"\(.*\)".*/\1/')
 
             # Upload icon if present (background)
             for icon_ext in png svg; do
