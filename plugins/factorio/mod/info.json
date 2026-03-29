@@ -1,0 +1,14 @@
+{
+  "name": "savecraft-export",
+  "version": "0.1.0",
+  "title": "Savecraft State Export",
+  "author": "Savecraft",
+  "contact": "https://savecraft.gg",
+  "homepage": "https://github.com/joshsymonds/savecraft.gg",
+  "description": "Periodically exports game state to JSON for the Savecraft AI gaming companion. Data is written to script-output/savecraft/ and picked up by the Savecraft daemon.",
+  "factorio_version": "2.0",
+  "dependencies": [
+    "base >= 2.0.0",
+    "? space-age >= 2.0.0"
+  ]
+}

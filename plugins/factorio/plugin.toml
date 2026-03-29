@@ -1,0 +1,67 @@
+game_id = "factorio"
+sources = ["wasm", "mod"]
+icon = "icon.png"
+name = "Factorio"
+description = "Lua mod exports game state to JSON; daemon watches script-output and pushes structured save data"
+channel = "alpha"
+homepage = "https://savecraft.gg/plugins/factorio"
+coverage = "partial"
+file_extensions = [".json"]
+
+limitations = [
+  "Requires the Savecraft Export mod installed in Factorio",
+  "Modded recipes and items not yet reflected in reference modules — vanilla data only",
+  "Space Age content (planets, platforms, quality) tracked in sections but reference modules are base-game only",
+]
+
+[attribution]
+sources = ["wube"]
+
+[author]
+name = "Josh Symonds"
+github = "joshsymonds"
+
+[default_paths]
+windows = "%APPDATA%/Factorio/script-output/savecraft"
+linux = "~/.factorio/script-output/savecraft"
+darwin = "~/Library/Application Support/factorio/script-output/savecraft"
+
+[reference.modules.recipe_lookup]
+name = "Recipe & Item Lookup"
+description = "Look up any item, recipe, entity, or technology by exact name. Supports reverse lookups (what uses X, what produces Y). Returns exact ingredients, products, craft time, machine category, and allowed modules. Prevents hallucination on recipe data."
+
+[reference.modules.tech_tree_navigator]
+name = "Tech Tree Navigator"
+description = "Traverse technology prerequisite chains with total science pack costs. Given a target technology and completed research, compute the optimal research path and total cost by pack type."
+
+[reference.modules.ratio_calculator]
+name = "Production Ratio Calculator"
+description = "Given a target item and production rate, compute the full dependency tree: machine counts by tier, belt lane requirements, raw material input rates. Accounts for module effects, beacon transmission (distribution_efficiency / sqrt(n)), and productivity bonuses."
+
+[reference.modules.oil_balancer]
+name = "Oil Processing Balancer"
+description = "Given target fluid products and rates, compute optimal refinery and cracking plant counts for basic, advanced, or coal liquefaction processing. Returns machine counts, water and crude input rates, and surplus byproducts."
+
+[reference.modules.power_calculator]
+name = "Power Generation Calculator"
+description = "Given power demand in MW, compute optimal generation setup for steam (boiler/engine ratios), solar (panel/accumulator ratios), or nuclear (reactor neighbor bonuses, heat exchanger and turbine counts, fuel cell consumption)."
+
+[reference.modules.blueprint_analyzer]
+name = "Blueprint Analyzer"
+description = "Decode a Factorio blueprint string (version byte + base64 + zlib + JSON), extract the entity list, and evaluate production ratios, belt throughput, module usage, and inserter adequacy against baked-in recipe data."
+
+[reference.modules.evolution_tracker]
+name = "Evolution & Threat Tracker"
+description = "Compute biter evolution factor from time, pollution, and nest kills using the asymptotic squashing formula. Predict next enemy tier thresholds and estimate time to reach them at current rates."
+
+[reference.modules.module_optimizer]
+name = "Module & Beacon Optimizer"
+description = "Given a machine type, recipe, and production target, recommend optimal module and beacon configuration. Compares speed, productivity, and efficiency module combinations with beacon count trade-offs."
+
+[reference.modules.quality_calculator]
+name = "Quality Tier Calculator"
+description = "Compute quality tier probability distributions from module setup, including geometric re-roll chains. Calculate expected materials per legendary output and recycler loop efficiency for Space Age quality mechanics."
+
+[reference.modules.train_throughput]
+name = "Train Throughput Calculator"
+description = "Compute train network throughput between stations given train composition, fuel type, distance, inserter configuration, and signal spacing. Returns round-trip time breakdown and bottleneck identification."
