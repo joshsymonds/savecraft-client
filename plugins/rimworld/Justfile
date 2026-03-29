@@ -1,5 +1,6 @@
 build:
     dotnet build SavecraftRimWorld/SavecraftRimWorld.csproj -c Release
+    GOOS=wasip1 GOARCH=wasm go build -o reference.wasm ./reference
 
 clean:
     dotnet clean SavecraftRimWorld/SavecraftRimWorld.csproj

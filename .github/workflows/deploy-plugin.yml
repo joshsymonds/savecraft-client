@@ -211,30 +211,20 @@ jobs:
               fi
             done
 
-            if [ "$plugin_source" = "api" ] || [ "$plugin_source" = "mod" ]; then
-              # API and mod plugins have no WASM — upload manifest + icon only
-              wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json" --remote &
+            # WASM plugins: sign and upload parser.wasm
+            if [ "$plugin_source" != "api" ] && [ "$plugin_source" != "mod" ]; then
+              parser_file="plugins/${game_id}/parser.wasm"
+              go run ./cmd/savecraft-sign/ "$parser_file" /tmp/signing_key.priv
+              wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/parser.wasm" --file "$parser_file" --remote &
               pids+=($!)
-              for pid in "${pids[@]}"; do wait "$pid" || exit 1; done
-              echo "    Published ${game_id} v${VERSION} (${plugin_source} plugin, manifest only)"
-              continue
+              wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/parser.wasm.sig" --file "${parser_file}.sig" --remote &
+              pids+=($!)
             fi
 
-            # WASM plugin: sign, then upload in parallel
-            parser_file="plugins/${game_id}/parser.wasm"
-            go run ./cmd/savecraft-sign/ "$parser_file" /tmp/signing_key.priv
-
+            # Any plugin with reference.wasm: sign, upload, deploy to WfP
             ref_file="plugins/${game_id}/reference.wasm"
             if [ -f "$ref_file" ]; then
               go run ./cmd/savecraft-sign/ "$ref_file" /tmp/signing_key.priv
-            fi
-
-            # Upload to R2 (all in parallel)
-            wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/parser.wasm" --file "$parser_file" --remote &
-            pids+=($!)
-            wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/parser.wasm.sig" --file "${parser_file}.sig" --remote &
-            pids+=($!)
-            if [ -f "$ref_file" ]; then
               wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/reference.wasm" --file "$ref_file" --remote &
               pids+=($!)
               wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/reference.wasm.sig" --file "${ref_file}.sig" --remote &
@@ -245,6 +235,8 @@ jobs:
               cd reference && npx wrangler deploy --name "${game_id}-reference" --dispatch-namespace "$dispatch_ns" && cd ..
               echo "    Deployed ${game_id}-reference to ${dispatch_ns}"
             fi
+
+            # Upload manifest (all plugin types)
             wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json" --remote &
             pids+=($!)
 
