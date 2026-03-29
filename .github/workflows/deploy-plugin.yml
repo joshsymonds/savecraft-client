@@ -199,8 +199,8 @@ jobs:
             just build-plugin "$game_id"
             go run ./cmd/plugin-manifest/ --version "$VERSION" "plugins/${game_id}"
 
-            # Detect plugin source type from plugin.toml
-            plugin_source=$(grep '^source *=' "plugins/${game_id}/plugin.toml" | sed 's/.*=.*"\(.*\)".*/\1/')
+            # Detect plugin source types from plugin.toml (sources is an array)
+            plugin_sources=$(grep '^sources *=' "plugins/${game_id}/plugin.toml" | sed 's/.*\[//;s/\].*//;s/"//g;s/,/ /g')
 
             # Upload icon if present (background)
             for icon_ext in png svg; do
@@ -212,7 +212,7 @@ jobs:
             done
 
             # WASM plugins: sign and upload parser.wasm
-            if [ "$plugin_source" != "api" ] && [ "$plugin_source" != "mod" ]; then
+            if echo "$plugin_sources" | grep -qw "wasm"; then
               parser_file="plugins/${game_id}/parser.wasm"
               go run ./cmd/savecraft-sign/ "$parser_file" /tmp/signing_key.priv
               wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/parser.wasm" --file "$parser_file" --remote &
