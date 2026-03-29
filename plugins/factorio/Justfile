@@ -1,0 +1,7 @@
+build: build-parser
+
+build-parser:
+    GOOS=wasip1 GOARCH=wasm go build -o parser.wasm ./parser
+
+test:
+    go test -v ./parser/
