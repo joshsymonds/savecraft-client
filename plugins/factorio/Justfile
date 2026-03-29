@@ -32,20 +32,22 @@ upload-sprites bucket="plugins":
     echo "Done. Sprites available at plugins/factorio/sprites/"
 
 # Extract fresh data from Steam Deck (requires SSH access)
+# Set DECK_PASSWORD and optionally DECK_HOST in .env.local or environment
 extract-data:
     #!/usr/bin/env bash
     set -euo pipefail
-    DECK="deck@172.31.0.39"
+    : "${DECK_PASSWORD:?Set DECK_PASSWORD to the Steam Deck SSH password (see .env.local)}"
+    DECK="${DECK_HOST:-deck@172.31.0.39}"
     REF="../../.reference"
     echo "Running factorio --dump-data on Steam Deck..."
     echo "WARNING: This may steal focus from active games on the Deck!"
     read -p "Continue? [y/N] " -n 1 -r
     echo
     [[ $REPLY =~ ^[Yy]$ ]] || exit 0
-    nix-shell -p sshpass --run "sshpass -p 'henchmen abalone montana' ssh $DECK \
+    nix-shell -p sshpass --run "sshpass -p "$DECK_PASSWORD" ssh $DECK \
         '~/.steam/steam/steamapps/common/Factorio/bin/x64/factorio --dump-data 2>&1 | tail -3'"
     echo "Copying data-raw-dump.json..."
-    nix-shell -p sshpass --run "sshpass -p 'henchmen abalone montana' scp \
+    nix-shell -p sshpass --run "sshpass -p "$DECK_PASSWORD" scp \
         $DECK:/home/deck/.factorio/script-output/data-raw-dump.json \
         $REF/factorio-data-raw-dump.json"
     echo "Done. Run 'just datagen' to regenerate Go files."
@@ -54,19 +56,20 @@ extract-data:
 extract-sprites:
     #!/usr/bin/env bash
     set -euo pipefail
-    DECK="deck@172.31.0.39"
+    : "${DECK_PASSWORD:?Set DECK_PASSWORD to the Steam Deck SSH password (see .env.local)}"
+    DECK="${DECK_HOST:-deck@172.31.0.39}"
     REF="../../.reference"
     echo "Running factorio --dump-icon-sprites on Steam Deck..."
     echo "WARNING: This WILL launch Factorio on the Deck!"
     read -p "Continue? [y/N] " -n 1 -r
     echo
     [[ $REPLY =~ ^[Yy]$ ]] || exit 0
-    nix-shell -p sshpass --run "sshpass -p 'henchmen abalone montana' ssh $DECK \
+    nix-shell -p sshpass --run "sshpass -p "$DECK_PASSWORD" ssh $DECK \
         '~/.steam/steam/steamapps/common/Factorio/bin/x64/factorio --dump-icon-sprites 2>&1 | tail -5'"
     echo "Copying sprites..."
-    nix-shell -p sshpass --run "sshpass -p 'henchmen abalone montana' ssh $DECK \
+    nix-shell -p sshpass --run "sshpass -p "$DECK_PASSWORD" ssh $DECK \
         'cd /home/deck/.factorio/script-output && tar czf /tmp/factorio-sprites.tar.gz item/ fluid/ recipe/ technology/ entity/ equipment/ quality/ virtual-signal/'"
-    nix-shell -p sshpass --run "sshpass -p 'henchmen abalone montana' scp \
+    nix-shell -p sshpass --run "sshpass -p "$DECK_PASSWORD" scp \
         $DECK:/tmp/factorio-sprites.tar.gz /tmp/factorio-sprites.tar.gz"
     mkdir -p "$REF/factorio-sprites"
     tar xzf /tmp/factorio-sprites.tar.gz -C "$REF/factorio-sprites/"
@@ -76,15 +79,16 @@ extract-sprites:
 extract-locale:
     #!/usr/bin/env bash
     set -euo pipefail
-    DECK="deck@172.31.0.39"
+    : "${DECK_PASSWORD:?Set DECK_PASSWORD to the Steam Deck SSH password (see .env.local)}"
+    DECK="${DECK_HOST:-deck@172.31.0.39}"
     REF="../../.reference"
     echo "Running factorio --dump-prototype-locale on Steam Deck..."
-    nix-shell -p sshpass --run "sshpass -p 'henchmen abalone montana' ssh $DECK \
+    nix-shell -p sshpass --run "sshpass -p "$DECK_PASSWORD" ssh $DECK \
         '~/.steam/steam/steamapps/common/Factorio/bin/x64/factorio --dump-prototype-locale 2>&1 | tail -3'"
     echo "Copying locale files..."
-    nix-shell -p sshpass --run "sshpass -p 'henchmen abalone montana' ssh $DECK \
+    nix-shell -p sshpass --run "sshpass -p "$DECK_PASSWORD" ssh $DECK \
         'cd /home/deck/.factorio/script-output && tar czf /tmp/factorio-locale.tar.gz *-locale.json'"
-    nix-shell -p sshpass --run "sshpass -p 'henchmen abalone montana' scp \
+    nix-shell -p sshpass --run "sshpass -p "$DECK_PASSWORD" scp \
         $DECK:/tmp/factorio-locale.tar.gz /tmp/factorio-locale.tar.gz"
     mkdir -p "$REF/factorio-locale"
     tar xzf /tmp/factorio-locale.tar.gz -C "$REF/factorio-locale/"

@@ -10,6 +10,7 @@ local EXPORT_PATH = "savecraft/state.json"
 -- Cached entity data (refreshed every ENTITY_INTERVAL ticks)
 local cached_machines = nil
 local cached_resources = nil
+local cached_power = nil
 
 -- ─── Identity ────────────────────────────────────────────────────────────────
 
@@ -444,6 +445,7 @@ local function build_export(include_entities)
   if include_entities then
     cached_machines = collect_machines()
     cached_resources = collect_resources()
+    cached_power = collect_power()
   end
 
   local summary = string.format(
@@ -465,13 +467,15 @@ local function build_export(include_entities)
       description = "Current research, queue, completed technologies, and infinite research levels",
       data = collect_research(),
     },
-    power = {
-      description = "Per-surface power generation, consumption, and satisfaction",
-      data = collect_power(),
-    },
   }
 
   -- Include entity-scanned sections only when cached data exists
+  if cached_power then
+    sections.power = {
+      description = "Per-surface power generation, consumption, and satisfaction",
+      data = cached_power,
+    }
+  end
   if cached_machines then
     sections.machines = {
       description = "Active machines grouped by recipe with module tallies",
