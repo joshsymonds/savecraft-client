@@ -9,8 +9,86 @@ build-reference:
 test:
     go test -v ./parser/ ./reference/
 
+test-validation:
+    go test -v -run TestValidation ./reference/
+
 datagen:
     go run ./tools/datagen/
 
 spritesheet:
     go run ./tools/spritesheet/
+
+# Regenerate everything from source data
+regen: datagen spritesheet build
+
+# Upload sprite sheets to R2 (requires CLOUDFLARE_API_TOKEN)
+upload-sprites bucket="plugins":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for f in sprites/items.png sprites/items.json sprites/fluids.png sprites/fluids.json; do
+        echo "Uploading $f → {{bucket}}/factorio/$f"
+        wrangler r2 object put "{{bucket}}/factorio/$f" --file "$f"
+    done
+    echo "Done. Sprites available at plugins/factorio/sprites/"
+
+# Extract fresh data from Steam Deck (requires SSH access)
+extract-data:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    DECK="deck@172.31.0.39"
+    REF="../../.reference"
+    echo "Running factorio --dump-data on Steam Deck..."
+    echo "WARNING: This may steal focus from active games on the Deck!"
+    read -p "Continue? [y/N] " -n 1 -r
+    echo
+    [[ $REPLY =~ ^[Yy]$ ]] || exit 0
+    nix-shell -p sshpass --run "sshpass -p 'henchmen abalone montana' ssh $DECK \
+        '~/.steam/steam/steamapps/common/Factorio/bin/x64/factorio --dump-data 2>&1 | tail -3'"
+    echo "Copying data-raw-dump.json..."
+    nix-shell -p sshpass --run "sshpass -p 'henchmen abalone montana' scp \
+        $DECK:/home/deck/.factorio/script-output/data-raw-dump.json \
+        $REF/factorio-data-raw-dump.json"
+    echo "Done. Run 'just datagen' to regenerate Go files."
+
+# Extract icon sprites from Steam Deck
+extract-sprites:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    DECK="deck@172.31.0.39"
+    REF="../../.reference"
+    echo "Running factorio --dump-icon-sprites on Steam Deck..."
+    echo "WARNING: This WILL launch Factorio on the Deck!"
+    read -p "Continue? [y/N] " -n 1 -r
+    echo
+    [[ $REPLY =~ ^[Yy]$ ]] || exit 0
+    nix-shell -p sshpass --run "sshpass -p 'henchmen abalone montana' ssh $DECK \
+        '~/.steam/steam/steamapps/common/Factorio/bin/x64/factorio --dump-icon-sprites 2>&1 | tail -5'"
+    echo "Copying sprites..."
+    nix-shell -p sshpass --run "sshpass -p 'henchmen abalone montana' ssh $DECK \
+        'cd /home/deck/.factorio/script-output && tar czf /tmp/factorio-sprites.tar.gz item/ fluid/ recipe/ technology/ entity/ equipment/ quality/ virtual-signal/'"
+    nix-shell -p sshpass --run "sshpass -p 'henchmen abalone montana' scp \
+        $DECK:/tmp/factorio-sprites.tar.gz /tmp/factorio-sprites.tar.gz"
+    mkdir -p "$REF/factorio-sprites"
+    tar xzf /tmp/factorio-sprites.tar.gz -C "$REF/factorio-sprites/"
+    echo "Done. Run 'just spritesheet' to regenerate sprite sheets."
+
+# Extract locale data from Steam Deck
+extract-locale:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    DECK="deck@172.31.0.39"
+    REF="../../.reference"
+    echo "Running factorio --dump-prototype-locale on Steam Deck..."
+    nix-shell -p sshpass --run "sshpass -p 'henchmen abalone montana' ssh $DECK \
+        '~/.steam/steam/steamapps/common/Factorio/bin/x64/factorio --dump-prototype-locale 2>&1 | tail -3'"
+    echo "Copying locale files..."
+    nix-shell -p sshpass --run "sshpass -p 'henchmen abalone montana' ssh $DECK \
+        'cd /home/deck/.factorio/script-output && tar czf /tmp/factorio-locale.tar.gz *-locale.json'"
+    nix-shell -p sshpass --run "sshpass -p 'henchmen abalone montana' scp \
+        $DECK:/tmp/factorio-locale.tar.gz /tmp/factorio-locale.tar.gz"
+    mkdir -p "$REF/factorio-locale"
+    tar xzf /tmp/factorio-locale.tar.gz -C "$REF/factorio-locale/"
+    echo "Done. Locale data in $REF/factorio-locale/"
+
+# Full refresh: extract all data from Steam Deck and regenerate everything
+full-refresh: extract-data extract-locale datagen spritesheet build
