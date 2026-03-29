@@ -1,5 +1,5 @@
 game_id = "rimworld"
-source = "mod"
+sources = ["mod"]
 icon = "icon.png"
 name = "RimWorld"
 description = "In-game Harmony mod pushes full colony state on every save — colonists, resources, research, mood, health, defenses, farming, factions, and more"

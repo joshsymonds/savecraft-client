@@ -1,5 +1,5 @@
 game_id = "clair-obscur"
-source = "wasm"
+sources = ["wasm"]
 icon = "icon.png"
 name = "Clair Obscur: Expedition 33"
 description = "Parses Clair Obscur: Expedition 33 save files — character builds, party, inventory, progression"
