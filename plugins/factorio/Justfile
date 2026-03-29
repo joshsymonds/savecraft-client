@@ -11,3 +11,6 @@ test:
 
 datagen:
     go run ./tools/datagen/
+
+spritesheet:
+    go run ./tools/spritesheet/
