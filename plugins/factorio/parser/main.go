@@ -14,9 +14,9 @@ import (
 
 // modExport is the JSON structure written by the Factorio Lua mod.
 type modExport struct {
-	Identity identity                    `json:"identity"`
-	Summary  string                      `json:"summary"`
-	Sections map[string]json.RawMessage  `json:"sections"`
+	Identity identity                   `json:"identity"`
+	Summary  string                     `json:"summary"`
+	Sections map[string]json.RawMessage `json:"sections"`
 }
 
 type identity struct {
