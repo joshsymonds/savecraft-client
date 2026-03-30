@@ -29,10 +29,12 @@ darwin = "~/Library/Application Support/factorio/script-output/savecraft"
 [reference.modules.recipe_lookup]
 name = "Recipe & Item Lookup"
 description = "Look up any item, recipe, entity, or technology by exact name. Supports reverse lookups (what uses X, what produces Y). Returns exact ingredients, products, craft time, machine category, and allowed modules. Prevents hallucination on recipe data."
+view_default = "hidden"
 
 [reference.modules.tech_tree_navigator]
 name = "Tech Tree Navigator"
 description = "Traverse technology prerequisite chains with total science pack costs. Given a target technology and completed research, compute the optimal research path and total cost by pack type."
+view_default = "hidden"
 
 [reference.modules.ratio_calculator]
 name = "Production Ratio Calculator"
@@ -46,6 +48,7 @@ actual_flow = "production_flow"
 [reference.modules.oil_balancer]
 name = "Oil Processing Balancer"
 description = "Given target fluid products and rates, compute optimal refinery and cracking plant counts for basic, advanced, or coal liquefaction processing. Returns machine counts, water and crude input rates, and surplus byproducts. Pass save_id to compare against your actual factory and identify bottlenecks."
+view_default = "visible"
 
 [reference.modules.oil_balancer.section_mappings]
 existing_setup = "machines"
