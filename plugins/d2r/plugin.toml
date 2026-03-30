@@ -27,3 +27,4 @@ darwin = "~/Library/Application Support/Diablo II Resurrected"
 [reference.modules.drop_calc]
 name = "Drop Calculator"
 description = "Compute drop probabilities for any item from any farmable source, accounting for Magic Find, player count, and treasure class mechanics."
+view_default = "visible"

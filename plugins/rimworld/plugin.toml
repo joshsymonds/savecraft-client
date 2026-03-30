@@ -23,31 +23,39 @@ github = "joshsymonds"
 [reference.modules.surgery]
 name = "Surgery Success Calculator"
 description = "Calculate true surgery success probability from surgeon skill, bed type, quality, room cleanliness, medicine, and operation difficulty. Implements the exact formula from Recipe_Surgery.CheckSurgeryFail."
+view_default = "visible"
 
 [reference.modules.crops]
 name = "Crop Production Optimizer"
 description = "Compute nutrition/day/tile and silver/day/tile for any crop on any soil type, accounting for fertility sensitivity, temperature growth curves, and rest periods. Includes tiles-per-colonist estimates."
+view_default = "visible"
 
 [reference.modules.combat]
 name = "Weapon & Armor Combat Calculator"
 description = "Compute ranged DPS at any distance (accuracy interpolation across 4 range breakpoints), melee true DPS via weighted verb selection, and armor damage reduction expected values."
+view_default = "visible"
 
 [reference.modules.materials]
 name = "Material & Item Stat Lookup"
 description = "Look up final stats for any item-material-quality combination using the three-layer multiplication: base stat, material factor, and quality multiplier."
+view_default = "visible"
 
 [reference.modules.drugs]
 name = "Drug Economy & Addiction Analyzer"
 description = "Compute silver/day for drug production chains (crop to processed drug), silver per raw material, and addiction risk data including tolerance thresholds and safe dose intervals."
+view_default = "visible"
 
 [reference.modules.raids]
 name = "Colony Wealth & Raid Threat Estimator"
 description = "Convert colony wealth to expected raid points using the piecewise wealth curve from StorytellerUtility, with per-colonist point scaling and building wealth at 50% factor."
+view_default = "visible"
 
 [reference.modules.genes]
 name = "Gene Metabolism & Xenotype Builder"
 description = "Validate xenogerm builds against complexity and metabolism budgets, detect gene conflicts via exclusion tags, and tally archite capsule requirements."
+view_default = "visible"
 
 [reference.modules.research]
 name = "Research Tree & Crafting Chain Navigator"
 description = "Traverse research prerequisite chains with total costs, applying tech level multipliers for tribal starts. Includes research speed estimation."
+view_default = "visible"

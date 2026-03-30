@@ -36,7 +36,12 @@ description = "Traverse technology prerequisite chains with total science pack c
 
 [reference.modules.ratio_calculator]
 name = "Production Ratio Calculator"
-description = "Given a target item and production rate, compute the full dependency tree: machine counts by tier, belt lane requirements, raw material input rates. Accounts for module effects, beacon transmission (distribution_efficiency / sqrt(n)), and productivity bonuses."
+description = "Given a target item and production rate, compute the full dependency tree: machine counts by tier, belt lane requirements, raw material input rates. Accounts for module effects, beacon transmission (distribution_efficiency / sqrt(n)), and productivity bonuses. Pass save_id to compare against your actual factory and identify bottlenecks."
+view_default = "visible"
+
+[reference.modules.ratio_calculator.section_mappings]
+existing_machines = "machines"
+actual_flow = "production_flow"
 
 [reference.modules.oil_balancer]
 name = "Oil Processing Balancer"
@@ -53,6 +58,7 @@ description = "Decode a Factorio blueprint string (version byte + base64 + zlib 
 [reference.modules.evolution_tracker]
 name = "Evolution & Threat Tracker"
 description = "Compute biter evolution factor from time, pollution, and nest kills using the asymptotic squashing formula. Predict next enemy tier thresholds and estimate time to reach them at current rates."
+view_default = "visible"
 
 [reference.modules.module_optimizer]
 name = "Module & Beacon Optimizer"
