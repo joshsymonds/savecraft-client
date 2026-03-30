@@ -38,6 +38,7 @@ node_modules/
 .vite/
 
 # Storybook
+views/storybook-static/
 web/storybook-static/
 site/storybook-static/
 web/screenshots/
