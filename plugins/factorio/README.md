@@ -422,7 +422,7 @@ Look up any item, recipe, entity, or technology by exact name. Supports reverse 
 
 Full prerequisite chains with total science pack costs, optimal research paths.
 
-- **Why:** Tech tree is a DAG with 200+ nodes. "What do I need to unlock spidertron?" requires graph traversal the AI shouldn't do in-context.
+- **Why:** Tech tree is a graph with 200+ nodes. "What do I need to unlock spidertron?" requires traversal the AI shouldn't do in-context.
 - **Input:** `target` technology, `completed` list (from save via section mapping), `goal` mode (shortest path)
 - **Output:** Full prerequisite chain, total cost by science pack type, recommended research order
 - **Section mapping:** Pulls `research` section to exclude already-completed technologies
@@ -531,14 +531,13 @@ All views must work in label mode — icons are enhancement, not requirement. To
 
 ### Chart Components
 
-**New shared components** (in `views/src/components/charts/`, reusable across all games):
+**Shared flow component** (in `views/src/components/charts/`, reusable across all games):
 
-| Component | Library | Size | Purpose |
-|-----------|---------|------|---------|
-| **FlowSankey** | d3-sankey (layout) + Svelte SVG | ~15-30KB gzip | Directed flow visualization — nodes are stages, links are flows with width proportional to rate. Game-agnostic: works for Factorio production chains, RimWorld trade routes, any flow data. |
-| **ProductionDAG** | Elkjs (layout) + Svelte SVG | ~150KB gzip | Port-based directed graph — nodes have typed input/output ports, edges connect specific ports. For recipe chains, tech trees, dependency graphs. |
+| Component | Purpose |
+|-----------|---------|
+| **FlowChart** | Sankey-style flow visualization — nodes are stages, bands are flows with width proportional to rate. Custom layout engine (BFS depth ordering, center-on-upstream positioning, overlap resolution). Game-agnostic: works for Factorio production chains, oil processing, RimWorld trade routes, any flow data. Pure Svelte (HTML divs for nodes, SVG paths for bands). |
 
-Both are **layout-only libraries** — they compute coordinates, Svelte renders SVG. CSP-compliant, bundled at build time. Nodes accept a slot for game-specific content (icon, label, badges).
+Nodes accept a `nodeContent` snippet for game-specific rendering (icons, labels, badges). CSP-compliant, bundled at build time, no external layout library dependencies.
 
 **New Factorio-specific component:**
 
@@ -566,7 +565,7 @@ These modules return structured data for the LLM to reason over. No player-facin
 | Module | Why No View |
 |--------|-------------|
 | `recipe_lookup` | Anti-hallucination data for the model. Player doesn't need to see raw recipe tables — the AI cites the relevant facts. |
-| `tech_tree_navigator` | Returns prerequisite chains for the AI to summarize. A tech tree DAG could be added later but the text list is sufficient. |
+| `tech_tree_navigator` | Returns prerequisite chains for the AI to summarize. A FlowChart view could be added later but the text list is sufficient. |
 | `module_optimizer` | Returns a recommendation + comparison table. AI presents the recommendation with reasoning. FactorChain in a future view if needed. |
 | `train_throughput` | Returns throughput numbers + bottleneck identification. AI explains in context. |
 
@@ -574,16 +573,15 @@ These modules return structured data for the LLM to reason over. No player-facin
 
 These modules produce output the player benefits from SEEING — flow diagrams, health dashboards, distribution charts.
 
-#### `ratio_calculator` — Production Chain DAG
+#### `ratio_calculator` — Production Chain Flow
 
-The flagship visualization. Renders a left-to-right directed graph:
+The flagship visualization. Renders a left-to-right Sankey-style flow diagram via FlowChart:
 - **Nodes** = recipes (machine icon + count + module indicators)
-- **Edges** = item flows (item icon + rate in items/min, line width proportional to flow)
-- **Ports** = inputs enter left side, outputs exit right side of each node
+- **Bands** = item flows (width proportional to rate in items/min)
 - **Highlights** = bottleneck nodes glow red, surplus nodes glow blue
 - **Tooltip** = hover any node to see full recipe details, module effects, efficiency
 
-Uses Elkjs for hierarchical layered layout with port-based edge routing. Supports compound nodes for grouping (e.g., "smelting block" containing 30 furnaces).
+Uses the shared FlowChart component with ProductionChain wrapper and MachineNode custom content.
 
 When invoked with section mapping against `production_flow`, delta annotations show "+12 machines needed" or "current: 20, target: 32" per node.
 
@@ -595,7 +593,7 @@ Sankey diagram showing fluid processing chain:
 - **Color** = fluid type (black for crude, brown for heavy, yellow for light, cyan for petroleum)
 - **Annotations** = machine counts at each stage, surplus/deficit indicators
 
-d3-sankey computes the layout; Svelte renders SVG paths with cubic bezier curves.
+FlowChart computes the layout; Svelte renders SVG paths with cubic bezier curves.
 
 #### `blueprint_analyzer` — Blueprint Report
 
@@ -631,12 +629,12 @@ Not a spatial layout (that would require rendering every entity position). Inste
 ### Design Principles
 
 1. **Views are for the player, not the LLM.** Reference modules that exist to prevent AI hallucination (like `recipe_lookup`) return structured data for the model to reason over — no view needed. Views are only built for modules whose output the player needs to SEE: production chain diagrams, flow charts, health dashboards. If the AI is the consumer, text is sufficient.
-2. **Use the existing component library.** FlowSankey and ProductionDAG are the only new chart components, and they live in the shared library for cross-game reuse. Everything else (BarChart, StackedBar, ProgressRing, Heatmap, DataTable, FactorChain, Sparkline) already exists.
-3. **Layout library computes, Svelte renders.** Elkjs and d3-sankey only return coordinates. All SVG elements are Svelte `{#each}` loops over computed positions. No external DOM manipulation.
+2. **Use the existing component library.** FlowChart is the shared flow visualization component, reusable across all games. Everything else (BarChart, StackedBar, ProgressRing, Heatmap, DataTable, FactorChain, Sparkline) already exists.
+3. **Custom layout, Svelte renders.** FlowChart has its own layout engine (BFS depth ordering, overlap resolution). All elements are Svelte `{#each}` loops. No external layout library dependencies.
 4. **Icons are progressive enhancement.** Every view works in text-label mode. Icons add visual clarity but aren't required for comprehension.
 5. **Text fallback is mandatory.** All reference modules return structured data + narrative text. Views enhance the conversation but the text response must stand alone for hosts without MCP Apps support.
 6. **Tooltips follow the existing pattern.** DOM overlay positioned relative to SVG elements, consistent with BarChart/RadarChart tooltip behavior.
-7. **`updateModelContext()` for interactions.** If a user clicks a node in the production DAG, the view calls `updateModelContext()` to tell the AI what the user is looking at. No `callServerTool` from views.
+7. **`updateModelContext()` for interactions.** If a user clicks a node in the production flow, the view calls `updateModelContext()` to tell the AI what the user is looking at. No `callServerTool` from views.
 
 ## Roadmap
 
@@ -651,7 +649,7 @@ Not a spatial layout (that would require rendering every entity position). Inste
 - [ ] Reference modules: `recipe_lookup`, `ratio_calculator`
 - [ ] Icon sprite sheet: extract via `--dump-icon-sprites`, upload to R2, build manifest
 - [ ] `FactorioIcon` component (sprite + label modes)
-- [ ] `ratio_calculator` ProductionDAG view (Elkjs + Svelte SVG)
+- [ ] `ratio_calculator` FlowChart view (ProductionChain + MachineNode)
 
 ### Phase 2: Full Game Companion
 
