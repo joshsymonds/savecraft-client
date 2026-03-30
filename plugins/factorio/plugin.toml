@@ -45,7 +45,11 @@ actual_flow = "production_flow"
 
 [reference.modules.oil_balancer]
 name = "Oil Processing Balancer"
-description = "Given target fluid products and rates, compute optimal refinery and cracking plant counts for basic, advanced, or coal liquefaction processing. Returns machine counts, water and crude input rates, and surplus byproducts."
+description = "Given target fluid products and rates, compute optimal refinery and cracking plant counts for basic, advanced, or coal liquefaction processing. Returns machine counts, water and crude input rates, and surplus byproducts. Pass save_id to compare against your actual factory and identify bottlenecks."
+
+[reference.modules.oil_balancer.section_mappings]
+existing_setup = "machines"
+actual_flow = "production_flow"
 
 [reference.modules.power_calculator]
 name = "Power Generation Calculator"
