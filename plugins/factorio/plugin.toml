@@ -57,6 +57,10 @@ actual_flow = "production_flow"
 [reference.modules.power_calculator]
 name = "Power Generation Calculator"
 description = "Given power demand in MW, compute optimal generation setup for steam (boiler/engine ratios), solar (panel/accumulator ratios), or nuclear (reactor neighbor bonuses, heat exchanger and turbine counts, fuel cell consumption)."
+view_default = "visible"
+
+[reference.modules.power_calculator.section_mappings]
+existing_power = "power"
 
 [reference.modules.blueprint_analyzer]
 name = "Blueprint Analyzer"
