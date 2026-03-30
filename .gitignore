@@ -1,3 +1,8 @@
+# Scratch images in repo root (screenshots, icons in progress)
+/*.jpg
+/*.jpeg
+/*.png
+
 # devenv
 .devenv/
 
