@@ -261,7 +261,6 @@ Per-surface roboport coverage, bot counts, and logistics network state.
       "roboports": 12,
       "logistic_bots": {"total": 150, "available": 45},
       "construction_bots": {"total": 80, "available": 30},
-      "construction_queue": 15,
       "logistic_chests": {
         "passive-provider": 200,
         "requester": 50,
@@ -301,7 +300,7 @@ Train list with composition, schedule, cargo, and fuel. Station list with throug
 
 ### `defenses`
 
-Evolution factor with source breakdown, turret and wall counts, nearby enemy bases, recent attack frequency.
+Evolution factor with source breakdown, turret and wall counts, nearby enemy bases, total pollution.
 
 ```json
 {
@@ -319,10 +318,9 @@ Evolution factor with source breakdown, turret and wall counts, nearby enemy bas
   },
   "walls": 500,
   "enemy_bases_nearby": [
-    {"distance": 120, "direction": "northeast", "size": "medium"}
+    {"distance": 120, "direction": "northeast", "type": "biter-spawner"}
   ],
-  "recent_attacks": 3,
-  "pollution_cloud_radius_chunks": 12
+  "total_pollution": 45000
 }
 ```
 
@@ -640,28 +638,29 @@ Not a spatial layout (that would require rendering every entity position). Inste
 
 ### Phase 1: Core Integration
 
-- [ ] Lua mod: `control.lua` with `on_nth_tick` state dump
-- [ ] Mod sections: `game_overview`, `production_flow`, `machines`, `research`, `resources`, `power`
-- [ ] plugin.toml and daemon configuration for `script-output/savecraft/` watching
-- [ ] WASM pass-through parser (JSON -> ndjson identity mapping)
+- [x] Lua mod: `control.lua` with `on_nth_tick` state dump
+- [x] Mod sections: `game_overview`, `production_flow`, `machines`, `research`, `resources`, `power`
+- [x] plugin.toml and daemon configuration for `script-output/savecraft/` watching
+- [x] WASM pass-through parser (JSON -> ndjson identity mapping)
 - [ ] Publish mod on Factorio Mod Portal
-- [ ] Reference datagen: `factorio --dump-data` parser + Go struct generation
-- [ ] Reference modules: `recipe_lookup`, `ratio_calculator`
-- [ ] Icon sprite sheet: extract via `--dump-icon-sprites`, upload to R2, build manifest
-- [ ] `FactorioIcon` component (sprite + label modes)
-- [ ] `ratio_calculator` FlowChart view (ProductionChain + MachineNode)
+- [x] Reference datagen: `factorio --dump-data` parser + Go struct generation
+- [x] Reference modules: `recipe_lookup`, `ratio_calculator`
+- [x] Icon sprite sheet: extract via `--dump-icon-sprites`, upload to R2, build manifest
+- [x] `FactorioIcon` component (sprite + label modes)
+- [x] `ratio_calculator` FlowChart view (ProductionChain + MachineNode)
 
 ### Phase 2: Full Game Companion
 
-- [ ] Mod sections: `fluids`, `logistics`, `trains`, `defenses`, `inventory`, `alerts`
-- [ ] Reference modules: `oil_balancer`, `power_calculator`, `evolution_tracker`
-- [ ] Reference modules: `blueprint_analyzer`, `module_optimizer`
-- [ ] Reference module: `tech_tree_navigator`
-- [ ] `oil_balancer` FlowSankey view (d3-sankey + Svelte SVG)
-- [ ] `blueprint_analyzer` report view (DataTable + BarChart + FactorChain)
-- [ ] `evolution_tracker` threat timeline view (ProgressRing + StackedBar + Timeline)
+- [x] Mod sections: `fluids`, `logistics`, `trains`, `defenses`, `inventory`, `alerts`
+- [x] Reference modules: `oil_balancer`, `power_calculator`, `evolution_tracker`
+- [x] Reference module: `blueprint_analyzer`
+- [ ] Reference module: `module_optimizer`
+- [x] Reference module: `tech_tree_navigator`
+- [x] `oil_balancer` FlowSankey view (OilChain Svelte SVG)
+- [x] `blueprint_analyzer` report view (DataTable + BarChart)
+- [x] `evolution_tracker` threat timeline view (ProgressRing + StackedBar)
 - [ ] `production_flow` factory health dashboard view (BarChart + Sparkline + badges)
-- [ ] `power_calculator` layout view (StackedBar + nuclear schematic)
+- [x] `power_calculator` layout view (PowerPlan nuclear schematic)
 
 ### Phase 3: Space Age
 
