@@ -75,6 +75,14 @@ description = "Compute biter evolution factor from time, pollution, and nest kil
 name = "Module & Beacon Optimizer"
 description = "Given a machine type, recipe, and production target, recommend optimal module and beacon configuration. Compares speed, productivity, and efficiency module combinations with beacon count trade-offs."
 
+[reference.modules.production_flow]
+name = "Factory Health Diagnosis"
+description = "Diagnose factory health by cross-referencing production rates with recipe, machine, and technology data. Computes deficit causes, machine gaps, cascade risks, and tech unlock impacts. Pass save_id to analyze your factory."
+
+[reference.modules.production_flow.section_mappings]
+flow_data = "production_flow"
+existing_machines = "machines"
+
 [reference.modules.quality_calculator]
 name = "Quality Tier Calculator"
 description = "Compute quality tier probability distributions from module setup, including geometric re-roll chains. Calculate expected materials per legendary output and recycler loop efficiency for Space Age quality mechanics."
