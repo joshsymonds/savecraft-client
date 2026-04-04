@@ -67,6 +67,7 @@ jobs:
         uses: bufbuild/buf-action@8f4a1456a0ab6a1eb80ba68e53832e6fcfacc16c # v1
         with:
           setup_only: true
+          version: "1.66.1"
 
       - name: Lint proto
         run: just proto-lint
