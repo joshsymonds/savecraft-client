@@ -1,10 +1,10 @@
 # Privacy Policy
 
-**Last updated:** March 4, 2026
+**Last updated:** April 3, 2026
 
 ---
 
-**TL;DR:** Savecraft collects the minimum data needed to connect your game saves to AI assistants. We store your email address, your game save data (which you push to us), and notes you create. We do not run analytics, do not track you, do not sell your data, and do not see your conversations with AI assistants. Our code is [open source](https://github.com/joshsymonds/savecraft) — you can verify all of this yourself.
+**TL;DR:** Savecraft collects the minimum data needed to connect your game saves to AI assistants. We store your email address, your game save data (which you push to us), and notes you create. We log MCP tool calls (what the AI asked for, not what you said to it) to improve the service. We do not use third-party analytics, do not track you across sites, do not sell your data, and do not see your conversations with AI assistants. Our code is [open source](https://github.com/joshsymonds/savecraft) — you can verify all of this yourself.
 
 ---
 
@@ -62,10 +62,17 @@ You (or an AI assistant acting on your behalf during conversation) can create no
 
 ### Authentication and session data
 
-When you connect an AI assistant via MCP, the OAuth handshake creates client registrations, authorization codes, and access tokens. These are stored in Cloudflare KV with automatic expiration (TTL-managed). A single-column record tracks whether you've connected an MCP client, used to show connection status in the web UI.
+When you connect an AI assistant via MCP, the OAuth handshake creates client registrations, authorization codes, and access tokens. These are stored in Cloudflare KV with automatic expiration (TTL-managed).
 
 **Legal basis:** Contract performance (MCP authentication is required for the service to function).
-**Retention:** Tokens expire automatically per their TTL. The MCP activity flag persists until your account is deleted.
+**Retention:** Tokens expire automatically per their TTL.
+
+### MCP tool call logs
+
+When an AI assistant calls our MCP tools on your behalf, we log the request: tool name, parameters, response metadata (size, success/failure, execution time), your account identifier, and which AI client made the request. We do not log the response data itself or any part of your conversation with the AI assistant. See "MCP request logging" below for full details.
+
+**Legal basis:** Legitimate interest — understanding how MCP tools are used helps us improve the service, identify bugs, and prioritize development.
+**Retention:** 90 days, then automatically deleted.
 
 ### Device status events
 
@@ -78,11 +85,11 @@ The daemon reports operational status (online/offline, parse success/failure, pu
 
 This matters as much as what we do collect:
 
-- **No analytics or telemetry.** No Google Analytics, no Posthog, no tracking pixels, no third-party scripts.
+- **No third-party analytics or telemetry.** No Google Analytics, no Posthog, no tracking pixels, no third-party scripts. We analyze our own API request logs to understand how the service is used and improve it (see "MCP request logging" below).
 - **No IP addresses.** Cloudflare sees IP addresses at the network edge, but our application code never reads, stores, or logs them.
 - **No conversation history.** We never see what you say to Claude, ChatGPT, or Gemini. The AI assistant requests specific data from us (e.g., "get this character's equipped gear"), and we return structured JSON. The conversation itself stays entirely between you and the AI provider.
-- **No device fingerprinting.** We do not collect User-Agent strings, screen dimensions, installed fonts, or any browser fingerprint data.
-- **No behavioral tracking.** No click tracking, session recording, heatmaps, or funnel analysis.
+- **No device fingerprinting.** We do not collect screen dimensions, installed fonts, or browser fingerprint data. We do use the User-Agent header from MCP requests to identify which AI client you're connecting from (e.g., Claude vs. ChatGPT) — this is logged as a short label, not a full fingerprint.
+- **No third-party behavioral tracking.** No click tracking, session recording, heatmaps, or third-party analytics. We do analyze our own first-party API logs to understand usage patterns and improve the service.
 
 ## How data flows through MCP
 
@@ -90,7 +97,13 @@ This is worth explaining clearly because it's a new kind of data flow that most 
 
 When you connect an AI assistant to Savecraft, the assistant can use our MCP tools to request your game data. A typical interaction looks like this: you ask the AI a question about your character, the AI calls our `get_section` tool with your save ID, we return the requested JSON data (e.g., your equipped gear), and the AI uses that data to answer your question.
 
-We serve data to the AI assistant **on your behalf and under your authorization.** We do not control what the AI provider does with the data after receiving it — that is governed by your agreement with the AI provider (Anthropic, OpenAI, Google, etc.). We do not cache requests from AI providers, and we do not retain logs of which tools are called or what data is returned.
+We serve data to the AI assistant **on your behalf and under your authorization.** We do not control what the AI provider does with the data after receiving it — that is governed by your agreement with the AI provider (Anthropic, OpenAI, Google, etc.).
+
+### MCP request logging
+
+We log MCP tool calls to understand how the service is used and improve it. Each log entry records: which tool was called (e.g., `get_section`), the parameters sent (e.g., save ID, section name), response metadata (size in bytes, success or failure, execution time), your account identifier, and which AI client made the request. Logs are retained for 90 days, then automatically deleted.
+
+We do **not** log the response data itself — the game state returned to the AI assistant is already stored in your saves and can be looked up from the logged parameters. We do **not** see or store any part of your conversation with the AI assistant. The conversation stays entirely between you and the AI provider; only the structured API requests reach our server.
 
 ## Cookies
 
