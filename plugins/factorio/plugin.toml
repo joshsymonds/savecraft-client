@@ -82,6 +82,7 @@ description = "Diagnose factory health by cross-referencing production rates wit
 [reference.modules.production_flow.section_mappings]
 flow_data = "production_flow"
 existing_machines = "machines"
+completed_research = "research"
 
 [reference.modules.quality_calculator]
 name = "Quality Tier Calculator"

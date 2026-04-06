@@ -68,8 +68,8 @@ local function collect_game_overview()
     ticks_played = ticks,
     hours_played = math.floor(hours * 100) / 100,
     difficulty_settings = {
-      recipe_difficulty = game.difficulty_settings.recipe_difficulty,
-      technology_difficulty = game.difficulty_settings.technology_difficulty,
+      technology_price_multiplier = game.difficulty_settings.technology_price_multiplier,
+      spoil_time_modifier = game.difficulty_settings.spoil_time_modifier,
     },
     mods = collect_mods(),
     rocket_launches = force and force.rockets_launched or 0,
@@ -86,59 +86,85 @@ local function collect_production_flow()
   local force = game.forces["player"]
   if not force then return { items = {}, fluids = {}, top_deficits = {}, top_surpluses = {} } end
 
-  local item_stats = force.item_production_statistics
-  local fluid_stats = force.fluid_production_statistics
-
+  -- In Factorio 2.0, production stats are per-surface. Aggregate across all surfaces.
   local items = {}
-  local deficits = {}
-  local surpluses = {}
+  local fluids = {}
 
-  -- Iterate all item prototypes, collect non-zero entries.
-  for name, _ in pairs(prototypes.item) do
-    local produced = item_stats.get_output_count(name)
-    local consumed = item_stats.get_input_count(name)
-    if produced > 0 or consumed > 0 then
-      -- Flow count with precision_index 2 = per-minute rate.
-      local produced_per_min = item_stats.get_flow_count{
-        name = name, input = false, precision_index = 2, count = true,
-      }
-      local consumed_per_min = item_stats.get_flow_count{
-        name = name, input = true, precision_index = 2, count = true,
-      }
-      local net = produced_per_min - consumed_per_min
-      items[name] = {
-        produced_total = produced,
-        consumed_total = consumed,
-        produced_per_min = math.floor(produced_per_min * 10) / 10,
-        consumed_per_min = math.floor(consumed_per_min * 10) / 10,
-      }
-      if net < -0.1 then
-        deficits[#deficits + 1] = { name = name, net = net }
-      elseif net > 0.1 then
-        surpluses[#surpluses + 1] = { name = name, net = net }
+  for _, surface in pairs(game.surfaces) do
+    local item_stats = force.get_item_production_statistics(surface)
+    local fluid_stats = force.get_fluid_production_statistics(surface)
+
+    for name, _ in pairs(prototypes.item) do
+      local produced = item_stats.get_output_count(name)
+      local consumed = item_stats.get_input_count(name)
+      if produced > 0 or consumed > 0 then
+        local produced_per_min = item_stats.get_flow_count{
+          name = name, category = "output", precision_index = defines.flow_precision_index.one_minute, count = true,
+        }
+        local consumed_per_min = item_stats.get_flow_count{
+          name = name, category = "input", precision_index = defines.flow_precision_index.one_minute, count = true,
+        }
+        local entry = items[name]
+        if entry then
+          entry.produced_total = entry.produced_total + produced
+          entry.consumed_total = entry.consumed_total + consumed
+          entry.produced_per_min = entry.produced_per_min + produced_per_min
+          entry.consumed_per_min = entry.consumed_per_min + consumed_per_min
+        else
+          items[name] = {
+            produced_total = produced,
+            consumed_total = consumed,
+            produced_per_min = produced_per_min,
+            consumed_per_min = consumed_per_min,
+          }
+        end
+      end
+    end
+
+    for name, _ in pairs(prototypes.fluid) do
+      local produced = fluid_stats.get_output_count(name)
+      local consumed = fluid_stats.get_input_count(name)
+      if produced > 0 or consumed > 0 then
+        local produced_per_min = fluid_stats.get_flow_count{
+          name = name, category = "output", precision_index = defines.flow_precision_index.one_minute, count = true,
+        }
+        local consumed_per_min = fluid_stats.get_flow_count{
+          name = name, category = "input", precision_index = defines.flow_precision_index.one_minute, count = true,
+        }
+        local entry = fluids[name]
+        if entry then
+          entry.produced_total = entry.produced_total + produced
+          entry.consumed_total = entry.consumed_total + consumed
+          entry.produced_per_min = entry.produced_per_min + produced_per_min
+          entry.consumed_per_min = entry.consumed_per_min + consumed_per_min
+        else
+          fluids[name] = {
+            produced_total = produced,
+            consumed_total = consumed,
+            produced_per_min = produced_per_min,
+            consumed_per_min = consumed_per_min,
+          }
+        end
       end
     end
   end
 
-  -- Fluids
-  local fluids = {}
-  for name, _ in pairs(prototypes.fluid) do
-    local produced = fluid_stats.get_output_count(name)
-    local consumed = fluid_stats.get_input_count(name)
-    if produced > 0 or consumed > 0 then
-      local produced_per_min = fluid_stats.get_flow_count{
-        name = name, input = false, precision_index = 2, count = true,
-      }
-      local consumed_per_min = fluid_stats.get_flow_count{
-        name = name, input = true, precision_index = 2, count = true,
-      }
-      fluids[name] = {
-        produced_total = produced,
-        consumed_total = consumed,
-        produced_per_min = math.floor(produced_per_min * 10) / 10,
-        consumed_per_min = math.floor(consumed_per_min * 10) / 10,
-      }
+  -- Round rates after aggregation
+  local deficits = {}
+  local surpluses = {}
+  for name, entry in pairs(items) do
+    entry.produced_per_min = math.floor(entry.produced_per_min * 10) / 10
+    entry.consumed_per_min = math.floor(entry.consumed_per_min * 10) / 10
+    local net = entry.produced_per_min - entry.consumed_per_min
+    if net < -0.1 then
+      deficits[#deficits + 1] = { name = name, net = net }
+    elseif net > 0.1 then
+      surpluses[#surpluses + 1] = { name = name, net = net }
     end
+  end
+  for _, entry in pairs(fluids) do
+    entry.produced_per_min = math.floor(entry.produced_per_min * 10) / 10
+    entry.consumed_per_min = math.floor(entry.consumed_per_min * 10) / 10
   end
 
   -- Sort deficits and surpluses by magnitude, take top 5.
@@ -242,12 +268,10 @@ local function collect_research()
     }
   end
 
-  -- Research queue
+  -- Research queue (always available in Factorio 2.0)
   local queue = {}
-  if force.research_queue_enabled then
-    for _, tech in pairs(force.research_queue) do
-      queue[#queue + 1] = tech.name
-    end
+  for _, tech_id in pairs(force.research_queue) do
+    queue[#queue + 1] = tech_id
   end
 
   -- Completed technologies and infinite research levels
@@ -370,27 +394,23 @@ local function collect_power()
       total_generation = total_generation + mw
     end
 
-    -- Solar panels
+    -- Solar panels (no energy_generated_last_tick — report count only)
     local solar = surface.find_entities_filtered{ type = "solar-panel", force = "player" }
     if #solar > 0 then
-      local mw = 0
-      for _, e in pairs(solar) do
-        mw = mw + (e.energy_generated_last_tick or 0) * 60 / 1000000
-      end
-      generators["solar-panel"] = { count = #solar, mw = math.floor(mw * 10) / 10 }
-      total_generation = total_generation + mw
+      generators["solar-panel"] = { count = #solar }
     end
 
-    -- Reactors (thermal, not directly electric — but good to count)
+    -- Reactors (produce heat, not electricity — report count and neighbour bonus)
     local reactors = surface.find_entities_filtered{ type = "reactor", force = "player" }
     if #reactors > 0 then
-      local mw = 0
+      local total_bonus = 0
       for _, e in pairs(reactors) do
-        -- Reactor neighbour bonus is reflected in the actual energy output
-        mw = mw + (e.energy_generated_last_tick or 0) * 60 / 1000000
+        total_bonus = total_bonus + (e.neighbour_bonus or 0)
       end
-      generators["nuclear-reactor"] = { count = #reactors, mw = math.floor(mw * 10) / 10 }
-      total_generation = total_generation + mw
+      generators["nuclear-reactor"] = {
+        count = #reactors,
+        avg_neighbour_bonus = math.floor(total_bonus / #reactors * 100) / 100,
+      }
     end
 
     -- Accumulators
@@ -416,13 +436,19 @@ local function collect_power()
       -- (precise consumption requires summing all entity drain, which is very expensive;
       --  we approximate via the electric network if available)
       local consumption_mw = 0
-      if #steam > 0 then
-        -- Use the first generator's electric network statistics if available
-        local net = steam[1].electric_network_statistics
-        if net then
-          consumption_mw = net.get_flow_count{
-            name = "consumption", input = true, precision_index = 2, count = true,
-          } / 1000000 * 60
+      -- Try to get consumption from an electric pole's network statistics
+      local poles = surface.find_entities_filtered{ type = "electric-pole", force = "player", limit = 1 }
+      if #poles > 0 then
+        local ok, net = pcall(function() return poles[1].electric_network_statistics end)
+        if ok and net then
+          local ok2, val = pcall(function()
+            return net.get_flow_count{
+              name = "consumption", input = true, precision_index = 2, count = true,
+            }
+          end)
+          if ok2 and val then
+            consumption_mw = val / 1000000 * 60
+          end
         end
       end
 
@@ -555,19 +581,21 @@ end
 
 -- ─── trains ─────────────────────────────────────────────────────────────────
 
-local TRAIN_STATE_NAMES = {
-  [defines.train_state.on_the_path] = "on_the_path",
-  [defines.train_state.path_lost] = "path_lost",
-  [defines.train_state.no_schedule] = "no_schedule",
-  [defines.train_state.no_path] = "no_path",
-  [defines.train_state.arrive_signal] = "arrive_signal",
-  [defines.train_state.wait_signal] = "wait_signal",
-  [defines.train_state.arrive_station] = "arrive_station",
-  [defines.train_state.wait_station] = "wait_station",
-  [defines.train_state.manual_control_stop] = "manual_control_stop",
-  [defines.train_state.manual_control] = "manual_control",
-  [defines.train_state.destination_full] = "destination_full",
-}
+local TRAIN_STATE_NAMES = {}
+for _, pair in ipairs({
+  { defines.train_state.on_the_path, "on_the_path" },
+  { defines.train_state.no_schedule, "no_schedule" },
+  { defines.train_state.no_path, "no_path" },
+  { defines.train_state.arrive_signal, "arrive_signal" },
+  { defines.train_state.wait_signal, "wait_signal" },
+  { defines.train_state.arrive_station, "arrive_station" },
+  { defines.train_state.wait_station, "wait_station" },
+  { defines.train_state.manual_control_stop, "manual_control_stop" },
+  { defines.train_state.manual_control, "manual_control" },
+  { defines.train_state.destination_full, "destination_full" },
+}) do
+  if pair[1] ~= nil then TRAIN_STATE_NAMES[pair[1]] = pair[2] end
+end
 
 --- Collect train list with composition, schedule, cargo, and fuel.
 -- Also collects train stops with their train limits.
@@ -869,15 +897,23 @@ end
 local function build_export(include_entities)
   local overview = collect_game_overview()
 
-  -- Update entity caches if requested
+  -- Update entity caches if requested (pcall each so one failure doesn't crash the export)
   if include_entities then
-    cached_machines = collect_machines()
-    cached_resources = collect_resources()
-    cached_power = collect_power()
-    cached_fluids = collect_fluids()
-    cached_logistics = collect_logistics()
-    cached_trains = collect_trains()
-    cached_defenses = collect_defenses()
+    local function safe_collect(name, fn)
+      local ok, result = pcall(fn)
+      if not ok then
+        log("[savecraft] " .. name .. " failed: " .. tostring(result))
+        return nil
+      end
+      return result
+    end
+    cached_machines = safe_collect("machines", collect_machines)
+    cached_resources = safe_collect("resources", collect_resources)
+    cached_power = safe_collect("power", collect_power)
+    cached_fluids = safe_collect("fluids", collect_fluids)
+    cached_logistics = safe_collect("logistics", collect_logistics)
+    cached_trains = safe_collect("trains", collect_trains)
+    cached_defenses = safe_collect("defenses", collect_defenses)
   end
 
   local summary = string.format(
@@ -891,15 +927,26 @@ local function build_export(include_entities)
       description = "Map identity and high-level game state",
       data = overview,
     },
-    production_flow = {
-      description = "Per-item and per-fluid production and consumption rates",
-      data = collect_production_flow(),
-    },
-    research = {
-      description = "Current research, queue, completed technologies, and infinite research levels",
-      data = collect_research(),
-    },
   }
+  local collect_errors = {}
+  local ok_flow, flow = pcall(collect_production_flow)
+  if ok_flow and flow then
+    sections.production_flow = {
+      description = "Per-item and per-fluid production and consumption rates",
+      data = flow,
+    }
+  elseif not ok_flow then
+    collect_errors[#collect_errors + 1] = "production_flow: " .. tostring(flow)
+  end
+  local ok_research, research = pcall(collect_research)
+  if ok_research and research then
+    sections.research = {
+      description = "Current research, queue, completed technologies, and infinite research levels",
+      data = research,
+    }
+  elseif not ok_research then
+    collect_errors[#collect_errors + 1] = "research: " .. tostring(research)
+  end
 
   -- Include entity-scanned sections only when cached data exists
   if cached_power then
@@ -945,15 +992,28 @@ local function build_export(include_entities)
     }
   end
 
-  -- Lightweight sections — computed fresh each tick (no cache)
-  sections.inventory = {
-    description = "Player inventory, equipment, crafting queue, and position",
-    data = collect_inventory(),
-  }
-  sections.alerts = {
-    description = "Active game alerts — no fuel, no power, no storage, under attack",
-    data = collect_alerts(),
-  }
+  -- Lightweight sections — computed fresh each tick (pcall for safety)
+  local ok_inv, inv = pcall(collect_inventory)
+  if ok_inv and inv then
+    sections.inventory = {
+      description = "Player inventory, equipment, crafting queue, and position",
+      data = inv,
+    }
+  end
+  local ok_alerts, alerts = pcall(collect_alerts)
+  if ok_alerts and alerts then
+    sections.alerts = {
+      description = "Active game alerts — no fuel, no power, no storage, under attack",
+      data = alerts,
+    }
+  end
+
+  if #collect_errors > 0 then
+    sections._errors = {
+      description = "Sections that failed to collect (debug)",
+      data = collect_errors,
+    }
+  end
 
   return {
     identity = {
