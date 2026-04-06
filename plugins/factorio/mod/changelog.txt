@@ -1,0 +1,11 @@
+---------------------------------------------------------------------------------------------------
+Version: 1.0.0
+Date: 2026-04-06
+  Features:
+    - Initial release
+    - Exports 13 game state sections: game overview, production flow, machines, research, resources,
+      power, fluids, logistics, trains, defenses, inventory, alerts, construction
+    - Lightweight stats export every 5 seconds (production, research, power)
+    - Full entity scan every 30 seconds (machines, resources, fluids, logistics, trains, defenses)
+    - Immediate export on research completion and rocket launch
+    - Space Age support (optional dependency)

@@ -88,6 +88,24 @@ plugin-manifest name version="dev":
 build-plugins:
     @for dir in plugins/*/; do just build-plugin "$(basename "$dir")"; done
 
+# Package Factorio mod zip for mods.factorio.com upload
+factorio-mod:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version=$(jq -r .version plugins/factorio/mod/info.json)
+    name=$(jq -r .name plugins/factorio/mod/info.json)
+    out="${name}_${version}.zip"
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    mkdir "$tmp/${name}_${version}"
+    cp plugins/factorio/mod/info.json \
+       plugins/factorio/mod/control.lua \
+       plugins/factorio/mod/thumbnail.png \
+       plugins/factorio/mod/changelog.txt \
+       "$tmp/${name}_${version}/"
+    (cd "$tmp" && zip -r "$OLDPWD/$out" "${name}_${version}")
+    echo "==> $out"
+
 # Run Web tests
 test-web:
     cd web && npm test
