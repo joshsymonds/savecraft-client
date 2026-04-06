@@ -84,16 +84,19 @@ Plugins are sandboxed WASM binaries that parse save files. They read raw bytes o
 |------|--------|-------------------|--------|--------|
 | [Clair Obscur: Expedition 33](plugins/clair-obscur/) | Save file (WASM) | — | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [Diablo II: Resurrected](plugins/d2r/) | `.d2s` / `.d2i` binary | Drop Calculator | Beta | [@joshsymonds](https://github.com/joshsymonds) |
-| [Magic: The Gathering Arena](plugins/mtga/) | `Player.log` | Rules Search, Card Search, Card Stats, Draft Advisor, Deck Health & Cut Advisor, Collection Diff, Mana Base, Draft Ratings | Beta | [@joshsymonds](https://github.com/joshsymonds) |
+| [Factorio](plugins/factorio/) | [Lua mod](plugins/factorio/mod/) + WASM | Recipe Lookup, Ratio Calculator, Oil Balancer, Tech Tree, Blueprint Analyzer, Evolution Tracker, Power Calculator, Production Flow | Alpha | [@joshsymonds](https://github.com/joshsymonds) |
+| [Magic: The Gathering Arena](plugins/mtga/) | `Player.log` | Card Search, Rules Search, Draft Advisor, Play Advisor, Card Stats, Deckbuilding, Collection Diff, Match Stats, Sideboard Analysis, Mana Base | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [RimWorld](plugins/rimworld/) | [Steam Workshop mod](https://steamcommunity.com/sharedfiles/filedetails/?id=3693580596) | Surgery Calculator, Crop Optimizer, Combat Calculator, Material Lookup, Drug Analyzer, Raid Estimator, Gene Builder, Research Navigator | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [Stardew Valley](plugins/sdv/) | XML save directory | Gift Preferences, Crop Planner | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [World of Warcraft](plugins/wow/) | Battle.net API | — | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 
-**Planned save-file parsers:** Stellaris/CK3 (Clausewitz), Baldur's Gate 3 (.lsv), Elden Ring (.sl2), Civilization VI, Bethesda games (.ess)
+See [`docs/games.md`](docs/games.md) for detailed descriptions of each game's sections and reference modules.
+
+**Planned save-file parsers:** Victoria 3 (Clausewitz/Rust), Stellaris/CK3 (Clausewitz), Baldur's Gate 3 (.lsv), Elden Ring (.sl2), Civilization VI, Bethesda games (.ess)
 
 **Planned API adapters** (no daemon required): Path of Exile 2, FFXIV
 
-**Planned mod integrations:** Minecraft, Terraria (mod-as-device: mod pushes directly, no daemon), Factorio (mod-as-emitter: mod writes JSON, daemon relays)
+**Planned mod integrations:** Minecraft, Terraria (mod-as-device: mod pushes directly, no daemon)
 
 Want to add a game? See the [plugin development guide](docs/plugin-development.md).
 
