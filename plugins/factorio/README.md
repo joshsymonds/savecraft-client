@@ -64,7 +64,7 @@ Output location by platform:
 
 ### Mod Distribution
 
-Published on the [Factorio Mod Portal](https://mods.factorio.com/). Players install via the in-game mod browser (no manual file management). The mod does NOT disable achievements (only `/c` console commands do).
+Published on the [Factorio Mod Portal](https://mods.factorio.com/mod/savecraft). Players install via the in-game mod browser (no manual file management). The mod does NOT disable achievements (only `/c` console commands do).
 
 ## Save Data Sections
 
@@ -642,7 +642,7 @@ Not a spatial layout (that would require rendering every entity position). Inste
 - [x] Mod sections: `game_overview`, `production_flow`, `machines`, `research`, `resources`, `power`
 - [x] plugin.toml and daemon configuration for `script-output/savecraft/` watching
 - [x] WASM pass-through parser (JSON -> ndjson identity mapping)
-- [ ] Publish mod on Factorio Mod Portal
+- [x] Publish mod on Factorio Mod Portal
 - [x] Reference datagen: `factorio --dump-data` parser + Go struct generation
 - [x] Reference modules: `recipe_lookup`, `ratio_calculator`
 - [x] Icon sprite sheet: extract via `--dump-icon-sprites`, upload to R2, build manifest

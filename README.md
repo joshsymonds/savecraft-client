@@ -84,7 +84,7 @@ Plugins are sandboxed WASM binaries that parse save files. They read raw bytes o
 |------|--------|-------------------|--------|--------|
 | [Clair Obscur: Expedition 33](plugins/clair-obscur/) | Save file (WASM) | — | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [Diablo II: Resurrected](plugins/d2r/) | `.d2s` / `.d2i` binary | Drop Calculator | Beta | [@joshsymonds](https://github.com/joshsymonds) |
-| [Factorio](plugins/factorio/) | [Lua mod](plugins/factorio/mod/) + WASM | Recipe Lookup, Ratio Calculator, Oil Balancer, Tech Tree, Blueprint Analyzer, Evolution Tracker, Power Calculator, Production Flow | Alpha | [@joshsymonds](https://github.com/joshsymonds) |
+| [Factorio](plugins/factorio/) | [Factorio Mod Portal](https://mods.factorio.com/mod/savecraft) + WASM | Recipe Lookup, Ratio Calculator, Oil Balancer, Tech Tree, Blueprint Analyzer, Evolution Tracker, Power Calculator, Production Flow | Alpha | [@joshsymonds](https://github.com/joshsymonds) |
 | [Magic: The Gathering Arena](plugins/mtga/) | `Player.log` | Card Search, Rules Search, Draft Advisor, Play Advisor, Card Stats, Deckbuilding, Collection Diff, Match Stats, Sideboard Analysis, Mana Base | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [RimWorld](plugins/rimworld/) | [Steam Workshop mod](https://steamcommunity.com/sharedfiles/filedetails/?id=3693580596) | Surgery Calculator, Crop Optimizer, Combat Calculator, Material Lookup, Drug Analyzer, Raid Estimator, Gene Builder, Research Navigator | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [Stardew Valley](plugins/sdv/) | XML save directory | Gift Preferences, Crop Planner | Beta | [@joshsymonds](https://github.com/joshsymonds) |
