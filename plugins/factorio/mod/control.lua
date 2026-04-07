@@ -381,17 +381,24 @@ local function collect_power()
   for _, surface in pairs(game.surfaces) do
     local generators = {}
     local total_generation = 0
-    local total_consumption = 0
 
-    -- Steam engines / generators
-    local steam = surface.find_entities_filtered{ type = "generator", force = "player" }
-    if #steam > 0 then
-      local mw = 0
-      for _, e in pairs(steam) do
-        mw = mw + (e.energy_generated_last_tick or 0) * 60 / 1000000
+    -- Electrical generators (steam engines, steam turbines, etc.) — group by entity name
+    local gens = surface.find_entities_filtered{ type = "generator", force = "player" }
+    if #gens > 0 then
+      local by_name = {}
+      for _, e in pairs(gens) do
+        local name = e.name
+        if not by_name[name] then
+          by_name[name] = { count = 0, mw = 0 }
+        end
+        by_name[name].count = by_name[name].count + 1
+        by_name[name].mw = by_name[name].mw + (e.energy_generated_last_tick or 0) * 60 / 1000000
       end
-      generators["steam-engine"] = { count = #steam, mw = math.floor(mw * 10) / 10 }
-      total_generation = total_generation + mw
+      for name, data in pairs(by_name) do
+        local mw = math.floor(data.mw * 10) / 10
+        generators[name] = { count = data.count, mw = mw }
+        total_generation = total_generation + data.mw
+      end
     end
 
     -- Solar panels (no energy_generated_last_tick — report count only)
@@ -413,6 +420,36 @@ local function collect_power()
       }
     end
 
+    -- Heat producers (boilers, heat exchangers) — group by entity name
+    -- Boilers don't expose energy_generated_last_tick (generator-only), but they're binary:
+    -- either working at full rated capacity or idle.
+    -- get_max_energy_usage() returns J/tick; × 60 ticks/s = watts; ÷ 1e6 = MW.
+    local heat_producers = nil
+    local boilers = surface.find_entities_filtered{ type = "boiler", force = "player" }
+    if #boilers > 0 then
+      heat_producers = {}
+      local by_name = {}
+      for _, e in pairs(boilers) do
+        local name = e.name
+        if not by_name[name] then
+          local rated_mw = e.prototype.get_max_energy_usage() * 60 / 1000000
+          by_name[name] = { count = 0, active = 0, rated_mw = rated_mw }
+        end
+        by_name[name].count = by_name[name].count + 1
+        if e.status == defines.entity_status.working then
+          by_name[name].active = by_name[name].active + 1
+        end
+      end
+      for name, data in pairs(by_name) do
+        heat_producers[name] = {
+          count = data.count,
+          active = data.active,
+          rated_each_mw = math.floor(data.rated_mw * 10) / 10,
+          thermal_mw = math.floor(data.active * data.rated_mw * 10) / 10,
+        }
+      end
+    end
+
     -- Accumulators
     local accumulators = surface.find_entities_filtered{ type = "accumulator", force = "player" }
     local acc_data = nil
@@ -432,24 +469,77 @@ local function collect_power()
 
     -- Only include surfaces that have power infrastructure
     if total_generation > 0 or #accumulators > 0 then
-      -- Estimate consumption from all electric entities on this surface
-      -- (precise consumption requires summing all entity drain, which is very expensive;
-      --  we approximate via the electric network if available)
+      -- Get consumption breakdown from electric network statistics.
+      -- Use global_electric_network_statistics (surface-wide aggregate, added 2.0.48),
+      -- falling back to per-network iteration via poles for older versions.
+      -- input_counts = consumers, output_counts = producers (inverted vs item/fluid stats).
       local consumption_mw = 0
-      -- Try to get consumption from an electric pole's network statistics
-      local poles = surface.find_entities_filtered{ type = "electric-pole", force = "player", limit = 1 }
-      if #poles > 0 then
-        local ok, net = pcall(function() return poles[1].electric_network_statistics end)
-        if ok and net then
+      local consumers = nil
+
+      local function read_consumption(stats)
+        if not stats or not stats.valid then return end
+        local ok, counts = pcall(function() return stats.input_counts end)
+        if not ok or not counts then return end
+        consumers = {}
+        for name, _ in pairs(counts) do
           local ok2, val = pcall(function()
-            return net.get_flow_count{
-              name = "consumption", input = true, precision_index = 2, count = true,
+            return stats.get_flow_count{
+              name = name, category = "input",
+              precision_index = defines.flow_precision_index.one_minute,
             }
           end)
-          if ok2 and val then
-            consumption_mw = val / 1000000 * 60
+          if ok2 and val and val > 0 then
+            local mw = val * 60 / 1000000
+            consumers[name] = { mw = math.floor(mw * 10) / 10 }
+            consumption_mw = consumption_mw + mw
           end
         end
+        if not next(consumers) then consumers = nil end
+      end
+
+      -- Try surface-wide aggregate first
+      local ok_global, global_stats = pcall(function()
+        return surface.global_electric_network_statistics
+      end)
+      if ok_global and global_stats then
+        read_consumption(global_stats)
+      end
+
+      -- Fall back to per-network iteration if global stats unavailable or empty
+      if not consumers then
+        local poles = surface.find_entities_filtered{ type = "electric-pole", force = "player" }
+        local seen_networks = {}
+        for _, pole in pairs(poles) do
+          local nid = pole.electric_network_id
+          if nid and not seen_networks[nid] then
+            seen_networks[nid] = true
+            local ok, stats = pcall(function() return pole.electric_network_statistics end)
+            if ok and stats then
+              local ok2, counts = pcall(function() return stats.input_counts end)
+              if ok2 and counts then
+                if not consumers then consumers = {} end
+                for name, _ in pairs(counts) do
+                  local ok3, val = pcall(function()
+                    return stats.get_flow_count{
+                      name = name, category = "input",
+                      precision_index = defines.flow_precision_index.one_minute,
+                    }
+                  end)
+                  if ok3 and val and val > 0 then
+                    local mw = val * 60 / 1000000
+                    if consumers[name] then
+                      consumers[name].mw = consumers[name].mw + math.floor(mw * 10) / 10
+                    else
+                      consumers[name] = { mw = math.floor(mw * 10) / 10 }
+                    end
+                    consumption_mw = consumption_mw + mw
+                  end
+                end
+              end
+            end
+          end
+        end
+        if consumers and not next(consumers) then consumers = nil end
       end
 
       surfaces[surface.name] = {
@@ -457,6 +547,8 @@ local function collect_power()
         consumption_mw = math.floor(consumption_mw * 10) / 10,
         satisfaction = consumption_mw > 0 and math.floor(total_generation / consumption_mw * 100) / 100 or 1.0,
         generators = generators,
+        heat_producers = heat_producers,
+        consumers = consumers,
         accumulators = acc_data,
       }
     end
