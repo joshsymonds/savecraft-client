@@ -505,10 +505,13 @@ local function collect_power()
         read_consumption(global_stats)
       end
 
-      -- Fall back to per-network iteration if global stats unavailable or empty
+      -- Fall back to per-network iteration if global stats unavailable or empty.
+      -- This scans all poles to find unique network IDs — O(poles) but runs at most
+      -- once per 30s heavy tick and only on Factorio < 2.0.48 without global stats.
       if not consumers then
         local poles = surface.find_entities_filtered{ type = "electric-pole", force = "player" }
         local seen_networks = {}
+        local raw_consumers = {}
         for _, pole in pairs(poles) do
           local nid = pole.electric_network_id
           if nid and not seen_networks[nid] then
@@ -517,7 +520,6 @@ local function collect_power()
             if ok and stats then
               local ok2, counts = pcall(function() return stats.input_counts end)
               if ok2 and counts then
-                if not consumers then consumers = {} end
                 for name, _ in pairs(counts) do
                   local ok3, val = pcall(function()
                     return stats.get_flow_count{
@@ -527,11 +529,7 @@ local function collect_power()
                   end)
                   if ok3 and val and val > 0 then
                     local mw = val * 60 / 1000000
-                    if consumers[name] then
-                      consumers[name].mw = consumers[name].mw + math.floor(mw * 10) / 10
-                    else
-                      consumers[name] = { mw = math.floor(mw * 10) / 10 }
-                    end
+                    raw_consumers[name] = (raw_consumers[name] or 0) + mw
                     consumption_mw = consumption_mw + mw
                   end
                 end
@@ -539,7 +537,13 @@ local function collect_power()
             end
           end
         end
-        if consumers and not next(consumers) then consumers = nil end
+        -- Round once after accumulating across all networks
+        if next(raw_consumers) then
+          consumers = {}
+          for name, mw in pairs(raw_consumers) do
+            consumers[name] = { mw = math.floor(mw * 10) / 10 }
+          end
+        end
       end
 
       surfaces[surface.name] = {
