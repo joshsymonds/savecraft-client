@@ -29,6 +29,10 @@ darwin = "~/Documents/Paradox Interactive/Stellaris/save games"
 name = "Technology Search"
 description = "Search Stellaris technologies by name, area, tier, or category. Returns cost, prerequisites, and research weight."
 
+[reference.modules.tech_path]
+name = "Technology Path"
+description = "Resolve the full prerequisite chain for a target technology. Returns topologically sorted prerequisites with researched/remaining annotations."
+
 [reference.modules.building_search]
 name = "Building Search"
 description = "Search Stellaris buildings by name or category. Returns build time and capital status."
