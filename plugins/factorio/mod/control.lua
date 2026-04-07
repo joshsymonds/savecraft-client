@@ -794,20 +794,29 @@ end
 -- Expensive (entity scan), cached and refreshed every ENTITY_INTERVAL.
 local function collect_defenses()
   local force = game.forces["player"]
-  if not force then return { evolution = {}, turrets = {}, walls = 0 } end
+  if not force then return { threats = {}, turrets = {}, walls = 0 } end
 
-  -- Evolution factor with source breakdown (2.0: all per-surface methods)
-  local surface = game.surfaces[active_surface()]
-  local evo_factor = force.get_evolution_factor(surface)
+  -- Per-surface threat data: evolution + pollution for each surface with a pollutant type.
+  -- In Space Age: Nauvis has "pollution" (biters), Gleba has "spores" (pentapods).
+  -- Surfaces without a pollutant type (Vulcanus, Fulgora, Aquilo, space platforms) are skipped.
+  local threats = {}
+  for _, surf in pairs(game.surfaces) do
+    if surf.pollutant_type then
+      local evo_factor = force.get_evolution_factor(surf)
+      threats[surf.name] = {
+        pollutant = surf.pollutant_type.name,
+        evolution = {
+          factor = math.floor(evo_factor * 10000) / 10000,
+          time_factor = math.floor(force.get_evolution_factor_by_time(surf) * 10000) / 10000,
+          pollution_factor = math.floor(force.get_evolution_factor_by_pollution(surf) * 10000) / 10000,
+          kill_factor = math.floor(force.get_evolution_factor_by_killing_spawners(surf) * 10000) / 10000,
+        },
+        current_pollution = math.floor(surf.get_total_pollution()),
+      }
+    end
+  end
 
-  local evolution = {
-    factor = math.floor(evo_factor * 10000) / 10000,
-    time_factor = math.floor(force.get_evolution_factor_by_time(surface) * 10000) / 10000,
-    pollution_factor = math.floor(force.get_evolution_factor_by_pollution(surface) * 10000) / 10000,
-    kill_factor = math.floor(force.get_evolution_factor_by_killing_spawners(surface) * 10000) / 10000,
-  }
-
-  -- Turret counts by type (single scan for all turret types)
+  -- Turret counts by type (single scan across all surfaces)
   local turret_types = {}
   local wall_count = 0
   for _, surf in pairs(game.surfaces) do
@@ -860,18 +869,11 @@ local function collect_defenses()
     end
   end
 
-  -- Total pollution on the active surface (O(1) via statistics, not chunk iteration)
-  local total_pollution = 0
-  if surface and surface.pollution_statistics then
-    total_pollution = surface.pollution_statistics.output_counts["pollution"] or 0
-  end
-
   return {
-    evolution = evolution,
+    threats = threats,
     turrets = turret_types,
     walls = wall_count,
     enemy_bases_nearby = enemy_bases,
-    total_pollution = math.floor(total_pollution),
   }
 end
 
