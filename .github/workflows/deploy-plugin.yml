@@ -8,6 +8,8 @@ on:
     paths:
       - 'plugins/*/plugin.toml'
       - 'plugins/**/*.go'
+      - 'plugins/**/*.rs'
+      - 'plugins/**/Cargo.toml'
       - 'plugins/*/icon.*'
       - 'reference/src/**'
       - 'reference/test/**'
@@ -48,6 +50,10 @@ jobs:
       - uses: taiki-e/install-action@a3324fb0eb94b8230ec968c3389c1b7929fc2f3b # v2
         with:
           tool: just
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
 
       - name: Detect plugins to build
         id: changed
@@ -150,6 +156,10 @@ jobs:
       - uses: taiki-e/install-action@a3324fb0eb94b8230ec968c3389c1b7929fc2f3b # v2
         with:
           tool: just
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
 
       - uses: actions/setup-node@v4
         with:
