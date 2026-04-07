@@ -190,15 +190,15 @@ fn parse_mid_game_save() {
     // Alternatives (available techs)
     let alternatives = &technology["alternatives"];
     assert!(
-        alternatives["physics"].as_array().unwrap().len() > 0,
+        !alternatives["physics"].as_array().unwrap().is_empty(),
         "expected physics alternatives"
     );
     assert!(
-        alternatives["society"].as_array().unwrap().len() > 0,
+        !alternatives["society"].as_array().unwrap().is_empty(),
         "expected society alternatives"
     );
     assert!(
-        alternatives["engineering"].as_array().unwrap().len() > 0,
+        !alternatives["engineering"].as_array().unwrap().is_empty(),
         "expected engineering alternatives"
     );
 
@@ -371,5 +371,30 @@ fn parse_early_game_save() {
     // Early game should have at least 1 owned planet (homeworld)
     let geography = &sections["geography"]["data"];
     let owned = geography["owned_planet_ids"].as_array().unwrap();
-    assert!(owned.len() >= 1, "should have at least homeworld");
+    assert!(!owned.is_empty(), "should have at least homeworld");
+}
+
+/// Corrupt input should produce an error, not a crash.
+#[test]
+fn corrupt_input_returns_error() {
+    let output = Command::new(env!("CARGO_BIN_EXE_stellaris-parser"))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            child.stdin.take().unwrap().write_all(b"not a zip file").unwrap();
+            child.wait_with_output()
+        })
+        .expect("failed to run parser");
+
+    // Should exit non-zero
+    assert!(!output.status.success(), "parser should fail on corrupt input");
+
+    // Should emit an ndjson error line, not crash silently
+    let stdout = String::from_utf8(output.stdout).expect("non-UTF8");
+    let last_line = stdout.lines().last().expect("should have output");
+    let result: serde_json::Value = serde_json::from_str(last_line).expect("should be valid JSON");
+    assert_eq!(result["type"], "error", "should emit error type");
 }

@@ -247,7 +247,6 @@ dependencies = [
 name = "stellaris-reference"
 version = "0.1.0"
 dependencies = [
- "clausewitz-core",
  "serde",
  "serde_json",
 ]

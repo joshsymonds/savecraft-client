@@ -44,7 +44,13 @@ fn main() {
     let reader = tape.windows1252_reader();
 
     // Find the player's country ID
-    let player_country_id = find_player_country_id(&reader);
+    let player_country_id = match find_player_country_id(&reader) {
+        Some(id) => id,
+        None => {
+            ndjson::emit_error("parse_error", "player country ID not found in gamestate");
+            std::process::exit(1);
+        }
+    };
     let id_str = player_country_id.to_string();
 
     // Find the player's country object
@@ -220,17 +226,15 @@ fn main() {
 /// Find the player's country ID from the `player` block.
 fn find_player_country_id(
     reader: &jomini::text::ObjectReader<'_, '_, jomini::Windows1252Encoding>,
-) -> i64 {
-    if let Some(player_val) = find_field(reader, "player") {
-        if let Ok(player_arr) = player_val.read_array() {
-            for item in player_arr.values() {
-                if let Ok(obj) = item.read_object() {
-                    if let Some(id) = read_i64(&obj, "country") {
-                        return id;
-                    }
-                }
+) -> Option<i64> {
+    let player_val = find_field(reader, "player")?;
+    let player_arr = player_val.read_array().ok()?;
+    for item in player_arr.values() {
+        if let Ok(obj) = item.read_object() {
+            if let Some(id) = read_i64(&obj, "country") {
+                return Some(id);
             }
         }
     }
-    0
+    None
 }
