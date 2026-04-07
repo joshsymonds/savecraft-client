@@ -1,6 +1,7 @@
 game_id = "stellaris"
 sources = ["wasm"]
 name = "Stellaris"
+icon = "icon.png"
 description = "Parses Stellaris save files (.sav) — empire overview, economy, technology, military, diplomacy, and more"
 channel = "beta"
 coverage = "partial"
@@ -21,9 +22,9 @@ name = "Josh Symonds"
 github = "joshsymonds"
 
 [default_paths]
-windows = "%USERPROFILE%/Documents/Paradox Interactive/Stellaris/save games"
-linux = "~/.local/share/Paradox Interactive/Stellaris/save games"
-darwin = "~/Documents/Paradox Interactive/Stellaris/save games"
+windows = "%USERPROFILE%/Documents/Paradox Interactive/Stellaris/save games/*"
+linux = "~/.local/share/Paradox Interactive/Stellaris/save games/*"
+darwin = "~/Documents/Paradox Interactive/Stellaris/save games/*"
 
 [reference.modules.tech_search]
 name = "Technology Search"
