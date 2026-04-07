@@ -188,57 +188,6 @@ local function collect_production_flow()
   }
 end
 
--- ─── construction ───────────────────────────────────────────────────────────
-
---- Collect entity build/remove rates to separate construction demand from recipe demand.
--- Uses LuaFlowStatistics from get_entity_build_count_statistics (same API as production stats).
--- "output" = entities placed, "input" = entities mined/removed.
-local function collect_construction()
-  local force = game.forces["player"]
-  if not force then return { entities = {} } end
-
-  local entities = {}
-
-  for _, surface in pairs(game.surfaces) do
-    local build_stats = force.get_entity_build_count_statistics(surface)
-
-    for name, _ in pairs(prototypes.entity) do
-      local built = build_stats.get_output_count(name)
-      local removed = build_stats.get_input_count(name)
-      if built > 0 or removed > 0 then
-        local placed_per_min = build_stats.get_flow_count{
-          name = name, category = "output", precision_index = defines.flow_precision_index.one_minute, count = true,
-        }
-        local removed_per_min = build_stats.get_flow_count{
-          name = name, category = "input", precision_index = defines.flow_precision_index.one_minute, count = true,
-        }
-        local entry = entities[name]
-        if entry then
-          entry.placed_per_min = entry.placed_per_min + placed_per_min
-          entry.removed_per_min = entry.removed_per_min + removed_per_min
-        else
-          entities[name] = {
-            placed_per_min = placed_per_min,
-            removed_per_min = removed_per_min,
-          }
-        end
-      end
-    end
-  end
-
-  -- Round rates after aggregation, drop zero entries
-  local result = {}
-  for name, entry in pairs(entities) do
-    entry.placed_per_min = math.floor(entry.placed_per_min * 10) / 10
-    entry.removed_per_min = math.floor(entry.removed_per_min * 10) / 10
-    if entry.placed_per_min > 0 or entry.removed_per_min > 0 then
-      result[name] = entry
-    end
-  end
-
-  return { entities = result }
-end
-
 -- ─── machines ────────────────────────────────────────────────────────────────
 
 --- Collect active machines grouped by recipe with module tallies.
@@ -988,15 +937,6 @@ local function build_export(include_entities)
     }
   elseif not ok_flow then
     collect_errors[#collect_errors + 1] = "production_flow: " .. tostring(flow)
-  end
-  local ok_construction, construction = pcall(collect_construction)
-  if ok_construction and construction then
-    sections.construction = {
-      description = "Entity placement and removal rates for separating construction demand from recipe demand",
-      data = construction,
-    }
-  elseif not ok_construction then
-    collect_errors[#collect_errors + 1] = "construction: " .. tostring(construction)
   end
   local ok_research, research = pcall(collect_research)
   if ok_research and research then
