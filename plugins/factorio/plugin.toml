@@ -35,6 +35,8 @@ description = "Look up any item, recipe, entity, or technology by exact name. Su
 name = "Tech Tree Navigator"
 description = "Traverse technology prerequisite chains with total science pack costs. Given a target technology and completed research, compute the optimal research path and total cost by pack type."
 
+[reference.modules.tech_tree_navigator.section_mappings]
+completed_research = "research"
 
 [reference.modules.ratio_calculator]
 name = "Production Ratio Calculator"
