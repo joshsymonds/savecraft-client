@@ -1,0 +1,58 @@
+game_id = "stellaris"
+sources = ["wasm"]
+name = "Stellaris"
+description = "Parses Stellaris save files (.sav) — empire overview, economy, technology, military, diplomacy, and more"
+channel = "beta"
+coverage = "partial"
+file_extensions = [".sav"]
+homepage = "https://savecraft.gg/plugins/stellaris"
+
+limitations = [
+  "Binary (ironman) saves not yet tested — text saves only",
+  "Planet section shows summary stats, not full district/building breakdown",
+  "Name resolution for wars and fleets uses raw IDs, not localized names",
+]
+
+[attribution]
+sources = ["paradox"]
+
+[author]
+name = "Josh Symonds"
+github = "joshsymonds"
+
+[default_paths]
+windows = "%USERPROFILE%/Documents/Paradox Interactive/Stellaris/save games"
+linux = "~/.local/share/Paradox Interactive/Stellaris/save games"
+darwin = "~/Documents/Paradox Interactive/Stellaris/save games"
+
+[reference.modules.tech_search]
+name = "Technology Search"
+description = "Search Stellaris technologies by name, area, tier, or category. Returns cost, prerequisites, and research weight."
+
+[reference.modules.building_search]
+name = "Building Search"
+description = "Search Stellaris buildings by name or category. Returns build time and capital status."
+
+[reference.modules.component_search]
+name = "Ship Component Search"
+description = "Search ship weapons, utilities, reactors, and combat computers by name, size, or component set."
+
+[reference.modules.tradition_search]
+name = "Tradition & Ascension Perk Search"
+description = "Search traditions and ascension perks by name or category."
+
+[reference.modules.trait_search]
+name = "Species & Leader Trait Search"
+description = "Search species traits and leader traits by name or category."
+
+[reference.modules.civic_search]
+name = "Civic & Origin Search"
+description = "Search civics and origins by name or category."
+
+[reference.modules.edict_search]
+name = "Edict & Policy Search"
+description = "Search edicts and policies by name or category."
+
+[reference.modules.job_search]
+name = "Pop Job Search"
+description = "Search pop jobs by name or category."

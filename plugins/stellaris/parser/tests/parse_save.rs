@@ -314,3 +314,62 @@ fn parse_mid_game_save() {
     assert!(first_colony["planet_class"].is_string(), "colony should have planet_class");
     assert!(first_colony["num_pops"].is_number(), "colony should have num_pops");
 }
+
+/// Early-game save (2200.01.01) — minimal data, verifies graceful handling of sparse state.
+#[test]
+fn parse_early_game_save() {
+    let save_path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../testdata/2200.01.01.sav"
+    );
+    let save_data = std::fs::read(save_path).expect("failed to read early-game save");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_stellaris-parser"))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            child.stdin.take().unwrap().write_all(&save_data).unwrap();
+            child.wait_with_output()
+        })
+        .expect("failed to run parser");
+
+    assert!(
+        output.status.success(),
+        "parser failed on early-game save: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("non-UTF8");
+    let result_line = stdout.lines().last().unwrap();
+    let result: serde_json::Value = serde_json::from_str(result_line).unwrap();
+
+    assert_eq!(result["type"], "result");
+    assert_eq!(result["identity"]["gameId"], "stellaris");
+    assert_eq!(result["identity"]["extra"]["date"], "2200.01.01");
+
+    // All 13 sections should be present even in early game
+    let sections = &result["sections"];
+    for section_name in &[
+        "overview", "economy", "technology", "military", "wars",
+        "diplomacy", "progression", "leaders", "species", "factions",
+        "exploration", "geography", "planets",
+    ] {
+        assert!(
+            sections[section_name].is_object(),
+            "{section_name} section missing in early-game save"
+        );
+    }
+
+    // Overview should have basic identity
+    let overview = &sections["overview"]["data"];
+    assert!(overview["date"].is_string());
+    assert!(overview["game_version"].is_string());
+
+    // Early game should have at least 1 owned planet (homeworld)
+    let geography = &sections["geography"]["data"];
+    let owned = geography["owned_planet_ids"].as_array().unwrap();
+    assert!(owned.len() >= 1, "should have at least homeworld");
+}

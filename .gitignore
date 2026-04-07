@@ -87,4 +87,4 @@ scripts/reset-demo.sh
 scripts/fixtures/
 Player.log
 views/debug-storybook.log
-datagen
+/datagen
