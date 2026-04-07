@@ -88,11 +88,12 @@ Plugins are sandboxed WASM binaries that parse save files. They read raw bytes o
 | [Magic: The Gathering Arena](plugins/mtga/) | `Player.log` | Card Search, Rules Search, Draft Advisor, Play Advisor, Card Stats, Deckbuilding, Collection Diff, Match Stats, Sideboard Analysis, Mana Base | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [RimWorld](plugins/rimworld/) | [Steam Workshop mod](https://steamcommunity.com/sharedfiles/filedetails/?id=3693580596) | Surgery Calculator, Crop Optimizer, Combat Calculator, Material Lookup, Drug Analyzer, Raid Estimator, Gene Builder, Research Navigator | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [Stardew Valley](plugins/sdv/) | XML save directory | Gift Preferences, Crop Planner | Beta | [@joshsymonds](https://github.com/joshsymonds) |
+| [Stellaris](plugins/stellaris/) | `.sav` (Clausewitz/Rust) | Tech Search, Building Search, Component Search, Tradition Search, Trait Search, Civic Search, Edict Search, Job Search | Alpha | [@joshsymonds](https://github.com/joshsymonds) |
 | [World of Warcraft](plugins/wow/) | Battle.net API | — | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 
 See [`docs/games.md`](docs/games.md) for detailed descriptions of each game's sections and reference modules.
 
-**Planned save-file parsers:** Victoria 3 (Clausewitz/Rust), Stellaris/CK3 (Clausewitz), Baldur's Gate 3 (.lsv), Elden Ring (.sl2), Civilization VI, Bethesda games (.ess)
+**Planned save-file parsers:** Victoria 3 (Clausewitz/Rust), CK3/HOI4 (Clausewitz), Baldur's Gate 3 (.lsv), Elden Ring (.sl2), Civilization VI, Bethesda games (.ess)
 
 **Planned API adapters** (no daemon required): Path of Exile 2, FFXIV
 
@@ -145,7 +146,7 @@ See [`docs/overview.md`](docs/overview.md) for the system architecture, or brows
 | Cloud | Cloudflare Workers, Durable Objects, R2, D1 (SQLite/FTS5) |
 | Auth | Clerk (OAuth, JWT, magic links) |
 | Frontend | SvelteKit, TypeScript |
-| Plugins | Go compiled to WASI Preview 1, ndjson stdout contract |
+| Plugins | Go or Rust compiled to WASI Preview 1, ndjson stdout contract |
 | Protocol | Protobuf (buf codegen to Go + TypeScript) |
 | Build | just, nix devenv + direnv |
 
