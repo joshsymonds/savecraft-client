@@ -68,8 +68,10 @@ description = "Decode a Factorio blueprint string (version byte + base64 + zlib 
 
 [reference.modules.evolution_tracker]
 name = "Evolution & Threat Tracker"
-description = "Compute biter evolution factor from time, pollution, and nest kills using the asymptotic squashing formula. Predict next enemy tier thresholds and estimate time to reach them at current rates."
+description = "Analyze biter evolution and defense posture from save data. Returns evolution factor with source breakdown, enemy tier prediction, spawn weight distribution, and defense summary including turret counts, walls, and nearby enemy bases."
 
+[reference.modules.evolution_tracker.section_mappings]
+defenses = "defenses"
 
 [reference.modules.module_optimizer]
 name = "Module & Beacon Optimizer"
