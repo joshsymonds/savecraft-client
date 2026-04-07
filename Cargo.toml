@@ -4,4 +4,7 @@ members = [
     "libs/clausewitz-core",
     "plugins/vic3/parser",
     "plugins/vic3/reference",
+    "plugins/stellaris/parser",
+    "plugins/stellaris/reference",
+    "plugins/stellaris/tools/datagen",
 ]

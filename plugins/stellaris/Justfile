@@ -1,0 +1,13 @@
+build: build-parser build-reference
+
+build-parser:
+    cargo build -p stellaris-parser --target wasm32-wasip1 --release
+    cp ../../target/wasm32-wasip1/release/stellaris-parser.wasm parser.wasm
+
+build-reference:
+    cargo build -p stellaris-reference --target wasm32-wasip1 --release
+    cp ../../target/wasm32-wasip1/release/stellaris-reference.wasm reference.wasm
+    cp reference.wasm ../../reference/
+
+test:
+    cargo test -p stellaris-parser -p stellaris-reference
