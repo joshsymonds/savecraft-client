@@ -101,9 +101,12 @@ jobs:
             echo "==> Checking manifest: ${game_id}"
             go run ./cmd/plugin-manifest/ --version dev "plugins/${game_id}"
           done
-          if ! git diff --exit-code plugins/*/manifest.json; then
+          # Ignore sha256 lines — WASM binaries aren't reproducible across
+          # environments (Rust/Go compiler, OS, linker). The deploy step
+          # regenerates the manifest from freshly-built binaries anyway.
+          if ! git diff --exit-code -I '"sha256":' plugins/*/manifest.json; then
             echo ""
-            echo "ERROR: manifest.json is out of date. Run 'just plugin-manifest <game> dev' and commit the result."
+            echo "ERROR: manifest.json is out of date (ignoring sha256). Run 'just plugin-manifest <game> dev' and commit the result."
             exit 1
           fi
 
