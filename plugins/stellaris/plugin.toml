@@ -60,7 +60,7 @@ description = "Search edicts and policies by name or category."
 
 [reference.modules.empire_health]
 name = "Empire Health Diagnosis"
-description = "Diagnose empire health across 5 dimensions: economy, stability, military, politics, and external threats. Surfaces problems by severity with actionable detail. Pass save_id to analyze your empire."
+description = "START HERE for any general question about the player's empire — 'how am I doing?', 'what should I focus on?', 'any problems?', 'give me advice', or any broad empire status check. Scans economy (resource deficits and runway), colony stability (housing, crime, amenities), military (wars and exhaustion), politics (faction happiness), and external threats (hostile neighbors, crises, fallen empires) in one call. Returns problems ranked by severity so you can lead with what matters most. Always use this before diving into specific sections when the player asks a general or open-ended question about their empire."
 
 [reference.modules.empire_health.section_mappings]
 overview_data = "overview"
