@@ -94,6 +94,21 @@ jobs:
             just build-plugin "$game_id"
           done
 
+      - name: Verify manifest.json is up to date
+        if: steps.changed.outputs.plugins != ''
+        env:
+          CHANGED_PLUGINS: ${{ steps.changed.outputs.plugins }}
+        run: |
+          for game_id in $CHANGED_PLUGINS; do
+            echo "==> Checking manifest: ${game_id}"
+            go run ./cmd/plugin-manifest/ --version dev "plugins/${game_id}"
+          done
+          if ! git diff --exit-code plugins/*/manifest.json; then
+            echo ""
+            echo "ERROR: manifest.json is out of date. Run 'just plugin-manifest <game> dev' and commit the result."
+            exit 1
+          fi
+
       - name: Test reference Worker infrastructure
         if: steps.changed.outputs.plugins != ''
         run: |

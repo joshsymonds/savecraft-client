@@ -29,7 +29,6 @@ worker/.dev.vars
 
 # Compiled WASM plugins and binaries
 plugins/**/*.wasm
-plugins/**/manifest.json
 plugins/**/test-parser
 /d2r
 
