@@ -7,6 +7,7 @@ channel = "beta"
 coverage = "partial"
 file_extensions = [".sav"]
 homepage = "https://savecraft.gg/plugins/stellaris"
+workshop_url = "https://steamcommunity.com/sharedfiles/filedetails/?id=3702302465"
 
 limitations = [
   "Binary (ironman) saves not yet tested — text saves only",
