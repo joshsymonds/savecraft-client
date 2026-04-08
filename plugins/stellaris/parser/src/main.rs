@@ -202,25 +202,45 @@ fn main() {
     );
 
     let save_name = meta.name.as_deref().unwrap_or("unknown").to_string();
-    let tag = meta.player.as_deref().unwrap_or("???");
     let date = meta.date.as_deref().unwrap_or("unknown");
-    let summary = format!(
-        "{}, {} ({})",
-        meta.name.as_deref().unwrap_or("Unknown Empire"),
-        tag,
-        date
-    );
+    let personality = overview.personality.as_deref().map(prettify_key);
+    let empire_name = meta.name.as_deref().unwrap_or("Unknown Empire");
+    let summary = match &personality {
+        Some(p) => format!("{empire_name}, {p} ({date})"),
+        None => format!("{empire_name} ({date})"),
+    };
 
     let identity = ndjson::Identity {
         save_name,
         game_id: "stellaris".to_string(),
         extra: Some(serde_json::json!({
-            "tag": tag,
+            "personality": personality,
             "date": date,
         })),
     };
 
     ndjson::emit_result(identity, summary, section_map);
+}
+
+/// Prettify a raw Clausewitz key into a display name.
+///
+/// Strips underscores and title-cases each word.
+/// e.g. `devouring_swarm` → `Devouring Swarm`
+fn prettify_key(key: &str) -> String {
+    key.split('_')
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let mut chars = w.chars();
+            match chars.next() {
+                Some(c) => {
+                    let upper: String = c.to_uppercase().collect();
+                    upper + chars.as_str()
+                }
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Find the player's country ID from the `player` block.

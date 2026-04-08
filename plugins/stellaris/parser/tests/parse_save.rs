@@ -55,6 +55,14 @@ fn parse_mid_game_save() {
         result["identity"]["extra"]["date"], "2327.07.01",
         "date mismatch"
     );
+    assert_eq!(
+        result["identity"]["extra"]["personality"], "Devouring Swarm",
+        "personality mismatch"
+    );
+    assert_eq!(
+        result["summary"], "Termanid Host 7, Devouring Swarm (2327.07.01)",
+        "summary mismatch"
+    );
 
     // Verify overview section exists
     let sections = &result["sections"];
@@ -349,6 +357,15 @@ fn parse_early_game_save() {
     assert_eq!(result["type"], "result");
     assert_eq!(result["identity"]["gameId"], "stellaris");
     assert_eq!(result["identity"]["extra"]["date"], "2200.01.01");
+    assert_eq!(
+        result["identity"]["extra"]["personality"], "Erudite Explorers",
+        "personality mismatch"
+    );
+    assert_eq!(
+        result["summary"],
+        "Interstellar Shantarian Alignment, Erudite Explorers (2200.01.01)",
+        "summary mismatch"
+    );
 
     // All 13 sections should be present even in early game
     let sections = &result["sections"];

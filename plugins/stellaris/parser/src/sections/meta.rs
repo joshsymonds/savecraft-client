@@ -5,7 +5,6 @@ pub struct Meta {
     pub version: Option<String>,
     pub name: Option<String>,
     pub date: Option<String>,
-    pub player: Option<String>,
     pub required_dlcs: Vec<String>,
     pub meta_fleets: Option<i64>,
     pub meta_planets: Option<i64>,
@@ -23,7 +22,6 @@ pub fn parse(data: &[u8]) -> Result<Meta, String> {
         version: None,
         name: None,
         date: None,
-        player: None,
         required_dlcs: Vec::new(),
         meta_fleets: None,
         meta_planets: None,
@@ -45,11 +43,6 @@ pub fn parse(data: &[u8]) -> Result<Meta, String> {
             "date" => {
                 if let Ok(v) = value.read_str() {
                     meta.date = Some(v.into_owned());
-                }
-            }
-            "player" => {
-                if let Ok(v) = value.read_str() {
-                    meta.player = Some(v.into_owned());
                 }
             }
             "required_dlcs" => {

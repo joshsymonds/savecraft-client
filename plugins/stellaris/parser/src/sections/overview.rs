@@ -12,7 +12,6 @@ use super::meta::Meta;
 #[derive(Debug, Serialize)]
 pub struct Overview {
     pub empire_name: Option<String>,
-    pub player_tag: Option<String>,
     pub date: Option<String>,
     pub game_version: Option<String>,
     pub required_dlcs: Vec<String>,
@@ -42,7 +41,6 @@ pub struct Overview {
 pub fn extract(meta: &Meta, player_country: &ObjectReader<'_, '_, Windows1252Encoding>) -> Overview {
     let mut overview = Overview {
         empire_name: meta.name.clone(),
-        player_tag: meta.player.clone(),
         date: meta.date.clone(),
         game_version: meta.version.clone(),
         required_dlcs: meta.required_dlcs.clone(),
