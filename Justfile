@@ -203,6 +203,10 @@ dev-web:
 storybook:
     cd web && npm run storybook
 
+# Build game manifests → worker/src/mcp/manifests.gen.ts
+build-manifests:
+    npx tsx scripts/build-manifests.ts
+
 # Build MCP App views → worker/src/mcp/views.gen.ts
 build-views:
     cd views && npx tsx scripts/build.ts
