@@ -3,12 +3,13 @@ use jomini::Windows1252Encoding;
 use serde::Serialize;
 use std::collections::HashSet;
 
-use super::gamestate::{find_field, read_f64, read_i64, read_string};
+use super::gamestate::{find_field, read_display_name, read_f64, read_i64, read_string};
 
 /// A colony (owned planet) with key data.
 #[derive(Debug, Serialize)]
 pub struct Colony {
     pub planet_id: i64,
+    pub name: Option<String>,
     pub planet_class: Option<String>,
     pub planet_size: Option<i64>,
     pub designation: Option<String>,
@@ -91,6 +92,7 @@ pub fn extract(
 
         result.colonies.push(Colony {
             planet_id,
+            name: read_display_name(&entry, "name"),
             planet_class: read_string(&entry, "planet_class"),
             planet_size: read_i64(&entry, "planet_size"),
             designation: read_string(&entry, "final_designation"),

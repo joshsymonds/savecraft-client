@@ -58,6 +58,87 @@ pub fn read_repeated_strings(
     result
 }
 
+/// Resolve a Clausewitz name block into a display string.
+///
+/// Stellaris names come in several forms:
+///   1. Template: `name={ key="PLANET_NAME_FORMAT" variables={ { key="PARENT" value={ key="Sol" } } { key="NUMERAL" value={ key="III" literal=yes } } } }`
+///      → substitutes variables into the key pattern. PLANET_NAME_FORMAT → "[PARENT] [NUMERAL]" → "Sol III"
+///   2. Direct key: `name={ key="FUN2_PLANET_Jurg-Sahuul" }` → strip known prefixes, return the name part
+///   3. Bare value: `name=yes` or `name="entity_string"` → no useful name
+pub fn read_display_name(
+    reader: &ObjectReader<'_, '_, Windows1252Encoding>,
+    field: &str,
+) -> Option<String> {
+    let val = find_field(reader, field)?;
+
+    // Try to read as an object (cases 1 & 2)
+    if let Ok(name_obj) = val.read_object() {
+        let key = read_string(&name_obj, "key")?;
+
+        // Collect variables if present
+        let mut vars = std::collections::HashMap::new();
+        if let Some(vars_val) = find_field(&name_obj, "variables") {
+            if let Ok(vars_arr) = vars_val.read_array() {
+                for item in vars_arr.values() {
+                    if let Ok(var_obj) = item.read_object() {
+                        if let (Some(k), Some(v_val)) =
+                            (read_string(&var_obj, "key"), find_field(&var_obj, "value"))
+                        {
+                            // value is either { key="X" } or a plain string
+                            if let Ok(v_obj) = v_val.read_object() {
+                                if let Some(v_str) = read_string(&v_obj, "key") {
+                                    vars.insert(k, v_str);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Case 1: template with variables
+        if !vars.is_empty() {
+            if key.contains("NAME_FORMAT") || key.contains("_FORMAT") {
+                // Common Stellaris pattern: PARENT + NUMERAL
+                let parent = vars.get("PARENT").or_else(|| vars.get("NAME"));
+                let numeral = vars.get("NUMERAL");
+                match (parent, numeral) {
+                    (Some(p), Some(n)) => return Some(format!("{} {}", p, n)),
+                    (Some(p), None) => return Some(p.clone()),
+                    _ => {
+                        // Unknown variable pattern — join all values
+                        let parts: Vec<&str> = vars.values().map(|s| s.as_str()).collect();
+                        if !parts.is_empty() {
+                            return Some(parts.join(" "));
+                        }
+                    }
+                }
+            }
+            // Has variables but not a FORMAT key — try PARENT/NAME
+            if let Some(name) = vars.get("NAME").or_else(|| vars.get("PARENT")) {
+                return Some(name.clone());
+            }
+        }
+
+        // Case 2: direct key — strip common prefixes
+        let name = key
+            .strip_prefix("SPEC_")
+            .or_else(|| key.strip_prefix("FUN2_PLANET_"))
+            .or_else(|| key.strip_prefix("FUN_PLANET_"))
+            .or_else(|| key.strip_prefix("PLANET_"))
+            .unwrap_or(&key);
+
+        // Don't return template keys as names
+        if name.contains("_FORMAT") || name.contains("NAME_1_OF") {
+            return None;
+        }
+
+        return Some(name.replace('_', " "));
+    }
+
+    None
+}
+
 /// Read a string field from an object, returning None if missing.
 pub fn read_string(
     reader: &ObjectReader<'_, '_, Windows1252Encoding>,
