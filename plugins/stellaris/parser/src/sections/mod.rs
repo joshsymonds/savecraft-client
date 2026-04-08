@@ -12,4 +12,5 @@ pub mod planets;
 pub mod progression;
 pub mod species;
 pub mod technology;
+pub mod threats;
 pub mod wars;

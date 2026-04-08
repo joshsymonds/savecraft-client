@@ -107,6 +107,7 @@ fn main() {
     let factions = sections::factions::extract(&reader, player_country_id);
     let exploration = sections::exploration::extract(&reader, player_country_id);
     let planets = sections::planets::extract(&reader, &player_country);
+    let threats = sections::threats::extract(&reader, player_country_id);
 
     let mut section_map = std::collections::HashMap::new();
     section_map.insert(
@@ -198,6 +199,14 @@ fn main() {
         ndjson::Section {
             description: "Planets: colonies with pops, stability, housing, districts".to_string(),
             data: serde_json::to_value(&planets).unwrap_or_default(),
+        },
+    );
+    section_map.insert(
+        "threats".to_string(),
+        ndjson::Section {
+            description: "Threats: crisis entities, fallen/awakened empires in the galaxy"
+                .to_string(),
+            data: serde_json::to_value(&threats).unwrap_or_default(),
         },
     );
 
