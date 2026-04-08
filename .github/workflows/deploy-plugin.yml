@@ -28,6 +28,7 @@ concurrency:
 
 permissions:
   contents: write
+  actions: write
 
 env:
   GOEXPERIMENT: jsonv2

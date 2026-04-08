@@ -378,22 +378,32 @@ jobs:
           VERSION: ${{ needs.environment.outputs.version }}
           APP_NAME: ${{ needs.environment.outputs.app_name }}
         run: |
+          r2put() {
+            local key="$1" file="$2"
+            for attempt in 1 2 3; do
+              if wrangler r2 object put "$key" --file="$file" --remote; then return 0; fi
+              echo "  Retry $attempt for $key"
+              sleep $((attempt * 2))
+            done
+            echo "ERROR: failed to upload $key after 3 attempts"
+            return 1
+          }
           pids=()
           for f in dist/"${APP_NAME}"-daemon-* dist/"${APP_NAME}"-tray-*; do
             [ -f "$f" ] || continue
             filename=$(basename "$f")
-            wrangler r2 object put "${R2_BUCKET}/daemon/v${VERSION}/${filename}" --file="$f" --remote &
+            r2put "${R2_BUCKET}/daemon/v${VERSION}/${filename}" "$f" &
             pids+=($!)
-            wrangler r2 object put "${R2_BUCKET}/daemon/${filename}" --file="$f" --remote &
+            r2put "${R2_BUCKET}/daemon/${filename}" "$f" &
             pids+=($!)
           done
           # MSI: versioned + unversioned
-          wrangler r2 object put "${R2_BUCKET}/daemon/v${VERSION}/${APP_NAME}.msi" --file="dist/${APP_NAME}.msi" --remote &
+          r2put "${R2_BUCKET}/daemon/v${VERSION}/${APP_NAME}.msi" "dist/${APP_NAME}.msi" &
           pids+=($!)
-          wrangler r2 object put "${R2_BUCKET}/daemon/${APP_NAME}.msi" --file="dist/${APP_NAME}.msi" --remote &
+          r2put "${R2_BUCKET}/daemon/${APP_NAME}.msi" "dist/${APP_NAME}.msi" &
           pids+=($!)
           # Manifest
-          wrangler r2 object put "${R2_BUCKET}/daemon/manifest.json" --file="dist/daemon-manifest.json" --remote &
+          r2put "${R2_BUCKET}/daemon/manifest.json" "dist/daemon-manifest.json" &
           pids+=($!)
           # Wait for all uploads, fail if any failed
           for pid in "${pids[@]}"; do wait "$pid" || exit 1; done
