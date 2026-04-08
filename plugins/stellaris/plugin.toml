@@ -58,6 +58,20 @@ description = "Search civics and origins by name or category."
 name = "Edict & Policy Search"
 description = "Search edicts and policies by name or category."
 
+[reference.modules.empire_health]
+name = "Empire Health Diagnosis"
+description = "Diagnose empire health across 5 dimensions: economy, stability, military, politics, and external threats. Surfaces problems by severity with actionable detail. Pass save_id to analyze your empire."
+
+[reference.modules.empire_health.section_mappings]
+overview_data = "overview"
+economy_data = "economy"
+planets_data = "planets"
+military_data = "military"
+wars_data = "wars"
+diplomacy_data = "diplomacy"
+factions_data = "factions"
+threats_data = "threats"
+
 [reference.modules.job_search]
 name = "Pop Job Search"
 description = "Search pop jobs by name or category."
