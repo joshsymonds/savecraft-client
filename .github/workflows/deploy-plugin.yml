@@ -255,6 +255,11 @@ jobs:
             echo "    Published ${game_id} v${VERSION}"
           done
 
+      - name: Trigger worker redeploy
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run deploy-cloud.yml
+
       - name: Clean up signing key
         if: always()
         run: rm -f /tmp/signing_key.priv

@@ -40,7 +40,7 @@ test-go-race:
     go test -race ./...
 
 # Run Worker tests (4 parallel shards, each with its own Miniflare)
-test-worker:
+test-worker: build-manifests build-views
     cd worker && npm run test:shard
 
 # Run MCP App view component tests (vitest + @testing-library/svelte)
@@ -52,7 +52,7 @@ test-reference-worker:
     cd reference && just test
 
 # Start Worker dev server (Miniflare)
-dev-worker:
+dev-worker: build-manifests build-views
     cd worker && npx wrangler dev
 
 # Lint Go code
@@ -61,7 +61,7 @@ lint-go:
     deadcode -test ./internal/... ./cmd/... ./plugins/...
 
 # Lint Worker (TypeScript)
-lint-worker:
+lint-worker: build-manifests build-views
     cd worker && npx eslint .
 
 # Format Go code

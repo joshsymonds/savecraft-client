@@ -78,6 +78,10 @@ target/
 dist/
 site/build/
 
+# Generated TypeScript (built from source by just build-manifests / build-views)
+worker/src/mcp/manifests.gen.ts
+worker/src/mcp/views.gen.ts
+
 # Local reference material (cloned repos, data dumps)
 /.reference/
 
