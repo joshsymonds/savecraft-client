@@ -24,6 +24,7 @@
     forEachSystem = nixpkgs.lib.genAttrs ["x86_64-linux" "aarch64-linux" "aarch64-darwin" "x86_64-darwin"];
   in {
     nixosModules.mtga-data-refresh = import ./nix/mtga-data-refresh.nix;
+    nixosModules.pob-server = import ./nix/pob-server.nix;
 
     devShells = forEachSystem (system: let
       pkgs = nixpkgs.legacyPackages.${system};
@@ -33,5 +34,6 @@
         modules = [./devenv.nix];
       };
     });
+
   };
 }
