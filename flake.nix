@@ -26,6 +26,33 @@
     nixosModules.mtga-data-refresh = import ./nix/mtga-data-refresh.nix;
     nixosModules.pob-server = import ./nix/pob-server.nix;
 
+    packages = forEachSystem (system: let
+      pkgs = nixpkgs.legacyPackages.${system};
+    in {
+      pob-server = pkgs.buildGoModule {
+        pname = "pob-server";
+        version = "0.1.0";
+        src = builtins.path {
+          name = "savecraft-src";
+          path = ./.;
+          filter = path: type:
+            let rel = pkgs.lib.removePrefix (toString ./.) (toString path);
+            in (type == "directory" && !pkgs.lib.hasPrefix "/vendor" rel)
+              || pkgs.lib.hasPrefix "/go.mod" rel
+              || pkgs.lib.hasPrefix "/go.sum" rel
+              || pkgs.lib.hasPrefix "/cmd/pob-server" rel
+              || pkgs.lib.hasPrefix "/internal" rel;
+        };
+        subPackages = ["cmd/pob-server"];
+        vendorHash = "sha256-wk+IuGz3cSq+drv9hCjgo1+jdUvMl4cyaF3MY4kBEuQ=";
+        postInstall = ''
+          mkdir -p $out/share/pob-server
+          cp cmd/pob-server/wrapper.lua $out/share/pob-server/
+        '';
+        meta.mainProgram = "pob-server";
+      };
+    });
+
     devShells = forEachSystem (system: let
       pkgs = nixpkgs.legacyPackages.${system};
     in {
