@@ -23,7 +23,7 @@ name = "Josh Symonds"
 github = "joshsymonds"
 
 [default_paths]
-windows = "%USERPROFILE%/Documents/Paradox Interactive/Stellaris/save games/*"
+windows = "%DOCUMENTS%/Paradox Interactive/Stellaris/save games/*"
 linux = "~/.local/share/Paradox Interactive/Stellaris/save games/*"
 darwin = "~/Documents/Paradox Interactive/Stellaris/save games/*"
 

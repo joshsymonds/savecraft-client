@@ -20,7 +20,7 @@ name = "Josh Symonds"
 github = "joshsymonds"
 
 [default_paths]
-windows = "%USERPROFILE%/Saved Games/Diablo II Resurrected"
+windows = "%SAVED_GAMES%/Diablo II Resurrected"
 linux = "~/.steam/steam/steamapps/compatdata/2536520/pfx/drive_c/users/steamuser/Saved Games/Diablo II Resurrected"
 darwin = "~/Library/Application Support/Diablo II Resurrected"
 
