@@ -4,6 +4,16 @@ on:
   push:
     branches: [main]
     tags: ["plugin-*-v*"]
+    paths:
+      - 'plugins/*/plugin.toml'
+      - 'plugins/**/*.go'
+      - 'plugins/**/*.rs'
+      - 'plugins/**/Cargo.toml'
+      - 'plugins/*/icon.*'
+      - 'reference/src/**'
+      - 'reference/test/**'
+      - 'reference/wrangler.toml'
+      - '.github/workflows/deploy-plugin.yml'
   pull_request:
     paths:
       - 'plugins/*/plugin.toml'

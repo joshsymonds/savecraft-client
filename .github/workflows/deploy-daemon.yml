@@ -4,6 +4,14 @@ on:
   push:
     branches: [main]
     tags: ["daemon-v*"]
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'proto/**'
+      - 'install/windows/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/deploy-daemon.yml'
   pull_request:
     paths:
       - 'cmd/**'
