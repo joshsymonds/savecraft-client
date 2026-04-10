@@ -42,7 +42,7 @@ func expandKnownFolder(varName, remainder string) []string {
 
 	// Fallback: %USERPROFILE%/<subfolder> expanded via env var.
 	if userProfile := os.Getenv("USERPROFILE"); userProfile != "" {
-		fallback := userProfile + "/" + fallbackSuffix + remainder
+		fallback := filepath.Join(userProfile, fallbackSuffix) + remainder
 		if len(candidates) == 0 || candidates[0] != fallback {
 			candidates = append(candidates, fallback)
 		}

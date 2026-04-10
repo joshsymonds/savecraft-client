@@ -29,6 +29,7 @@ func resolveKnownFolder(name string) (string, error) {
 		}
 		return filepath.Join(home, ".local", "share"), nil
 	case "LOCALAPPDATA_LOW":
+		// Non-Windows has no "Low" privilege concept — maps to same location as LOCALAPPDATA.
 		if runtime.GOOS == "darwin" {
 			return filepath.Join(home, "Library"), nil
 		}
