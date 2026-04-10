@@ -262,6 +262,116 @@ func TestIsExcludedSave(t *testing.T) {
 	}
 }
 
+func TestExpandPaths(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("UserHomeDir: %v", err)
+	}
+
+	t.Run("known folder DOCUMENTS produces two candidates", func(t *testing.T) {
+		t.Setenv("USERPROFILE", "/Users/TestUser")
+		got := expandPaths("%DOCUMENTS%/Paradox Interactive/Stellaris")
+		// First candidate: Known Folder resolution (~/Documents on Linux).
+		// Second candidate: %USERPROFILE%/Documents fallback.
+		if len(got) < 1 {
+			t.Fatal("expandPaths returned empty slice")
+		}
+		if got[0] != home+"/Documents/Paradox Interactive/Stellaris" {
+			t.Errorf("expandPaths[0] = %q, want %q", got[0], home+"/Documents/Paradox Interactive/Stellaris")
+		}
+		if len(got) != 2 {
+			t.Fatalf("expandPaths returned %d candidates, want 2", len(got))
+		}
+		if got[1] != "/Users/TestUser/Documents/Paradox Interactive/Stellaris" {
+			t.Errorf("expandPaths[1] = %q, want %q", got[1], "/Users/TestUser/Documents/Paradox Interactive/Stellaris")
+		}
+	})
+
+	t.Run("known folder deduplicates identical candidates", func(t *testing.T) {
+		// Set USERPROFILE to match what resolveKnownFolder returns on Linux.
+		t.Setenv("USERPROFILE", home)
+		got := expandPaths("%DOCUMENTS%/saves")
+		// Both resolve to ~/Documents/saves — should dedup to one.
+		if len(got) != 1 {
+			t.Errorf("expandPaths returned %d candidates, want 1 (dedup): %v", len(got), got)
+		}
+		if got[0] != home+"/Documents/saves" {
+			t.Errorf("expandPaths[0] = %q, want %q", got[0], home+"/Documents/saves")
+		}
+	})
+
+	t.Run("known folder LOCALAPPDATA produces two candidates", func(t *testing.T) {
+		t.Setenv("USERPROFILE", "/Users/TestUser")
+		got := expandPaths("%LOCALAPPDATA%/Game")
+		if len(got) != 2 {
+			t.Fatalf("expandPaths returned %d candidates, want 2: %v", len(got), got)
+		}
+		// First: Known Folder resolution (~/.local/share on Linux).
+		if got[0] != home+"/.local/share/Game" {
+			t.Errorf("expandPaths[0] = %q, want %q", got[0], home+"/.local/share/Game")
+		}
+		// Second: %USERPROFILE%/AppData/Local fallback.
+		if got[1] != "/Users/TestUser/AppData/Local/Game" {
+			t.Errorf("expandPaths[1] = %q, want %q", got[1], "/Users/TestUser/AppData/Local/Game")
+		}
+	})
+
+	t.Run("known folder LOCALAPPDATA_LOW produces two candidates", func(t *testing.T) {
+		t.Setenv("USERPROFILE", "/Users/TestUser")
+		got := expandPaths("%LOCALAPPDATA_LOW%/Game")
+		if len(got) != 2 {
+			t.Fatalf("expandPaths returned %d candidates, want 2: %v", len(got), got)
+		}
+		if got[1] != "/Users/TestUser/AppData/Local/Low/Game" {
+			t.Errorf("expandPaths[1] = %q, want %q", got[1], "/Users/TestUser/AppData/Local/Low/Game")
+		}
+	})
+
+	t.Run("known folder SAVED_GAMES on non-Windows still has fallback", func(t *testing.T) {
+		t.Setenv("USERPROFILE", "/Users/TestUser")
+		got := expandPaths("%SAVED_GAMES%/Diablo II Resurrected")
+		// On Linux, resolveKnownFolder("SAVED_GAMES") errors.
+		// Should still return the fallback.
+		found := false
+		for _, p := range got {
+			if p == "/Users/TestUser/Saved Games/Diablo II Resurrected" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expandPaths missing fallback candidate: %v", got)
+		}
+	})
+
+	t.Run("regular env var returns single candidate", func(t *testing.T) {
+		t.Setenv("APPDATA", "/home/user/.config")
+		got := expandPaths("%APPDATA%/StardewValley/Saves")
+		if len(got) != 1 {
+			t.Fatalf("expandPaths returned %d candidates, want 1: %v", len(got), got)
+		}
+		if got[0] != "/home/user/.config/StardewValley/Saves" {
+			t.Errorf("expandPaths[0] = %q, want %q", got[0], "/home/user/.config/StardewValley/Saves")
+		}
+	})
+
+	t.Run("tilde returns single candidate", func(t *testing.T) {
+		got := expandPaths("~/saves")
+		if len(got) != 1 {
+			t.Fatalf("expandPaths returned %d candidates, want 1: %v", len(got), got)
+		}
+		if got[0] != home+"/saves" {
+			t.Errorf("expandPaths[0] = %q, want %q", got[0], home+"/saves")
+		}
+	})
+
+	t.Run("empty string returns single empty candidate", func(t *testing.T) {
+		got := expandPaths("")
+		if len(got) != 1 || got[0] != "" {
+			t.Errorf("expandPaths('') = %v, want ['']", got)
+		}
+	})
+}
+
 func TestMatchesPattern(t *testing.T) {
 	tests := []struct {
 		name     string

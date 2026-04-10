@@ -7,6 +7,75 @@ import (
 	"strings"
 )
 
+// knownFolderFallback returns the %USERPROFILE%-relative subfolder for a Known
+// Folder pseudo-variable, or "" if the name is not a Known Folder.
+func knownFolderFallback(name string) string {
+	switch name {
+	case "DOCUMENTS":
+		return "Documents"
+	case "SAVED_GAMES":
+		return "Saved Games"
+	case "LOCALAPPDATA":
+		return "AppData/Local"
+	case "LOCALAPPDATA_LOW":
+		return "AppData/Local/Low"
+	default:
+		return ""
+	}
+}
+
+// expandKnownFolder resolves a Known Folder variable and its fallback,
+// returning candidate paths with the remainder appended. Returns nil if
+// the variable is not a Known Folder or both resolution and fallback fail.
+func expandKnownFolder(varName, remainder string) []string {
+	fallbackSuffix := knownFolderFallback(varName)
+	if fallbackSuffix == "" {
+		return nil
+	}
+
+	var candidates []string
+
+	// Primary: resolve via platform Known Folder API.
+	if resolved, err := resolveKnownFolder(varName); err == nil && resolved != "" {
+		candidates = append(candidates, resolved+remainder)
+	}
+
+	// Fallback: %USERPROFILE%/<subfolder> expanded via env var.
+	if userProfile := os.Getenv("USERPROFILE"); userProfile != "" {
+		fallback := userProfile + "/" + fallbackSuffix + remainder
+		if len(candidates) == 0 || candidates[0] != fallback {
+			candidates = append(candidates, fallback)
+		}
+	}
+
+	return candidates
+}
+
+// expandPaths expands a path template and returns one or more candidate paths.
+// Known Folder pseudo-variables (%DOCUMENTS%, %SAVED_GAMES%, %LOCALAPPDATA%,
+// %LOCALAPPDATA_LOW%) produce two candidates: the platform-resolved path first,
+// then the %USERPROFILE%-based fallback. Duplicates are removed.
+// Regular %VAR% templates and ~ produce a single candidate.
+func expandPaths(template string) []string {
+	if template == "" {
+		return []string{""}
+	}
+
+	// Extract the first %VAR% token if present.
+	start := strings.IndexByte(template, '%')
+	if start != -1 {
+		if end := strings.IndexByte(template[start+1:], '%'); end != -1 {
+			end += start + 1
+			varName := template[start+1 : end]
+			if candidates := expandKnownFolder(varName, template[end+1:]); len(candidates) > 0 {
+				return candidates
+			}
+		}
+	}
+
+	return []string{expandPath(template)}
+}
+
 // expandPath expands ~ and %VAR% templates in a path string.
 // ~ is expanded to the user's home directory.
 // %VAR% patterns are expanded to the corresponding environment variable.
