@@ -746,6 +746,35 @@ func (d *Daemon) ensurePluginReady(
 	return true
 }
 
+// tryDiscoverCandidates expands a path template into candidates and returns
+// the first candidate that has valid directories with matching save files.
+// Returns ("", 0) if no candidate has valid saves.
+func (d *Daemon) tryDiscoverCandidates(
+	pathTemplate string, info pluginmgr.PluginInfo,
+) (string, int) {
+	for _, expanded := range expandPaths(pathTemplate) {
+		dirs := resolveGlob(d.fs, expanded, info.ExcludeDirs)
+		anyValid := false
+		totalMatching := 0
+		for _, dir := range dirs {
+			stat, statErr := d.fs.Stat(dir)
+			if statErr != nil || !stat.IsDir() {
+				continue
+			}
+			anyValid = true
+			entries, readErr := d.fs.ReadDir(dir)
+			if readErr != nil {
+				continue
+			}
+			totalMatching += len(d.filterSaveFiles(entries, info.FileExtensions, info.FilePatterns, nil))
+		}
+		if anyValid {
+			return expanded, totalMatching
+		}
+	}
+	return "", 0
+}
+
 func (d *Daemon) discoverGames(ctx context.Context) {
 	if d.plugins == nil {
 		return
@@ -764,39 +793,22 @@ func (d *Daemon) discoverGames(ctx context.Context) {
 			continue
 		}
 
-		expanded := expandPath(pathTemplate)
-		dirs := resolveGlob(d.fs, expanded, info.ExcludeDirs)
-
-		// Check that at least one resolved path is a valid directory.
-		anyValid := false
-		totalMatching := 0
-		for _, dir := range dirs {
-			stat, statErr := d.fs.Stat(dir)
-			if statErr != nil || !stat.IsDir() {
-				continue
-			}
-			anyValid = true
-			entries, readErr := d.fs.ReadDir(dir)
-			if readErr != nil {
-				continue
-			}
-			totalMatching += len(d.filterSaveFiles(entries, info.FileExtensions, info.FilePatterns, nil))
-		}
-		if !anyValid {
+		bestExpanded, bestMatching := d.tryDiscoverCandidates(pathTemplate, info)
+		if bestExpanded == "" {
 			continue
 		}
 
 		d.log.InfoContext(ctx, "game discovered",
 			slog.String("game_id", gameID),
 			slog.String("name", info.Name),
-			slog.String("path", expanded),
-			slog.Int("file_count", totalMatching),
+			slog.String("path", bestExpanded),
+			slog.Int("file_count", bestMatching),
 		)
 		discovered = append(discovered, DiscoveredGame{
 			GameID:         gameID,
 			Name:           info.Name,
-			Path:           expanded,
-			FileCount:      totalMatching,
+			Path:           bestExpanded,
+			FileCount:      bestMatching,
 			FileExtensions: info.FileExtensions,
 			FilePatterns:   info.FilePatterns,
 			ExcludeDirs:    info.ExcludeDirs,
@@ -1465,7 +1477,7 @@ func (d *Daemon) handleConfigUpdate(
 	results := make(map[string]configGameResult, len(update.Games))
 
 	for gameID, newGame := range update.Games {
-		resolvedPath := expandPath(newGame.SavePath)
+		resolvedPath := d.resolveFirstValid(newGame.SavePath, newGame.ExcludeDirs)
 		gameCfg := GameConfig{
 			SavePath:       resolvedPath,
 			Enabled:        newGame.Enabled,

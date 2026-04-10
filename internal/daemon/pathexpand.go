@@ -117,6 +117,24 @@ func expandPath(template string) string {
 	return result
 }
 
+// resolveFirstValid tries each candidate from expandPaths and returns the first
+// path where at least one resolved directory exists. Falls back to the first
+// candidate for error reporting if none exist.
+func (d *Daemon) resolveFirstValid(template string, excludeDirs []string) string {
+	candidates := expandPaths(template)
+	for _, expanded := range candidates {
+		dirs := resolveGlob(d.fs, expanded, excludeDirs)
+		for _, dir := range dirs {
+			info, err := d.fs.Stat(dir)
+			if err == nil && info.IsDir() {
+				return expanded
+			}
+		}
+	}
+	// No candidate had a valid directory — return the first for error reporting.
+	return candidates[0]
+}
+
 // hasGlobMeta reports whether the path contains any glob metacharacters.
 func hasGlobMeta(path string) bool {
 	return strings.ContainsAny(path, "*?[")

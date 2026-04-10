@@ -1852,6 +1852,114 @@ func TestDiscoverGames_ManifestError(t *testing.T) {
 	}
 }
 
+func TestDiscoverGames_KnownFolderTemplate(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("UserHomeDir: %v", err)
+	}
+
+	// On Linux, resolveKnownFolder("DOCUMENTS") returns home+"/Documents".
+	// Place saves there so the Known Folder candidate finds them.
+	// Use a non-glob path to test the simple case clearly.
+	docsPath := home + "/Documents/Paradox Interactive/Stellaris"
+	ws := newFakeWSClient()
+	fsys := &fakeFS{
+		dirs: map[string][]string{
+			docsPath: {"save.sav"},
+		},
+		files: map[string][]byte{},
+	}
+
+	pm := &fakePluginManager{
+		manifests: map[string]pluginmgr.PluginInfo{
+			"stellaris": {
+				GameID:         "stellaris",
+				Name:           "Stellaris",
+				DefaultPaths:   map[string]string{runtime.GOOS: "%DOCUMENTS%/Paradox Interactive/Stellaris"},
+				FileExtensions: []string{".sav"},
+			},
+		},
+	}
+
+	d := New(
+		Config{Games: map[string]GameConfig{}}, fsys,
+		newFakeWatcher(), &fakeRunner{}, ws, pm, nil, testLogger(),
+	)
+	d.discoverGames(context.Background())
+
+	msg := ws.sentProto("gamesDiscovered", 0)
+	if msg == nil {
+		t.Fatal("missing gamesDiscovered event")
+	}
+
+	gd := msg.GetGamesDiscovered()
+	if len(gd.Games) != 1 {
+		t.Fatalf("games count = %d, want 1", len(gd.Games))
+	}
+
+	game := gd.Games[0]
+	if game.GameId != "stellaris" {
+		t.Errorf("gameId = %v, want stellaris", game.GameId)
+	}
+	if game.Path != docsPath {
+		t.Errorf("path = %v, want %v", game.Path, docsPath)
+	}
+	if game.FileCount != 1 {
+		t.Errorf("fileCount = %v, want 1", game.FileCount)
+	}
+}
+
+func TestDiscoverGames_KnownFolderFallback(t *testing.T) {
+	// Set USERPROFILE so the fallback candidate is generated.
+	// Place saves ONLY at the fallback path, not the Known Folder path.
+	t.Setenv("USERPROFILE", "/Users/TestUser")
+
+	ws := newFakeWSClient()
+	fsys := &fakeFS{
+		dirs: map[string][]string{
+			// Known Folder path (~/Documents/...) does NOT exist — no entry in fakeFS.
+			// Fallback path (%USERPROFILE%/Documents/...) has saves.
+			"/Users/TestUser/Saved Games/Diablo II Resurrected": {"Hammerdin.d2s"},
+		},
+		files: map[string][]byte{},
+	}
+
+	pm := &fakePluginManager{
+		manifests: map[string]pluginmgr.PluginInfo{
+			"d2r": {
+				GameID:         "d2r",
+				Name:           "Diablo II: Resurrected",
+				DefaultPaths:   map[string]string{runtime.GOOS: "%SAVED_GAMES%/Diablo II Resurrected"},
+				FileExtensions: []string{".d2s"},
+			},
+		},
+	}
+
+	d := New(
+		Config{Games: map[string]GameConfig{}}, fsys,
+		newFakeWatcher(), &fakeRunner{}, ws, pm, nil, testLogger(),
+	)
+	d.discoverGames(context.Background())
+
+	msg := ws.sentProto("gamesDiscovered", 0)
+	if msg == nil {
+		t.Fatal("missing gamesDiscovered event")
+	}
+
+	gd := msg.GetGamesDiscovered()
+	if len(gd.Games) != 1 {
+		t.Fatalf("games count = %d, want 1", len(gd.Games))
+	}
+
+	game := gd.Games[0]
+	if game.GameId != "d2r" {
+		t.Errorf("gameId = %v, want d2r", game.GameId)
+	}
+	if game.Path != "/Users/TestUser/Saved Games/Diablo II Resurrected" {
+		t.Errorf("path = %v, want /Users/TestUser/Saved Games/Diablo II Resurrected", game.Path)
+	}
+}
+
 func TestHandleCommand_DiscoverGames(t *testing.T) {
 	ws := newFakeWSClient()
 	fsys := &fakeFS{
