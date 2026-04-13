@@ -422,15 +422,15 @@ update-mtga env:
         exit 1
     fi
     echo "==> Phase 0: MTGA card data ({{env}})"
-    go run ./plugins/mtga/tools/mtga-carddb/ \
+    go run ./plugins/magic/tools/mtga-carddb/ \
         --card-db="$db" --cf-account-id="$cf_account" --d1-database-id="$d1" \
         --cf-api-token="$CLOUDFLARE_API_TOKEN" 2>&1 | sed 's/^/  [carddb] /'
 
     echo "==> Phase 1: rules + scryfall enrichment (parallel, {{env}})"
-    go run ./plugins/mtga/tools/rules-fetch/ \
+    go run ./plugins/magic/tools/rules-fetch/ \
         --cf-account-id="$cf_account" --d1-database-id="$d1" --vectorize-index="$rules_vec" 2>&1 | sed 's/^/  [rules] /' &
     pid_rules=$!
-    go run ./plugins/mtga/tools/scryfall-fetch/ \
+    go run ./plugins/magic/tools/scryfall-fetch/ \
         --cf-account-id="$cf_account" --d1-database-id="$d1" --vectorize-index="$cards_vec" 2>&1 | sed 's/^/  [cards] /' &
     pid_cards=$!
 
@@ -443,11 +443,11 @@ update-mtga env:
     fi
 
     echo "==> Phase 2: card roles ({{env}})"
-    go run ./plugins/mtga/tools/tagger-fetch/ \
+    go run ./plugins/magic/tools/tagger-fetch/ \
         --cf-account-id="$cf_account" --d1-database-id="$d1" 2>&1 | sed 's/^/  [roles] /'
 
     echo "==> Phase 3: draft ratings ({{env}})"
-    go run ./plugins/mtga/tools/17lands-fetch/ \
+    go run ./plugins/magic/tools/17lands-fetch/ \
         --cf-account-id="$cf_account" --d1-database-id="$d1" 2>&1 | sed 's/^/  [17lands] /'
 
     echo "==> Done ({{env}})"
@@ -467,11 +467,11 @@ update-mtga-retry env:
     fi
 
     echo "==> Retrying tagger roles ({{env}})"
-    go run ./plugins/mtga/tools/tagger-fetch/ \
+    go run ./plugins/magic/tools/tagger-fetch/ \
         --retry --cf-account-id="$cf_account" --d1-database-id="$d1" 2>&1 | sed 's/^/  [roles] /'
 
     echo "==> Retrying draft ratings + synergies ({{env}})"
-    go run ./plugins/mtga/tools/17lands-fetch/ \
+    go run ./plugins/magic/tools/17lands-fetch/ \
         --retry --cf-account-id="$cf_account" --d1-database-id="$d1" 2>&1 | sed 's/^/  [17lands] /'
 
     echo "==> Retry done ({{env}})"

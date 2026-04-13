@@ -1,0 +1,68 @@
+game_id = "magic"
+sources = ["wasm"]
+icon = "icon.png"
+name = "Magic: The Gathering"
+description = "Parses Player.log for collection, decks, match history, play-by-play game logs, drafts, rank, and inventory. Constructed coaching: personal match stats, sideboard analysis, deck evaluation. Gameplay analysis: per-turn play advice, mana efficiency, card timing, attack decisions, mulligan evaluation."
+channel = "beta"
+coverage = "partial"
+file_extensions = []
+file_patterns = ["Player.log", "Player-prev.log"]
+homepage = "https://savecraft.gg/plugins/magic"
+
+limitations = [
+  "Requires 'Detailed Logs' enabled in MTGA settings",
+  "Log clears on game restart — only current session data available",
+  "Card names require Scryfall data update after new set releases",
+]
+
+[attribution]
+sources = ["wotc", "scryfall", "17lands"]
+
+[author]
+name = "Josh Symonds"
+github = "joshsymonds"
+
+[default_paths]
+windows = "%LOCALAPPDATA_LOW%/Wizards Of The Coast/MTGA"
+linux = "~/.local/share/Steam/steamapps/compatdata/2141910/pfx/drive_c/users/steamuser/AppData/LocalLow/Wizards Of The Coast/MTGA"
+darwin = "~/Library/Logs/Wizards of the Coast/MTGA"
+
+[reference.modules.rules_search]
+name = "Rules Search"
+description = "Search the MTG Comprehensive Rules and official per-card rulings from Scryfall. Query by rule number, keyword, or card name."
+
+[reference.modules.card_search]
+name = "Card Search"
+description = "Search the complete Magic: The Gathering card database — all formats, all printings. Filter by name, color, type, mana cost, oracle text, format legality, and type_exclude to remove unwanted card types. Powered by Scryfall Oracle Cards."
+
+[reference.modules.collection_diff]
+name = "Collection Diff"
+description = "Calculate the wildcard cost to complete a target decklist given a player's current collection. Returns missing cards grouped by rarity with total wildcard cost."
+
+[reference.modules.card_stats]
+name = "Card Stats"
+description = "Browse 17Lands draft statistics for MTG Arena. List available sets, view set overviews with top and bottom performers, get single card detail with breakdowns across all 31 color archetypes, or sort leaderboards by any stat."
+
+[reference.modules.draft_advisor]
+name = "Draft Advisor"
+description = "Contextual draft pick evaluation using 8-axis WASPAS scoring across all 31 color archetypes, format-adjusted by empirical win rate so the system steers toward stronger archetypes when commitment is equal. Bayesian-calibrated baseline win rate, archetype-stratified pairwise synergy, curve fit, signal openness, role composition, castability, color commitment, and opportunity cost. Each archetype candidate includes a viability tier (strong/moderate/sparse/fringe) so the AI warns when you're in an underrepresented archetype. Batch review tracks archetype evolution across picks. Supports live pick ranking and full draft batch review."
+
+[reference.modules.deckbuilding]
+name = "Deck Health & Cut Advisor"
+description = "Analyze decks in draft or Constructed. Draft: health check compares composition against archetype averages; cut advisor scores every card across 5 axes. Constructed: format legality check, composition analysis, mana curve, color pip requirements, sideboard size validation."
+
+[reference.modules.mana_base]
+name = "Mana Base"
+description = "Analyze colored mana source requirements for a deck using Frank Karsten's methodology. Returns the number of colored sources needed per color to achieve ~89%+ on-curve consistency."
+
+[reference.modules.match_stats]
+name = "Match Stats"
+description = "Personal Constructed match statistics from your Arena play history. Win rates by deck, format, and opponent archetype. Recent match trends. Opponent archetypes classified from cards seen during play."
+
+[reference.modules.play_advisor]
+name = "Play Advisor"
+description = "Per-turn gameplay analysis using 17Lands Premier Draft replay data. Compares mana efficiency, card deployment timing, attack decisions, and mulligan choices against population baselines. Post-game review identifies the biggest deviations from winning patterns. Works for all formats with draft-data disclaimer."
+
+[reference.modules.sideboard_analysis]
+name = "Sideboard Analysis"
+description = "Analyze best-of-three match performance to evaluate sideboarding effectiveness. Compares game 1 (pre-board) vs games 2/3 (post-board) win rates, broken down by opponent archetype."

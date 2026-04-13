@@ -2938,7 +2938,7 @@ func TestParseAndPush_OnlyChangedSectionsSent(t *testing.T) {
 	ws := newFakeWSClient()
 
 	state1 := &GameState{
-		Identity: Identity{SaveName: "Player", GameID: "mtga"},
+		Identity: Identity{SaveName: "Player", GameID: "magic"},
 		Summary:  "Player, Gold 4",
 		Sections: map[string]Section{
 			"decks":    {Description: "Deck lists", Data: jsontext.Value(`{"count":80}`)},
@@ -2948,7 +2948,7 @@ func TestParseAndPush_OnlyChangedSectionsSent(t *testing.T) {
 	}
 	// State 2: only game_log changed.
 	state2 := &GameState{
-		Identity: Identity{SaveName: "Player", GameID: "mtga"},
+		Identity: Identity{SaveName: "Player", GameID: "magic"},
 		Summary:  "Player, Gold 4",
 		Sections: map[string]Section{
 			"decks":    {Description: "Deck lists", Data: jsontext.Value(`{"count":80}`)},
@@ -2957,12 +2957,12 @@ func TestParseAndPush_OnlyChangedSectionsSent(t *testing.T) {
 		},
 	}
 
-	runner := &fakeRunner{results: map[string]*GameState{"mtga": state1}}
+	runner := &fakeRunner{results: map[string]*GameState{"magic": state1}}
 	cfg := Config{
 		SourceID: "test-source",
 		Version:  "0.1.0",
 		Games: map[string]GameConfig{
-			"mtga": {SavePath: "/saves/mtga", FileExtensions: []string{".log"}, Enabled: true},
+			"magic": {SavePath: "/saves/mtga", FileExtensions: []string{".log"}, Enabled: true},
 		},
 	}
 	fsys := &fakeFS{files: map[string][]byte{"/saves/mtga/Player.log": []byte("data")}}
@@ -2970,7 +2970,7 @@ func TestParseAndPush_OnlyChangedSectionsSent(t *testing.T) {
 	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
 
 	// First push — all 3 sections should be sent.
-	d.parseAndPush(context.Background(), "mtga", "/saves/mtga/Player.log", "Player.log", nil, false)
+	d.parseAndPush(context.Background(), "magic", "/saves/mtga/Player.log", "Player.log", nil, false)
 
 	push1 := ws.sentProto("pushSave", 0)
 	if push1 == nil {
@@ -2983,11 +2983,11 @@ func TestParseAndPush_OnlyChangedSectionsSent(t *testing.T) {
 
 	// Change runner output so only game_log differs.
 	runner.mu.Lock()
-	runner.results["mtga"] = state2
+	runner.results["magic"] = state2
 	runner.mu.Unlock()
 
 	// Second push — only game_log should be sent.
-	d.parseAndPush(context.Background(), "mtga", "/saves/mtga/Player.log", "Player.log", nil, false)
+	d.parseAndPush(context.Background(), "magic", "/saves/mtga/Player.log", "Player.log", nil, false)
 
 	push2 := ws.sentProto("pushSave", 1)
 	if push2 == nil {
