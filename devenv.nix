@@ -38,9 +38,6 @@
     # WASM tooling
     pkgs.wabt           # wasm-objdump, wasm2wat, wat2wasm
 
-    # LuaJIT for pob-server (matches production runtime; required by audit_segment Lua tests)
-    pkgs.luajit
-
     # Build tooling
     pkgs.just           # command runner (Justfile)
 
