@@ -411,8 +411,8 @@ update-mtga env:
         exit 1
     fi
 
-    # Phase 0: mtga-carddb must complete first — it populates mtga_cards from
-    # the MTGA client database. scryfall-fetch enriches these rows.
+    # Phase 0: mtga-carddb must complete first — it populates magic_cards from
+    # the MTG Arena client database. scryfall-fetch enriches these rows.
     db=".reference/mtga-carddb/Raw_CardDatabase.mtga"
     if [ ! -f "$db" ]; then
         echo "MTGA card database not found at $db" >&2
