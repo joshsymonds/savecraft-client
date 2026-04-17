@@ -44,7 +44,7 @@
               || pkgs.lib.hasPrefix "/internal" rel;
         };
         subPackages = ["cmd/pob-server"];
-        vendorHash = "sha256-MlyfksE53wwkvda/5ppHIH5YlwuN5GKyugVBK9S33bk=";
+        vendorHash = "sha256-QXcXRR/AnEIW0nejzdpG2lXYYhUBs9wHTWBWl5QkdfM=";
         postInstall = ''
           mkdir -p $out/share/pob-server
           cp cmd/pob-server/wrapper.lua $out/share/pob-server/
