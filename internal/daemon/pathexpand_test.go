@@ -1,8 +1,10 @@
 package daemon
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -393,5 +395,61 @@ func TestMatchesPattern(t *testing.T) {
 				t.Errorf("matchesPattern(%q, %v) = %v, want %v", tt.name, tt.patterns, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestFilterSaveFiles_EmptyExtensionsWithPatterns covers the pattern-only
+// plugin config shape (e.g. magic, wow, poe, sdv): file_extensions=[] with
+// file_patterns=["Player.log", ...]. An empty extensions list must mean
+// "no extension filter", not "reject everything".
+func TestFilterSaveFiles_EmptyExtensionsWithPatterns(t *testing.T) {
+	entries := []fs.DirEntry{
+		&fakeDirEntry{name: "Player.log"},
+		&fakeDirEntry{name: "Player-prev.log"},
+		&fakeDirEntry{name: "output_log.txt"},
+	}
+
+	d := &Daemon{}
+	got := d.filterSaveFiles(entries, nil, []string{"Player.log", "Player-prev.log"}, nil)
+
+	want := []string{"Player.log", "Player-prev.log"}
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Errorf("filterSaveFiles with empty extensions + patterns = %v, want %v", got, want)
+	}
+}
+
+// TestFilterSaveFiles_ExtensionAndPatternsBothFilter confirms that when
+// both are set, both apply (pattern narrows the extension result).
+func TestFilterSaveFiles_ExtensionAndPatternsBothFilter(t *testing.T) {
+	entries := []fs.DirEntry{
+		&fakeDirEntry{name: "Atmus.d2s"},
+		&fakeDirEntry{name: "Backup.d2s"},
+		&fakeDirEntry{name: "SharedStashSoftCoreV2.d2i"},
+	}
+
+	d := &Daemon{}
+	got := d.filterSaveFiles(entries, []string{".d2s"}, []string{"Atmus*"}, nil)
+
+	if !slices.Equal(got, []string{"Atmus.d2s"}) {
+		t.Errorf("filterSaveFiles with ext+pattern = %v, want [Atmus.d2s]", got)
+	}
+}
+
+// TestFilterSaveFiles_NoFilters accepts every non-dir entry when neither
+// extensions nor patterns are configured.
+func TestFilterSaveFiles_NoFilters(t *testing.T) {
+	entries := []fs.DirEntry{
+		&fakeDirEntry{name: "a.txt"},
+		&fakeDirEntry{name: "b.log"},
+	}
+
+	d := &Daemon{}
+	got := d.filterSaveFiles(entries, nil, nil, nil)
+	slices.Sort(got)
+	want := []string{"a.txt", "b.log"}
+	if !slices.Equal(got, want) {
+		t.Errorf("filterSaveFiles with no filters = %v, want %v", got, want)
 	}
 }

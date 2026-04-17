@@ -1033,7 +1033,7 @@ func (d *Daemon) handleFileEvent(ctx context.Context, ev FileEvent) {
 	d.mu.RUnlock()
 	fileName := filepath.Base(ev.Path)
 	ext := filepath.Ext(fileName)
-	if !matchesExtension(ext, gameCfg.FileExtensions) {
+	if len(gameCfg.FileExtensions) > 0 && !matchesExtension(ext, gameCfg.FileExtensions) {
 		return
 	}
 	if len(gameCfg.FilePatterns) > 0 && !matchesPattern(fileName, gameCfg.FilePatterns) {
@@ -1673,7 +1673,7 @@ func (d *Daemon) filterSaveFiles(
 		}
 		name := entry.Name()
 		ext := filepath.Ext(name)
-		if !matchesExtension(ext, extensions) {
+		if len(extensions) > 0 && !matchesExtension(ext, extensions) {
 			continue
 		}
 		if len(patterns) > 0 && !matchesPattern(name, patterns) {
