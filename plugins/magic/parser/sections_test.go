@@ -1487,6 +1487,59 @@ func TestBuildOutputSectionsSkipsEmptyDeckName(t *testing.T) {
 	}
 }
 
+func TestBuildOutputSectionsSkipsEmptyMatchID(t *testing.T) {
+	// Same class of bug as empty deck Name: if MatchID is empty, we'd emit
+	// sections literally named "match:" / "game:" and bogus player_summary
+	// cross-references. Guard symmetrically.
+	gs := &GameState{
+		Matches: &MatchHistorySection{
+			Matches: []MatchResult{
+				{MatchID: "", EventID: "Ranked"},
+				{MatchID: "match-001", EventID: "Ranked", Opponent: MatchPlayer{Name: "Rival"}, Result: "win"},
+			},
+		},
+		GameLogs: &GameLogSection{
+			Games: []GameLog{
+				{MatchID: ""},
+				{MatchID: "match-001", Turns: []TurnLog{{TurnNumber: 1}}},
+			},
+		},
+	}
+	sections := buildOutputSections(gs)
+
+	if _, ok := sections["match:"]; ok {
+		t.Error("did not expect a section literally named 'match:' (empty MatchID)")
+	}
+	if _, ok := sections["game:"]; ok {
+		t.Error("did not expect a section literally named 'game:' (empty MatchID)")
+	}
+	if _, ok := sections["match:match-001"]; !ok {
+		t.Error("expected section 'match:match-001' to be present")
+	}
+	if _, ok := sections["game:match-001"]; !ok {
+		t.Error("expected section 'game:match-001' to be present")
+	}
+
+	psMap := sections["player_summary"].(map[string]any)
+	data := psMap["data"].(map[string]any)
+
+	matches := data["matches"].([]map[string]any)
+	if len(matches) != 1 {
+		t.Fatalf("expected 1 match in player_summary (empty-id filtered), got %d", len(matches))
+	}
+	if matches[0]["section"] != "match:match-001" {
+		t.Errorf("expected match section 'match:match-001', got %v", matches[0]["section"])
+	}
+
+	games := data["games"].([]map[string]any)
+	if len(games) != 1 {
+		t.Fatalf("expected 1 game in player_summary (empty-id filtered), got %d", len(games))
+	}
+	if games[0]["section"] != "game:match-001" {
+		t.Errorf("expected game section 'game:match-001', got %v", games[0]["section"])
+	}
+}
+
 func TestBuildSummaryWithRank(t *testing.T) {
 	gs := &GameState{
 		DisplayName: "TestPlayer",

@@ -68,6 +68,9 @@ func buildOutputSections(gs *GameState) map[string]any {
 	// Per-match sections with full match metadata (opponent cards seen, rank, game results).
 	if gs.Matches != nil {
 		for _, m := range gs.Matches.Matches {
+			if m.MatchID == "" {
+				continue
+			}
 			sections["match:"+m.MatchID] = map[string]any{
 				"description": fmt.Sprintf("Match result for %s vs %s — includes opponent cards seen, rank, and per-game outcomes", m.MatchID, m.Opponent.Name),
 				"data":        m,
@@ -78,6 +81,9 @@ func buildOutputSections(gs *GameState) map[string]any {
 	// Per-game sections with full turn-by-turn data.
 	if gs.GameLogs != nil {
 		for _, game := range gs.GameLogs.Games {
+			if game.MatchID == "" {
+				continue
+			}
 			sections["game:"+game.MatchID] = map[string]any{
 				"description": fmt.Sprintf("Turn-by-turn game log for match %s — use to analyze play sequencing, identify misplays, and review key turning points", game.MatchID),
 				"data":        game,
@@ -142,9 +148,12 @@ func buildPlayerSummary(gs *GameState) map[string]any {
 
 	// Match index: matchId, eventId, opponent, result, and section pointer (no opponent cards).
 	if gs.Matches != nil && len(gs.Matches.Matches) > 0 {
-		matchList := make([]map[string]any, len(gs.Matches.Matches))
-		for i, m := range gs.Matches.Matches {
-			matchList[i] = map[string]any{
+		matchList := make([]map[string]any, 0, len(gs.Matches.Matches))
+		for _, m := range gs.Matches.Matches {
+			if m.MatchID == "" {
+				continue
+			}
+			matchList = append(matchList, map[string]any{
 				"matchId":  m.MatchID,
 				"eventId":  m.EventID,
 				"date":     m.Date,
@@ -152,15 +161,18 @@ func buildPlayerSummary(gs *GameState) map[string]any {
 				"result":   m.Result,
 				"games":    m.Games,
 				"section":  "match:" + m.MatchID,
-			}
+			})
 		}
 		summary["matches"] = matchList
 	}
 
 	// Game log index: matchId, opponent, result, turn count, section pointer.
 	if gs.GameLogs != nil && len(gs.GameLogs.Games) > 0 {
-		gameIndex := make([]map[string]any, len(gs.GameLogs.Games))
-		for i, game := range gs.GameLogs.Games {
+		gameIndex := make([]map[string]any, 0, len(gs.GameLogs.Games))
+		for _, game := range gs.GameLogs.Games {
+			if game.MatchID == "" {
+				continue
+			}
 			entry := map[string]any{
 				"matchId": game.MatchID,
 				"turns":   len(game.Turns),
@@ -176,7 +188,7 @@ func buildPlayerSummary(gs *GameState) map[string]any {
 					}
 				}
 			}
-			gameIndex[i] = entry
+			gameIndex = append(gameIndex, entry)
 		}
 		summary["games"] = gameIndex
 	}
