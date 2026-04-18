@@ -86,6 +86,7 @@ Plugins are sandboxed WASM binaries that parse save files. They read raw bytes o
 | [Diablo II: Resurrected](plugins/d2r/) | `.d2s` / `.d2i` binary | Drop Calculator | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [Factorio](plugins/factorio/) | [Factorio Mod Portal](https://mods.factorio.com/mod/savecraft) + WASM | Recipe Lookup, Ratio Calculator, Oil Balancer, Tech Tree, Blueprint Analyzer, Evolution Tracker, Power Calculator, Production Flow | Alpha | [@joshsymonds](https://github.com/joshsymonds) |
 | [Magic: The Gathering Arena](plugins/magic/) | `Player.log` | Card Search, Rules Search, Draft Advisor, Play Advisor, Card Stats, Deckbuilding, Collection Diff, Match Stats, Sideboard Analysis, Mana Base | Beta | [@joshsymonds](https://github.com/joshsymonds) |
+| [Path of Exile](plugins/poe/) | [pobb.in / pastebin URL](https://savecraft.gg/poe) | Build Planner (headless Path of Building), Gem Search, Passive Tree Search, Unique Search, Mod Search, Economy Prices | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [RimWorld](plugins/rimworld/) | [Steam Workshop mod](https://steamcommunity.com/sharedfiles/filedetails/?id=3693580596) | Surgery Calculator, Crop Optimizer, Combat Calculator, Material Lookup, Drug Analyzer, Raid Estimator, Gene Builder, Research Navigator | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [Stardew Valley](plugins/sdv/) | XML save directory | Gift Preferences, Crop Planner | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [Stellaris](plugins/stellaris/) | [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3702302465) + `.sav` (Clausewitz/Rust) | Tech Search, Tech Path, Building Search, Component Search, Tradition Search, Trait Search, Civic Search, Edict Search, Job Search | Alpha | [@joshsymonds](https://github.com/joshsymonds) |
@@ -95,7 +96,7 @@ See [`docs/games.md`](docs/games.md) for detailed descriptions of each game's se
 
 **Planned save-file parsers:** Victoria 3 (Clausewitz/Rust), CK3/HOI4 (Clausewitz), Baldur's Gate 3 (.lsv), Elden Ring (.sl2), Civilization VI, Bethesda games (.ess)
 
-**Planned API adapters** (no daemon required): Path of Exile 2, FFXIV
+**Planned API adapters** (no daemon required): Path of Exile 2 (GGG API), FFXIV
 
 **Planned mod integrations:** Minecraft, Terraria (mod-as-device: mod pushes directly, no daemon)
 
