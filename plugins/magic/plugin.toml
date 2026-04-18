@@ -30,39 +30,64 @@ darwin = "~/Library/Logs/Wizards of the Coast/MTGA"
 [reference.modules.rules_search]
 name = "Rules Search"
 description = "Search the MTG Comprehensive Rules and official per-card rulings from Scryfall. Query by rule number, keyword, or card name."
+requires_save = false
 
 [reference.modules.card_search]
 name = "Card Search"
 description = "Search the complete Magic: The Gathering card database — all formats, all printings. Filter by name, color, type, mana cost, oracle text, format legality, and type_exclude to remove unwanted card types. Powered by Scryfall Oracle Cards."
+requires_save = false
 
 [reference.modules.collection_diff]
 name = "Collection Diff"
 description = "Calculate the wildcard cost to complete a target decklist given a player's current collection. Returns missing cards grouped by rarity with total wildcard cost."
+requires_save = true
 
 [reference.modules.card_stats]
 name = "Card Stats"
 description = "Browse 17Lands draft statistics for MTG Arena. List available sets, view set overviews with top and bottom performers, get single card detail with breakdowns across all 31 color archetypes, or sort leaderboards by any stat."
+requires_save = false
 
 [reference.modules.draft_advisor]
 name = "Draft Advisor"
 description = "Contextual draft pick evaluation using 8-axis WASPAS scoring across all 31 color archetypes, format-adjusted by empirical win rate so the system steers toward stronger archetypes when commitment is equal. Bayesian-calibrated baseline win rate, archetype-stratified pairwise synergy, curve fit, signal openness, role composition, castability, color commitment, and opportunity cost. Each archetype candidate includes a viability tier (strong/moderate/sparse/fringe) so the AI warns when you're in an underrepresented archetype. Batch review tracks archetype evolution across picks. Supports live pick ranking and full draft batch review."
+requires_save = false
 
 [reference.modules.deckbuilding]
 name = "Deck Health & Cut Advisor"
 description = "Analyze decks in draft or Constructed. Draft: health check compares composition against archetype averages; cut advisor scores every card across 5 axes. Constructed: format legality check, composition analysis, mana curve, color pip requirements, sideboard size validation."
-
-[reference.modules.mana_base]
-name = "Mana Base"
-description = "Analyze colored mana source requirements for a deck using Frank Karsten's methodology. Returns the number of colored sources needed per color to achieve ~89%+ on-curve consistency."
+requires_save = false
 
 [reference.modules.match_stats]
 name = "Match Stats"
 description = "Personal Constructed match statistics from your Arena play history. Win rates by deck, format, and opponent archetype. Recent match trends. Opponent archetypes classified from cards seen during play."
+requires_save = true
 
 [reference.modules.play_advisor]
 name = "Play Advisor"
 description = "Per-turn gameplay analysis using 17Lands Premier Draft replay data. Compares mana efficiency, card deployment timing, attack decisions, and mulligan choices against population baselines. Post-game review identifies the biggest deviations from winning patterns. Works for all formats with draft-data disclaimer."
+requires_save = true
 
 [reference.modules.sideboard_analysis]
 name = "Sideboard Analysis"
 description = "Analyze best-of-three match performance to evaluate sideboarding effectiveness. Compares game 1 (pre-board) vs games 2/3 (post-board) win rates, broken down by opponent archetype."
+requires_save = true
+
+[reference.modules.commander_lookup]
+name = "Commander Lookup"
+description = "Look up a Commander and get categorized card recommendations, synergy scores, themes, similar commanders, and mana curve from EDHREC data. Fuzzy name matching."
+requires_save = false
+
+[reference.modules.commander_deck_review]
+name = "Commander Deck Review"
+description = "Review a Commander decklist against EDHREC's average build for a given commander. Detects missing staples, off-meta extras, overall overlap, and category composition."
+requires_save = false
+
+[reference.modules.combo_search]
+name = "Commander Combo Search"
+description = "Find Commander combos by commander, card name, or color identity. Each combo returns the card list, result text, deck count, and bracket score."
+requires_save = false
+
+[reference.modules.commander_trends]
+name = "Commander Trends"
+description = "Top Commanders, popular themes, and color-filtered leaderboards from EDHREC — answers 'what's hot in Commander right now?' with subset color semantics."
+requires_save = false

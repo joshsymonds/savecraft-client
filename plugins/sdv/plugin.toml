@@ -28,7 +28,9 @@ darwin = "~/.config/StardewValley/Saves"
 [reference.modules.gift_preferences]
 name = "Gift Preferences"
 description = "Look up NPC gift preferences by villager name or item name. Includes universal and personal taste data from Stardew Valley 1.6."
+requires_save = false
 
 [reference.modules.crop_planner]
 name = "Crop Planner"
 description = "Look up crop growth data, profitability, fertilizer effects, and artisan goods values. Use 'crop' for a specific crop's full analysis, or 'season' for all crops ranked by gold/day."
+requires_save = false
