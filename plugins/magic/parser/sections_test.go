@@ -1452,6 +1452,41 @@ func TestBuildOutputSectionsGameWithoutMatch(t *testing.T) {
 	}
 }
 
+func TestBuildOutputSectionsSkipsEmptyDeckName(t *testing.T) {
+	// Seen in production (melchior's DraftDodger save 4921d9e0): MTGA can emit
+	// a deck with an empty Name, producing a section literally named "deck:"
+	// and a player_summary entry with section:"deck:". Skip them everywhere.
+	gs := &GameState{
+		ActiveDecks: &ActiveDecksSection{
+			Decks: []Deck{
+				{ID: "d-empty", Name: "", Format: "Standard"},
+				{ID: "d-valid", Name: "Valid Deck", Format: "Standard"},
+			},
+		},
+	}
+	sections := buildOutputSections(gs)
+
+	if _, ok := sections["deck:"]; ok {
+		t.Error("did not expect a section literally named 'deck:' (empty deck name)")
+	}
+	if _, ok := sections["deck:Valid Deck"]; !ok {
+		t.Error("expected section 'deck:Valid Deck' to be present")
+	}
+
+	psMap := sections["player_summary"].(map[string]any)
+	data := psMap["data"].(map[string]any)
+	decks := data["decks"].([]map[string]any)
+	if len(decks) != 1 {
+		t.Fatalf("expected 1 deck in player_summary (empty-name deck filtered), got %d", len(decks))
+	}
+	if decks[0]["name"] != "Valid Deck" {
+		t.Errorf("expected remaining deck name 'Valid Deck', got %v", decks[0]["name"])
+	}
+	if decks[0]["section"] != "deck:Valid Deck" {
+		t.Errorf("expected remaining deck section 'deck:Valid Deck', got %v", decks[0]["section"])
+	}
+}
+
 func TestBuildSummaryWithRank(t *testing.T) {
 	gs := &GameState{
 		DisplayName: "TestPlayer",

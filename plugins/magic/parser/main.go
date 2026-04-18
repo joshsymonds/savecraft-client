@@ -55,6 +55,9 @@ func buildOutputSections(gs *GameState) map[string]any {
 	// Per-deck sections with full card lists.
 	if gs.ActiveDecks != nil {
 		for _, deck := range gs.ActiveDecks.Decks {
+			if deck.Name == "" {
+				continue
+			}
 			sections["deck:"+deck.Name] = map[string]any{
 				"description": fmt.Sprintf("Deck list for %s (%s) — main deck, sideboard, and command zone cards", deck.Name, deck.Format),
 				"data":        deck,
@@ -123,13 +126,16 @@ func buildPlayerSummary(gs *GameState) map[string]any {
 
 	// Deck index: names, formats, and section pointers (no card lists).
 	if gs.ActiveDecks != nil {
-		deckList := make([]map[string]any, len(gs.ActiveDecks.Decks))
-		for i, deck := range gs.ActiveDecks.Decks {
-			deckList[i] = map[string]any{
+		deckList := make([]map[string]any, 0, len(gs.ActiveDecks.Decks))
+		for _, deck := range gs.ActiveDecks.Decks {
+			if deck.Name == "" {
+				continue
+			}
+			deckList = append(deckList, map[string]any{
 				"name":    deck.Name,
 				"format":  deck.Format,
 				"section": "deck:" + deck.Name,
-			}
+			})
 		}
 		summary["decks"] = deckList
 	}
