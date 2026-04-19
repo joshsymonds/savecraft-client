@@ -594,6 +594,35 @@ func TestGameSectionV3b_DescriptionIncludesLegend(t *testing.T) {
 	}
 }
 
+// TestGameSectionV3b_EmitFixtureOutput is a one-off helper that writes the
+// Go parser's v3b output for the production fixture to /tmp/mtga-compress-test/
+// when EMIT_V3B=1 is set. Used for side-by-side comparison with the Python
+// reference implementation and for Sonnet probe validation. Skipped by default.
+func TestGameSectionV3b_EmitFixtureOutput(t *testing.T) {
+	if os.Getenv("EMIT_V3B") != "1" {
+		t.Skip("set EMIT_V3B=1 to emit fixture output")
+	}
+	raw, err := os.ReadFile("testdata/uzimy-ed5759f4.json")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	var game GameLog
+	if err := json.Unmarshal(raw, &game); err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+	gs := &GameState{GameLogs: &GameLogSection{Games: []GameLog{game}}}
+	data := gameSectionV3b(t, gs, game.MatchID)
+	out, err := json.Marshal(data)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	dst := "/tmp/mtga-compress-test/v3b_go_output.json"
+	if err := os.WriteFile(dst, out, 0o644); err != nil {
+		t.Fatalf("write %s: %v", dst, err)
+	}
+	t.Logf("wrote %d bytes to %s", len(out), dst)
+}
+
 func TestGameSectionV3b_ProductionSampleUnder40KB(t *testing.T) {
 	// Load the production sample (save ea28c178, match ed5759f4, 85KB uncompressed).
 	// After v3b compression, the emitted section data must be under 40KB.
