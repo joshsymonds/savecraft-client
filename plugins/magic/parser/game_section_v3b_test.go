@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -592,12 +593,103 @@ func TestGameSectionV3b_DescriptionIncludesLegend(t *testing.T) {
 	if len(desc) > 1000 {
 		t.Errorf("description is %d chars; must be under 1000 (budget)", len(desc))
 	}
+
+	// Must note that cd map keys are stringified after JSON encoding — Go's
+	// encoding/json stringifies integer map keys, and the AI consumes the
+	// post-JSON shape, not the in-memory one.
+	if !strings.Contains(desc, "string") {
+		t.Error("description should note that cd keys are stringified (JSON encodes int keys as strings)")
+	}
+}
+
+// TestGameSectionV3b_CardDictionaryOnWire verifies the JSON-encoded wire shape
+// of the top-level cd dictionary. Go's encoding/json stringifies integer map
+// keys, and the AI reads the post-encoded JSON — so the keys the AI sees are
+// strings, not ints. This test locks the wire contract.
+func TestGameSectionV3b_CardDictionaryOnWire(t *testing.T) {
+	gs := &GameState{
+		GameLogs: &GameLogSection{
+			Games: []GameLog{{
+				MatchID: "m1",
+				Turns: []TurnLog{{
+					TurnNumber: 1,
+					Phase:      "Phase_Main1",
+					Actions: []GameAction{
+						{Player: 1, Type: "cast", Cast: &CastAction{CardID: 100605, CardName: "Genghis Frog"}},
+					},
+				}},
+			}},
+		},
+	}
+	data := gameSectionV3b(t, gs, "m1")
+	wire, err := json.Marshal(data)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(wire, &decoded); err != nil {
+		t.Fatalf("unmarshal wire: %v", err)
+	}
+	cd, ok := decoded["cd"].(map[string]any)
+	if !ok {
+		t.Fatalf("cd on the wire should be map[string]any (JSON stringifies keys), got %T", decoded["cd"])
+	}
+	if cd["100605"] != "Genghis Frog" {
+		t.Errorf("cd[\"100605\"] on the wire: want 'Genghis Frog', got %v", cd["100605"])
+	}
+}
+
+// TestGameSectionV3b_PermanentDamageOnWire asserts that the `damage` field on
+// a battlefield Permanent survives v3b compression. This is a low-frequency
+// field kept un-renamed for readability; the test ensures it doesn't silently
+// disappear if buildV3bPermanent is refactored.
+func TestGameSectionV3b_PermanentDamageOnWire(t *testing.T) {
+	gs := &GameState{
+		GameLogs: &GameLogSection{
+			Games: []GameLog{{
+				MatchID: "m1",
+				Turns: []TurnLog{{
+					TurnNumber: 1,
+					Phase:      "Phase_Combat",
+					Players: []PlayerState{{
+						Seat:      1,
+						LifeTotal: 18,
+						Battlefield: []Permanent{{
+							CardID:    100605,
+							CardName:  "Genghis Frog",
+							Power:     2,
+							Toughness: 3,
+							Damage:    2,
+						}},
+					}},
+				}},
+			}},
+		},
+	}
+	data := gameSectionV3b(t, gs, "m1")
+	turns := data["tn"].([]map[string]any)
+	pl := turns[0]["pl"].([]map[string]any)
+	bf := pl[0]["battlefield"].([]map[string]any)
+	if bf[0]["damage"] != 2 {
+		t.Errorf("permanent.damage: want 2, got %v", bf[0]["damage"])
+	}
+	// Also verify it survives JSON roundtrip — the test above uses the in-memory
+	// representation, but the AI reads the wire.
+	wire, _ := json.Marshal(data)
+	var decoded map[string]any
+	_ = json.Unmarshal(wire, &decoded)
+	wireTurns := decoded["tn"].([]any)
+	wirePl := wireTurns[0].(map[string]any)["pl"].([]any)
+	wireBf := wirePl[0].(map[string]any)["battlefield"].([]any)
+	if wireBf[0].(map[string]any)["damage"].(float64) != 2 {
+		t.Errorf("permanent.damage on wire: want 2, got %v", wireBf[0].(map[string]any)["damage"])
+	}
 }
 
 // TestGameSectionV3b_EmitFixtureOutput is a one-off helper that writes the
-// Go parser's v3b output for the production fixture to /tmp/mtga-compress-test/
-// when EMIT_V3B=1 is set. Used for side-by-side comparison with the Python
-// reference implementation and for Sonnet probe validation. Skipped by default.
+// Go parser's v3b output to /tmp/mtga-compress-test/ when EMIT_V3B=1 is set.
+// Used for side-by-side comparison with the Python reference implementation
+// and for Sonnet probe validation. Skipped by default.
 func TestGameSectionV3b_EmitFixtureOutput(t *testing.T) {
 	if os.Getenv("EMIT_V3B") != "1" {
 		t.Skip("set EMIT_V3B=1 to emit fixture output")
@@ -617,6 +709,9 @@ func TestGameSectionV3b_EmitFixtureOutput(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 	dst := "/tmp/mtga-compress-test/v3b_go_output.json"
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", filepath.Dir(dst), err)
+	}
 	if err := os.WriteFile(dst, out, 0o644); err != nil {
 		t.Fatalf("write %s: %v", dst, err)
 	}

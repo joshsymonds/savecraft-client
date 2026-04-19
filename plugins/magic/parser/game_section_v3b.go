@@ -52,12 +52,18 @@ var phaseRename = map[string]string{
 // without being told at call time. Scoped to the section (not the global
 // get_section tool description) so non-MTGA users don't pay the token cost.
 // Matches the rename map in buildV3bTurn/buildV3b* helpers below.
+//
+// Some low-frequency fields keep their long names for readability (manaPool,
+// handCards, battlefield, damage on Permanent, zoneFrom/zoneTo on Move). These
+// appear rarely enough that abbreviating them saves little byte count; they
+// stay readable so a maintainer or AI reader doesn't need to cross-reference
+// the legend for uncommon fields.
 const v3bSectionLegend = "Turn-by-turn game log for match %s (v3b compressed shape). " +
 	"Keys: c=cardId, p=player, m=manaPaid, k=color, n=count, a=actions, " +
 	"ph=phase, pl=players, t=turnNumber, ap=activePlayer, l=lifeTotal, s=seat, " +
 	"at=abilityType, mt=moveType, td=tapped, ic=isCombat, src/sid=damage source, " +
 	"am=amount, tgs=targets, pw=power, tf=toughness, ct=cardTypes, st=subTypes, " +
-	"tdb=isTapped, cd=cards dict (cardId to cardName), tn=turns. " +
+	"tdb=isTapped, cd=cards dict (cardId as string to cardName; JSON stringifies integer keys), tn=turns. " +
 	"Action kind is the inner key (cast/tap/move/ability/damage/resolve/statMod/target); " +
 	"action objects carry cardId only, resolve names via cd. " +
 	"Triggered abilities on basic lands are omitted as engine noise. " +
@@ -278,6 +284,12 @@ func buildV3bAction(a GameAction, landIds map[int]bool) (map[string]any, bool) {
 // isBasicLandTrigger returns true when the ability should be dropped as
 // engine noise: triggered abilities from cards that are either named basic
 // lands or tap-only empty-name cards (opponent-side data-quality case).
+//
+// Known false-positive trade-off: a non-basic "utility" land (e.g. Den of
+// the Bugbear) that opponent-side MTGA logs with an empty name AND that was
+// never activated for a non-mana purpose in this game would also have its
+// triggered abilities dropped. In practice this is rare — opponent-side
+// land names are usually resolved, and utility-land triggers are sparse.
 func isBasicLandTrigger(a *AbilityAction, landIds map[int]bool) bool {
 	if a.AbilityType != "triggered" {
 		return false
