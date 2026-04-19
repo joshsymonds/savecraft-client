@@ -79,15 +79,14 @@ func buildOutputSections(gs *GameState) map[string]any {
 	}
 
 	// Per-game sections with full turn-by-turn data (v3b compressed — see
-	// game_section_v3b.go for the transform rationale and tool-description
-	// legend).
+	// game_section_v3b.go for the transform rationale).
 	if gs.GameLogs != nil {
 		for _, game := range gs.GameLogs.Games {
 			if game.MatchID == "" {
 				continue
 			}
 			sections["game:"+game.MatchID] = map[string]any{
-				"description": fmt.Sprintf("Turn-by-turn game log for match %s — use to analyze play sequencing, identify misplays, and review key turning points", game.MatchID),
+				"description": buildV3bGameSectionDescription(game.MatchID),
 				"data":        buildV3bGameSectionData(game),
 			}
 		}

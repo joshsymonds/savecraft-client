@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 // v3b compression for `game:<match_id>` section data.
 //
 // MTGA game logs grow linearly with turn count; a single match has exceeded
@@ -43,6 +45,31 @@ var phaseRename = map[string]string{
 	"Phase_Combat":    "combat",
 	"Phase_Main2":     "main2",
 	"Phase_Ending":    "end",
+}
+
+// v3bSectionLegend documents the compressed shape inline in each `game:`
+// section's description so the consuming AI can interpret abbreviated keys
+// without being told at call time. Scoped to the section (not the global
+// get_section tool description) so non-MTGA users don't pay the token cost.
+// Matches the rename map in buildV3bTurn/buildV3b* helpers below.
+const v3bSectionLegend = "Turn-by-turn game log for match %s (v3b compressed shape). " +
+	"Keys: c=cardId, p=player, m=manaPaid, k=color, n=count, a=actions, " +
+	"ph=phase, pl=players, t=turnNumber, ap=activePlayer, l=lifeTotal, s=seat, " +
+	"at=abilityType, mt=moveType, td=tapped, ic=isCombat, src/sid=damage source, " +
+	"am=amount, tgs=targets, pw=power, tf=toughness, ct=cardTypes, st=subTypes, " +
+	"tdb=isTapped, cd=cards dict (cardId to cardName), tn=turns. " +
+	"Action kind is the inner key (cast/tap/move/ability/damage/resolve/statMod/target); " +
+	"action objects carry cardId only, resolve names via cd. " +
+	"Triggered abilities on basic lands are omitted as engine noise. " +
+	"For structured analysis prefer query_reference magic play_advisor " +
+	"mode=game_review match_id=%s — that path summarizes server-side within token limits. " +
+	"This raw section is for custom turn-level inspection."
+
+// buildV3bGameSectionDescription returns the per-section description string
+// for a `game:<matchId>` section, including the v3b key legend and a pointer
+// to play_advisor for structured analysis.
+func buildV3bGameSectionDescription(matchID string) string {
+	return fmt.Sprintf(v3bSectionLegend, matchID, matchID)
 }
 
 // buildV3bGameSectionData returns the v3b-compressed data for a single game,

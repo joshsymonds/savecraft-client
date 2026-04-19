@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -539,6 +540,57 @@ func TestGameSectionV3b_OnlyAffectsGameSections(t *testing.T) {
 	matchSection := sections["match:m1"].(map[string]any)
 	if _, ok := matchSection["data"].(MatchResult); !ok {
 		t.Errorf("match section data should be a MatchResult struct, got %T", matchSection["data"])
+	}
+}
+
+func TestGameSectionV3b_DescriptionIncludesLegend(t *testing.T) {
+	gs := &GameState{
+		GameLogs: &GameLogSection{
+			Games: []GameLog{{MatchID: "abc-123", Turns: []TurnLog{{TurnNumber: 1, Phase: "Phase_Main1"}}}},
+		},
+	}
+	sections := buildOutputSections(gs)
+	section, ok := sections["game:abc-123"].(map[string]any)
+	if !ok {
+		t.Fatal("expected game:abc-123 section as map")
+	}
+	desc, ok := section["description"].(string)
+	if !ok {
+		t.Fatalf("description should be a string, got %T", section["description"])
+	}
+
+	// Must signal the compressed shape.
+	if !strings.Contains(desc, "v3b") && !strings.Contains(desc, "compressed") {
+		t.Error("description should signal that the shape is compressed (mention 'v3b' or 'compressed')")
+	}
+
+	// Must document the highest-frequency renames so the AI can interpret the
+	// payload without out-of-band schema.
+	requiredLegendEntries := []string{
+		"c=cardId", "p=player", "m=manaPaid", "ph=phase", "cd=cards",
+	}
+	for _, entry := range requiredLegendEntries {
+		if !strings.Contains(desc, entry) {
+			t.Errorf("description should contain legend entry %q", entry)
+		}
+	}
+
+	// Must steer the AI to play_advisor game_review for structured analysis.
+	if !strings.Contains(desc, "play_advisor") {
+		t.Error("description should point AI at play_advisor for structured analysis")
+	}
+	if !strings.Contains(desc, "game_review") {
+		t.Error("description should mention mode=game_review")
+	}
+
+	// Must embed the matchId so the play_advisor pointer is actionable.
+	if !strings.Contains(desc, "abc-123") {
+		t.Error("description should include the matchId so play_advisor pointer is ready-to-use")
+	}
+
+	// Must stay under 1000 chars — the description is paid per section fetch.
+	if len(desc) > 1000 {
+		t.Errorf("description is %d chars; must be under 1000 (budget)", len(desc))
 	}
 }
 
