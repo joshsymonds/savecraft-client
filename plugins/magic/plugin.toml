@@ -40,7 +40,7 @@ requires_save = false
 
 [reference.modules.collection_diff]
 name = "Collection Diff"
-description = "Calculate the wildcard cost to complete a target decklist given a player's current collection. Returns missing cards grouped by rarity with total wildcard cost."
+description = "Compute the wildcard cost to craft a target decklist. Provide the deck (card names + counts) and the player's collection (arena IDs + counts) as inline parameters — the user supplies their collection since Magic Arena does not log it. Returns missing cards grouped by rarity and total wildcard cost."
 requires_save = true
 
 [reference.modules.card_stats]
