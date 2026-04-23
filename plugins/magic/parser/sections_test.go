@@ -110,7 +110,7 @@ func TestPreconDecksFiltered(t *testing.T) {
 	}
 }
 
-func TestBuildStartHookInventory(t *testing.T) {
+func TestBuildCurrenciesFromStartHook(t *testing.T) {
 	// CollationId is an integer in real MTGA logs, not a string.
 	hookJSON := `{
 		"InventoryInfo": {
@@ -131,32 +131,32 @@ func TestBuildStartHookInventory(t *testing.T) {
 		JSON:  json.RawMessage(hookJSON),
 	}}
 	gs := BuildGameState(entries)
-	if gs.Inventory == nil {
-		t.Fatal("expected inventory section")
+	if gs.Currencies == nil {
+		t.Fatal("expected currencies section")
 	}
-	if gs.Inventory.Gold != 63155 {
-		t.Errorf("expected gold 63155, got %d", gs.Inventory.Gold)
+	if gs.Currencies.Gold != 63155 {
+		t.Errorf("expected gold 63155, got %d", gs.Currencies.Gold)
 	}
-	if gs.Inventory.Gems != 5050 {
-		t.Errorf("expected gems 5050, got %d", gs.Inventory.Gems)
+	if gs.Currencies.Gems != 5050 {
+		t.Errorf("expected gems 5050, got %d", gs.Currencies.Gems)
 	}
-	if gs.Inventory.WCRare != 183 {
-		t.Errorf("expected wcRare 183, got %d", gs.Inventory.WCRare)
+	if gs.Currencies.WCRare != 183 {
+		t.Errorf("expected wcRare 183, got %d", gs.Currencies.WCRare)
 	}
-	if gs.Inventory.DraftTokens != 11 {
-		t.Errorf("expected draftTokens 11, got %d", gs.Inventory.DraftTokens)
+	if gs.Currencies.DraftTokens != 11 {
+		t.Errorf("expected draftTokens 11, got %d", gs.Currencies.DraftTokens)
 	}
-	if len(gs.Inventory.Boosters) != 1 {
-		t.Fatalf("expected 1 booster entry, got %d", len(gs.Inventory.Boosters))
+	if len(gs.Currencies.Boosters) != 1 {
+		t.Fatalf("expected 1 booster entry, got %d", len(gs.Currencies.Boosters))
 	}
-	if gs.Inventory.Boosters[0].CollationID != 12345 {
-		t.Errorf("expected booster collationId 12345, got %d", gs.Inventory.Boosters[0].CollationID)
+	if gs.Currencies.Boosters[0].CollationID != 12345 {
+		t.Errorf("expected booster collationId 12345, got %d", gs.Currencies.Boosters[0].CollationID)
 	}
-	if gs.Inventory.Boosters[0].SetCode != "TMT" {
-		t.Errorf("expected booster set 'TMT', got %q", gs.Inventory.Boosters[0].SetCode)
+	if gs.Currencies.Boosters[0].SetCode != "TMT" {
+		t.Errorf("expected booster set 'TMT', got %q", gs.Currencies.Boosters[0].SetCode)
 	}
-	if gs.Inventory.Boosters[0].Count != 1 {
-		t.Errorf("expected booster count 1 (single entry), got %d", gs.Inventory.Boosters[0].Count)
+	if gs.Currencies.Boosters[0].Count != 1 {
+		t.Errorf("expected booster count 1 (single entry), got %d", gs.Currencies.Boosters[0].Count)
 	}
 }
 
@@ -182,15 +182,15 @@ func TestBoosterAggregation(t *testing.T) {
 		JSON:  json.RawMessage(hookJSON),
 	}}
 	gs := BuildGameState(entries)
-	if gs.Inventory == nil {
-		t.Fatal("expected inventory section")
+	if gs.Currencies == nil {
+		t.Fatal("expected currencies section")
 	}
-	if len(gs.Inventory.Boosters) != 2 {
-		t.Fatalf("expected 2 aggregated booster entries, got %d", len(gs.Inventory.Boosters))
+	if len(gs.Currencies.Boosters) != 2 {
+		t.Fatalf("expected 2 aggregated booster entries, got %d", len(gs.Currencies.Boosters))
 	}
 	// Find the Y26ECL entry
 	var found bool
-	for _, b := range gs.Inventory.Boosters {
+	for _, b := range gs.Currencies.Boosters {
 		if b.CollationID == 400058 {
 			if b.Count != 3 {
 				t.Errorf("expected count 3 for collation 400058, got %d", b.Count)
@@ -211,7 +211,7 @@ func TestBoosterAggregation(t *testing.T) {
 	}
 }
 
-func TestBuildInventoryFromDraftResponse(t *testing.T) {
+func TestBuildCurrenciesFromDraftResponse(t *testing.T) {
 	// DTO_InventoryInfo appears in draft pick responses.
 	draftJSON := `{
 		"CurrentModule": "BotDraft",
@@ -233,14 +233,14 @@ func TestBuildInventoryFromDraftResponse(t *testing.T) {
 		JSON:  json.RawMessage(draftJSON),
 	}}
 	gs := BuildGameState(entries)
-	if gs.Inventory == nil {
-		t.Fatal("expected inventory from DTO_InventoryInfo")
+	if gs.Currencies == nil {
+		t.Fatal("expected currencies from DTO_InventoryInfo")
 	}
-	if gs.Inventory.Gems != 4000 {
-		t.Errorf("expected gems 4000, got %d", gs.Inventory.Gems)
+	if gs.Currencies.Gems != 4000 {
+		t.Errorf("expected gems 4000, got %d", gs.Currencies.Gems)
 	}
-	if gs.Inventory.Gold != 50000 {
-		t.Errorf("expected gold 50000, got %d", gs.Inventory.Gold)
+	if gs.Currencies.Gold != 50000 {
+		t.Errorf("expected gold 50000, got %d", gs.Currencies.Gold)
 	}
 }
 
@@ -1012,7 +1012,7 @@ func TestAbilityObjectsFilteredFromCardsSeen(t *testing.T) {
 	}
 }
 
-func TestInventorySnapshotOverwritesDelta(t *testing.T) {
+func TestCurrenciesSnapshotOverwritesDelta(t *testing.T) {
 	// Multiple InventoryInfo snapshots should use the latest, not accumulate.
 	entries := []LogEntry{
 		{Arrow: "<==", Label: "StartHook", JSON: json.RawMessage(`{
@@ -1025,15 +1025,15 @@ func TestInventorySnapshotOverwritesDelta(t *testing.T) {
 		}`)},
 	}
 	gs := BuildGameState(entries)
-	if gs.Inventory == nil {
-		t.Fatal("expected inventory section")
+	if gs.Currencies == nil {
+		t.Fatal("expected currencies section")
 	}
 	// Should be the latest snapshot, not accumulated.
-	if gs.Inventory.Gems != 4500 {
-		t.Errorf("expected gems 4500 (latest snapshot), got %d", gs.Inventory.Gems)
+	if gs.Currencies.Gems != 4500 {
+		t.Errorf("expected gems 4500 (latest snapshot), got %d", gs.Currencies.Gems)
 	}
-	if gs.Inventory.Gold != 9000 {
-		t.Errorf("expected gold 9000 (latest snapshot), got %d", gs.Inventory.Gold)
+	if gs.Currencies.Gold != 9000 {
+		t.Errorf("expected gold 9000 (latest snapshot), got %d", gs.Currencies.Gold)
 	}
 }
 
@@ -1260,7 +1260,7 @@ func TestBuildOutputSectionsPlayerSummary(t *testing.T) {
 			Constructed: RankInfo{Class: "Gold", Level: 4, Step: 5, MatchesWon: 18, MatchesLost: 14},
 			Limited:     RankInfo{Class: "Silver", Level: 2},
 		},
-		Inventory: &InventorySection{
+		Currencies: &CurrenciesSection{
 			Gold: 63155, Gems: 5050,
 			WCCommon: 100, WCUncommon: 200, WCRare: 50, WCMythic: 10,
 			VaultProgress: 37.7,
@@ -1308,8 +1308,11 @@ func TestBuildOutputSectionsPlayerSummary(t *testing.T) {
 	if data["rank"] == nil {
 		t.Error("expected rank in player_summary")
 	}
-	if data["inventory"] == nil {
-		t.Error("expected inventory in player_summary")
+	if data["currencies"] == nil {
+		t.Error("expected currencies in player_summary")
+	}
+	if data["inventory"] != nil {
+		t.Error("player_summary must not use the misleading 'inventory' field name — renamed to 'currencies' because MTGA does not log card inventory, only currencies")
 	}
 	decks := data["decks"].([]map[string]any)
 	if len(decks) != 2 {
@@ -1628,11 +1631,11 @@ func TestVaultProgressNormalized(t *testing.T) {
 			})
 			entries := []LogEntry{{Arrow: "<==", Label: "StartHook", JSON: json.RawMessage(hookJSON)}}
 			gs := BuildGameState(entries)
-			if gs.Inventory == nil {
-				t.Fatal("expected inventory section")
+			if gs.Currencies == nil {
+				t.Fatal("expected currencies section")
 			}
-			if gs.Inventory.VaultProgress != tt.expected {
-				t.Errorf("expected vault progress %.1f, got %.1f", tt.expected, gs.Inventory.VaultProgress)
+			if gs.Currencies.VaultProgress != tt.expected {
+				t.Errorf("expected vault progress %.1f, got %.1f", tt.expected, gs.Currencies.VaultProgress)
 			}
 		})
 	}

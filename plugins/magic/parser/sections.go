@@ -100,9 +100,9 @@ func processStartHook(gs *GameState, raw json.RawMessage) {
 		gs.ActiveDecks = section
 	}
 
-	// Extract inventory snapshot.
+	// Extract currencies snapshot.
 	if hook.InventoryInfo != nil {
-		applyInventorySnapshot(gs, hook.InventoryInfo)
+		applyCurrenciesSnapshot(gs, hook.InventoryInfo)
 	}
 }
 
@@ -163,8 +163,8 @@ func parseCardEntries(entries []cardEntry) []DeckCard {
 	return cards
 }
 
-func applyInventorySnapshot(gs *GameState, inv *startHookInventory) {
-	section := &InventorySection{
+func applyCurrenciesSnapshot(gs *GameState, inv *startHookInventory) {
+	section := &CurrenciesSection{
 		Gold:          inv.Gold,
 		Gems:          inv.Gems,
 		WCCommon:      inv.WildCardCommons,
@@ -199,7 +199,7 @@ func applyInventorySnapshot(gs *GameState, inv *startHookInventory) {
 		section.Boosters = append(section.Boosters, *bi)
 	}
 
-	gs.Inventory = section
+	gs.Currencies = section
 }
 
 // processInventoryInfo extracts InventoryInfo from any response that embeds it.
@@ -218,7 +218,7 @@ func processInventoryInfo(gs *GameState, raw json.RawMessage) {
 	if inv == nil {
 		return
 	}
-	applyInventorySnapshot(gs, inv)
+	applyCurrenciesSnapshot(gs, inv)
 }
 
 func processRank(gs *GameState, raw json.RawMessage) {

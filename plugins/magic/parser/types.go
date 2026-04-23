@@ -9,7 +9,7 @@ type GameState struct {
 	// Section data
 	ActiveDecks *ActiveDecksSection
 	Rank        *RankSection
-	Inventory   *InventorySection
+	Currencies  *CurrenciesSection
 	Matches     *MatchHistorySection
 	GameLogs    *GameLogSection
 	Drafts      *DraftHistorySection
@@ -54,8 +54,12 @@ type RankInfo struct {
 	LeaderboardPlace int     `json:"leaderboardPlace"`
 }
 
-// InventorySection contains currency and wildcards.
-type InventorySection struct {
+// CurrenciesSection contains currency, wildcards, boosters, and tokens. It does NOT
+// contain the player's card collection — Magic Arena does not log owned cards to
+// Player.log. Ownership queries ("what cards do I own?") cannot be answered from
+// save data; use the card_search reference module without save context for
+// general card lookups.
+type CurrenciesSection struct {
 	Gold          int            `json:"gold"`
 	Gems          int            `json:"gems"`
 	WCCommon      int            `json:"wcCommon"`

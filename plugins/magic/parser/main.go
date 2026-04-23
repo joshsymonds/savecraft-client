@@ -48,7 +48,7 @@ func buildOutputSections(gs *GameState) map[string]any {
 
 	// Always emit player_summary — the compact overview for get_save.
 	sections["player_summary"] = map[string]any{
-		"description": "Player overview: rank, inventory, deck names, match results, and game log index — start here to understand the player's current state",
+		"description": "Player overview: rank, currencies (gold/gems/wildcards/boosters), deck names, match results, and game log index — start here to understand the player's current state. Note: Magic Arena does not log the player's card collection to Player.log, so owned-card queries cannot be answered from save data.",
 		"data":        buildPlayerSummary(gs),
 	}
 
@@ -127,8 +127,8 @@ func buildPlayerSummary(gs *GameState) map[string]any {
 		summary["rank"] = gs.Rank
 	}
 
-	if gs.Inventory != nil {
-		summary["inventory"] = gs.Inventory
+	if gs.Currencies != nil {
+		summary["currencies"] = gs.Currencies
 	}
 
 	// Deck index: names, formats, and section pointers (no card lists).
