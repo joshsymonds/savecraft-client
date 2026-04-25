@@ -460,6 +460,13 @@ linters:
 
     misspell:
       locale: US
+      ignore-rules:
+        # Path of Exile uses British English in-game; gem names, mod
+        # text, and stat descriptions all match the game's spelling.
+        # Don't flag references to in-game terms.
+        - pulverise
+        - behaviour
+        - defences
 
   exclusions:
     warn-unused: false
