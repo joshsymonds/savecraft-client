@@ -214,8 +214,16 @@ storybook:
 build-manifests:
     npx tsx scripts/build-manifests.ts
 
+# Extract PoE tree data → plugins/poe/reference/views/tree-data.gen.json
+# Pulls from PoB's bundled .reference/pob/src/TreeData/3_28/tree.lua and
+# computes node positions via PoB's exact coordinate formula. The
+# generated JSON is gitignored — regenerated locally + in CI before view
+# bundling. Required by the passive-tree overlay components.
+extract-tree-data:
+    luajit views/scripts/extract-tree-data.lua > plugins/poe/reference/views/tree-data.gen.json
+
 # Build MCP App views → worker/src/mcp/views.gen.ts
-build-views:
+build-views: extract-tree-data
     cd views && npx tsx scripts/build.ts
 
 # Start Storybook (MCP App views)
