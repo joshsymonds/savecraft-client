@@ -5,7 +5,7 @@
 <h1 align="center">Savecraft</h1>
 
 <p align="center">
-  <strong>Real game data for your AI assistant — for every supported game.</strong>
+  <strong>Real game data for your AI assistant, on every supported game.</strong>
 </p>
 
 <p align="center">
@@ -20,7 +20,7 @@
   <video src="https://github.com/user-attachments/assets/a44e59dd-b622-413f-a27a-6670cf51d74a" />
 </p>
 
-Savecraft gives Claude, ChatGPT, and Gemini real game data via [MCP](https://modelcontextprotocol.io/) — rules, items, builds, and economy data for every supported game (Magic, Path of Exile, Factorio, RimWorld, Stellaris, Diablo II, and more). For supported save-file games, it can also parse your saves into structured data so your AI reads your live characters, gear, and progress.
+Savecraft gives Claude, ChatGPT, and Gemini real game data via [MCP](https://modelcontextprotocol.io/) on every supported game (Magic, Path of Exile, Factorio, RimWorld, Stellaris, Diablo II, and more): rules, items, builds, economy. For save-file games, it also parses your saves into structured data so your AI sees your actual characters, gear, and run progress.
 
 ---
 
@@ -28,11 +28,11 @@ Savecraft gives Claude, ChatGPT, and Gemini real game data via [MCP](https://mod
 
 **1. Connect your AI**
 
-Sign in at [my.savecraft.gg](https://my.savecraft.gg) to get your MCP connector URL, then add it to your AI assistant's MCP settings ([Claude](https://claude.ai), [ChatGPT](https://chatgpt.com), [Gemini](https://gemini.google.com)). Your AI immediately gets expert modules — rules, items, builds, economy data — for every supported game.
+Sign in at [my.savecraft.gg](https://my.savecraft.gg) to get your MCP connector URL, then add it to your AI assistant's MCP settings ([Claude](https://claude.ai), [ChatGPT](https://chatgpt.com), [Gemini](https://gemini.google.com)). Your AI immediately gets expert modules for every supported game: rules, items, builds, economy data.
 
 **2. (Optional) Install the daemon**
 
-For save-integration games (Diablo II, RimWorld, Factorio, Stellaris, Stardew Valley, etc.), install the daemon to let your AI read your live save state — characters, gear, decks, farms.
+For save-integration games (Diablo II, RimWorld, Factorio, Stellaris, Stardew Valley, etc.), install the daemon to let your AI read your live save state: characters, gear, decks, farms.
 
 Linux / Steam Deck:
 ```bash
@@ -41,7 +41,7 @@ curl -sSL https://install.savecraft.gg | bash
 
 Windows / Mac: download from [install.savecraft.gg](https://install.savecraft.gg)
 
-The daemon auto-detects supported games and starts syncing. Ask your AI about your character, your build, or your last run — it already has the data.
+The daemon auto-detects supported games and starts syncing. Ask your AI about your character, your build, or your last run -- it already has the data.
 
 ## How It Works
 
