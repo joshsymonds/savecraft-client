@@ -10,18 +10,20 @@ proto-lint:
 proto-breaking:
     buf breaking --against '.git#branch=main'
 
-# Run all Go tests with 80% coverage enforcement
+# Run all Go tests. internal/ packages are coverage-gated at 80%;
+# cmd/ packages run too but aren't gated (entry-point code under
+# main.go typically sits below 80% by design).
 test-go:
     #!/usr/bin/env bash
     set -euo pipefail
-    # Find packages that have test files
-    pkgs=$(go list ./internal/... | while read -r pkg; do
+    # internal/ packages: gated on >=80% coverage.
+    internal_pkgs=$(go list ./internal/... | while read -r pkg; do
         dir=$(go list -f '{{ "{{" }}.Dir{{ "}}" }}' "$pkg")
         if ls "$dir"/*_test.go &>/dev/null; then echo "$pkg"; fi
     done)
-    if [[ -z "$pkgs" ]]; then echo "No test packages found"; exit 1; fi
-    output=$(echo "$pkgs" | xargs go test -cover)
-    echo "$output"
+    if [[ -z "$internal_pkgs" ]]; then echo "No internal test packages found"; exit 1; fi
+    internal_output=$(echo "$internal_pkgs" | xargs go test -cover)
+    echo "$internal_output"
     fail=0
     while IFS= read -r line; do
         if [[ "$line" =~ coverage:\ ([0-9]+)\.[0-9]+%\ of\ statements ]]; then
@@ -32,8 +34,13 @@ test-go:
                 fail=1
             fi
         fi
-    done <<< "$output"
+    done <<< "$internal_output"
     if (( fail )); then exit 1; fi
+    # cmd/ packages: run tests, do not gate on coverage. -count=1
+    # disables the per-package result cache so JSON-fixture / wire-tag
+    # mismatches that don't change the test binary's source-file hash
+    # still re-execute (a real bug we shipped past once already).
+    go test -count=1 ./cmd/...
 
 # Run Go tests with race detector
 test-go-race:
