@@ -5,7 +5,7 @@
 <h1 align="center">Savecraft</h1>
 
 <p align="center">
-  <strong>MCP server for game save files.</strong>
+  <strong>Real game data for your AI assistant — for every supported game.</strong>
 </p>
 
 <p align="center">
@@ -20,13 +20,19 @@
   <video src="https://github.com/user-attachments/assets/a44e59dd-b622-413f-a27a-6670cf51d74a" />
 </p>
 
-Savecraft watches your game saves, parses them into structured data, and serves it to AI assistants via [MCP](https://modelcontextprotocol.io/). Claude, ChatGPT, or Gemini can read your characters, gear, skills, and progress - real data, updated live.
+Savecraft gives Claude, ChatGPT, and Gemini real game data via [MCP](https://modelcontextprotocol.io/) — rules, items, builds, and economy data for every supported game (Magic, Path of Exile, Factorio, RimWorld, Stellaris, Diablo II, and more). For supported save-file games, it can also parse your saves into structured data so your AI reads your live characters, gear, and progress.
 
 ---
 
 ## Quick Start
 
-**1. Install the daemon**
+**1. Connect your AI**
+
+Sign in at [my.savecraft.gg](https://my.savecraft.gg) to get your MCP connector URL, then add it to your AI assistant's MCP settings ([Claude](https://claude.ai), [ChatGPT](https://chatgpt.com), [Gemini](https://gemini.google.com)). Your AI immediately gets expert modules — rules, items, builds, economy data — for every supported game.
+
+**2. (Optional) Install the daemon**
+
+For save-integration games (Diablo II, RimWorld, Factorio, Stellaris, Stardew Valley, etc.), install the daemon to let your AI read your live save state — characters, gear, decks, farms.
 
 Linux / Steam Deck:
 ```bash
@@ -35,11 +41,7 @@ curl -sSL https://install.savecraft.gg | bash
 
 Windows / Mac: download from [install.savecraft.gg](https://install.savecraft.gg)
 
-**2. Connect your AI**
-
-Sign in at [my.savecraft.gg](https://my.savecraft.gg) to get your MCP connector URL, then add it to your AI assistant's MCP settings ([Claude](https://claude.ai), [ChatGPT](https://chatgpt.com), [Gemini](https://gemini.google.com)).
-
-The daemon auto-detects supported games and starts syncing. Ask your AI about your character, your build, or your last run - it already has the data.
+The daemon auto-detects supported games and starts syncing. Ask your AI about your character, your build, or your last run — it already has the data.
 
 ## How It Works
 
