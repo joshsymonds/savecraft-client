@@ -1,5 +1,13 @@
 { pkgs, ... }:
 
+let
+  # Pinned Path of Building source — same revision the production NixOS
+  # module uses (nix/pob-server.nix). Tests in cmd/pob-server/ that spawn
+  # real wrapper.lua read POB_DIR; this gives every dev shell a working
+  # setup with no per-test cloning, and guarantees dev/CI/prod parity on
+  # the PoB revision.
+  pobSrc = import ./nix/pob-source.nix { inherit pkgs; };
+in
 {
   dotenv.enable = true;
 
@@ -41,6 +49,7 @@
     # Build tooling
     pkgs.just           # command runner (Justfile)
     pkgs.luajit         # PoB headless wrapper + tree-data extractor
+    pkgs.zlib           # PoB Inflate/Deflate via LuaJIT FFI (POB_ZLIB_PATH)
 
     # Shell linting
     pkgs.shellcheck     # static analysis for bash/sh
@@ -74,6 +83,14 @@
 
     # Use nix-patched workerd binary for miniflare/vitest (NixOS can't run npm's dynamically linked workerd)
     export MINIFLARE_WORKERD_PATH="$(find ${pkgs.nodePackages.wrangler}/lib -name workerd -path '*/workerd-linux-64/bin/workerd' | head -1)"
+
+    # PoB calc engine path — consumed by pob-server at runtime AND by the
+    # Go integration tests in cmd/pob-server/ that spawn real wrapper.lua.
+    # Mirrors nix/pob-server.nix's systemd unit. POB_ZLIB_PATH backs PoB's
+    # FFI Inflate/Deflate (HeadlessWrapper stubs them otherwise, breaking
+    # build-code import + Timeless Jewel LUTs).
+    export POB_DIR=${pobSrc}/src
+    export POB_ZLIB_PATH=${pkgs.zlib}/lib/libz.so
   '';
 
   processes.web.exec = "cd web && npm run dev";
