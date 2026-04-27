@@ -220,11 +220,10 @@ build-manifests:
 # generated JSON is gitignored — regenerated locally + in CI before view
 # bundling. Required by the passive-tree overlay components.
 #
-# nix-shell wrapper makes the target self-contained: works whether
-# luajit is on the host PATH or not (devenv shells, CI nodes,
-# fresh checkouts all behave identically).
+# Requires `luajit` on PATH. Local devs get it from devenv.nix; CI
+# installs it via apt-get in the deploy/check workflows.
 extract-tree-data:
-    nix-shell -p luajit --run 'luajit views/scripts/extract-tree-data.lua > plugins/poe/reference/views/tree-data.gen.json'
+    luajit views/scripts/extract-tree-data.lua > plugins/poe/reference/views/tree-data.gen.json
 
 # Build MCP App views → worker/src/mcp/views.gen.ts
 build-views: extract-tree-data

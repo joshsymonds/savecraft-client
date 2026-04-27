@@ -40,6 +40,7 @@
 
     # Build tooling
     pkgs.just           # command runner (Justfile)
+    pkgs.luajit         # PoB headless wrapper + tree-data extractor
 
     # Shell linting
     pkgs.shellcheck     # static analysis for bash/sh
