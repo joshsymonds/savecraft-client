@@ -217,16 +217,18 @@ build-manifests:
 # Extract PoE tree data → plugins/poe/reference/views/tree-data.gen.json
 # Pulls from PoB's bundled .reference/pob/src/TreeData/3_28/tree.lua and
 # computes node positions via PoB's exact coordinate formula. The
-# generated JSON is gitignored — regenerated locally + in CI before view
-# bundling. Required by the passive-tree overlay components.
-#
-# Requires `luajit` on PATH. Local devs get it from devenv.nix; CI
-# installs it via apt-get in the deploy/check workflows.
+# Manual maintenance target — regenerate tree-data.gen.json from
+# PoB's bundled tree.lua. The output IS committed (see .gitignore),
+# because the input data lives in the local-only .reference/pob clone
+# that CI doesn't have. Run this only when PoB ships a tree update
+# (every league / version bump), then commit the regenerated file.
+# Requires luajit on PATH (devenv.nix provides it locally).
 extract-tree-data:
     luajit views/scripts/extract-tree-data.lua > plugins/poe/reference/views/tree-data.gen.json
 
 # Build MCP App views → worker/src/mcp/views.gen.ts
-build-views: extract-tree-data
+# Consumes the committed tree-data.gen.json — does NOT regenerate it.
+build-views:
     cd views && npx tsx scripts/build.ts
 
 # Start Storybook (MCP App views)
