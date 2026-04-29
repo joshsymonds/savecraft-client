@@ -28,7 +28,11 @@ Savecraft gives Claude, ChatGPT, and Gemini real game data via [MCP](https://mod
 
 **1. Connect your AI**
 
-Sign in at [my.savecraft.gg](https://my.savecraft.gg) to get your MCP connector URL, then add it to your AI assistant's MCP settings ([Claude](https://claude.ai), [ChatGPT](https://chatgpt.com), [Gemini](https://gemini.google.com)). Your AI immediately gets expert modules for every supported game: rules, items, builds, economy data.
+**ChatGPT:** install the [Savecraft app](https://chatgpt.com/apps/savecraft/asdk_app_69bf076444388191b92e9c482184b44c) — one click from the OpenAI app directory.
+
+**Claude:** sign in at [my.savecraft.gg](https://my.savecraft.gg) to get your MCP connector URL, then add it to Claude's connector settings.
+
+Your AI immediately gets expert modules for every supported game: rules, items, builds, economy data.
 
 **2. (Optional) Install the daemon**
 

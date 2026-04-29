@@ -47,7 +47,7 @@ Answers come from your actual save plus deterministic reference data — not the
 2. Install the Savecraft daemon from [savecraft.gg](https://savecraft.gg) — a link code appears during setup
 3. Enter the code at savecraft.gg to connect your machine
 4. Start a game — the mod exports data automatically, the daemon picks it up
-5. Add the Savecraft integration in Claude or ChatGPT
+5. Add Savecraft to your AI: install the [Savecraft app for ChatGPT](https://chatgpt.com/apps/savecraft/asdk_app_69bf076444388191b92e9c482184b44c) (one click), or paste your MCP URL into [Claude](https://claude.ai)'s connector settings
 6. Ask about your factory
 
 ### Compatibility
