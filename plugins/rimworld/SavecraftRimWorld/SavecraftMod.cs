@@ -328,6 +328,7 @@ namespace SavecraftRimWorld
             runner.Register(new AnimalsCollector());
             // Mech sections
             runner.Register(new MechRosterCollector());
+            runner.Register(new MechanitorCollector());
             // Dynamic per-colonist sections
             runner.Register(new ColonistDetailCollector());
             SavecraftMod.Connection.SetCollectorRunner(runner);
