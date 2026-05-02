@@ -19,6 +19,7 @@ Savecraft connects your colony to Claude and ChatGPT. Colonists, mood, resources
 On every save, Savecraft reads your colony state and sends it to your AI:
 
   • Every colonist: backstory, traits, skills, passions, mood with all modifiers, health, equipment
+  • Mechanitors and mechs: bandwidth, control groups, work modes, per-mech damage and repair priorities
   • Resources: full stockpile inventory, food supply in nutrition-days, medicine by type
   • Research: current project with progress, completed techs, available projects
   • Mood and health reports: break risk, worst modifiers, injuries, diseases, immunity
