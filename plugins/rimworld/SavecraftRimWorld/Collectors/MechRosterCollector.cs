@@ -41,7 +41,7 @@ namespace SavecraftRimWorld.Collectors
 
             m.Set("name", pawn.Name?.ToStringShort ?? pawn.LabelShort ?? "Unknown");
             m.Set("kind", pawn.def?.label ?? "unknown");
-            m.Set("weight_class", pawn.def?.race?.mechWeightClass?.label?.ToLower() ?? "Unknown");
+            m.Set("weight_class", pawn.def?.race?.mechWeightClass.ToString()?.ToLower() ?? "Unknown");
 
             if (pawn.health?.summaryHealth != null)
             {
