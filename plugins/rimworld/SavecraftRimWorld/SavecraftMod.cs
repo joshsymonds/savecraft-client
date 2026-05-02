@@ -329,9 +329,10 @@ namespace SavecraftRimWorld
             // Mech sections
             runner.Register(new MechRosterCollector());
             runner.Register(new MechanitorCollector());
-            runner.Register(new MechDetailCollector());
-            // Dynamic per-colonist sections
+            // Dynamic per-pawn sections — colonists run before mechs so
+            // colonist detail wins the section budget under heavy mech counts
             runner.Register(new ColonistDetailCollector());
+            runner.Register(new MechDetailCollector());
             SavecraftMod.Connection.SetCollectorRunner(runner);
 
             SavecraftMod.Connection.Start();

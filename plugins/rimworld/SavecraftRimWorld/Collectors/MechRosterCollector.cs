@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using Google.Protobuf.WellKnownTypes;
 using RimWorld;
@@ -25,15 +24,14 @@ namespace SavecraftRimWorld.Collectors
             var s = StructHelper.NewStruct();
             var mechs = new List<Struct>();
 
-            foreach (var pawn in Find.CurrentMap.mapPawns.AllPawnsSpawned)
+            foreach (var pawn in Find.CurrentMap.mapPawns.SpawnedPawnsInFaction(Faction.OfPlayer))
             {
                 if (pawn.RaceProps?.IsMechanoid != true) continue;
-                if (pawn.Faction != Faction.OfPlayer) continue;
                 mechs.Add(CollectMech(pawn));
             }
 
-            s.Set("count", mechs.Count);
             s.SetList("mechs", mechs);
+            s.Set("count", mechs.Count);
             return s;
         }
 
@@ -43,17 +41,17 @@ namespace SavecraftRimWorld.Collectors
 
             m.Set("name", pawn.Name?.ToStringShort ?? pawn.LabelShort ?? "Unknown");
             m.Set("kind", pawn.def?.label ?? "unknown");
-            m.Set("weight_class", pawn.def?.race?.mechWeightClass?.label ?? "Unknown");
+            m.Set("weight_class", pawn.def?.race?.mechWeightClass?.label?.ToLower() ?? "Unknown");
 
             if (pawn.health?.summaryHealth != null)
             {
-                m.Set("hp_pct", Math.Round(pawn.health.summaryHealth.SummaryHealthPercent * 100));
+                m.Set("hp_pct", System.Math.Round(pawn.health.summaryHealth.SummaryHealthPercent * 100));
             }
 
             var energy = pawn.needs?.TryGetNeed<Need_MechEnergy>();
             if (energy != null)
             {
-                m.Set("energy_pct", Math.Round(energy.CurLevel * 100));
+                m.Set("energy_pct", System.Math.Round(energy.CurLevel * 100));
             }
 
             m.Set("work_mode", pawn.GetMechWorkMode()?.label ?? "Unassigned");

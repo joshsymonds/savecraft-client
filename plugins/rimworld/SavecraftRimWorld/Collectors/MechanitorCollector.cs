@@ -31,8 +31,8 @@ namespace SavecraftRimWorld.Collectors
                 mechanitors.Add(CollectMechanitor(pawn));
             }
 
-            s.Set("count", mechanitors.Count);
             s.SetList("mechanitors", mechanitors);
+            s.Set("count", mechanitors.Count);
             return s;
         }
 
