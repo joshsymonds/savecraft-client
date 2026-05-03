@@ -101,4 +101,4 @@ scripts/mcp-activity.sh
 Player.log
 views/debug-storybook.log
 /datagen
-worker/test/fixtures/
+worker/test/fixtures/spot-check.sql

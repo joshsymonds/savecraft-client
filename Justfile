@@ -220,6 +220,14 @@ build-manifests:
 spot-check-fetch:
     npx tsx scripts/dump-spot-check-fixture.ts
 
+# Run the local spot-check matrix against the fixture.
+# Asserts overlap ≥ 65%, 0 missing staples, lands in target_range.
+# Failing assertions are calibration data — see the printed summary table.
+# Standalone TS script (better-sqlite3 + thin D1 shim) — see Epic #50
+# Approaches Considered for why this isn't vitest+miniflare.
+spot-check:
+    npx tsx scripts/spot-check.ts
+
 # Extract PoE tree data → plugins/poe/reference/views/tree-data.gen.json
 # Pulls from PoB's bundled .reference/pob/src/TreeData/3_28/tree.lua and
 # computes node positions via PoB's exact coordinate formula. The
