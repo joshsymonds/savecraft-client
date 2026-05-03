@@ -101,3 +101,4 @@ scripts/mcp-activity.sh
 Player.log
 views/debug-storybook.log
 /datagen
+worker/test/fixtures/

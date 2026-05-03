@@ -214,6 +214,12 @@ storybook:
 build-manifests:
     npx tsx scripts/build-manifests.ts
 
+# Refresh the spot-check fixture from production D1 (read-only).
+# Output: worker/test/fixtures/spot-check.sql (gitignored).
+# Requires CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID in env (via direnv).
+spot-check-fetch:
+    npx tsx scripts/dump-spot-check-fixture.ts
+
 # Extract PoE tree data → plugins/poe/reference/views/tree-data.gen.json
 # Pulls from PoB's bundled .reference/pob/src/TreeData/3_28/tree.lua and
 # computes node positions via PoB's exact coordinate formula. The
