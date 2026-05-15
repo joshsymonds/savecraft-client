@@ -6,11 +6,11 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/joshsymonds/savecraft.gg/internal/daemon"
+	"github.com/joshsymonds/savecraft.gg/internal/manifest"
 	"github.com/joshsymonds/savecraft.gg/internal/signing"
 )
 
@@ -34,8 +35,12 @@ var ErrUpToDate = errors.New("already up to date")
 type HTTPUpdater struct {
 	installURL string
 	pubKey     ed25519.PublicKey
-	cacheDir   string
-	client     *http.Client
+	// manifestPubKey verifies the detached manifest signature. It is always the
+	// embedded release key in production and is never disableable (R3); tests in
+	// this package override it with a generated key.
+	manifestPubKey ed25519.PublicKey
+	cacheDir       string
+	client         *http.Client
 }
 
 // Option configures an HTTPUpdater.
@@ -55,10 +60,11 @@ type manifestResponse struct {
 // New creates an HTTPUpdater that checks installURL for updates.
 func New(installURL string, pubKey ed25519.PublicKey, cacheDir string, opts ...Option) *HTTPUpdater {
 	updater := &HTTPUpdater{
-		installURL: installURL,
-		pubKey:     pubKey,
-		cacheDir:   cacheDir,
-		client:     &http.Client{Timeout: defaultUpdateTimeout},
+		installURL:     installURL,
+		pubKey:         pubKey,
+		manifestPubKey: signing.PublicKey(),
+		cacheDir:       cacheDir,
+		client:         &http.Client{Timeout: defaultUpdateTimeout},
 	}
 	for _, opt := range opts {
 		opt(updater)
@@ -68,49 +74,91 @@ func New(installURL string, pubKey ed25519.PublicKey, cacheDir string, opts ...O
 
 // Check fetches the daemon manifest and returns update info if a newer version is available.
 func (u *HTTPUpdater) Check(ctx context.Context, currentVersion, platform string) (*daemon.CheckResult, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.installURL+"/daemon/manifest.json", nil)
-	if err != nil {
-		return nil, fmt.Errorf("create manifest request: %w", err)
-	}
-
-	resp, err := u.client.Do(req)
+	manifestBytes, err := u.fetchBytes(ctx, u.installURL+"/daemon/manifest.json")
 	if err != nil {
 		return nil, fmt.Errorf("fetch manifest: %w", err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("manifest request returned %d", resp.StatusCode)
+	sigBytes, err := u.fetchBytes(ctx, u.installURL+"/daemon/manifest.json.sig")
+	if err != nil {
+		// A missing/unreachable signature must never downgrade to "skip
+		// verification" — it is a hard failure.
+		return nil, fmt.Errorf("fetch manifest signature: %w", err)
 	}
 
-	var manifest manifestResponse
-	decodeErr := json.NewDecoder(resp.Body).Decode(&manifest)
-	if decodeErr != nil {
-		return nil, fmt.Errorf("decode manifest: %w", decodeErr)
+	// Verify the detached signature over the literal manifest bytes BEFORE
+	// reading any field (R2: verify-then-parse, never the reverse).
+	parsed, err := manifest.VerifyAndParse[manifestResponse](u.manifestPubKey, manifestBytes, sigBytes)
+	if err != nil {
+		return nil, fmt.Errorf("verify manifest: %w", err)
 	}
 
-	daemonInfo, ok := manifest.Platforms[platform]
+	daemonInfo, ok := parsed.Platforms[platform]
 	if !ok {
 		return nil, ErrNoPlatform
 	}
 
-	if !isNewer(manifest.Version, currentVersion) {
+	if !isNewer(parsed.Version, currentVersion) {
 		return nil, ErrUpToDate
 	}
 
-	daemonInfo.Version = manifest.Version
+	daemonInfo.Version = parsed.Version
 
 	result := &daemon.CheckResult{
 		Daemon: &daemonInfo,
 	}
 
 	// Include tray info if available for this platform.
-	if trayInfo, trayOK := manifest.Tray[platform]; trayOK {
-		trayInfo.Version = manifest.Version
+	if trayInfo, trayOK := parsed.Tray[platform]; trayOK {
+		trayInfo.Version = parsed.Version
 		result.Tray = &trayInfo
 	}
 
 	return result, nil
+}
+
+// fetchBytes GETs url and returns the full response body, erroring on any
+// non-200 status. Used for the manifest and its detached signature.
+func (u *HTTPUpdater) fetchBytes(ctx context.Context, rawURL string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	resp, err := u.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request %s: %w", rawURL, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s returned %d", rawURL, resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", rawURL, err)
+	}
+	return body, nil
+}
+
+// validateUpdateOrigin enforces that rawURL is an https URL whose host exactly
+// matches the host of the build-time-pinned install origin (u.installURL). The
+// pin is derived locally and never from the manifest or the server-pushed
+// SourceUpdateAvailable message (R6, finding 4.1). An empty or unparseable
+// install origin fails closed: no update is trusted.
+func (u *HTTPUpdater) validateUpdateOrigin(rawURL string) error {
+	pinned, err := url.Parse(u.installURL)
+	if err != nil || pinned.Scheme != "https" || pinned.Host == "" {
+		return fmt.Errorf("refusing update: no trustworthy pinned install origin (%q)", u.installURL)
+	}
+	got, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("parse update URL %q: %w", rawURL, err)
+	}
+	if got.Scheme != "https" {
+		return fmt.Errorf("refusing update: URL scheme %q is not https (%q)", got.Scheme, rawURL)
+	}
+	if got.Host != pinned.Host {
+		return fmt.Errorf("refusing update: host %q is not the pinned install origin %q", got.Host, pinned.Host)
+	}
+	return nil
 }
 
 // isNewer returns true if latest is a strictly newer semver than current.
@@ -147,6 +195,16 @@ func isNewer(latest, current string) bool {
 
 // Apply downloads a new daemon binary, verifies its signature and checksum, and replaces binaryPath.
 func (u *HTTPUpdater) Apply(ctx context.Context, info *daemon.UpdateInfo, binaryPath string) error {
+	// Pin both URLs to the locally-trusted install origin BEFORE any network
+	// access. This is the chokepoint for the server-pushed SourceUpdateAvailable
+	// path as well as the manifest path (finding 4.1, R6).
+	if err := u.validateUpdateOrigin(info.URL); err != nil {
+		return err
+	}
+	if err := u.validateUpdateOrigin(info.SignatureURL); err != nil {
+		return err
+	}
+
 	if err := os.MkdirAll(u.cacheDir, 0o750); err != nil {
 		return fmt.Errorf("create cache dir: %w", err)
 	}

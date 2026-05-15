@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -48,20 +47,9 @@ func TestCheck_NewerVersionAvailable(t *testing.T) {
 		},
 	}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/daemon/manifest.json" {
-			http.NotFound(w, r)
-			return
-		}
-		// Verify no Authorization header is sent (install is unauthenticated)
-		if r.Header.Get("Authorization") != "" {
-			t.Errorf("unexpected Authorization header: %s", r.Header.Get("Authorization"))
-		}
-		json.NewEncoder(w).Encode(manifest)
-	}))
-	defer srv.Close()
-
-	u := New(srv.URL, nil, t.TempDir())
+	pub, priv, _ := signing.GenerateKeypair()
+	srv, _ := signedManifestServer(t, priv, manifest)
+	u := newTestUpdater(t, srv, pub)
 
 	result, err := u.Check(context.Background(), "0.1.0", "linux-amd64")
 	if err != nil {
@@ -106,12 +94,9 @@ func TestCheck_WithTrayInfo(t *testing.T) {
 		},
 	}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		json.NewEncoder(w).Encode(manifest)
-	}))
-	defer srv.Close()
-
-	u := New(srv.URL, nil, t.TempDir())
+	pub, priv, _ := signing.GenerateKeypair()
+	srv, _ := signedManifestServer(t, priv, manifest)
+	u := newTestUpdater(t, srv, pub)
 
 	result, err := u.Check(context.Background(), "0.1.0", "windows-amd64.exe")
 	if err != nil {
@@ -151,12 +136,9 @@ func TestCheck_AlreadyCurrent(t *testing.T) {
 		},
 	}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		json.NewEncoder(w).Encode(manifest)
-	}))
-	defer srv.Close()
-
-	u := New(srv.URL, nil, t.TempDir())
+	pub, priv, _ := signing.GenerateKeypair()
+	srv, _ := signedManifestServer(t, priv, manifest)
+	u := newTestUpdater(t, srv, pub)
 
 	result, err := u.Check(context.Background(), "0.1.0", "linux-amd64")
 	if !errors.Is(err, ErrUpToDate) {
@@ -178,12 +160,9 @@ func TestCheck_PlatformNotFound(t *testing.T) {
 		},
 	}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		json.NewEncoder(w).Encode(manifest)
-	}))
-	defer srv.Close()
-
-	u := New(srv.URL, nil, t.TempDir())
+	pub, priv, _ := signing.GenerateKeypair()
+	srv, _ := signedManifestServer(t, priv, manifest)
+	u := newTestUpdater(t, srv, pub)
 
 	result, err := u.Check(context.Background(), "0.1.0", "linux-amd64")
 	if !errors.Is(err, ErrNoPlatform) {
@@ -205,7 +184,7 @@ func TestApply_DownloadsAndReplaces(t *testing.T) {
 	hash := sha256.Sum256(binaryData)
 	hashHex := hex.EncodeToString(hash[:])
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify no Authorization header on downloads
 		if r.Header.Get("Authorization") != "" {
 			t.Errorf("unexpected Authorization header on download: %s", r.Header.Get("Authorization"))
@@ -230,7 +209,7 @@ func TestApply_DownloadsAndReplaces(t *testing.T) {
 		t.Fatalf("write old binary: %v", err)
 	}
 
-	u := New(srv.URL, pubKey, cacheDir)
+	u := New(srv.URL, pubKey, cacheDir, WithHTTPClient(srv.Client()))
 
 	info := &daemon.UpdateInfo{
 		Version:      "0.2.0",
@@ -265,7 +244,7 @@ func TestApply_DownloadsAndReplaces(t *testing.T) {
 func TestApply_SHA256Mismatch(t *testing.T) {
 	binaryData := []byte("daemon-binary")
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/binary":
 			w.Write(binaryData)
@@ -282,7 +261,7 @@ func TestApply_SHA256Mismatch(t *testing.T) {
 	binaryPath := filepath.Join(targetDir, "savecraft-daemon")
 
 	// nil pubKey skips signature verification, so SHA256 check runs.
-	u := New(srv.URL, nil, cacheDir)
+	u := New(srv.URL, nil, cacheDir, WithHTTPClient(srv.Client()))
 
 	info := &daemon.UpdateInfo{
 		Version:      "0.2.0",
@@ -324,7 +303,7 @@ func TestApply_BadSignature(t *testing.T) {
 	}
 	wrongSig := signing.Sign(wrongPrivKey, binaryData)
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/binary":
 			w.Write(binaryData)
@@ -340,7 +319,7 @@ func TestApply_BadSignature(t *testing.T) {
 	targetDir := t.TempDir()
 	binaryPath := filepath.Join(targetDir, "savecraft-daemon")
 
-	u := New(srv.URL, pubKey, cacheDir)
+	u := New(srv.URL, pubKey, cacheDir, WithHTTPClient(srv.Client()))
 
 	info := &daemon.UpdateInfo{
 		Version:      "0.2.0",
@@ -531,12 +510,9 @@ func TestCheck_DowngradeNotReturned(t *testing.T) {
 		},
 	}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		json.NewEncoder(w).Encode(manifest)
-	}))
-	defer srv.Close()
-
-	u := New(srv.URL, nil, t.TempDir())
+	pub, priv, _ := signing.GenerateKeypair()
+	srv, _ := signedManifestServer(t, priv, manifest)
+	u := newTestUpdater(t, srv, pub)
 
 	// Current version is NEWER than manifest — should not return an update.
 	result, err := u.Check(context.Background(), "0.2.0", "linux-amd64")
