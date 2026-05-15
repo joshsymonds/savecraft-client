@@ -271,8 +271,11 @@ jobs:
               echo "    Deployed ${game_id}-reference to ${dispatch_ns}"
             fi
 
-            # Upload manifest (all plugin types)
+            # Upload manifest + detached signature over its literal bytes
+            go run ./cmd/savecraft-sign/ "plugins/${game_id}/manifest.json" /tmp/signing_key.priv
             wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json" --remote &
+            pids+=($!)
+            wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/manifest.json.sig" --file "plugins/${game_id}/manifest.json.sig" --remote &
             pids+=($!)
 
             # Wait for all R2 uploads to finish

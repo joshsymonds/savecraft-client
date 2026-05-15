@@ -321,6 +321,10 @@ jobs:
           cd dist
           find . -maxdepth 1 \( -name "${APP_NAME}-daemon-*" -o -name "${APP_NAME}-tray-*" -o -name "${APP_NAME}.msi" \) ! -name '*.sig' -printf '%f\n' | xargs sha256sum > checksums-sha256.txt
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
       - name: Install wrangler
         run: npm install -g wrangler
 
@@ -378,6 +382,19 @@ jobs:
 
           cat dist/daemon-manifest.json
 
+      - name: Ed25519 sign manifest
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
+        run: |
+          echo "$SIGNING_KEY" | base64 -d > /tmp/signing_key.priv
+          # Sign the literal bytes of the manifest exactly as they will be
+          # served. savecraft-sign writes dist/daemon-manifest.json.sig.
+          go run ./cmd/savecraft-sign/ dist/daemon-manifest.json /tmp/signing_key.priv
+
+      - name: Clean up signing key
+        if: always()
+        run: rm -f /tmp/signing_key.priv
+
       - name: Upload to R2
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -410,8 +427,10 @@ jobs:
           pids+=($!)
           r2put "${R2_BUCKET}/daemon/${APP_NAME}.msi" "dist/${APP_NAME}.msi" &
           pids+=($!)
-          # Manifest
+          # Manifest + detached signature over its literal bytes
           r2put "${R2_BUCKET}/daemon/manifest.json" "dist/daemon-manifest.json" &
+          pids+=($!)
+          r2put "${R2_BUCKET}/daemon/manifest.json.sig" "dist/daemon-manifest.json.sig" &
           pids+=($!)
           # Wait for all uploads, fail if any failed
           for pid in "${pids[@]}"; do wait "$pid" || exit 1; done

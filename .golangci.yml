@@ -385,6 +385,7 @@ linters:
       allow:
         - error
         - stdlib
+        - generic
         - io.Reader
         - io.Writer
         - io.Closer
