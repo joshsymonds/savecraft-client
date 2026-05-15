@@ -102,3 +102,19 @@ Player.log
 views/debug-storybook.log
 /datagen
 worker/test/fixtures/spot-check.sql
+
+# Compiled Go binaries (build outputs — rebuilt via `go build` / just targets)
+/pob-server
+/cmd/pob-server/pob-server
+/edhrec-fetch
+/plugins/magic/scryfall-fetch
+
+# Nested git-hooks.nix-generated prek configs. The root .pre-commit-config.yaml
+# is tracked (git keeps it regardless); this only suppresses the stray copies
+# git-hooks.nix drops in subdirs when activated from there — they were the
+# recurring prek autostash-conflict source on push.
+.pre-commit-config.yaml
+!/.pre-commit-config.yaml
+
+# Local marketing/distribution drafts (kept on disk, not in the repo)
+/reddit-post*.md
