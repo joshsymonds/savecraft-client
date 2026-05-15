@@ -114,6 +114,18 @@ generate_manifest() {
   "linux-arm64": { "sha256": "${hash}" }
 }
 EOF
+    sign_manifest
+}
+
+# Sign the current ${FIXTURES}/daemon/manifest.json with the ephemeral test
+# key, producing manifest.json.sig — mirrors CI, which signs the literal
+# manifest bytes.
+sign_manifest() {
+    openssl pkeyutl -sign \
+        -inkey "${FIXTURES}/signing-key.pem" \
+        -rawin \
+        -in "${FIXTURES}/daemon/manifest.json" \
+        -out "${FIXTURES}/daemon/manifest.json.sig"
 }
 
 # Remove installed files between tests so each starts clean.
@@ -210,7 +222,11 @@ SCRIPT
     # Set the global pubkey variable
     TEST_PUBKEY="$(cat "${FIXTURES}/pubkey.b64")"
 
-    # Clean up private key
+    # Persist the private key so the manifest can be signed with the SAME key
+    # the installer's embedded pubkey verifies against.
+    cp "${key_dir}/private.pem" "${FIXTURES}/signing-key.pem"
+
+    # Clean up the working keypair dir.
     rm -rf "${key_dir}"
 
     info "Fixtures ready"
@@ -368,11 +384,11 @@ test_sha256_dedup_skip() {
     # Generate manifest matching the installed binary
     generate_manifest "${HOME}/.local/bin/savecraft-daemon"
 
-    # Second install — should detect matching hash and skip download
+    # Second install — should verify the signed manifest and skip download
     run_installer_capture "${FIXTURES}/install.sh" --no-service
-    assert_output_contains "up to date" "SHA256 dedup skips re-download"
+    assert_output_contains "up to date" "signed manifest + matching hash skips re-download"
 
-    rm -f "${FIXTURES}/daemon/manifest.json"
+    rm -f "${FIXTURES}/daemon/manifest.json" "${FIXTURES}/daemon/manifest.json.sig"
 }
 
 # ---------------------------------------------------------------------------
@@ -392,12 +408,64 @@ test_sha256_dedup_mismatch() {
   "linux-arm64": { "sha256": "0000000000000000000000000000000000000000000000000000000000000000" }
 }
 EOF
+    sign_manifest # validly signed, but the hash deliberately mismatches
 
     # Second install — hash mismatch, should re-download
     run_installer_capture "${FIXTURES}/install.sh" --no-service
     assert_output_contains "downloading|installed" "SHA256 mismatch triggers re-download"
 
+    rm -f "${FIXTURES}/daemon/manifest.json" "${FIXTURES}/daemon/manifest.json.sig"
+}
+
+# ---------------------------------------------------------------------------
+# Test: unsigned manifest must NOT cause a skip (finding 5.2 / R13)
+#
+# An attacker who can serve manifest.json but not a valid signature must not
+# be able to turn the installer into a no-op (e.g. by claiming the installed
+# old binary's hash is current).
+# ---------------------------------------------------------------------------
+test_manifest_unsigned_not_trusted() {
+    info "=== Test: unsigned manifest not trusted ==="
+    clean_install_dirs
+
+    run_installer_ok "${FIXTURES}/install.sh"
+
+    # Manifest whose hash matches the installed binary (would skip if trusted)
+    # but with NO signature served.
+    generate_manifest "${HOME}/.local/bin/savecraft-daemon"
+    rm -f "${FIXTURES}/daemon/manifest.json.sig"
+
+    run_installer_capture "${FIXTURES}/install.sh" --no-service
+    if echo "${CAPTURED_OUTPUT}" | grep -qiE "up to date"; then
+        fail "unsigned manifest not trusted: installer skipped on an unsigned manifest"
+    else
+        pass "unsigned manifest does not cause a skip (re-downloads + verifies)"
+    fi
+
     rm -f "${FIXTURES}/daemon/manifest.json"
+}
+
+# ---------------------------------------------------------------------------
+# Test: tampered manifest signature must NOT cause a skip (finding 5.2 / R13)
+# ---------------------------------------------------------------------------
+test_manifest_bad_sig_not_trusted() {
+    info "=== Test: bad manifest signature not trusted ==="
+    clean_install_dirs
+
+    run_installer_ok "${FIXTURES}/install.sh"
+
+    generate_manifest "${HOME}/.local/bin/savecraft-daemon"
+    # Corrupt the signature so verification fails.
+    printf 'garbage-not-a-valid-signature' >"${FIXTURES}/daemon/manifest.json.sig"
+
+    run_installer_capture "${FIXTURES}/install.sh" --no-service
+    if echo "${CAPTURED_OUTPUT}" | grep -qiE "up to date"; then
+        fail "bad manifest sig not trusted: installer skipped on an invalid signature"
+    else
+        pass "invalid manifest signature does not cause a skip"
+    fi
+
+    rm -f "${FIXTURES}/daemon/manifest.json" "${FIXTURES}/daemon/manifest.json.sig"
 }
 
 # ---------------------------------------------------------------------------
@@ -518,6 +586,8 @@ main() {
     test_openssl_absent
     test_sha256_dedup_skip
     test_sha256_dedup_mismatch
+    test_manifest_unsigned_not_trusted
+    test_manifest_bad_sig_not_trusted
     test_help_flag
     test_unknown_argument
     print_summary

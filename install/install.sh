@@ -316,10 +316,19 @@ main() {
     local skip_download=false
 
     if [[ -x "${BIN_DIR}/${BINARY_NAME}" ]] && command -v sha256sum >/dev/null 2>&1; then
-        local tmp_manifest
+        local tmp_manifest tmp_manifest_sig
         tmp_manifest="$(mktemp)"
-        if download "${manifest_url}" "${tmp_manifest}" 2>/dev/null; then
-            # Extract expected sha256 for this platform (simple grep, no jq needed).
+        tmp_manifest_sig="$(mktemp)"
+        # The manifest and its detached signature must BOTH download and the
+        # signature must verify before ANY field is trusted for a skip
+        # decision. An unsigned/forged manifest never produces a no-op — it
+        # falls through to the normal, binary-signature-verified download
+        # (finding 5.2). verify_signature hard-fails if openssl is absent
+        # (finding 5.1), consistent with the rest of the install.
+        if download "${manifest_url}" "${tmp_manifest}" 2>/dev/null \
+            && download "${manifest_url}.sig" "${tmp_manifest_sig}" 2>/dev/null \
+            && verify_signature "${tmp_manifest}" "${tmp_manifest_sig}"; then
+            # Manifest authenticity established — only now read a field.
             # Manifest format: "linux-amd64": { ... "sha256": "hexstring" ... }
             local expected_hash
             expected_hash="$(grep -A5 "\"${os}-${arch}\"" "${tmp_manifest}" \
@@ -334,7 +343,7 @@ main() {
                 fi
             fi
         fi
-        rm -f "${tmp_manifest}"
+        rm -f "${tmp_manifest}" "${tmp_manifest_sig}"
     fi
 
     if [[ "${skip_download}" == "true" ]]; then
