@@ -23,14 +23,14 @@ import (
 const osWindows = "windows"
 
 func buildRunFunc(
-	serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL string,
+	version, serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL string,
 ) func(cmd *cobra.Command, args []string) error {
 	return func(_ *cobra.Command, _ []string) error {
-		return runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL)
+		return runDaemon(version, serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL)
 	}
 }
 
-func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL string) error {
+func runDaemon(version, serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL string) error {
 	ringBuf := localapi.NewRingBuffer(
 		localapi.DefaultBufferSize,
 		slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}),
@@ -49,7 +49,7 @@ func runDaemon(serverURLDefault, installURLDefault, appName, statusPortDefault, 
 	prog = svcmgr.New(svcCfg, func(ctx context.Context) error {
 		return runDaemonLoop(
 			ctx, logger, ringBuf, prog.Stop, svcCfg,
-			serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL,
+			version, serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL,
 		)
 	})
 
@@ -66,7 +66,7 @@ func runDaemonLoop(
 	ringBuf *localapi.RingBuffer,
 	shutdownFn func(),
 	svcCfg svcmgr.Config,
-	serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL string,
+	version, serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL string,
 ) error {
 	loadEnvFileDefaults(appName)
 
@@ -97,7 +97,7 @@ func runDaemonLoop(
 		return fmt.Errorf("auto-register: %w", regErr)
 	}
 
-	return runDaemonSubsystems(ctx, cfg, svcCfg, appName, frontendURL, api, regResult, registered, logger)
+	return runDaemonSubsystems(ctx, cfg, svcCfg, version, appName, frontendURL, api, regResult, registered, logger)
 }
 
 // startLocalAPI creates and starts the local API server.
@@ -166,7 +166,7 @@ func runDaemonSubsystems(
 	ctx context.Context,
 	cfg *appConfig,
 	svcCfg svcmgr.Config,
-	appName, frontendURL string,
+	version, appName, frontendURL string,
 	api *localapi.Server,
 	regResult *registerResult,
 	newlyRegistered bool,
@@ -185,7 +185,7 @@ func runDaemonSubsystems(
 		cfg.Daemon.TrayBinaryPath = trayPath
 	}
 
-	subsystems, err := createSubsystems(ctx, cfg, appName, logger)
+	subsystems, err := createSubsystems(ctx, cfg, appName, version, logger)
 	if err != nil {
 		return err
 	}

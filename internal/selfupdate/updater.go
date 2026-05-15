@@ -39,6 +39,12 @@ type HTTPUpdater struct {
 	// embedded release key in production and is never disableable (R3); tests in
 	// this package override it with a generated key.
 	manifestPubKey ed25519.PublicKey
+	// currentVersion is the running daemon's compiled-in version (ldflag
+	// main.version). It is baked into the signed binary, so it is an
+	// unforgeable anti-rollback floor — NOT the env-derived runtime version
+	// (which an attacker could lower). Apply refuses any update not strictly
+	// newer than this (finding 5.3 / R8).
+	currentVersion string
 	cacheDir       string
 	client         *http.Client
 }
@@ -58,11 +64,16 @@ type manifestResponse struct {
 }
 
 // New creates an HTTPUpdater that checks installURL for updates.
-func New(installURL string, pubKey ed25519.PublicKey, cacheDir string, opts ...Option) *HTTPUpdater {
+// currentVersion MUST be the compiled-in build version (ldflag main.version),
+// not an env-derived value — it is the anti-rollback floor.
+func New(
+	installURL string, pubKey ed25519.PublicKey, cacheDir, currentVersion string, opts ...Option,
+) *HTTPUpdater {
 	updater := &HTTPUpdater{
 		installURL:     installURL,
 		pubKey:         pubKey,
 		manifestPubKey: signing.PublicKey(),
+		currentVersion: currentVersion,
 		cacheDir:       cacheDir,
 		client:         &http.Client{Timeout: defaultUpdateTimeout},
 	}
@@ -203,6 +214,19 @@ func (u *HTTPUpdater) Apply(ctx context.Context, info *daemon.UpdateInfo, binary
 	}
 	if err := u.validateUpdateOrigin(info.SignatureURL); err != nil {
 		return err
+	}
+
+	// Anti-rollback: refuse anything not strictly newer than the running
+	// binary's compiled-in version. This closes the server-pushed
+	// SourceUpdateAvailable downgrade vector — a replayed, still-validly-
+	// signed OLD build is rejected before any download (finding 5.3 / R8).
+	// info.Version is attacker-influenced on the WS path; u.currentVersion
+	// is baked into the signed binary, so the comparison is trustworthy.
+	if !isNewer(info.Version, u.currentVersion) {
+		return fmt.Errorf(
+			"refusing update: version %q is not newer than running %q (anti-rollback)",
+			info.Version, u.currentVersion,
+		)
 	}
 
 	if err := os.MkdirAll(u.cacheDir, 0o750); err != nil {

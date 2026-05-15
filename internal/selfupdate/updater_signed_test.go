@@ -47,7 +47,7 @@ func signedManifestServer(
 
 func newTestUpdater(t *testing.T, srv *httptest.Server, pub ed25519.PublicKey) *HTTPUpdater {
 	t.Helper()
-	u := New(srv.URL, pub, t.TempDir(), WithHTTPClient(srv.Client()))
+	u := New(srv.URL, pub, t.TempDir(), "0.0.0", WithHTTPClient(srv.Client()))
 	u.manifestPubKey = pub
 	return u
 }
@@ -212,7 +212,7 @@ func TestApply_AcceptsPinnedOriginAndReplaces(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	u := New(srv.URL, pub, t.TempDir(), WithHTTPClient(srv.Client()))
+	u := New(srv.URL, pub, t.TempDir(), "0.1.0", WithHTTPClient(srv.Client()))
 	u.manifestPubKey = pub
 
 	binaryPath := filepath.Join(t.TempDir(), "savecraft-daemon")
@@ -253,7 +253,7 @@ func TestApply_NilBinaryKeyFailsClosed(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	// nil binary pubKey — must fail closed, never skip verification.
-	u := New(srv.URL, nil, t.TempDir(), WithHTTPClient(srv.Client()))
+	u := New(srv.URL, nil, t.TempDir(), "0.1.0", WithHTTPClient(srv.Client()))
 
 	binaryPath := filepath.Join(t.TempDir(), "savecraft-daemon")
 	info := &daemon.UpdateInfo{
@@ -273,7 +273,7 @@ func TestApply_NilBinaryKeyFailsClosed(t *testing.T) {
 func TestApply_EmptyPinnedOriginFailsClosed(t *testing.T) {
 	pub, _, _ := signing.GenerateKeypair()
 	// installURL empty → no trustworthy pin → must refuse all updates.
-	u := New("", pub, t.TempDir())
+	u := New("", pub, t.TempDir(), "0.0.0")
 	u.manifestPubKey = pub
 
 	info := &daemon.UpdateInfo{
@@ -283,5 +283,125 @@ func TestApply_EmptyPinnedOriginFailsClosed(t *testing.T) {
 	}
 	if err := u.Apply(context.Background(), info, filepath.Join(t.TempDir(), "d")); err == nil {
 		t.Fatal("expected fail-closed when pinned origin is empty")
+	}
+}
+
+// -- Binary anti-rollback (finding 5.3 / epic R8, binary half) ---------------
+
+// antiRollbackServer serves a signed binary + sig and counts download hits so
+// tests can prove the version gate rejects BEFORE any network access.
+func antiRollbackServer(t *testing.T, priv ed25519.PrivateKey) (*httptest.Server, *int) {
+	t.Helper()
+	bin := []byte("daemon-bytes")
+	binSig := signing.Sign(priv, bin)
+	hits := 0
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/binary":
+			hits++
+			_, _ = w.Write(bin)
+		case "/binary.sig":
+			hits++
+			_, _ = w.Write(binSig)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &hits
+}
+
+func TestApply_RejectsOlderVersionBeforeDownload(t *testing.T) {
+	pub, priv, _ := signing.GenerateKeypair()
+	srv, hits := antiRollbackServer(t, priv)
+	u := New(srv.URL, pub, t.TempDir(), "1.5.0", WithHTTPClient(srv.Client()))
+
+	binaryPath := filepath.Join(t.TempDir(), "savecraft-daemon")
+	info := &daemon.UpdateInfo{
+		Version:      "1.4.0", // older than running 1.5.0
+		URL:          srv.URL + "/binary",
+		SignatureURL: srv.URL + "/binary.sig",
+		SHA256:       "00",
+	}
+	if err := u.Apply(context.Background(), info, binaryPath); err == nil {
+		t.Fatal("expected anti-rollback rejection for older version")
+	}
+	if *hits != 0 {
+		t.Errorf("download attempted before anti-rollback check (%d hits)", *hits)
+	}
+	if _, statErr := os.Stat(binaryPath); statErr == nil {
+		t.Error("binary must not be installed on a rollback attempt")
+	}
+}
+
+func TestApply_RejectsEqualVersion(t *testing.T) {
+	pub, priv, _ := signing.GenerateKeypair()
+	srv, hits := antiRollbackServer(t, priv)
+	u := New(srv.URL, pub, t.TempDir(), "2.0.0", WithHTTPClient(srv.Client()))
+
+	info := &daemon.UpdateInfo{
+		Version:      "2.0.0", // equal — strictly-newer required
+		URL:          srv.URL + "/binary",
+		SignatureURL: srv.URL + "/binary.sig",
+		SHA256:       "00",
+	}
+	if err := u.Apply(context.Background(), info, filepath.Join(t.TempDir(), "d")); err == nil {
+		t.Fatal("expected rejection for equal version (strictly newer required)")
+	}
+	if *hits != 0 {
+		t.Errorf("download attempted for equal version (%d hits)", *hits)
+	}
+}
+
+func TestApply_RejectsEmptyOrGarbageVersion(t *testing.T) {
+	pub, priv, _ := signing.GenerateKeypair()
+	srv, _ := antiRollbackServer(t, priv)
+	u := New(srv.URL, pub, t.TempDir(), "1.0.0", WithHTTPClient(srv.Client()))
+
+	for _, v := range []string{"", "not-a-version", "0"} {
+		info := &daemon.UpdateInfo{
+			Version:      v,
+			URL:          srv.URL + "/binary",
+			SignatureURL: srv.URL + "/binary.sig",
+			SHA256:       "00",
+		}
+		if err := u.Apply(context.Background(), info, filepath.Join(t.TempDir(), "d")); err == nil {
+			t.Fatalf("expected rejection for non-newer version %q", v)
+		}
+	}
+}
+
+func TestApply_AcceptsNewerVersion(t *testing.T) {
+	pub, priv, _ := signing.GenerateKeypair()
+
+	bin := []byte("new daemon v2")
+	binSig := signing.Sign(priv, bin)
+	h := sha256.Sum256(bin)
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/binary":
+			_, _ = w.Write(bin)
+		case "/binary.sig":
+			_, _ = w.Write(binSig)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	u := New(srv.URL, pub, t.TempDir(), "1.0.0", WithHTTPClient(srv.Client()))
+	binaryPath := filepath.Join(t.TempDir(), "savecraft-daemon")
+	info := &daemon.UpdateInfo{
+		Version:      "1.1.0", // strictly newer
+		URL:          srv.URL + "/binary",
+		SignatureURL: srv.URL + "/binary.sig",
+		SHA256:       hex.EncodeToString(h[:]),
+	}
+	if err := u.Apply(context.Background(), info, binaryPath); err != nil {
+		t.Fatalf("Apply of a newer, valid version: %v", err)
+	}
+	got, _ := os.ReadFile(binaryPath)
+	if string(got) != string(bin) {
+		t.Errorf("binary = %q, want %q", got, bin)
 	}
 }

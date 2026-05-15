@@ -18,7 +18,7 @@ import (
 )
 
 func TestNew_ClientHasTimeout(t *testing.T) {
-	u := New("http://example.com", nil, t.TempDir())
+	u := New("http://example.com", nil, t.TempDir(), "0.0.0")
 	if u.client.Timeout == 0 {
 		t.Error("expected non-zero timeout on default client")
 	}
@@ -29,7 +29,7 @@ func TestNew_ClientHasTimeout(t *testing.T) {
 
 func TestNew_WithHTTPClient(t *testing.T) {
 	custom := &http.Client{Timeout: 5 * time.Second}
-	u := New("http://example.com", nil, t.TempDir(), WithHTTPClient(custom))
+	u := New("http://example.com", nil, t.TempDir(), "0.0.0", WithHTTPClient(custom))
 	if u.client != custom {
 		t.Error("WithHTTPClient option not applied")
 	}
@@ -209,7 +209,7 @@ func TestApply_DownloadsAndReplaces(t *testing.T) {
 		t.Fatalf("write old binary: %v", err)
 	}
 
-	u := New(srv.URL, pubKey, cacheDir, WithHTTPClient(srv.Client()))
+	u := New(srv.URL, pubKey, cacheDir, "0.1.0", WithHTTPClient(srv.Client()))
 
 	info := &daemon.UpdateInfo{
 		Version:      "0.2.0",
@@ -268,7 +268,7 @@ func TestApply_SHA256Mismatch(t *testing.T) {
 	targetDir := t.TempDir()
 	binaryPath := filepath.Join(targetDir, "savecraft-daemon")
 
-	u := New(srv.URL, pubKey, cacheDir, WithHTTPClient(srv.Client()))
+	u := New(srv.URL, pubKey, cacheDir, "0.1.0", WithHTTPClient(srv.Client()))
 
 	info := &daemon.UpdateInfo{
 		Version:      "0.2.0",
@@ -326,7 +326,7 @@ func TestApply_BadSignature(t *testing.T) {
 	targetDir := t.TempDir()
 	binaryPath := filepath.Join(targetDir, "savecraft-daemon")
 
-	u := New(srv.URL, pubKey, cacheDir, WithHTTPClient(srv.Client()))
+	u := New(srv.URL, pubKey, cacheDir, "0.1.0", WithHTTPClient(srv.Client()))
 
 	info := &daemon.UpdateInfo{
 		Version:      "0.2.0",

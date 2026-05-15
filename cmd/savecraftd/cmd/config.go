@@ -44,7 +44,12 @@ func (s *subsystems) close(ctx context.Context, logger *slog.Logger) {
 	}
 }
 
-func createSubsystems(ctx context.Context, cfg *appConfig, appName string, logger *slog.Logger) (*subsystems, error) {
+// createSubsystems wires the daemon's subsystems. version is the compiled-in
+// build version (ldflag main.version) — it is the anti-rollback floor for
+// self-update and must NOT be the env-derived runtime version.
+func createSubsystems(
+	ctx context.Context, cfg *appConfig, appName, version string, logger *slog.Logger,
+) (*subsystems, error) {
 	fsys := osfs.New()
 
 	wt, err := watcher.New()
@@ -73,7 +78,7 @@ func createSubsystems(ctx context.Context, cfg *appConfig, appName string, logge
 	}
 
 	updateCacheDir := filepath.Join(cacheDir, "updates")
-	updater := selfupdate.New(cfg.InstallURL, pubKey, updateCacheDir)
+	updater := selfupdate.New(cfg.InstallURL, pubKey, updateCacheDir, version)
 
 	wsURL := cfg.ServerURL + "/ws/daemon"
 	ws := wsconn.New(wsURL, cfg.AuthToken, wsconn.WithLogger(logger))

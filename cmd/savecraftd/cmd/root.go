@@ -17,7 +17,7 @@ import (
 // When invoked with no subcommand, the daemon runs (same as "run").
 // All string params are compile-time defaults (set via ldflags in main).
 func Execute(version, serverURL, installURL, appName, statusPort, frontendURL string) error {
-	runFn := buildRunFunc(serverURL, installURL, appName, statusPort, frontendURL)
+	runFn := buildRunFunc(version, serverURL, installURL, appName, statusPort, frontendURL)
 
 	root := &cobra.Command{
 		Use:          "savecraftd",
