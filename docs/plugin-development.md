@@ -49,14 +49,25 @@ export SAVECRAFT_PLUGIN_DIR=$PWD/plugins
 | Variable | Value | Purpose |
 |---|---|---|
 | `SAVECRAFT_PLUGIN_DIR` | Path to local plugins dir | Load plugins from disk instead of downloading |
-| `SAVECRAFT_SKIP_VERIFY` | `1` | Skip Ed25519 signature verification (local builds aren't signed) |
 | `SAVECRAFT_SERVER_URL` | `https://staging-api.savecraft.gg` | Connect to staging, not production |
+
+Signature verification is **always on** — there is no way to disable it. Local
+plugins must be signed with the repo's dev key, whose public half is embedded
+in the daemon. After building a plugin, sign it:
+
+```bash
+go run ./cmd/savecraft-sign ./plugins/{game_id}/parser.wasm
+# writes parser.wasm.sig next to it, using internal/signing/signing_key.priv
+```
+
+`signing_key.priv` is the gitignored local dev key; the matching
+`signing_key.pub` is embedded, so dev-signed plugins verify locally exactly
+like CI-signed ones do in production.
 
 ### Running the Daemon
 
 ```bash
 SAVECRAFT_PLUGIN_DIR=$PWD/plugins \
-SAVECRAFT_SKIP_VERIFY=1 \
 SAVECRAFT_SERVER_URL=https://staging-api.savecraft.gg \
   go run ./cmd/savecraftd run
 ```
@@ -65,8 +76,11 @@ Or build first and run the binary:
 
 ```bash
 just build-daemon linux amd64 dev https://staging-api.savecraft.gg https://staging-install.savecraft.gg savecraft-dev 19683 https://staging-my.savecraft.gg
-SAVECRAFT_PLUGIN_DIR=$PWD/plugins SAVECRAFT_SKIP_VERIFY=1 ./dist/savecraft-dev-daemon-linux-amd64
+SAVECRAFT_PLUGIN_DIR=$PWD/plugins ./dist/savecraft-dev-daemon-linux-amd64
 ```
+
+Every plugin under `$PWD/plugins` must have a current `parser.wasm.sig`
+(see signing step above) or it will be rejected.
 
 ## Development Loop
 
@@ -76,7 +90,7 @@ When `SAVECRAFT_PLUGIN_DIR` is set, the daemon watches for `parser.wasm` file ch
 
 1. Start the daemon with the environment variables above
 2. Edit your plugin code
-3. Run `just build-plugin {game_id}`
+3. Run `just build-plugin {game_id}`, then re-sign: `go run ./cmd/savecraft-sign ./plugins/{game_id}/parser.wasm` (the daemon verifies the `.sig` on every reload — a stale or missing signature is rejected)
 4. The daemon detects the new `parser.wasm`, reloads it, and re-parses all tracked saves for that game
 5. Check the results via MCP tools or the web UI at `staging-my.savecraft.gg`
 
@@ -130,7 +144,7 @@ go test ./plugins/d2r/...
 
 **Plugin not loading:**
 - Check directory structure: `{SAVECRAFT_PLUGIN_DIR}/{gameID}/parser.wasm` (not `{SAVECRAFT_PLUGIN_DIR}/parser.wasm`)
-- Verify `SAVECRAFT_SKIP_VERIFY=1` is set — local builds aren't Ed25519 signed
+- Verify `parser.wasm.sig` exists and is current — re-run `go run ./cmd/savecraft-sign ./plugins/{game_id}/parser.wasm` after every rebuild (signature verification is always on and cannot be disabled)
 
 **Auto-reload not firing:**
 - The daemon only watches subdirectories that exist when it starts. If you add a new game directory, restart the daemon.

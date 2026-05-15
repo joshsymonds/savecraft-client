@@ -232,11 +232,10 @@ func (u *HTTPUpdater) Apply(ctx context.Context, info *daemon.UpdateInfo, binary
 		return fmt.Errorf("read downloaded signature: %w", sigReadErr)
 	}
 
-	if u.pubKey != nil {
-		verifyErr := signing.Verify(u.pubKey, binaryBytes, sigBytes)
-		if verifyErr != nil {
-			return fmt.Errorf("signature verification: %w", verifyErr)
-		}
+	// Unconditional: a nil/invalid key makes signing.Verify fail closed.
+	// The self-update signature can never be skipped (epic R3).
+	if verifyErr := signing.Verify(u.pubKey, binaryBytes, sigBytes); verifyErr != nil {
+		return fmt.Errorf("signature verification: %w", verifyErr)
 	}
 
 	actualHash := sha256.Sum256(binaryBytes)

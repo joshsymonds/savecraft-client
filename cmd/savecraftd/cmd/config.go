@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"crypto/ed25519"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -53,26 +52,16 @@ func createSubsystems(ctx context.Context, cfg *appConfig, appName string, logge
 		return nil, fmt.Errorf("create watcher: %w", err)
 	}
 
-	skipVerify := os.Getenv("SAVECRAFT_SKIP_VERIFY") != ""
-
-	var opts []runner.Option
-	if skipVerify {
-		logger.WarnContext(ctx, "plugin signature verification disabled via SAVECRAFT_SKIP_VERIFY")
-	} else {
-		opts = append(opts, runner.WithVerifier(signing.PublicKey()))
-	}
-
-	wr, err := runner.NewWazeroRunner(ctx, opts...)
+	// Plugin and self-update signature verification is unconditional: there is
+	// no env var, flag, or config that can disable it (epic R3).
+	wr, err := runner.NewWazeroRunner(ctx, runner.WithVerifier(signing.PublicKey()))
 	if err != nil {
 		wt.Close()
 
 		return nil, fmt.Errorf("create runner: %w", err)
 	}
 
-	var pubKey ed25519.PublicKey
-	if !skipVerify {
-		pubKey = signing.PublicKey()
-	}
+	pubKey := signing.PublicKey()
 
 	cacheDir := pluginmgr.DefaultCacheDir(appName)
 	cache := pluginmgr.NewCache(cacheDir)

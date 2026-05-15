@@ -337,12 +337,12 @@ func (m *Manager) downloadAndLoad(
 func (m *Manager) verifyPlugin(
 	gameID string, wasm, sig []byte, expectedHash string,
 ) error {
-	if m.publicKey != nil {
-		if verifyErr := signing.Verify(m.publicKey, wasm, sig); verifyErr != nil {
-			return fmt.Errorf(
-				"verify plugin %s: %w", gameID, verifyErr,
-			)
-		}
+	// Verification is unconditional. A nil/invalid key makes signing.Verify
+	// fail closed — it is never a skip (epic R3).
+	if verifyErr := signing.Verify(m.publicKey, wasm, sig); verifyErr != nil {
+		return fmt.Errorf(
+			"verify plugin %s: %w", gameID, verifyErr,
+		)
 	}
 
 	hash := sha256.Sum256(wasm)
@@ -451,7 +451,11 @@ func (m *Manager) loadFromLocal(
 		return fmt.Errorf("read local sig %s: %w", gameID, sigErr)
 	}
 
-	if m.publicKey != nil && sig != nil {
+	// When a signature is present it is verified unconditionally; a
+	// nil/invalid key fails closed, never skips (epic R3). A MISSING local
+	// .sig is still tolerated here — making that fatal is finding 1.2, a
+	// separate later task; do not re-introduce a key-nil skip.
+	if sig != nil {
 		if verifyErr := signing.Verify(m.publicKey, wasm, sig); verifyErr != nil {
 			return fmt.Errorf(
 				"verify local plugin %s: %w", gameID, verifyErr,

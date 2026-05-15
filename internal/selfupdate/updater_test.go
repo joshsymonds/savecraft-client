@@ -244,12 +244,20 @@ func TestApply_DownloadsAndReplaces(t *testing.T) {
 func TestApply_SHA256Mismatch(t *testing.T) {
 	binaryData := []byte("daemon-binary")
 
+	// A correctly signed binary so verification passes and execution reaches
+	// the SHA256 check (signature can never be skipped — epic R3).
+	pubKey, privKey, err := signing.GenerateKeypair()
+	if err != nil {
+		t.Fatalf("generate keypair: %v", err)
+	}
+	binSig := signing.Sign(privKey, binaryData)
+
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/binary":
 			w.Write(binaryData)
 		case "/binary.sig":
-			w.Write([]byte("not-used"))
+			w.Write(binSig)
 		default:
 			http.NotFound(w, r)
 		}
@@ -260,8 +268,7 @@ func TestApply_SHA256Mismatch(t *testing.T) {
 	targetDir := t.TempDir()
 	binaryPath := filepath.Join(targetDir, "savecraft-daemon")
 
-	// nil pubKey skips signature verification, so SHA256 check runs.
-	u := New(srv.URL, nil, cacheDir, WithHTTPClient(srv.Client()))
+	u := New(srv.URL, pubKey, cacheDir, WithHTTPClient(srv.Client()))
 
 	info := &daemon.UpdateInfo{
 		Version:      "0.2.0",
@@ -270,7 +277,7 @@ func TestApply_SHA256Mismatch(t *testing.T) {
 		SHA256:       "0000000000000000000000000000000000000000000000000000000000000000",
 	}
 
-	err := u.Apply(context.Background(), info, binaryPath)
+	err = u.Apply(context.Background(), info, binaryPath)
 	if err == nil {
 		t.Fatal("expected error for SHA256 mismatch")
 	}

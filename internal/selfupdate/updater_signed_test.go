@@ -231,6 +231,45 @@ func TestApply_AcceptsPinnedOriginAndReplaces(t *testing.T) {
 	}
 }
 
+// TestApply_NilBinaryKeyFailsClosed proves a nil verify key is NOT a skip:
+// even a correctly-served binary is rejected because signing.Verify fails
+// closed on an absent key (epic R3 — no skip path anywhere).
+func TestApply_NilBinaryKeyFailsClosed(t *testing.T) {
+	_, priv, _ := signing.GenerateKeypair()
+	binaryData := []byte("daemon-bytes")
+	binSig := signing.Sign(priv, binaryData)
+	hash := sha256.Sum256(binaryData)
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/binary":
+			_, _ = w.Write(binaryData)
+		case "/binary.sig":
+			_, _ = w.Write(binSig)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	// nil binary pubKey — must fail closed, never skip verification.
+	u := New(srv.URL, nil, t.TempDir(), WithHTTPClient(srv.Client()))
+
+	binaryPath := filepath.Join(t.TempDir(), "savecraft-daemon")
+	info := &daemon.UpdateInfo{
+		Version:      "0.2.0",
+		URL:          srv.URL + "/binary",
+		SignatureURL: srv.URL + "/binary.sig",
+		SHA256:       hex.EncodeToString(hash[:]),
+	}
+	if err := u.Apply(context.Background(), info, binaryPath); err == nil {
+		t.Fatal("expected fail-closed with a nil binary verify key")
+	}
+	if _, statErr := os.Stat(binaryPath); statErr == nil {
+		t.Error("binary must not be installed when verify key is nil")
+	}
+}
+
 func TestApply_EmptyPinnedOriginFailsClosed(t *testing.T) {
 	pub, _, _ := signing.GenerateKeypair()
 	// installURL empty → no trustworthy pin → must refuse all updates.

@@ -112,6 +112,34 @@ func signAndHash(
 
 const pluginURL = "https://example.com/plugins/d2r/parser.wasm"
 
+// TestEnsurePlugin_NilKeyFailsClosed proves a nil public key is NOT a skip:
+// a correctly-signed remote plugin is still rejected because verification
+// runs unconditionally and fails closed on an absent key (epic R3).
+func TestEnsurePlugin_NilKeyFailsClosed(t *testing.T) {
+	_, priv := generateTestKeys(t)
+	wasm := []byte("signed remote wasm")
+	sig, hash := signAndHash(t, priv, wasm)
+
+	reg := &fakeRegistry{
+		manifest: map[string]PluginInfo{
+			"d2r": {GameID: "d2r", Version: "1.0.0", SHA256: hash, URL: pluginURL},
+		},
+		files: map[string][]byte{
+			pluginURL:          wasm,
+			pluginURL + ".sig": sig,
+		},
+	}
+
+	mgr := NewManager(reg, NewCache(t.TempDir()), &fakeLoader{}, nil, testLogger())
+	err := mgr.EnsurePlugin(context.Background(), "d2r")
+	if err == nil {
+		t.Fatal("expected fail-closed with a nil public key, got nil error")
+	}
+	if !strings.Contains(err.Error(), "verify") {
+		t.Errorf("error = %v, want a verification failure", err)
+	}
+}
+
 // --- Tests ---
 
 func TestEnsurePlugin_DownloadVerifyCache(t *testing.T) {
@@ -456,7 +484,7 @@ func TestEnsurePlugin_DownloadError(t *testing.T) {
 }
 
 func TestEnsurePlugin_LoaderError(t *testing.T) {
-	_, priv := generateTestKeys(t)
+	pub, priv := generateTestKeys(t)
 	wasm := []byte("loader fail wasm")
 	sig, hash := signAndHash(t, priv, wasm)
 
@@ -478,9 +506,8 @@ func TestEnsurePlugin_LoaderError(t *testing.T) {
 	loader := &fakeLoader{
 		loadErr: map[string]error{"d2r": fmt.Errorf("compilation failed")},
 	}
-	// No public key — skip signature verification.
 	mgr := NewManager(
-		reg, NewCache(t.TempDir()), loader, nil, testLogger(),
+		reg, NewCache(t.TempDir()), loader, pub, testLogger(),
 	)
 	err := mgr.EnsurePlugin(context.Background(), "d2r")
 	if err == nil {
@@ -521,7 +548,7 @@ func (r *evolvingRegistry) Download(_ context.Context, url string) ([]byte, erro
 }
 
 func TestEnsurePlugin_RefetchesManifestForUnknownGame(t *testing.T) {
-	_, priv := generateTestKeys(t)
+	pub, priv := generateTestKeys(t)
 	wasm := []byte("clair obscur wasm")
 	sig, hash := signAndHash(t, priv, wasm)
 
@@ -541,7 +568,7 @@ func TestEnsurePlugin_RefetchesManifestForUnknownGame(t *testing.T) {
 	}
 
 	loader := &fakeLoader{}
-	mgr := NewManager(reg, NewCache(t.TempDir()), loader, nil, testLogger())
+	mgr := NewManager(reg, NewCache(t.TempDir()), loader, pub, testLogger())
 
 	// First call: manifest is empty, but re-fetch finds the game.
 	err := mgr.EnsurePlugin(context.Background(), "clair-obscur")
@@ -1331,15 +1358,14 @@ func TestCheckForUpdates_LocalAndRemoteMixed(t *testing.T) {
 	loader := &fakeLoader{}
 	cache := NewCache(t.TempDir())
 
-	// Initial load: d2r from local (no pub key needed), rimworld from remote.
+	// One manager with the real key. Local d2r has no .sig file, so
+	// loadFromLocal loads it without a signature check (making a missing
+	// local .sig fatal is finding 1.2, a separate task); remote rimworld is
+	// signed and verified.
 	mgr := NewManager(reg, cache, loader, pub, testLogger())
 	mgr.SetLocalDir(localDir)
 
-	// EnsurePlugin for d2r — but we need no sig verification for local.
-	// Use a separate manager with no public key for the local-only load.
-	mgrNoKey := NewManager(reg, cache, loader, nil, testLogger())
-	mgrNoKey.SetLocalDir(localDir)
-	if err := mgrNoKey.EnsurePlugin(context.Background(), "d2r"); err != nil {
+	if err := mgr.EnsurePlugin(context.Background(), "d2r"); err != nil {
 		t.Fatalf("EnsurePlugin(d2r): %v", err)
 	}
 	if err := mgr.EnsurePlugin(context.Background(), "rimworld"); err != nil {
@@ -1361,8 +1387,7 @@ func TestCheckForUpdates_LocalAndRemoteMixed(t *testing.T) {
 	reg.files[pluginURL+".sig"] = remoteSig2
 
 	// CheckForUpdates should reload d2r (local changed) and rimworld (remote updated).
-	// Use mgrNoKey so local d2r doesn't need sig verification.
-	updated, err := mgrNoKey.CheckForUpdates(context.Background())
+	updated, err := mgr.CheckForUpdates(context.Background())
 	if err != nil {
 		t.Fatalf("CheckForUpdates: %v", err)
 	}
