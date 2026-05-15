@@ -40,3 +40,14 @@ func (*OSFS) ReadFile(path string) ([]byte, error) {
 	}
 	return data, nil
 }
+
+// EvalSymlinks resolves any symbolic links in path. It errors if the path
+// does not exist (callers handle not-yet-existing save dirs by resolving the
+// deepest existing ancestor).
+func (*OSFS) EvalSymlinks(path string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(filepath.Clean(path))
+	if err != nil {
+		return "", fmt.Errorf("eval symlinks %s: %w", path, err)
+	}
+	return resolved, nil
+}

@@ -148,6 +148,10 @@ type FS interface {
 	Stat(path string) (fs.FileInfo, error)
 	ReadDir(path string) ([]fs.DirEntry, error)
 	ReadFile(path string) ([]byte, error)
+	// EvalSymlinks resolves symlinks in path (like filepath.EvalSymlinks).
+	// Used by the save-path allowlist so a symlinked save dir cannot escape
+	// the allowed roots.
+	EvalSymlinks(path string) (string, error)
 }
 
 // PluginManager handles plugin download, verification, caching, and loading.
@@ -227,6 +231,16 @@ type Daemon struct {
 	// configDir is the directory for persisting config cache.
 	// Defaults to os.UserConfigDir()/savecraft; empty disables caching.
 	configDir string
+
+	// allowedSaveRoots is the locally-computed allowlist of directory roots
+	// the daemon may read/enumerate for saves. The server is trusted for
+	// config, but this is defense-in-depth: a compromised server cannot turn
+	// TestPath/SavePath into an arbitrary local-file read or home-dir
+	// enumeration primitive (finding 4.3 / R12). Computed at New() from the
+	// user's home plus a small per-OS set of known game/save roots; the
+	// server may select paths WITHIN these roots, never outside them.
+	// Overridable in tests.
+	allowedSaveRoots []string
 
 	startTime time.Time
 
@@ -308,6 +322,7 @@ func New(
 		exitFunc:                os.Exit,
 		restartFunc:             func(string, string) error { return nil },
 		watchedDirs:             make(map[string]string),
+		allowedSaveRoots:        defaultSaveRoots(),
 		configDir:               defaultConfigDir(),
 		pendingLinkCode:         make(chan linkCodeResult, 1),
 		pluginUpdateResetCh:     make(chan struct{}, 1),
@@ -1423,6 +1438,113 @@ type configGameResult struct {
 	ResolvedPath string `json:"resolvedPath"`
 }
 
+// defaultSaveRoots returns the locally-computed allowlist of directory roots
+// the daemon may read/enumerate for saves: the user's home subtree plus a
+// small per-OS set of known game/save roots. The server may select paths
+// WITHIN these roots but can never cause the daemon to escape them
+// (finding 4.3 / R12). Empty result means nothing is allowed (fail closed).
+func defaultSaveRoots() []string {
+	var roots []string
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		roots = append(roots, filepath.Clean(home))
+	}
+	if runtime.GOOS == "linux" {
+		// Steam Deck / Linux removable media (Steam libraries on SD cards).
+		roots = append(roots, "/run/media", "/media", "/mnt")
+	}
+	// Windows: home (%USERPROFILE%) covers %APPDATA%/%LOCALAPPDATA%; extra
+	// fixed drives are intentionally NOT blanket-allowed. macOS: ~/Library is
+	// under home. Home is the safe default on both.
+	return roots
+}
+
+// storeGameCfg atomically replaces the config for gameID, returning the
+// previous config and whether it existed.
+func (d *Daemon) storeGameCfg(gameID string, c GameConfig) (GameConfig, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	old, existed := d.cfg.Games[gameID]
+	d.cfg.Games[gameID] = c
+	return old, existed
+}
+
+// refuseDisallowedSavePath returns a refusal result (and refused=true) when a
+// resolved SavePath escapes the local save-root allowlist (finding 4.3 / R12).
+func (d *Daemon) refuseDisallowedSavePath(
+	ctx context.Context, gameID, resolvedPath string,
+) (configGameResult, bool) {
+	if resolvedPath == "" || d.saveRootAllowed(resolvedPath) {
+		return configGameResult{}, false
+	}
+	d.log.WarnContext(ctx, "config save path outside allowed roots, refusing game",
+		slog.String("game_id", gameID),
+		slog.String("path", resolvedPath),
+	)
+	return configGameResult{
+		Error:        "save path outside allowed roots",
+		ResolvedPath: resolvedPath,
+	}, true
+}
+
+// saveRootAllowed reports whether path (already expanded) resolves, after
+// symlink resolution of its deepest existing ancestor, inside one of the
+// locally-computed allowed save roots. Containment uses a separator boundary
+// so /home/u-evil does not match root /home/u.
+func (d *Daemon) saveRootAllowed(path string) bool {
+	if path == "" {
+		return false
+	}
+	abs, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return false
+	}
+	resolved := d.resolveDeepest(abs)
+	for _, root := range d.allowedSaveRoots {
+		rc, absErr := filepath.Abs(filepath.Clean(root))
+		if absErr != nil {
+			continue
+		}
+		if linked, e := d.fs.EvalSymlinks(rc); e == nil {
+			rc = linked
+		}
+		sep := string(filepath.Separator)
+		boundary := rc
+		if !strings.HasSuffix(boundary, sep) {
+			boundary += sep
+		}
+		if resolved == rc || strings.HasPrefix(resolved, boundary) {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveDeepest resolves symlinks on the deepest existing ancestor of abs
+// and re-appends the non-existent remainder, so a not-yet-created save dir is
+// still checked against its real (symlink-resolved) location.
+func (d *Daemon) resolveDeepest(abs string) string {
+	current := abs
+	var suffix string
+	for {
+		if _, err := d.fs.Stat(current); err == nil {
+			linked, evalErr := d.fs.EvalSymlinks(current)
+			if evalErr != nil {
+				linked = current
+			}
+			if suffix == "" {
+				return linked
+			}
+			return filepath.Join(linked, suffix)
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return abs // reached the FS root, nothing exists
+		}
+		suffix = filepath.Join(filepath.Base(current), suffix)
+		current = parent
+	}
+}
+
 // buildGameResult checks if a resolved path is a valid directory.
 func (d *Daemon) buildGameResult(resolvedPath string, excludeDirs []string) configGameResult {
 	dirs := resolveGlob(d.fs, resolvedPath, excludeDirs)
@@ -1478,6 +1600,16 @@ func (d *Daemon) handleConfigUpdate(
 
 	for gameID, newGame := range update.Games {
 		resolvedPath := d.resolveFirstValid(newGame.SavePath, newGame.ExcludeDirs)
+
+		// Defense-in-depth: a compromised server must not point SavePath at
+		// arbitrary local files (read + upload). Refuse any game whose
+		// resolved path escapes the local save-root allowlist; never store,
+		// scan, or watch it (finding 4.3 / R12).
+		if res, refused := d.refuseDisallowedSavePath(ctx, gameID, resolvedPath); refused {
+			results[gameID] = res
+			continue
+		}
+
 		gameCfg := GameConfig{
 			SavePath:       resolvedPath,
 			Enabled:        newGame.Enabled,
@@ -1487,10 +1619,7 @@ func (d *Daemon) handleConfigUpdate(
 			ExcludeSaves:   newGame.ExcludeSaves,
 		}
 
-		d.mu.Lock()
-		oldCfg, existed := d.cfg.Games[gameID]
-		d.cfg.Games[gameID] = gameCfg
-		d.mu.Unlock()
+		oldCfg, existed := d.storeGameCfg(gameID, gameCfg)
 
 		switch {
 		case !newGame.Enabled:
@@ -1640,6 +1769,17 @@ func (d *Daemon) handleTestPath(ctx context.Context, gameID, path string) {
 	dirs := resolveGlob(d.fs, path, gameCfg.ExcludeDirs)
 	var allFileNames []string
 	for _, dir := range dirs {
+		// Defense-in-depth: never enumerate a directory the server pointed us
+		// at if it resolves outside the local save-root allowlist (finding
+		// 4.3 / R12). This blocks the server-driven home-dir enumeration
+		// primitive without trusting any server-supplied path.
+		if !d.saveRootAllowed(dir) {
+			d.log.WarnContext(ctx, "test path outside allowed save roots, refusing to enumerate",
+				slog.String("game_id", gameID),
+				slog.String("path", dir),
+			)
+			continue
+		}
 		info, err := d.fs.Stat(dir)
 		if err != nil || !info.IsDir() {
 			continue

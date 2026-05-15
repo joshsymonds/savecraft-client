@@ -48,6 +48,21 @@ This handles:
 6. User-set overrides from web UI take precedence over discovered paths when configuring.
 7. The UI can re-trigger discovery via the `DiscoverGames` command.
 
+### Save-path allowlist (threat model)
+
+The server is trusted for configuration, but `TestPath` and config-supplied
+`SavePath` values are nonetheless constrained client-side to a locally
+computed allowlist of plausible save roots (the user's home subtree plus a
+small per-OS set of known game/save roots; see `defaultSaveRoots`). This is
+**defense-in-depth**: a compromised or malicious server cannot turn
+`TestPath` into a home-directory enumeration primitive, nor point `SavePath`
+at arbitrary files whose contents would be read and uploaded. Candidate
+paths are symlink-resolved (deepest existing ancestor) before a
+separator-boundary containment check, so a symlinked save dir cannot escape
+the roots. The server may select any path **within** the allowlist; a path
+that resolves outside it is refused (`TestPath` returns invalid with no
+filenames; the affected game is not configured, scanned, or watched).
+
 ## Plugin Loading
 
 1. On startup and every 24 hours, daemon fetches plugin registry from `/api/v1/plugins/manifest`.

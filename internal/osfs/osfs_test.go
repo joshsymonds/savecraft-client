@@ -120,3 +120,33 @@ func TestReadDir_NotFound(t *testing.T) {
 		t.Fatal("expected error for nonexistent directory")
 	}
 }
+
+func TestEvalSymlinks_ResolvesLink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "real")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	osfs := New()
+	resolved, err := osfs.EvalSymlinks(link)
+	if err != nil {
+		t.Fatalf("EvalSymlinks: %v", err)
+	}
+	// On macOS TempDir itself may be a symlink, so compare resolved targets.
+	wantReal, _ := filepath.EvalSymlinks(target)
+	if resolved != wantReal {
+		t.Errorf("resolved = %q, want %q", resolved, wantReal)
+	}
+}
+
+func TestEvalSymlinks_NotFound(t *testing.T) {
+	osfs := New()
+	if _, err := osfs.EvalSymlinks("/nonexistent/symlink/path"); err == nil {
+		t.Fatal("expected error for nonexistent path")
+	}
+}

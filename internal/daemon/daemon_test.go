@@ -32,10 +32,32 @@ func testLogger() *slog.Logger {
 
 // --- Fakes ---
 
+// testAllSaveRoots makes the save-path allowlist permissive (filesystem
+// root). Used by config/test-path mechanics tests that exercise unrelated
+// behavior with synthetic fixture paths; the allowlist itself is tested
+// separately in TestSaveRootAllowed and friends.
+func testAllSaveRoots() []string { return []string{string(filepath.Separator)} }
+
 type fakeFS struct {
 	files         map[string][]byte   // full path -> contents
 	dirs          map[string][]string // dir path -> file names
+	symlinks      map[string]string   // path -> resolved target (symlink escape tests)
 	readFileCount int                 // number of ReadFile calls (for verifying bypass)
+}
+
+// EvalSymlinks mimics filepath.EvalSymlinks: returns the mapped target for a
+// symlink, the path itself when it exists, or os.ErrNotExist otherwise.
+func (f *fakeFS) EvalSymlinks(path string) (string, error) {
+	if target, ok := f.symlinks[path]; ok {
+		return target, nil
+	}
+	if _, ok := f.dirs[path]; ok {
+		return path, nil
+	}
+	if _, ok := f.files[path]; ok {
+		return path, nil
+	}
+	return "", os.ErrNotExist
 }
 
 func (f *fakeFS) Stat(path string) (fs.FileInfo, error) {
@@ -921,6 +943,7 @@ func TestHandleCommand_TestPath_Valid(t *testing.T) {
 	cfg := d2rConfig()
 
 	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, nil, testLogger())
+	d.allowedSaveRoots = testAllSaveRoots()
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_TestPath{TestPath: &pb.TestPath{
 		GameId: "d2r",
@@ -974,6 +997,7 @@ func TestConfigUpdate_AddsNewGame(t *testing.T) {
 	cfg := Config{SourceID: "deck", Version: "0.1.0", Games: map[string]GameConfig{}}
 
 	d := New(cfg, fsys, watcher, runner, ws, &fakePluginManager{}, nil, testLogger())
+	d.allowedSaveRoots = testAllSaveRoots()
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
 		Games: map[string]*pb.GameConfig{
@@ -1018,6 +1042,7 @@ func TestConfigUpdate_DisablesGame(t *testing.T) {
 	cfg := d2rConfig()
 
 	d := New(cfg, d2rFS(), watcher, d2rRunner(), ws, &fakePluginManager{}, nil, testLogger())
+	d.allowedSaveRoots = testAllSaveRoots()
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
@@ -1084,6 +1109,7 @@ func TestConfigUpdate_ChangesPath(t *testing.T) {
 	cfg := d2rConfig()
 
 	d := New(cfg, fsys, watcher, runner, ws, &fakePluginManager{}, nil, testLogger())
+	d.allowedSaveRoots = testAllSaveRoots()
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
@@ -1131,6 +1157,7 @@ func TestConfigUpdate_ReenablesGame(t *testing.T) {
 	}
 
 	d := New(cfg, fsys, watcher, runner, ws, &fakePluginManager{}, nil, testLogger())
+	d.allowedSaveRoots = testAllSaveRoots()
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
 		Games: map[string]*pb.GameConfig{
@@ -1292,6 +1319,7 @@ func TestConfigUpdate_EnsurePluginFailed_SkipsGame(t *testing.T) {
 	}
 
 	d := New(cfg, fsys, newFakeWatcher(), runner, ws, pm, nil, testLogger())
+	d.allowedSaveRoots = testAllSaveRoots()
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
 		Games: map[string]*pb.GameConfig{
@@ -1365,6 +1393,7 @@ func TestConfigUpdate_NewGame_PluginFailure_RemovesFromConfig(t *testing.T) {
 	}
 
 	d := New(cfg, fsys, newFakeWatcher(), d2rRunner(), ws, pm, nil, testLogger())
+	d.allowedSaveRoots = testAllSaveRoots()
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
 		Games: map[string]*pb.GameConfig{
@@ -1401,6 +1430,7 @@ func TestConfigUpdate_PathChange_PluginFailure_RemovesFromConfig(t *testing.T) {
 	}
 
 	d := New(cfg, fsys, watcher, d2rRunner(), ws, pm, nil, testLogger())
+	d.allowedSaveRoots = testAllSaveRoots()
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
@@ -1456,6 +1486,7 @@ func TestConfigResult_ValidPath(t *testing.T) {
 		cfg, d2rFS(), newFakeWatcher(), d2rRunner(),
 		ws, &fakePluginManager{}, nil, testLogger(),
 	)
+	d.allowedSaveRoots = testAllSaveRoots()
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
 		Games: map[string]*pb.GameConfig{
@@ -1518,6 +1549,7 @@ func TestConfigResult_DisabledGame(t *testing.T) {
 		cfg, d2rFS(), newFakeWatcher(), d2rRunner(),
 		ws, &fakePluginManager{}, nil, testLogger(),
 	)
+	d.allowedSaveRoots = testAllSaveRoots()
 	d.watchedDirs["/saves/d2r"] = "d2r"
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
@@ -1611,6 +1643,7 @@ func TestConfigResult_MultipleGames(t *testing.T) {
 		cfg, fsys, newFakeWatcher(), d2rRunner(),
 		ws, &fakePluginManager{}, nil, testLogger(),
 	)
+	d.allowedSaveRoots = testAllSaveRoots()
 
 	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
 		Games: map[string]*pb.GameConfig{
@@ -3550,5 +3583,93 @@ func TestCheckSelfUpdate_NoTimerWhenNoUpdate(t *testing.T) {
 	d.mu.RUnlock()
 	if hasTimer {
 		t.Error("autoApplyTimer should be nil when no update detected")
+	}
+}
+
+// --- Tests: save-path allowlist (finding 4.3 / epic R12) ---
+
+func TestSaveRootAllowed(t *testing.T) {
+	fsys := &fakeFS{
+		dirs: map[string][]string{
+			"/home/u":          {},
+			"/home/u/saves":    {},
+			"/home/u/evillink": {},
+			"/etc":             {},
+		},
+		symlinks: map[string]string{
+			"/home/u/evillink": "/etc", // a save dir that symlinks out
+		},
+	}
+	d := New(
+		d2rConfig(), fsys, newFakeWatcher(), &fakeRunner{},
+		newFakeWSClient(), &fakePluginManager{}, nil, testLogger(),
+	)
+	d.allowedSaveRoots = []string{"/home/u"}
+
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"/home/u", true},
+		{"/home/u/saves", true},
+		{"/home/u/new/not/yet/created", true}, // in-root, not-yet-existing
+		{"/etc", false},
+		{"/etc/passwd", false},
+		{"/home/u-evil", false}, // prefix-trap: must NOT match /home/u
+		{"/home/u-evil/x", false},
+		{"", false},
+		{"/home/u/evillink", false}, // symlink resolves to /etc → escapes
+		{"/home/u/evillink/sub", false},
+	}
+	for _, tt := range tests {
+		if got := d.saveRootAllowed(tt.path); got != tt.want {
+			t.Errorf("saveRootAllowed(%q) = %v, want %v", tt.path, got, tt.want)
+		}
+	}
+}
+
+func TestHandleCommand_TestPath_OutsideAllowlistRejected(t *testing.T) {
+	ws := newFakeWSClient()
+	fsys := &fakeFS{dirs: map[string][]string{"/etc": {"passwd", "shadow"}}}
+	d := New(d2rConfig(), fsys, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, nil, testLogger())
+	d.allowedSaveRoots = []string{"/home/u"} // /etc is outside
+
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_TestPath{TestPath: &pb.TestPath{
+		GameId: "d2r",
+		Path:   "/etc",
+	}}})
+	d.handleCommand(context.Background(), cmd)
+
+	msg := ws.sentProto("testPathResult", 0)
+	if msg == nil {
+		t.Fatal("missing testPathResult")
+	}
+	result := msg.GetTestPathResult()
+	if result.Valid {
+		t.Error("valid = true, want false for a path outside the allowlist")
+	}
+	if result.FilesFound != 0 || len(result.FileNames) != 0 {
+		t.Errorf("leaked %d filenames from a disallowed path: %v", result.FilesFound, result.FileNames)
+	}
+}
+
+func TestHandleConfigUpdate_SavePathOutsideAllowlistRefused(t *testing.T) {
+	ws := newFakeWSClient()
+	fsys := &fakeFS{dirs: map[string][]string{"/etc": {}, "/home/u/saves": {}}}
+	d := New(d2rConfig(), fsys, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, nil, testLogger())
+	d.allowedSaveRoots = []string{"/home/u"}
+
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_ConfigUpdate{ConfigUpdate: &pb.ConfigUpdate{
+		Games: map[string]*pb.GameConfig{
+			"d2r": {SavePath: "/etc", FileExtensions: []string{".d2s"}, Enabled: true},
+		},
+	}}})
+	d.handleCommand(context.Background(), cmd)
+
+	d.mu.RLock()
+	stored, ok := d.cfg.Games["d2r"]
+	d.mu.RUnlock()
+	if ok && stored.SavePath == "/etc" {
+		t.Errorf("disallowed SavePath /etc was stored as game config: %+v", stored)
 	}
 }
