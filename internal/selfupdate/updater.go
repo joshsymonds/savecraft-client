@@ -12,13 +12,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/joshsymonds/savecraft.gg/internal/daemon"
 	"github.com/joshsymonds/savecraft.gg/internal/manifest"
 	"github.com/joshsymonds/savecraft.gg/internal/signing"
+	"github.com/joshsymonds/savecraft.gg/internal/version"
 )
 
 const defaultUpdateTimeout = 120 * time.Second
@@ -107,7 +106,7 @@ func (u *HTTPUpdater) Check(ctx context.Context, currentVersion, platform string
 		return nil, ErrNoPlatform
 	}
 
-	if !isNewer(parsed.Version, currentVersion) {
+	if !version.IsNewer(parsed.Version, currentVersion) {
 		return nil, ErrUpToDate
 	}
 
@@ -160,38 +159,6 @@ func (u *HTTPUpdater) validateUpdateOrigin(rawURL string) error {
 	return nil
 }
 
-// isNewer returns true if latest is a strictly newer semver than current.
-func isNewer(latest, current string) bool {
-	parse := func(v string) []int {
-		parts := make([]int, 0, 3)
-		for s := range strings.SplitSeq(v, ".") {
-			n, atoiErr := strconv.Atoi(s)
-			if atoiErr != nil {
-				n = 0
-			}
-			parts = append(parts, n)
-		}
-		return parts
-	}
-	latestParts, currentParts := parse(latest), parse(current)
-	for i := 0; i < len(latestParts) || i < len(currentParts); i++ {
-		lp, cp := 0, 0
-		if i < len(latestParts) {
-			lp = latestParts[i]
-		}
-		if i < len(currentParts) {
-			cp = currentParts[i]
-		}
-		if lp > cp {
-			return true
-		}
-		if lp < cp {
-			return false
-		}
-	}
-	return false
-}
-
 // Apply downloads a new daemon binary, verifies its signature and checksum, and replaces binaryPath.
 func (u *HTTPUpdater) Apply(ctx context.Context, info *daemon.UpdateInfo, binaryPath string) error {
 	// Pin both URLs to the locally-trusted install origin BEFORE any network
@@ -210,7 +177,7 @@ func (u *HTTPUpdater) Apply(ctx context.Context, info *daemon.UpdateInfo, binary
 	// signed OLD build is rejected before any download (finding 5.3 / R8).
 	// info.Version is attacker-influenced on the WS path; u.currentVersion
 	// is baked into the signed binary, so the comparison is trustworthy.
-	if !isNewer(info.Version, u.currentVersion) {
+	if !version.IsNewer(info.Version, u.currentVersion) {
 		return fmt.Errorf(
 			"refusing update: version %q is not newer than running %q (anti-rollback)",
 			info.Version, u.currentVersion,

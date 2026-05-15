@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/joshsymonds/savecraft.gg/internal/signing"
+	"github.com/joshsymonds/savecraft.gg/internal/version"
 )
 
 // PluginLoader compiles and registers a WASM plugin for a given game.
@@ -122,7 +123,39 @@ func (m *Manager) EnsurePlugin(ctx context.Context, gameID string) error {
 		}
 	}
 
+	if m.isRollback(gameID, info) {
+		m.logger.WarnContext(ctx, "refusing plugin: manifest version older than cached (anti-rollback)",
+			slog.String("game_id", gameID),
+			slog.String("manifest_version", info.Version),
+		)
+		return fmt.Errorf(
+			"refusing plugin %s: manifest version %q is older than the cached version (anti-rollback)",
+			gameID, info.Version,
+		)
+	}
+
 	return m.downloadAndLoad(ctx, gameID, info)
+}
+
+// isRollback reports whether adopting info would downgrade an already-cached
+// plugin: the signed manifest (verified upstream — its Version is authentic)
+// offers a strictly OLDER version than what is cached. First install (no
+// cache), an equal/newer version, or an identical artifact (same sha256, just
+// re-tagged) are not rollbacks. Empty/garbage manifest versions compare as
+// not-newer, so they are treated as a rollback (fail closed). This is the
+// lightweight, proportionate plugin anti-rollback (epic R8 plugin half): it
+// defends the channel/replay adversary; a local-FS attacker who can rewrite
+// the cache is out of scope by decision (sandbox + signature verification
+// cap the blast radius).
+func (m *Manager) isRollback(gameID string, info PluginInfo) bool {
+	_, _, cachedVersion, readErr := m.cache.Read(gameID)
+	if readErr != nil {
+		return false // no cached anchor — first install
+	}
+	if cachedHash := m.cache.SHA256(gameID); cachedHash != "" && cachedHash == info.SHA256 {
+		return false // identical artifact, just re-tagged — not a downgrade
+	}
+	return version.IsNewer(cachedVersion, info.Version)
 }
 
 // CheckForUpdates compares cached versions against the manifest
@@ -201,6 +234,16 @@ func (m *Manager) checkRemotePlugins(
 				)
 				continue
 			}
+		}
+
+		if m.isRollback(gameID, info) {
+			m.logger.WarnContext(ctx,
+				"skipping plugin update: manifest version older than cached (anti-rollback)",
+				slog.String("game_id", gameID),
+				slog.String("from", cachedVersion),
+				slog.String("manifest_version", info.Version),
+			)
+			continue
 		}
 
 		if m.updatePlugin(ctx, gameID, info, cachedVersion) {

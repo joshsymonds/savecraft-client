@@ -1470,3 +1470,111 @@ func TestEnsurePlugin_LocalOverride_MissingSigFatal(t *testing.T) {
 		t.Errorf("loader invoked %d times for unsigned local plugin; want 0", n)
 	}
 }
+
+// -- Plugin anti-rollback (epic R8 plugin half, lightweight a2) ---------------
+
+func TestEnsurePlugin_RollbackRefused(t *testing.T) {
+	pub, priv := generateTestKeys(t)
+	// Cached v2 with its own bytes.
+	cachedWasm := []byte("d2r v2 wasm")
+	cachedSig := signing.Sign(priv, cachedWasm)
+	cache := NewCache(t.TempDir())
+	if err := cache.Write("d2r", "2.0.0", cachedWasm, cachedSig); err != nil {
+		t.Fatalf("cache write: %v", err)
+	}
+
+	// Signed manifest offers an OLDER v1 with different bytes.
+	oldWasm := []byte("d2r v1 wasm")
+	oldSig, oldHash := signAndHash(t, priv, oldWasm)
+	reg := &fakeRegistry{
+		manifest: map[string]PluginInfo{
+			"d2r": {GameID: "d2r", Version: "1.0.0", SHA256: oldHash, URL: pluginURL},
+		},
+		files: map[string][]byte{pluginURL: oldWasm, pluginURL + ".sig": oldSig},
+	}
+	loader := &fakeLoader{}
+	mgr := NewManager(reg, cache, loader, pub, testLogger())
+
+	if err := mgr.EnsurePlugin(context.Background(), "d2r"); err == nil {
+		t.Fatal("expected anti-rollback refusal for an older manifest version")
+	}
+	loader.mu.Lock()
+	n := len(loader.loaded)
+	loader.mu.Unlock()
+	if n != 0 {
+		t.Errorf("loader invoked %d times on a rollback; want 0 (no downgrade load)", n)
+	}
+	// Cached v2 must remain.
+	if !cache.HasVersion("d2r", "2.0.0") {
+		t.Error("cached v2 was disturbed by the refused rollback")
+	}
+}
+
+func TestEnsurePlugin_RollbackGarbageVersionRefused(t *testing.T) {
+	pub, priv := generateTestKeys(t)
+	cachedWasm := []byte("d2r v1 wasm")
+	cache := NewCache(t.TempDir())
+	if err := cache.Write("d2r", "1.0.0", cachedWasm, signing.Sign(priv, cachedWasm)); err != nil {
+		t.Fatalf("cache write: %v", err)
+	}
+
+	garbageWasm := []byte("d2r garbage wasm")
+	garbageSig, garbageHash := signAndHash(t, priv, garbageWasm)
+	reg := &fakeRegistry{
+		manifest: map[string]PluginInfo{
+			"d2r": {GameID: "d2r", Version: "not-a-version", SHA256: garbageHash, URL: pluginURL},
+		},
+		files: map[string][]byte{pluginURL: garbageWasm, pluginURL + ".sig": garbageSig},
+	}
+	loader := &fakeLoader{}
+	mgr := NewManager(reg, cache, loader, pub, testLogger())
+
+	if err := mgr.EnsurePlugin(context.Background(), "d2r"); err == nil {
+		t.Fatal("expected refusal: a non-numeric manifest version must compare as not-newer (fail closed)")
+	}
+}
+
+func TestEnsurePlugin_UpgradeProceeds(t *testing.T) {
+	pub, priv := generateTestKeys(t)
+	cachedWasm := []byte("d2r v1 wasm")
+	cache := NewCache(t.TempDir())
+	if err := cache.Write("d2r", "1.0.0", cachedWasm, signing.Sign(priv, cachedWasm)); err != nil {
+		t.Fatalf("cache write: %v", err)
+	}
+
+	newWasm := []byte("d2r v2 wasm")
+	newSig, newHash := signAndHash(t, priv, newWasm)
+	reg := &fakeRegistry{
+		manifest: map[string]PluginInfo{
+			"d2r": {GameID: "d2r", Version: "2.0.0", SHA256: newHash, URL: pluginURL},
+		},
+		files: map[string][]byte{pluginURL: newWasm, pluginURL + ".sig": newSig},
+	}
+	loader := &fakeLoader{}
+	mgr := NewManager(reg, cache, loader, pub, testLogger())
+
+	if err := mgr.EnsurePlugin(context.Background(), "d2r"); err != nil {
+		t.Fatalf("upgrade should proceed: %v", err)
+	}
+	if !cache.HasVersion("d2r", "2.0.0") {
+		t.Error("expected cache updated to v2 after upgrade")
+	}
+}
+
+func TestEnsurePlugin_FirstInstallProceeds(t *testing.T) {
+	pub, priv := generateTestKeys(t)
+	wasm := []byte("d2r wasm")
+	sig, hash := signAndHash(t, priv, wasm)
+	reg := &fakeRegistry{
+		manifest: map[string]PluginInfo{
+			"d2r": {GameID: "d2r", Version: "1.0.0", SHA256: hash, URL: pluginURL},
+		},
+		files: map[string][]byte{pluginURL: wasm, pluginURL + ".sig": sig},
+	}
+	loader := &fakeLoader{}
+	mgr := NewManager(reg, NewCache(t.TempDir()), loader, pub, testLogger())
+
+	if err := mgr.EnsurePlugin(context.Background(), "d2r"); err != nil {
+		t.Fatalf("first install (no cache anchor) should proceed: %v", err)
+	}
+}
