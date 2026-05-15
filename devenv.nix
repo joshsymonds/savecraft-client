@@ -50,6 +50,8 @@ in
     pkgs.just           # command runner (Justfile)
     pkgs.luajit         # PoB headless wrapper + tree-data extractor
     pkgs.zlib           # PoB Inflate/Deflate via LuaJIT FFI (POB_ZLIB_PATH)
+    pkgs.curl           # bulk-card download in scryfall-fetch (Cloudflare bot management
+                        # JA3-blocks Go's net/http on data.scryfall.io)
 
     # Shell linting
     pkgs.shellcheck     # static analysis for bash/sh
