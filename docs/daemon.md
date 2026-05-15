@@ -65,9 +65,9 @@ filenames; the affected game is not configured, scanned, or watched).
 
 ## Plugin Loading
 
-1. On startup and every 24 hours, daemon fetches plugin registry from `/api/v1/plugins/manifest`.
-2. For each plugin: compare local version to registry version.
-3. If update available: download `.wasm` and `.sig` from registry URLs.
+1. On startup and every 24 hours, daemon fetches the CI-signed aggregate `plugins/manifest.json` (+`.sig`) from the install origin (origin-pinned), and verifies the detached signature against the baked-in key before reading any field. It does not trust the Worker's `/api/v1/plugins/manifest` (that endpoint serves the web UI only).
+2. For each plugin: compare local version to manifest version.
+3. If update available: download `.wasm` and `.sig` from the (origin-pinned, https) URLs in the verified manifest.
 4. Verify Ed25519 signature against baked-in public key. Refuse unsigned/tampered binaries.
 5. Replace local `.wasm` file. Re-initialize wazero module for that game.
 6. Plugin binaries cached locally per platform:

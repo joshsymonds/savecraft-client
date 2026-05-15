@@ -2,132 +2,128 @@ package pluginmgr
 
 import (
 	"context"
+	"crypto/ed25519"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/joshsymonds/savecraft.gg/internal/signing"
 )
 
-func TestHTTPRegistry_FetchManifest(t *testing.T) {
-	// Serve raw JSON with snake_case keys to verify deserialization.
-	rawJSON := `{
-		"plugins": {
-			"d2r": {
-				"game_id": "d2r",
-				"name": "Diablo II: Resurrected",
-				"version": "1.0.0",
-				"sha256": "abc123",
-				"url": "https://example.com/plugins/d2r/parser.wasm",
-				"default_paths": {
-					"windows": "%USERPROFILE%/Saved Games/Diablo II Resurrected",
-					"linux": "~/Games/d2r/saves"
-				},
-				"file_extensions": [".d2s", ".d2i"]
-			}
+const manifestJSON = `{
+	"plugins": {
+		"d2r": {
+			"game_id": "d2r",
+			"name": "Diablo II: Resurrected",
+			"version": "1.0.0",
+			"sha256": "abc123",
+			"url": "https://install.example/plugins/d2r/parser.wasm",
+			"default_paths": {"windows": "%USERPROFILE%/d2r", "linux": "~/d2r"},
+			"file_extensions": [".d2s", ".d2i"]
 		}
-	}`
+	}
+}`
 
-	srv := httptest.NewServer(http.HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/api/v1/plugins/manifest" {
-				t.Errorf("unexpected path: %s", r.URL.Path)
+// signedManifestTLS serves manifestJSON and a detached .sig over the exact
+// bytes on a TLS server. When withSig is false the signature 404s (simulating
+// a missing signature — verification must still hard-fail).
+func signedManifestTLS(t *testing.T, priv ed25519.PrivateKey, withSig bool) *httptest.Server {
+	t.Helper()
+	sig := signing.Sign(priv, []byte(manifestJSON))
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/plugins/manifest.json":
+			_, _ = w.Write([]byte(manifestJSON))
+		case "/plugins/manifest.json.sig":
+			if !withSig {
+				http.NotFound(w, r)
+				return
 			}
-			if got := r.Header.Get("Authorization"); got != "Bearer tok123" {
-				t.Errorf("auth header = %q, want Bearer tok123", got)
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(rawJSON))
-		},
-	))
-	defer srv.Close()
+			_, _ = w.Write(sig)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
 
-	reg := NewHTTPRegistry(srv.URL, "tok123")
+func TestHTTPRegistry_FetchManifest_ValidSigned(t *testing.T) {
+	pub, priv, _ := signing.GenerateKeypair()
+	srv := signedManifestTLS(t, priv, true)
+	reg := NewHTTPRegistry(srv.URL, pub, WithHTTPClient(srv.Client()))
+
 	got, err := reg.FetchManifest(context.Background())
 	if err != nil {
 		t.Fatalf("FetchManifest: %v", err)
 	}
-	if len(got) != 1 {
-		t.Fatalf("got %d plugins, want 1", len(got))
+	info, ok := got["d2r"]
+	if !ok || info.Version != "1.0.0" || info.Name != "Diablo II: Resurrected" {
+		t.Fatalf("unexpected manifest: %+v", got)
 	}
-	info := got["d2r"]
-	if info.Version != "1.0.0" {
-		t.Errorf("version = %q, want 1.0.0", info.Version)
-	}
-	if info.Name != "Diablo II: Resurrected" {
-		t.Errorf("name = %q, want Diablo II: Resurrected", info.Name)
-	}
-	if len(info.DefaultPaths) != 2 {
-		t.Errorf("default_paths len = %d, want 2", len(info.DefaultPaths))
-	}
-	if info.DefaultPaths["windows"] != "%USERPROFILE%/Saved Games/Diablo II Resurrected" {
-		t.Errorf("default_paths[windows] = %q", info.DefaultPaths["windows"])
-	}
-	if len(info.FileExtensions) != 2 || info.FileExtensions[0] != ".d2s" {
-		t.Errorf("file_extensions = %v, want [.d2s .d2i]", info.FileExtensions)
+	if len(info.FileExtensions) != 2 || info.DefaultPaths["linux"] != "~/d2r" {
+		t.Errorf("fields not decoded: %+v", info)
 	}
 }
 
-func TestHTTPRegistry_FetchManifest_NoAuth(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			if got := r.Header.Get("Authorization"); got != "" {
-				t.Errorf("auth header = %q, want empty", got)
-			}
-			_, _ = w.Write([]byte(`{"plugins":{}}`))
-		},
-	))
-	defer srv.Close()
+func TestHTTPRegistry_FetchManifest_TamperedRejected(t *testing.T) {
+	pub, priv, _ := signing.GenerateKeypair()
+	// Signature is over manifestJSON, but the server serves a different body.
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/plugins/manifest.json":
+			_, _ = w.Write([]byte(`{"plugins":{"evil":{"game_id":"evil"}}}`))
+		case "/plugins/manifest.json.sig":
+			_, _ = w.Write(signing.Sign(priv, []byte(manifestJSON)))
+		}
+	}))
+	t.Cleanup(srv.Close)
 
-	reg := NewHTTPRegistry(srv.URL, "")
-	_, err := reg.FetchManifest(context.Background())
-	if err != nil {
-		t.Fatalf("FetchManifest: %v", err)
+	reg := NewHTTPRegistry(srv.URL, pub, WithHTTPClient(srv.Client()))
+	if _, err := reg.FetchManifest(context.Background()); err == nil {
+		t.Fatal("expected error for tampered manifest body")
 	}
 }
 
-func TestHTTPRegistry_FetchManifest_Non200(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(
-		func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
-		},
-	))
-	defer srv.Close()
-
-	reg := NewHTTPRegistry(srv.URL, "")
-	_, err := reg.FetchManifest(context.Background())
-	if err == nil {
-		t.Fatal("expected error for 500 response")
+func TestHTTPRegistry_FetchManifest_MissingSigRejected(t *testing.T) {
+	pub, priv, _ := signing.GenerateKeypair()
+	srv := signedManifestTLS(t, priv, false) // 0-len → 404 sig
+	reg := NewHTTPRegistry(srv.URL, pub, WithHTTPClient(srv.Client()))
+	if _, err := reg.FetchManifest(context.Background()); err == nil {
+		t.Fatal("expected error when manifest signature is missing")
 	}
 }
 
-func TestHTTPRegistry_FetchManifest_BadJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(
-		func(w http.ResponseWriter, _ *http.Request) {
-			_, _ = w.Write([]byte("not json"))
-		},
-	))
-	defer srv.Close()
-
-	reg := NewHTTPRegistry(srv.URL, "")
-	_, err := reg.FetchManifest(context.Background())
-	if err == nil {
-		t.Fatal("expected error for bad JSON")
+func TestHTTPRegistry_FetchManifest_WrongKeyRejected(t *testing.T) {
+	_, priv, _ := signing.GenerateKeypair()
+	wrongPub, _, _ := signing.GenerateKeypair()
+	srv := signedManifestTLS(t, priv, true)
+	reg := NewHTTPRegistry(srv.URL, wrongPub, WithHTTPClient(srv.Client()))
+	if _, err := reg.FetchManifest(context.Background()); err == nil {
+		t.Fatal("expected error verifying with the wrong key")
 	}
 }
 
-func TestHTTPRegistry_Download(t *testing.T) {
+func TestHTTPRegistry_FetchManifest_NonHTTPSOriginRejected(t *testing.T) {
+	pub, priv, _ := signing.GenerateKeypair()
+	srv := signedManifestTLS(t, priv, true)
+	// Plain-http install origin → origin pin must reject before any fetch.
+	reg := NewHTTPRegistry("http://install.example", pub, WithHTTPClient(srv.Client()))
+	if _, err := reg.FetchManifest(context.Background()); err == nil {
+		t.Fatal("expected rejection for non-https install origin")
+	}
+}
+
+func TestHTTPRegistry_Download_PinnedOrigin(t *testing.T) {
+	pub, _, _ := signing.GenerateKeypair()
 	data := []byte("wasm binary data")
-	srv := httptest.NewServer(http.HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			if got := r.Header.Get("Authorization"); got != "Bearer secret" {
-				t.Errorf("auth header = %q, want Bearer secret", got)
-			}
-			_, _ = w.Write(data)
-		},
-	))
-	defer srv.Close()
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(data)
+	}))
+	t.Cleanup(srv.Close)
 
-	reg := NewHTTPRegistry("", "secret")
-	got, err := reg.Download(context.Background(), srv.URL+"/plugin.wasm")
+	reg := NewHTTPRegistry(srv.URL, pub, WithHTTPClient(srv.Client()))
+	got, err := reg.Download(context.Background(), srv.URL+"/plugins/d2r/parser.wasm")
 	if err != nil {
 		t.Fatalf("Download: %v", err)
 	}
@@ -136,17 +132,33 @@ func TestHTTPRegistry_Download(t *testing.T) {
 	}
 }
 
-func TestHTTPRegistry_Download_Non200(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(
-		func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusNotFound)
-		},
-	))
-	defer srv.Close()
+func TestHTTPRegistry_Download_OffOriginRejected(t *testing.T) {
+	pub, _, _ := signing.GenerateKeypair()
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("x"))
+	}))
+	t.Cleanup(srv.Close)
 
-	reg := NewHTTPRegistry("", "")
-	_, err := reg.Download(context.Background(), srv.URL+"/missing.wasm")
-	if err == nil {
+	reg := NewHTTPRegistry(srv.URL, pub, WithHTTPClient(srv.Client()))
+	if _, err := reg.Download(context.Background(), "https://evil.example/plugins/d2r/parser.wasm"); err == nil {
+		t.Fatal("expected rejection for off-origin download URL")
+	}
+	// Same host as the pinned origin but plaintext http:// → rejected.
+	httpURL := "http://" + srv.Listener.Addr().String() + "/x"
+	if _, err := reg.Download(context.Background(), httpURL); err == nil {
+		t.Fatal("expected rejection for non-https download URL")
+	}
+}
+
+func TestHTTPRegistry_Download_Non200(t *testing.T) {
+	pub, _, _ := signing.GenerateKeypair()
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	reg := NewHTTPRegistry(srv.URL, pub, WithHTTPClient(srv.Client()))
+	if _, err := reg.Download(context.Background(), srv.URL+"/missing.wasm"); err == nil {
 		t.Fatal("expected error for 404 response")
 	}
 }

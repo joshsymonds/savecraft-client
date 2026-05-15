@@ -191,3 +191,33 @@ func TestVerifyAndParse_InvalidJSONAfterValidSignature(t *testing.T) {
 		t.Errorf("error = %q, want it to indicate a parse/json failure", err)
 	}
 }
+
+func TestRequirePinnedHTTPS(t *testing.T) {
+	const pinned = "https://install.savecraft.gg"
+	tests := []struct {
+		name    string
+		rawURL  string
+		pinned  string
+		wantErr bool
+	}{
+		{"https same host ok", "https://install.savecraft.gg/plugins/manifest.json", pinned, false},
+		{"http rejected", "http://install.savecraft.gg/x", pinned, true},
+		{"different host rejected", "https://evil.example/x", pinned, true},
+		{"subdomain rejected", "https://install.savecraft.gg.evil.com/x", pinned, true},
+		{"unparseable url rejected", "://nope", pinned, true},
+		{"non-https pinned origin fails closed", "https://install.savecraft.gg/x", "http://install.savecraft.gg", true},
+		{"empty pinned origin fails closed", "https://install.savecraft.gg/x", "", true},
+		{"hostless pinned fails closed", "https://install.savecraft.gg/x", "https://", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := RequirePinnedHTTPS(tt.rawURL, tt.pinned)
+			if tt.wantErr && err == nil {
+				t.Errorf("RequirePinnedHTTPS(%q,%q) = nil, want error", tt.rawURL, tt.pinned)
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("RequirePinnedHTTPS(%q,%q) = %v, want nil", tt.rawURL, tt.pinned, err)
+			}
+		})
+	}
+}

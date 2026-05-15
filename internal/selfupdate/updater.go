@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -155,19 +154,8 @@ func (u *HTTPUpdater) fetchBytes(ctx context.Context, rawURL string) ([]byte, er
 // SourceUpdateAvailable message (R6, finding 4.1). An empty or unparseable
 // install origin fails closed: no update is trusted.
 func (u *HTTPUpdater) validateUpdateOrigin(rawURL string) error {
-	pinned, err := url.Parse(u.installURL)
-	if err != nil || pinned.Scheme != "https" || pinned.Host == "" {
-		return fmt.Errorf("refusing update: no trustworthy pinned install origin (%q)", u.installURL)
-	}
-	got, err := url.Parse(rawURL)
-	if err != nil {
-		return fmt.Errorf("parse update URL %q: %w", rawURL, err)
-	}
-	if got.Scheme != "https" {
-		return fmt.Errorf("refusing update: URL scheme %q is not https (%q)", got.Scheme, rawURL)
-	}
-	if got.Host != pinned.Host {
-		return fmt.Errorf("refusing update: host %q is not the pinned install origin %q", got.Host, pinned.Host)
+	if err := manifest.RequirePinnedHTTPS(rawURL, u.installURL); err != nil {
+		return fmt.Errorf("refusing update: %w", err)
 	}
 	return nil
 }

@@ -72,7 +72,9 @@ func createSubsystems(
 
 	cacheDir := pluginmgr.DefaultCacheDir(appName)
 	cache := pluginmgr.NewCache(cacheDir)
-	reg := pluginmgr.NewHTTPRegistry(cfg.ServerURL, cfg.AuthToken)
+	// Plugin manifest + binaries come from the install origin as a CI-signed
+	// aggregate, verified against the embedded key (not the Worker).
+	reg := pluginmgr.NewHTTPRegistry(cfg.InstallURL, signing.PublicKey())
 
 	mgr := pluginmgr.NewManager(reg, cache, wr, pubKey, logger)
 	if cfg.PluginDir != "" {

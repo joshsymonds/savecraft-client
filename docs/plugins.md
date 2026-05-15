@@ -308,7 +308,9 @@ just plugin-manifest d2r          # generate plugins/d2r/manifest.json
 just build-plugin d2r             # build the .wasm first
 ```
 
-The manifest endpoint `GET /api/v1/plugins/manifest` returns all fields from R2 — version, sha256, name, description, channel, coverage, file_extensions, default_paths, limitations, author, homepage — plus a resolved download URL. The worker passes through whatever the manifest contains with no filtering.
+The Worker endpoint `GET /api/v1/plugins/manifest` request-aggregates all per-plugin manifests from R2 and is used by the **web UI** (public plugin directory) — it is unsigned and the daemon does **not** trust it.
+
+The **daemon** instead fetches a CI-signed aggregate, `plugins/manifest.json` + `plugins/manifest.json.sig`, from the **install origin** (not the Worker). A CI conclusion job in `deploy-plugin.yml` rebuilds the whole aggregate from every plugin's current published per-plugin `manifest.json` in R2 (so a partial deploy still yields a complete manifest), signs the literal bytes with the release key, and uploads both. The daemon pins the URL to the install origin, verifies the detached signature against the embedded key, and only then parses it (`internal/pluginmgr/httpregistry.go`, reusing `internal/manifest.VerifyAndParse` + `RequirePinnedHTTPS`). A missing/invalid signature is a hard error.
 
 ## Plugin Distribution
 
@@ -324,7 +326,7 @@ plugins/{game_id}/reference.wasm.sig
 
 **Dual targets:** Plugins can optionally ship two WASM binaries from shared source. `parser.wasm` runs in the daemon (save file parsing). `reference.wasm` runs in the Worker (server-side reference data computation like drop rates). Both use the same ndjson stdin/stdout contract and Ed25519 signing.
 
-**Polling:** Daemon checks `GET /api/v1/plugins/manifest` on startup and every 24 hours. Response is a JSON object mapping game IDs to plugin metadata (version, sha256, url, plus all `plugin.toml` fields). If the plugin has a reference module, the manifest includes a `reference` field with its own sha256, url, and module list. Daemon compares local versions, downloads updates as needed.
+**Polling:** Daemon fetches the signed `plugins/manifest.json` (+`.sig`) from the install origin on startup and every 24 hours. Response is a JSON object mapping game IDs to plugin metadata (version, sha256, url, plus all `plugin.toml` fields). If the plugin has a reference module, the manifest includes a `reference` field with its own sha256, url, and module list. Daemon compares local versions, downloads updates as needed.
 
 **Signing:** Every `.wasm` binary is signed with an Ed25519 private key held by Savecraft (`SIGNING_PRIVATE_KEY` in GitHub Actions secrets, base64-encoded raw 32-byte key). A `.sig` file ships alongside each `.wasm`. The daemon has the public key baked in (`internal/signing/signing_key.pub`) and verifies signatures before loading. Unsigned or tampered modules are refused.
 
