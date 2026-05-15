@@ -42,9 +42,12 @@ test-go:
     # still re-execute (a real bug we shipped past once already).
     go test -count=1 ./cmd/...
 
-# Run Go tests with race detector
+# Run Go tests with race detector. Scoped to the source-of-truth packages
+# (same set as `test-go`); a raw ./... also globs the gitignored
+# views/storybook-static build mirror, which re-imports internal/ packages
+# illegally and never exists in CI.
 test-go-race:
-    go test -race ./...
+    go test -race ./internal/... ./cmd/...
 
 # Run Worker tests (4 parallel shards, each with its own Miniflare)
 test-worker: build-manifests build-views
