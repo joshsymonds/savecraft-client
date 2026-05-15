@@ -96,21 +96,15 @@ func (m *Manager) EnsurePlugin(ctx context.Context, gameID string) error {
 		return err
 	}
 
-	// Check cache.
+	// Check cache (exact version match).
 	if m.cache.HasVersion(gameID, info.Version) {
-		wasm, sig, _, readErr := m.cache.Read(gameID)
-		if readErr == nil {
-			m.logger.InfoContext(
-				ctx, "loading plugin from cache",
-				slog.String("game_id", gameID),
-				slog.String("version", info.Version),
-			)
-			return m.loadPlugin(ctx, gameID, wasm, sig)
+		if handled, cacheErr := m.loadFromCache(ctx, gameID, info); handled {
+			return cacheErr
 		}
-		// Cache read failed, fall through to download.
+		// Cache unreadable — fall through to download.
 	}
 
-	// Version differs but binary might be identical — check SHA256.
+	// Version differs but the binary might be identical — check SHA256.
 	if cachedHash := m.cache.SHA256(gameID); cachedHash != "" && cachedHash == info.SHA256 {
 		if updateErr := m.cache.UpdateVersion(gameID, info.Version, info.SHA256); updateErr != nil {
 			m.logger.WarnContext(ctx, "failed to update cached version",
@@ -122,9 +116,8 @@ func (m *Manager) EnsurePlugin(ctx context.Context, gameID string) error {
 				slog.String("game_id", gameID),
 				slog.String("version", info.Version),
 			)
-			wasm, sig, _, readErr := m.cache.Read(gameID)
-			if readErr == nil {
-				return m.loadPlugin(ctx, gameID, wasm, sig)
+			if handled, cacheErr := m.loadFromCache(ctx, gameID, info); handled {
+				return cacheErr
 			}
 		}
 	}
@@ -259,6 +252,32 @@ func (m *Manager) checkLocalPlugins(ctx context.Context) []string {
 		updated = append(updated, gameID)
 	}
 	return updated
+}
+
+// loadFromCache reads gameID from the on-disk cache and loads it, verifying
+// the cached bytes + signature against info BEFORE use (finding 1.1 / R4).
+// handled=true means the cache satisfied the request — either successfully or
+// with a fatal verification error returned in err (a poisoned/corrupt cache
+// is fail-closed, never a silent re-download). handled=false means the cache
+// could not be read and the caller should fall through to download.
+func (m *Manager) loadFromCache(
+	ctx context.Context, gameID string, info PluginInfo,
+) (handled bool, err error) {
+	wasm, sig, _, readErr := m.cache.Read(gameID)
+	if readErr != nil {
+		// A cache-read failure is not propagated: it means "cache miss",
+		// and the caller falls through to a fresh (verified) download.
+		return false, nil //nolint:nilerr // intentional: cache miss, not an error to surface
+	}
+	if verifyErr := m.verifyPlugin(gameID, wasm, sig, info.SHA256); verifyErr != nil {
+		return true, verifyErr
+	}
+	m.logger.InfoContext(
+		ctx, "loading plugin from cache",
+		slog.String("game_id", gameID),
+		slog.String("version", info.Version),
+	)
+	return true, m.loadPlugin(ctx, gameID, wasm, sig)
 }
 
 func (m *Manager) resolveManifestEntry(
@@ -442,25 +461,26 @@ func (m *Manager) loadFromLocal(
 		}
 	}
 
-	var sig []byte
 	sigPath := wasmPath + ".sig"
-	sigData, sigErr := os.ReadFile(filepath.Clean(sigPath))
-	if sigErr == nil {
-		sig = sigData
-	} else if !os.IsNotExist(sigErr) {
+	sig, sigErr := os.ReadFile(filepath.Clean(sigPath))
+	if sigErr != nil {
+		if os.IsNotExist(sigErr) {
+			// A local plugin without a signature is a hard error — there is
+			// no unsigned execution path (finding 1.2 / R5). Sign dev builds
+			// with cmd/savecraft-sign.
+			return fmt.Errorf(
+				"local plugin %s: missing required signature %s — sign it with cmd/savecraft-sign",
+				gameID, sigPath,
+			)
+		}
 		return fmt.Errorf("read local sig %s: %w", gameID, sigErr)
 	}
 
-	// When a signature is present it is verified unconditionally; a
-	// nil/invalid key fails closed, never skips (epic R3). A MISSING local
-	// .sig is still tolerated here — making that fatal is finding 1.2, a
-	// separate later task; do not re-introduce a key-nil skip.
-	if sig != nil {
-		if verifyErr := signing.Verify(m.publicKey, wasm, sig); verifyErr != nil {
-			return fmt.Errorf(
-				"verify local plugin %s: %w", gameID, verifyErr,
-			)
-		}
+	// Verification is unconditional; a nil/invalid key fails closed (epic R3).
+	if verifyErr := signing.Verify(m.publicKey, wasm, sig); verifyErr != nil {
+		return fmt.Errorf(
+			"verify local plugin %s: %w", gameID, verifyErr,
+		)
 	}
 
 	m.logger.InfoContext(

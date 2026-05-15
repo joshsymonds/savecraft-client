@@ -110,6 +110,24 @@ func signAndHash(
 	return sig, fmt.Sprintf("%x", h)
 }
 
+// writeSignedLocal writes parser.wasm and a matching parser.wasm.sig into
+// gameDir (a local plugin dir). Local plugins must be signed (finding 1.2).
+func writeSignedLocal(
+	t *testing.T, gameDir string, priv ed25519.PrivateKey, wasm []byte,
+) {
+	t.Helper()
+	if err := os.MkdirAll(gameDir, 0o700); err != nil {
+		t.Fatalf("mkdir %s: %v", gameDir, err)
+	}
+	wasmPath := filepath.Join(gameDir, "parser.wasm")
+	if err := os.WriteFile(wasmPath, wasm, 0o600); err != nil {
+		t.Fatalf("write %s: %v", wasmPath, err)
+	}
+	if err := os.WriteFile(wasmPath+".sig", signing.Sign(priv, wasm), 0o600); err != nil {
+		t.Fatalf("write %s.sig: %v", wasmPath, err)
+	}
+}
+
 const pluginURL = "https://example.com/plugins/d2r/parser.wasm"
 
 // TestEnsurePlugin_NilKeyFailsClosed proves a nil public key is NOT a skip:
@@ -188,7 +206,7 @@ func TestEnsurePlugin_DownloadVerifyCache(t *testing.T) {
 func TestEnsurePlugin_CacheHit(t *testing.T) {
 	pub, priv := generateTestKeys(t)
 	wasm := []byte("cached wasm")
-	sig, _ := signAndHash(t, priv, wasm)
+	sig, hash := signAndHash(t, priv, wasm)
 
 	cacheDir := t.TempDir()
 	cache := NewCache(cacheDir)
@@ -201,7 +219,7 @@ func TestEnsurePlugin_CacheHit(t *testing.T) {
 			"d2r": {
 				GameID:  "d2r",
 				Version: "1.0.0",
-				SHA256:  "unused",
+				SHA256:  hash,
 				URL:     pluginURL,
 			},
 		},
@@ -224,20 +242,12 @@ func TestEnsurePlugin_CacheHit(t *testing.T) {
 
 func TestEnsurePlugin_LocalOverride(t *testing.T) {
 	localDir := t.TempDir()
-	gameDir := filepath.Join(localDir, "d2r")
-	if err := os.MkdirAll(gameDir, 0o700); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	wasm := []byte("local wasm")
-	wasmPath := filepath.Join(gameDir, "parser.wasm")
-	if err := os.WriteFile(wasmPath, wasm, 0o600); err != nil {
-		t.Fatalf("write local wasm: %v", err)
-	}
+	pub, priv := generateTestKeys(t)
+	writeSignedLocal(t, filepath.Join(localDir, "d2r"), priv, []byte("local wasm"))
 
 	loader := &fakeLoader{}
-	// No public key — skip verification.
 	mgr := NewManager(
-		nil, NewCache(t.TempDir()), loader, nil, testLogger(),
+		nil, NewCache(t.TempDir()), loader, pub, testLogger(),
 	)
 	mgr.SetLocalDir(localDir)
 
@@ -255,19 +265,13 @@ func TestEnsurePlugin_LocalOverride(t *testing.T) {
 
 func TestEnsurePlugin_LocalOverrideMultipleGames(t *testing.T) {
 	localDir := t.TempDir()
+	pub, priv := generateTestKeys(t)
 	for _, gameID := range []string{"d2r", "rimworld"} {
-		gameDir := filepath.Join(localDir, gameID)
-		if err := os.MkdirAll(gameDir, 0o700); err != nil {
-			t.Fatalf("mkdir %s: %v", gameID, err)
-		}
-		wasm := []byte("local wasm " + gameID)
-		if err := os.WriteFile(filepath.Join(gameDir, "parser.wasm"), wasm, 0o600); err != nil {
-			t.Fatalf("write %s: %v", gameID, err)
-		}
+		writeSignedLocal(t, filepath.Join(localDir, gameID), priv, []byte("local wasm "+gameID))
 	}
 
 	loader := &fakeLoader{}
-	mgr := NewManager(nil, NewCache(t.TempDir()), loader, nil, testLogger())
+	mgr := NewManager(nil, NewCache(t.TempDir()), loader, pub, testLogger())
 	mgr.SetLocalDir(localDir)
 
 	for _, gameID := range []string{"d2r", "rimworld"} {
@@ -295,15 +299,9 @@ func TestEnsurePlugin_LocalOverrideMultipleGames(t *testing.T) {
 func TestEnsurePlugin_LocalOverrideFallthrough(t *testing.T) {
 	// localDir has d2r but not rimworld — rimworld should fall through to remote.
 	localDir := t.TempDir()
-	gameDir := filepath.Join(localDir, "d2r")
-	if err := os.MkdirAll(gameDir, 0o700); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(gameDir, "parser.wasm"), []byte("local d2r"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
 	pub, priv := generateTestKeys(t)
+	writeSignedLocal(t, filepath.Join(localDir, "d2r"), priv, []byte("local d2r"))
+
 	remoteWasm := []byte("remote rimworld")
 	remoteSig := signing.Sign(priv, remoteWasm)
 	hash := sha256.Sum256(remoteWasm)
@@ -327,14 +325,10 @@ func TestEnsurePlugin_LocalOverrideFallthrough(t *testing.T) {
 	mgr := NewManager(reg, NewCache(t.TempDir()), loader, pub, testLogger())
 	mgr.SetLocalDir(localDir)
 
-	// d2r loads from local (no sig, no public key needed for local without .sig file).
-	mgrNoVerify := NewManager(reg, NewCache(t.TempDir()), loader, nil, testLogger())
-	mgrNoVerify.SetLocalDir(localDir)
-	if err := mgrNoVerify.EnsurePlugin(context.Background(), "d2r"); err != nil {
+	// d2r loads from local (signed); rimworld falls through to remote.
+	if err := mgr.EnsurePlugin(context.Background(), "d2r"); err != nil {
 		t.Fatalf("EnsurePlugin(d2r): %v", err)
 	}
-
-	// rimworld loads from remote.
 	if err := mgr.EnsurePlugin(context.Background(), "rimworld"); err != nil {
 		t.Fatalf("EnsurePlugin(rimworld): %v", err)
 	}
@@ -1227,16 +1221,11 @@ func TestCheckForUpdates_SHA256MismatchDownloads(t *testing.T) {
 func TestCheckForUpdates_LocalPluginChanged(t *testing.T) {
 	localDir := t.TempDir()
 	gameDir := filepath.Join(localDir, "d2r")
-	if err := os.MkdirAll(gameDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	wasmV1 := []byte("local wasm v1")
-	if err := os.WriteFile(filepath.Join(gameDir, "parser.wasm"), wasmV1, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	pub, priv := generateTestKeys(t)
+	writeSignedLocal(t, gameDir, priv, []byte("local wasm v1"))
 
 	loader := &fakeLoader{}
-	mgr := NewManager(nil, NewCache(t.TempDir()), loader, nil, testLogger())
+	mgr := NewManager(nil, NewCache(t.TempDir()), loader, pub, testLogger())
 	mgr.SetLocalDir(localDir)
 
 	// Initial load via EnsurePlugin.
@@ -1244,11 +1233,8 @@ func TestCheckForUpdates_LocalPluginChanged(t *testing.T) {
 		t.Fatalf("EnsurePlugin: %v", err)
 	}
 
-	// Change the WASM on disk.
-	wasmV2 := []byte("local wasm v2 changed")
-	if err := os.WriteFile(filepath.Join(gameDir, "parser.wasm"), wasmV2, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	// Change the WASM on disk (re-signed, as a real dev workflow would).
+	writeSignedLocal(t, gameDir, priv, []byte("local wasm v2 changed"))
 
 	// CheckForUpdates should detect the change and reload.
 	updated, err := mgr.CheckForUpdates(context.Background())
@@ -1277,17 +1263,11 @@ func TestCheckForUpdates_LocalPluginChanged(t *testing.T) {
 
 func TestCheckForUpdates_LocalPluginUnchanged(t *testing.T) {
 	localDir := t.TempDir()
-	gameDir := filepath.Join(localDir, "d2r")
-	if err := os.MkdirAll(gameDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	wasm := []byte("local wasm unchanged")
-	if err := os.WriteFile(filepath.Join(gameDir, "parser.wasm"), wasm, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	pub, priv := generateTestKeys(t)
+	writeSignedLocal(t, filepath.Join(localDir, "d2r"), priv, []byte("local wasm unchanged"))
 
 	loader := &fakeLoader{}
-	mgr := NewManager(nil, NewCache(t.TempDir()), loader, nil, testLogger())
+	mgr := NewManager(nil, NewCache(t.TempDir()), loader, pub, testLogger())
 	mgr.SetLocalDir(localDir)
 
 	// Initial load.
@@ -1324,15 +1304,9 @@ func TestCheckForUpdates_LocalAndRemoteMixed(t *testing.T) {
 	// d2r is local, rimworld is remote. Both should be checked.
 	localDir := t.TempDir()
 	gameDir := filepath.Join(localDir, "d2r")
-	if err := os.MkdirAll(gameDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	localWasmV1 := []byte("local d2r v1")
-	if err := os.WriteFile(filepath.Join(gameDir, "parser.wasm"), localWasmV1, 0o600); err != nil {
-		t.Fatal(err)
-	}
-
 	pub, priv := generateTestKeys(t)
+	writeSignedLocal(t, gameDir, priv, []byte("local d2r v1"))
+
 	remoteWasm := []byte("remote rimworld")
 	remoteSig := signing.Sign(priv, remoteWasm)
 	hash := sha256.Sum256(remoteWasm)
@@ -1358,10 +1332,8 @@ func TestCheckForUpdates_LocalAndRemoteMixed(t *testing.T) {
 	loader := &fakeLoader{}
 	cache := NewCache(t.TempDir())
 
-	// One manager with the real key. Local d2r has no .sig file, so
-	// loadFromLocal loads it without a signature check (making a missing
-	// local .sig fatal is finding 1.2, a separate task); remote rimworld is
-	// signed and verified.
+	// One manager with the real key. Local d2r is signed (a missing local
+	// .sig is now fatal — finding 1.2); remote rimworld is signed and verified.
 	mgr := NewManager(reg, cache, loader, pub, testLogger())
 	mgr.SetLocalDir(localDir)
 
@@ -1372,11 +1344,8 @@ func TestCheckForUpdates_LocalAndRemoteMixed(t *testing.T) {
 		t.Fatalf("EnsurePlugin(rimworld): %v", err)
 	}
 
-	// Change local d2r, update remote rimworld manifest.
-	localWasmV2 := []byte("local d2r v2")
-	if err := os.WriteFile(filepath.Join(gameDir, "parser.wasm"), localWasmV2, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	// Change local d2r (re-signed), update remote rimworld manifest.
+	writeSignedLocal(t, gameDir, priv, []byte("local d2r v2"))
 	reg.manifest["rimworld"] = PluginInfo{
 		GameID:  "rimworld",
 		Version: "2.0.0",
@@ -1401,5 +1370,103 @@ func TestCheckForUpdates_LocalAndRemoteMixed(t *testing.T) {
 	}
 	if !got["rimworld"] {
 		t.Error("rimworld should be in updated list (remote updated)")
+	}
+}
+
+// -- Cache-hit verification (finding 1.1 / epic R4) ---------------------------
+
+func TestEnsurePlugin_CacheHit_TamperedRejected(t *testing.T) {
+	pub, priv := generateTestKeys(t)
+	wasm := []byte("cached wasm")
+	sig, hash := signAndHash(t, priv, wasm)
+
+	cache := NewCache(t.TempDir())
+	// Cache holds a signature that does NOT match the (tampered) bytes.
+	tampered := append([]byte(nil), wasm...)
+	tampered[0] ^= 0xFF
+	if err := cache.Write("d2r", "1.0.0", tampered, sig); err != nil {
+		t.Fatalf("cache write: %v", err)
+	}
+
+	reg := &fakeRegistry{
+		manifest: map[string]PluginInfo{
+			"d2r": {GameID: "d2r", Version: "1.0.0", SHA256: hash, URL: pluginURL},
+		},
+		// No files — must not fall back to a download for a poisoned cache.
+	}
+	loader := &fakeLoader{}
+	mgr := NewManager(reg, cache, loader, pub, testLogger())
+
+	if err := mgr.EnsurePlugin(context.Background(), "d2r"); err == nil {
+		t.Fatal("expected error for tampered cached plugin")
+	}
+	loader.mu.Lock()
+	n := len(loader.loaded)
+	loader.mu.Unlock()
+	if n != 0 {
+		t.Errorf("loader invoked %d times for a poisoned cache; want 0", n)
+	}
+}
+
+func TestEnsurePlugin_CacheHit_SHA256Mismatch(t *testing.T) {
+	pub, priv := generateTestKeys(t)
+	wasm := []byte("cached wasm")
+	sig, _ := signAndHash(t, priv, wasm)
+
+	cache := NewCache(t.TempDir())
+	if err := cache.Write("d2r", "1.0.0", wasm, sig); err != nil {
+		t.Fatalf("cache write: %v", err)
+	}
+
+	reg := &fakeRegistry{
+		manifest: map[string]PluginInfo{
+			// Signature is valid, but the manifest SHA256 disagrees: the
+			// cache-hit path must still run verifyPlugin and reject.
+			"d2r": {GameID: "d2r", Version: "1.0.0", SHA256: "deadbeef", URL: pluginURL},
+		},
+	}
+	loader := &fakeLoader{}
+	mgr := NewManager(reg, cache, loader, pub, testLogger())
+
+	if err := mgr.EnsurePlugin(context.Background(), "d2r"); err == nil {
+		t.Fatal("expected sha256-mismatch error on cache-hit path")
+	}
+	loader.mu.Lock()
+	n := len(loader.loaded)
+	loader.mu.Unlock()
+	if n != 0 {
+		t.Errorf("loader invoked %d times despite sha256 mismatch; want 0", n)
+	}
+}
+
+// -- Local plugin signature required (finding 1.2 / epic R5) ------------------
+
+func TestEnsurePlugin_LocalOverride_MissingSigFatal(t *testing.T) {
+	localDir := t.TempDir()
+	gameDir := filepath.Join(localDir, "d2r")
+	if err := os.MkdirAll(gameDir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(gameDir, "parser.wasm"), []byte("unsigned local"), 0o600); err != nil {
+		t.Fatalf("write wasm: %v", err)
+	}
+
+	pub, _ := generateTestKeys(t)
+	loader := &fakeLoader{}
+	mgr := NewManager(nil, NewCache(t.TempDir()), loader, pub, testLogger())
+	mgr.SetLocalDir(localDir)
+
+	err := mgr.EnsurePlugin(context.Background(), "d2r")
+	if err == nil {
+		t.Fatal("expected fatal error for local plugin with no .sig")
+	}
+	if !strings.Contains(err.Error(), "signature") {
+		t.Errorf("error = %v, want it to mention the missing signature", err)
+	}
+	loader.mu.Lock()
+	n := len(loader.loaded)
+	loader.mu.Unlock()
+	if n != 0 {
+		t.Errorf("loader invoked %d times for unsigned local plugin; want 0", n)
 	}
 }
