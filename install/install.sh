@@ -76,8 +76,10 @@ verify_signature() {
     local tmp_pem
 
     if ! command -v openssl >/dev/null 2>&1; then
-        warn "openssl not found — skipping signature verification"
-        return 0
+        die "signature verification requires openssl, which was not found.
+  SteamOS:  sudo steamos-readonly disable && sudo pacman -S openssl
+  Debian:   sudo apt-get install openssl
+Aborting — refusing to run an unverified installer."
     fi
 
     tmp_pem="$(mktemp)"

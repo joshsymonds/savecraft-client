@@ -401,6 +401,53 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# Test: openssl absent — a verifier must fail closed, never skip
+#
+# Reproduces the exact defect: `command -v openssl` returns false. We run the
+# installer with PATH pointed at a sandbox containing symlinks to every tool
+# EXCEPT openssl, so the verifier genuinely cannot find it.
+# ---------------------------------------------------------------------------
+test_openssl_absent() {
+    info "=== Test: openssl absent (must fail closed) ==="
+    clean_install_dirs
+
+    local sandbox
+    sandbox="$(mktemp -d)"
+    local d
+    for d in /usr/bin /bin /usr/sbin /sbin; do
+        [[ -d "${d}" ]] || continue
+        for f in "${d}"/*; do
+            [[ -e "${f}" ]] || continue
+            [[ "$(basename "${f}")" == "openssl" ]] && continue
+            ln -sf "${f}" "${sandbox}/$(basename "${f}")" 2>/dev/null || true
+        done
+    done
+
+    # Sanity: openssl must be unreachable, a needed tool must still resolve.
+    if PATH="${sandbox}" command -v openssl >/dev/null 2>&1; then
+        fail "openssl absent: sandbox still resolves openssl (test setup bug)"
+        rm -rf "${sandbox}"
+        return
+    fi
+
+    set_installer_env
+    local output exit_code
+    exit_code=0
+    output="$(PATH="${sandbox}" bash "${FIXTURES}/install.sh" --no-service 2>&1)" || exit_code=$?
+
+    if [[ "${exit_code}" -eq 0 ]]; then
+        fail "openssl absent: installer succeeded but must abort (fail-closed)"
+    elif echo "${output}" | grep -qiE "requires openssl"; then
+        pass "openssl absent aborts with actionable message"
+    else
+        fail "openssl absent — expected 'requires openssl' in output, got:"
+        echo "${output}" | tail -5 | sed 's/^/      /'
+    fi
+
+    rm -rf "${sandbox}"
+}
+
+# ---------------------------------------------------------------------------
 # Test: --help flag — exits 0, prints usage
 # ---------------------------------------------------------------------------
 test_help_flag() {
@@ -468,6 +515,7 @@ main() {
     test_download_failure
     test_missing_pubkey
     test_bad_signature
+    test_openssl_absent
     test_sha256_dedup_skip
     test_sha256_dedup_mismatch
     test_help_flag
