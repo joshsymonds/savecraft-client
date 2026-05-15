@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -110,6 +112,41 @@ type appConfig struct {
 	Daemon     daemon.Config
 }
 
+// requireSecureURL rejects any server/install URL that is not TLS-protected.
+// Plaintext http://ws:// is permitted ONLY when dev mode is explicitly set
+// AND the host is loopback — so the dev escape can never be aimed at a remote
+// plaintext MITM, and it is never reachable by mere absence of config
+// (finding 4.2 / epic R7).
+func requireSecureURL(rawURL string, devMode bool) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL %q: %w", rawURL, err)
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("URL %q has no host", rawURL)
+	}
+	switch parsed.Scheme {
+	case "https", "wss":
+		return nil
+	case "http", "ws":
+		if !devMode {
+			return fmt.Errorf("insecure URL %q: https:// (or wss://) required", rawURL)
+		}
+		host := parsed.Hostname()
+		if host == "localhost" {
+			return nil
+		}
+		if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+			return nil
+		}
+		return fmt.Errorf(
+			"insecure URL %q: plaintext is allowed only for a loopback host in dev mode", rawURL,
+		)
+	default:
+		return fmt.Errorf("unsupported URL scheme in %q", rawURL)
+	}
+}
+
 func loadConfig(serverURLDefault, installURLDefault string) (*appConfig, error) {
 	serverURL := os.Getenv("SAVECRAFT_SERVER_URL")
 	if serverURL == "" {
@@ -125,6 +162,17 @@ func loadConfig(serverURLDefault, installURLDefault string) (*appConfig, error) 
 	}
 	if installURL == "" {
 		return nil, fmt.Errorf("SAVECRAFT_INSTALL_URL is required")
+	}
+
+	// The server→daemon channel (config push, update URLs, watch dirs, the
+	// bearer token) must be TLS-protected. Plaintext is loopback-only and
+	// requires an explicit dev opt-in — never the absence of config.
+	devMode := os.Getenv("SAVECRAFT_DEV") != ""
+	if err := requireSecureURL(serverURL, devMode); err != nil {
+		return nil, fmt.Errorf("SAVECRAFT_SERVER_URL: %w", err)
+	}
+	if err := requireSecureURL(installURL, devMode); err != nil {
+		return nil, fmt.Errorf("SAVECRAFT_INSTALL_URL: %w", err)
 	}
 
 	authToken := os.Getenv("SAVECRAFT_AUTH_TOKEN")

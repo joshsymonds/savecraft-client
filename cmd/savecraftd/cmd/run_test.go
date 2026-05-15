@@ -156,3 +156,79 @@ func TestAutoRegister_SkipsIfTokenExists(t *testing.T) {
 		t.Error("expected nil result when token exists")
 	}
 }
+
+// -- Server/install URL scheme pinning (finding 4.2 / epic R7) ---------------
+
+func TestRequireSecureURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		rawURL  string
+		dev     bool
+		wantErr bool
+	}{
+		{"https ok", "https://api.savecraft.gg", false, false},
+		{"wss ok", "wss://api.savecraft.gg/ws", false, false},
+		{"http rejected no dev", "http://api.savecraft.gg", false, true},
+		{"http remote rejected even in dev", "http://evil.com", true, true},
+		{"ws remote rejected even in dev", "ws://10.0.0.5:8787", true, true},
+		{"http loopback ok in dev", "http://localhost:8787", true, false},
+		{"http 127.0.0.1 ok in dev", "http://127.0.0.1:8787", true, false},
+		{"http ::1 ok in dev", "http://[::1]:8787", true, false},
+		{"http loopback rejected without dev", "http://localhost:8787", false, true},
+		{"look-alike host rejected", "http://localhost.evil.com", true, true},
+		{"empty rejected", "", false, true},
+		{"garbage rejected", "://nonsense", false, true},
+		{"no host rejected", "https://", false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := requireSecureURL(tt.rawURL, tt.dev)
+			if tt.wantErr && err == nil {
+				t.Errorf("requireSecureURL(%q, dev=%v) = nil, want error", tt.rawURL, tt.dev)
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("requireSecureURL(%q, dev=%v) = %v, want nil", tt.rawURL, tt.dev, err)
+			}
+		})
+	}
+}
+
+func TestLoadConfig_RejectsPlaintextServerURL(t *testing.T) {
+	t.Setenv("SAVECRAFT_SERVER_URL", "http://api.savecraft.gg")
+	t.Setenv("SAVECRAFT_AUTH_TOKEN", "test-token")
+	t.Setenv("SAVECRAFT_DEV", "")
+	os.Unsetenv("SAVECRAFT_DEV")
+
+	_, err := loadConfig("https://api.savecraft.gg", "https://install.savecraft.gg")
+	if err == nil {
+		t.Fatal("expected loadConfig to reject a plaintext server URL")
+	}
+}
+
+func TestLoadConfig_RejectsPlaintextInstallURL(t *testing.T) {
+	t.Setenv("SAVECRAFT_SERVER_URL", "https://api.savecraft.gg")
+	t.Setenv("SAVECRAFT_INSTALL_URL", "http://install.savecraft.gg")
+	t.Setenv("SAVECRAFT_AUTH_TOKEN", "test-token")
+	t.Setenv("SAVECRAFT_DEV", "")
+	os.Unsetenv("SAVECRAFT_DEV")
+
+	_, err := loadConfig("https://api.savecraft.gg", "https://install.savecraft.gg")
+	if err == nil {
+		t.Fatal("expected loadConfig to reject a plaintext install URL")
+	}
+}
+
+func TestLoadConfig_AllowsLoopbackPlaintextInDevMode(t *testing.T) {
+	t.Setenv("SAVECRAFT_SERVER_URL", "http://localhost:8787")
+	t.Setenv("SAVECRAFT_INSTALL_URL", "http://127.0.0.1:8788")
+	t.Setenv("SAVECRAFT_AUTH_TOKEN", "test-token")
+	t.Setenv("SAVECRAFT_DEV", "1")
+
+	cfg, err := loadConfig("https://api.savecraft.gg", "https://install.savecraft.gg")
+	if err != nil {
+		t.Fatalf("loadConfig with dev loopback: %v", err)
+	}
+	if cfg.ServerURL != "http://localhost:8787" {
+		t.Errorf("ServerURL = %q", cfg.ServerURL)
+	}
+}

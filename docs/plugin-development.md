@@ -49,7 +49,12 @@ export SAVECRAFT_PLUGIN_DIR=$PWD/plugins
 | Variable | Value | Purpose |
 |---|---|---|
 | `SAVECRAFT_PLUGIN_DIR` | Path to local plugins dir | Load plugins from disk instead of downloading |
-| `SAVECRAFT_SERVER_URL` | `https://staging-api.savecraft.gg` | Connect to staging, not production |
+| `SAVECRAFT_SERVER_URL` | `https://staging-api.savecraft.gg` | Connect to staging, not production. Must be `https://`/`wss://` |
+| `SAVECRAFT_DEV` | `1` | Dev opt-in: permit plaintext `http://`/`ws://` server/install URLs **only** when the host is loopback (`localhost`/`127.0.0.1`/`[::1]`). Remote plaintext is always rejected |
+
+`SAVECRAFT_SERVER_URL` and `SAVECRAFT_INSTALL_URL` are rejected at startup
+unless TLS-protected. The only exception is a loopback dev server with
+`SAVECRAFT_DEV=1` (e.g. `SAVECRAFT_DEV=1 SAVECRAFT_SERVER_URL=http://localhost:8787`).
 
 Signature verification is **always on** — there is no way to disable it. Local
 plugins must be signed with the repo's dev key, whose public half is embedded
