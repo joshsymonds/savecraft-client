@@ -17,15 +17,17 @@ const (
 )
 
 // HTTPRegistry fetches the signed plugin manifest and plugin binaries from the
-// install origin. The manifest is a CI-signed aggregate published to R2; the
-// daemon verifies it against the embedded release key before trusting any
-// field, and pins every URL to the install origin (no trust in the Worker —
-// findings 4.3 / R12, plugin half of R2).
+// server origin (the Worker that also serves plugin binaries — all plugin
+// delivery lives on one origin; task #18). The manifest is a CI-signed
+// aggregate published to R2 and served verbatim; the daemon verifies it
+// against the embedded release key before trusting any field, and pins every
+// URL to the server origin (no trust in the Worker — findings 4.3 / R12,
+// plugin half of R2).
 type HTTPRegistry struct {
-	installURL string
-	pubKey     ed25519.PublicKey
-	manifest   *http.Client
-	download   *http.Client
+	serverURL string
+	pubKey    ed25519.PublicKey
+	manifest  *http.Client
+	download  *http.Client
 }
 
 // Option configures an HTTPRegistry.
@@ -40,15 +42,15 @@ func WithHTTPClient(c *http.Client) Option {
 	}
 }
 
-// NewHTTPRegistry creates an HTTPRegistry pinned to installURL. pubKey must be
+// NewHTTPRegistry creates an HTTPRegistry pinned to serverURL. pubKey must be
 // the embedded release key (signing.PublicKey()); it is the unconditional
 // trust anchor for the signed aggregate manifest.
-func NewHTTPRegistry(installURL string, pubKey ed25519.PublicKey, opts ...Option) *HTTPRegistry {
+func NewHTTPRegistry(serverURL string, pubKey ed25519.PublicKey, opts ...Option) *HTTPRegistry {
 	reg := &HTTPRegistry{
-		installURL: installURL,
-		pubKey:     pubKey,
-		manifest:   &http.Client{Timeout: manifestTimeout},
-		download:   &http.Client{Timeout: downloadTimeout},
+		serverURL: serverURL,
+		pubKey:    pubKey,
+		manifest:  &http.Client{Timeout: manifestTimeout},
+		download:  &http.Client{Timeout: downloadTimeout},
 	}
 	for _, opt := range opts {
 		opt(reg)
@@ -57,16 +59,16 @@ func NewHTTPRegistry(installURL string, pubKey ed25519.PublicKey, opts ...Option
 }
 
 // FetchManifest retrieves the signed aggregate plugin manifest from the
-// install origin, verifies the detached signature over the literal bytes
+// server origin, verifies the detached signature over the literal bytes
 // against the embedded key, and only then parses it. A missing/unreachable
 // signature is a hard error, never a downgrade to "skip verification".
 func (reg *HTTPRegistry) FetchManifest(
 	ctx context.Context,
 ) (map[string]PluginInfo, error) {
-	manifestURL := reg.installURL + "/plugins/manifest.json"
+	manifestURL := reg.serverURL + "/plugins/manifest.json"
 	sigURL := manifestURL + ".sig"
 
-	if err := manifest.RequirePinnedHTTPS(manifestURL, reg.installURL); err != nil {
+	if err := manifest.RequirePinnedHTTPS(manifestURL, reg.serverURL); err != nil {
 		return nil, fmt.Errorf("plugin manifest origin: %w", err)
 	}
 
@@ -89,12 +91,12 @@ func (reg *HTTPRegistry) FetchManifest(
 }
 
 // Download fetches raw bytes from url, which must be an https URL on the
-// pinned install origin (the signed manifest only ever carries such URLs;
+// pinned server origin (the signed manifest only ever carries such URLs;
 // this is defense-in-depth, consistent with the self-update path).
 func (reg *HTTPRegistry) Download(
 	ctx context.Context, url string,
 ) ([]byte, error) {
-	if err := manifest.RequirePinnedHTTPS(url, reg.installURL); err != nil {
+	if err := manifest.RequirePinnedHTTPS(url, reg.serverURL); err != nil {
 		return nil, fmt.Errorf("plugin download origin: %w", err)
 	}
 	return reg.get(ctx, reg.download, url)

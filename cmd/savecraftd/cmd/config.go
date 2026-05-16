@@ -72,9 +72,11 @@ func createSubsystems(
 
 	cacheDir := pluginmgr.DefaultCacheDir(appName)
 	cache := pluginmgr.NewCache(cacheDir)
-	// Plugin manifest + binaries come from the install origin as a CI-signed
-	// aggregate, verified against the embedded key (not the Worker).
-	reg := pluginmgr.NewHTTPRegistry(cfg.InstallURL, signing.PublicKey())
+	// Plugin manifest + binaries come from the server origin (the Worker that
+	// serves them) as a CI-signed aggregate, verified against the embedded key
+	// (not the Worker). selfupdate stays on the install origin — that's where
+	// the daemon binary + its manifest are served.
+	reg := pluginmgr.NewHTTPRegistry(cfg.ServerURL, signing.PublicKey())
 
 	mgr := pluginmgr.NewManager(reg, cache, wr, pubKey, logger)
 	if cfg.PluginDir != "" {

@@ -65,7 +65,7 @@ filenames; the affected game is not configured, scanned, or watched).
 
 ## Plugin Loading
 
-1. On startup and every 24 hours, daemon fetches the CI-signed aggregate `plugins/manifest.json` (+`.sig`) from the install origin (origin-pinned), and verifies the detached signature against the baked-in key before reading any field. It does not trust the Worker's `/api/v1/plugins/manifest` (that endpoint serves the web UI only).
+1. On startup and every 24 hours, daemon fetches the CI-signed aggregate `/plugins/manifest.json` (+`.sig`) from the **server origin** (origin-pinned) — the same Worker origin that serves the plugin binaries, served verbatim from R2 — and verifies the detached signature against the baked-in key before reading any field. It does not trust the Worker's `/api/v1/plugins/manifest` (that endpoint serves the web UI only). (The daemon **binary** self-update channel is separate and uses the install origin — see "Self-Update" below.)
 2. For each plugin: compare local version to manifest version.
 3. If update available: download `.wasm` and `.sig` from the (origin-pinned, https) URLs in the verified manifest.
 4. Verify Ed25519 signature against baked-in public key. Refuse unsigned/tampered binaries.
