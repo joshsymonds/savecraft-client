@@ -10,11 +10,35 @@ proto-lint:
 proto-breaking:
     buf breaking --against '.git#branch=main'
 
+# (internal) Mirror gitignored dev+build artifacts from the primary
+# checkout into a worktree so `just check` runs there exactly as it
+# does here — git worktree only checks out tracked files, so without
+# this a fresh worktree lacks node_modules and built *.wasm. Symlinks
+# (instant, read-only during checks); .env.local copied. gen.ts build
+# outputs are intentionally NOT mirrored — `just check` regenerates
+# them via its build-manifests/build-views deps.
+_mirror-worktree-env wt:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    wt="{{ wt }}"
+    for d in worker web site install/worker views reference; do
+        if [ -d "$d/node_modules" ]; then
+            mkdir -p "$wt/$d"
+            ln -sfn "$(realpath "$d/node_modules")" "$wt/$d/node_modules"
+        fi
+    done
+    while IFS= read -r w; do
+        mkdir -p "$wt/$(dirname "$w")"
+        ln -sfn "$(realpath "$w")" "$wt/$w"
+    done < <(find plugins -name '*.wasm' -not -path '*/node_modules/*')
+    find . -name .env.local -not -path './.worktrees/*' -not -path './.devenv/*' \
+        -not -path './.reference/*' -print0 | cpio -0 -pdm "$wt" 2>/dev/null || true
+
 # Create a feature worktree under .worktrees/<branch> with the gitignored
-# dev environment mirrored in: every node_modules symlinked from the
-# primary checkout (instant — no multi-GB npm ci), .env.local copied.
-# To change dependencies inside the worktree, replace that subdir's
-# node_modules symlink with a real `npm ci`.
+# dev+build environment mirrored in (node_modules + built *.wasm
+# symlinked from the primary checkout — instant, no npm ci / no rebuild;
+# .env.local copied). To change dependencies inside the worktree, replace
+# that subdir's node_modules symlink with a real `npm ci`.
 new-worktree branch:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -25,18 +49,12 @@ new-worktree branch:
     else
         git worktree add -b "{{ branch }}" "$wt"
     fi
-    for d in worker web site install/worker views reference; do
-        if [ -d "$d/node_modules" ]; then
-            ln -sfn "$(realpath "$d/node_modules")" "$wt/$d/node_modules"
-        fi
-    done
-    find . -name .env.local -not -path './.worktrees/*' -not -path './.devenv/*' \
-        -not -path './.reference/*' -print0 | cpio -0 -pdm "$wt" 2>/dev/null || true
+    just _mirror-worktree-env "$wt"
     echo ""
     echo "Worktree ready: $wt"
     echo "Next: cd $wt && direnv allow"
-    echo "node_modules are symlinked from the primary checkout; for dependency"
-    echo "changes in the worktree, rm that symlink and 'npm ci' the subdir."
+    echo "node_modules + *.wasm are symlinked from the primary checkout; for"
+    echo "dependency changes, rm that subdir's node_modules symlink and npm ci."
 
 # Remove a feature worktree: just rm-worktree feature/my-branch
 # --force because the worktree intentionally holds untracked mirrored
@@ -636,16 +654,11 @@ datagen-magic db=".reference/mtga-carddb/Raw_CardDatabase.mtga" branch="datagen/
     git worktree prune 2>/dev/null || true
     git worktree add -q -B "$branch" "$wt" origin/main
 
-    # Mirror the gitignored dev environment into the worktree so the
-    # pre-push `just check` gate runs there exactly as in the primary
-    # tree, without a multi-GB `npm ci`. node_modules are symlinked
-    # (read-only use during checks); .env.local is copied.
-    for d in worker web site install/worker; do
-        if [ -d "$d/node_modules" ]; then
-            ln -sfn "$(realpath "$d/node_modules")" "$wt/$d/node_modules"
-        fi
-    done
-    [ -f .env.local ] && cp .env.local "$wt/.env.local"
+    # Mirror the gitignored dev+build environment so the pre-push
+    # `just check` gate runs in the worktree exactly as in the primary
+    # tree (node_modules + built *.wasm symlinked, .env.local copied) —
+    # no npm ci, no WASM rebuild. Shared with new-worktree.
+    just _mirror-worktree-env "$wt"
 
     cp "$gen" "$wt/$gen"
     git -C "$wt" add -- "$gen"
