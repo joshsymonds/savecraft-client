@@ -182,6 +182,28 @@ lint-no-dead-urls:
     fi
     echo "OK: no dead savecraft.gg/settings URLs"
 
+# Guard the single-fetch-point contract (epic Req 7 + anti-pattern): the
+# GGG API may only be reached from the PoE adapter (refresh_save /
+# fetchState path). No reference module, route, or other code may call
+# it — build_planner et al. must be pure consumers of stored state.
+lint-no-rogue-ggg-calls:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    # Allowed only under plugins/poe/adapter/. Scan shipping source
+    # (not tests, which import the adapter helpers legitimately).
+    hits=$(grep -rnE "gggGet\(|api\.pathofexile\.com|pathofexile\.com/oauth|ensureGggAccessToken" \
+        --include='*.ts' --include='*.js' \
+        --exclude='*.test.ts' --exclude='*.test.js' \
+        --exclude-dir='test' --exclude-dir='tests' \
+        worker/src plugins 2>/dev/null \
+        | grep -vE '(^|/)plugins/poe/adapter/' || true)
+    if [ -n "$hits" ]; then
+        echo "Rogue GGG API reference outside plugins/poe/adapter/ (Req 7: only refresh_save/fetchState may call GGG):"
+        echo "$hits"
+        exit 1
+    fi
+    echo "OK: GGG API references confined to plugins/poe/adapter/"
+
 # Format shell scripts
 fmt-sh:
     shfmt -w -i 4 -bn -ci install/install.sh install/test/run-test.sh
@@ -400,6 +422,7 @@ lint:
     run lint-site      just lint-site
     run lint-sh        just lint-sh
     run lint-urls      just lint-no-dead-urls
+    run lint-ggg       just lint-no-rogue-ggg-calls
     run fmt-go-check   just fmt-go-check
     run fmt-worker     just fmt-worker-check
     run fmt-web        just fmt-web-check
