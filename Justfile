@@ -10,6 +10,41 @@ proto-lint:
 proto-breaking:
     buf breaking --against '.git#branch=main'
 
+# Create a feature worktree under .worktrees/<branch> with the gitignored
+# dev environment mirrored in: every node_modules symlinked from the
+# primary checkout (instant — no multi-GB npm ci), .env.local copied.
+# To change dependencies inside the worktree, replace that subdir's
+# node_modules symlink with a real `npm ci`.
+new-worktree branch:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    wt=".worktrees/{{ branch }}"
+    if [ -e "$wt" ]; then echo "$wt already exists" >&2; exit 1; fi
+    if git show-ref --verify --quiet "refs/heads/{{ branch }}"; then
+        git worktree add "$wt" "{{ branch }}"
+    else
+        git worktree add -b "{{ branch }}" "$wt"
+    fi
+    for d in worker web site install/worker views reference; do
+        if [ -d "$d/node_modules" ]; then
+            ln -sfn "$(realpath "$d/node_modules")" "$wt/$d/node_modules"
+        fi
+    done
+    find . -name .env.local -not -path './.worktrees/*' -not -path './.devenv/*' \
+        -not -path './.reference/*' -print0 | cpio -0 -pdm "$wt" 2>/dev/null || true
+    echo ""
+    echo "Worktree ready: $wt"
+    echo "Next: cd $wt && direnv allow"
+    echo "node_modules are symlinked from the primary checkout; for dependency"
+    echo "changes in the worktree, rm that symlink and 'npm ci' the subdir."
+
+# Remove a feature worktree: just rm-worktree feature/my-branch
+# --force because the worktree intentionally holds untracked mirrored
+# env (copied .env.local, symlinked node_modules). Leaves the branch.
+rm-worktree branch:
+    git worktree remove --force ".worktrees/{{ branch }}"
+    git worktree prune 2>/dev/null || true
+
 # Run all Go tests. internal/ packages are coverage-gated at 80%;
 # cmd/ packages run too but aren't gated (entry-point code under
 # main.go typically sits below 80% by design).
@@ -555,12 +590,14 @@ update-mtga-retry env:
 # refreshed through a reviewed, CI-gated PR — never by the nightly, never
 # pushed to main. Runs where the game data lives, reusing the host's
 # existing `gh` auth (no bot account). No-diff runs are a true no-op.
-datagen-magic:
+# `db`/`branch` are overridable only for controlled self-tests against a
+# fixture DB; the defaults are the real production invocation.
+datagen-magic db=".reference/mtga-carddb/Raw_CardDatabase.mtga" branch="datagen/magic-arena-cards":
     #!/usr/bin/env bash
     set -euo pipefail
     gen="plugins/magic/parser/data/arena_cards_gen.go"
-    branch="datagen/magic-arena-cards"
-    db=".reference/mtga-carddb/Raw_CardDatabase.mtga"
+    branch="{{ branch }}"
+    db="{{ db }}"
     if [ ! -f "$db" ]; then
         echo "MTGA card database not found at $db" >&2
         echo "Copy Raw_CardDatabase_*.mtga from your MTGA install:" >&2
@@ -568,26 +605,55 @@ datagen-magic:
         echo "To: .reference/mtga-carddb/Raw_CardDatabase.mtga" >&2
         exit 1
     fi
-    orig_ref="$(git rev-parse --abbrev-ref HEAD)"
-    restore() { git checkout -q "$orig_ref" 2>/dev/null || true; }
-    trap restore EXIT
-
     go run ./plugins/magic/tools/mtga-carddb/ --card-db="$db" 2>&1 | sed 's/^/  [carddb] /'
 
     if [ -z "$(git status --porcelain -- "$gen")" ]; then
         echo "arena_cards: no change — no branch, no PR"
+        git checkout -- "$gen" 2>/dev/null || true
         exit 0
     fi
 
     echo "arena_cards changed — preparing PR on $branch"
     git fetch -q origin
-    # Branch from origin/main so the PR contains only the codegen diff,
-    # never unpushed local commits. The regenerated (uncommitted) $gen is
-    # carried across the checkout, then committed alone.
-    git checkout -q -B "$branch" origin/main
-    git add -- "$gen"
-    git commit -q -m "chore(magic): regenerate arena_cards from MTGA client DB"
-    git push -q -f origin "$branch"
+
+    # Build the commit in an isolated worktree based on origin/main. This
+    # never switches the primary tree's branch and is immune to unrelated
+    # dirty files / unpushed local commits — a `git checkout -B` in the
+    # main tree aborts whenever origin/main's $gen differs from the
+    # freshly regenerated one (i.e. every real data change). The PR
+    # therefore contains exactly the codegen diff vs origin/main.
+    wtbase="$(mktemp -d)"
+    wt="$wtbase/wt"
+    cleanup() {
+        git worktree remove --force "$wt" 2>/dev/null || true
+        git worktree prune 2>/dev/null || true
+        rm -rf "$wtbase"
+        # Artifact advances only through the merged PR — drop the local regen.
+        git checkout -- "$gen" 2>/dev/null || true
+    }
+    trap cleanup EXIT
+
+    git worktree prune 2>/dev/null || true
+    git worktree add -q -B "$branch" "$wt" origin/main
+
+    # Mirror the gitignored dev environment into the worktree so the
+    # pre-push `just check` gate runs there exactly as in the primary
+    # tree, without a multi-GB `npm ci`. node_modules are symlinked
+    # (read-only use during checks); .env.local is copied.
+    for d in worker web site install/worker; do
+        if [ -d "$d/node_modules" ]; then
+            ln -sfn "$(realpath "$d/node_modules")" "$wt/$d/node_modules"
+        fi
+    done
+    [ -f .env.local ] && cp .env.local "$wt/.env.local"
+
+    cp "$gen" "$wt/$gen"
+    git -C "$wt" add -- "$gen"
+    git -C "$wt" commit -q -m "chore(magic): regenerate arena_cards from MTGA client DB"
+    # Push from the worktree — the pre-push hook runs the full `just check`
+    # here against the mirrored environment; a green local gate plus the
+    # PR's CI both guard the merge.
+    git -C "$wt" push -q -f origin "$branch"
     if [ -z "$(gh pr list --head "$branch" --state open --json number -q '.[].number')" ]; then
         gh pr create --base main --head "$branch" \
             --title "chore(magic): regenerate arena_cards from MTGA client DB" \
