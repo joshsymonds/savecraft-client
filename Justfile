@@ -160,6 +160,28 @@ fmt-site-check:
 lint-sh:
     shellcheck install/install.sh install/test/run-test.sh
 
+# Guard against dead user-facing URLs (epic Req 14): the app is
+# my.savecraft.gg and has no /settings route — never strand the user/LLM
+# on a path that does not exist in web/src/routes.
+lint-no-dead-urls:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    # Tests legitimately assert against the forbidden literal — scan
+    # shipping source/docs only, not test files.
+    hits=$(grep -rn "savecraft\.gg/settings" \
+        --include='*.ts' --include='*.js' --include='*.go' \
+        --include='*.svelte' --include='*.md' --include='*.toml' \
+        --exclude='*.test.ts' --exclude='*.test.js' \
+        --exclude='*_test.go' --exclude='*.stories.svelte' \
+        --exclude-dir='test' --exclude-dir='tests' \
+        plugins worker docs site web 2>/dev/null || true)
+    if [ -n "$hits" ]; then
+        echo "Forbidden dead URL 'savecraft.gg/settings' (no such route — use SAVECRAFT_APP_URL / my.savecraft.gg dashboard):"
+        echo "$hits"
+        exit 1
+    fi
+    echo "OK: no dead savecraft.gg/settings URLs"
+
 # Format shell scripts
 fmt-sh:
     shfmt -w -i 4 -bn -ci install/install.sh install/test/run-test.sh
@@ -377,6 +399,7 @@ lint:
     run lint-web       just lint-web
     run lint-site      just lint-site
     run lint-sh        just lint-sh
+    run lint-urls      just lint-no-dead-urls
     run fmt-go-check   just fmt-go-check
     run fmt-worker     just fmt-worker-check
     run fmt-web        just fmt-web-check
@@ -437,19 +460,21 @@ update-mtga env:
     cf_account="cc0a94bb7aff760efd48b49ce983fe97"
     if [[ "{{env}}" == "production" ]]; then
         d1="df241bb0-9b7d-48e5-a4d4-f84ebf09e6e5"
-        rules_vec="mtga-rules"
-        cards_vec="mtga-cards"
+        rules_vec="magic-rules"
+        cards_vec="magic-cards"
     elif [[ "{{env}}" == "staging" ]]; then
         d1="0147892e-82e6-413e-a0ef-52f6d8787fdf"
-        rules_vec="mtga-rules-staging"
-        cards_vec="mtga-cards-staging"
+        rules_vec="magic-rules-staging"
+        cards_vec="magic-cards-staging"
     else
         echo "Usage: just update-mtga staging|production" >&2
         exit 1
     fi
 
-    # Phase 0: mtga-carddb must complete first — it populates magic_cards from
-    # the MTG Arena client database. scryfall-fetch enriches these rows.
+    # Phase 0: mtga-carddb must complete first — it regenerates
+    # parser/data/arena_cards_gen.go from the MTG Arena client database (full
+    # arena_id coverage). scryfall-fetch (Phase 1) compiles that in via
+    # `go run` and populates magic_cards + Vectorize entirely on its own.
     db=".reference/mtga-carddb/Raw_CardDatabase.mtga"
     if [ ! -f "$db" ]; then
         echo "MTGA card database not found at $db" >&2
@@ -460,8 +485,7 @@ update-mtga env:
     fi
     echo "==> Phase 0: MTGA card data ({{env}})"
     go run ./plugins/magic/tools/mtga-carddb/ \
-        --card-db="$db" --cf-account-id="$cf_account" --d1-database-id="$d1" \
-        --cf-api-token="$CLOUDFLARE_API_TOKEN" 2>&1 | sed 's/^/  [carddb] /'
+        --card-db="$db" 2>&1 | sed 's/^/  [carddb] /'
 
     echo "==> Phase 1: rules + scryfall enrichment (parallel, {{env}})"
     go run ./plugins/magic/tools/rules-fetch/ \
