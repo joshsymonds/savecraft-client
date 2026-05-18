@@ -12,11 +12,13 @@ proto-breaking:
 
 # (internal) Mirror gitignored dev+build artifacts from the primary
 # checkout into a worktree so `just check` runs there exactly as it
-# does here — git worktree only checks out tracked files, so without
-# this a fresh worktree lacks node_modules and built *.wasm. Symlinks
-# (instant, read-only during checks); .env.local copied. gen.ts build
-# outputs are intentionally NOT mirrored — `just check` regenerates
-# them via its build-manifests/build-views deps.
+# does here — git worktree only checks out tracked files, so a fresh
+# worktree lacks node_modules and built *.wasm. node_modules is
+# symlinked (too large to copy; read-mostly). *.wasm is COPIED, not
+# symlinked, so an agent rebuilding a plugin in the worktree writes a
+# fresh file instead of corrupting the primary checkout's artifact
+# through the link. .env.local copied. gen.ts build outputs are NOT
+# mirrored — `just check` regenerates them via its build deps.
 _mirror-worktree-env wt:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -29,16 +31,17 @@ _mirror-worktree-env wt:
     done
     while IFS= read -r w; do
         mkdir -p "$wt/$(dirname "$w")"
-        ln -sfn "$(realpath "$w")" "$wt/$w"
+        cp -p "$w" "$wt/$w"
     done < <(find plugins -name '*.wasm' -not -path '*/node_modules/*')
     find . -name .env.local -not -path './.worktrees/*' -not -path './.devenv/*' \
         -not -path './.reference/*' -print0 | cpio -0 -pdm "$wt" 2>/dev/null || true
 
 # Create a feature worktree under .worktrees/<branch> with the gitignored
-# dev+build environment mirrored in (node_modules + built *.wasm
-# symlinked from the primary checkout — instant, no npm ci / no rebuild;
-# .env.local copied). To change dependencies inside the worktree, replace
-# that subdir's node_modules symlink with a real `npm ci`.
+# dev+build environment mirrored in: node_modules symlinked, built *.wasm
+# copied, .env.local copied — instant, no npm ci / no rebuild. Use this
+# to isolate parallel agents; do NOT run `git worktree add` directly.
+# To change dependencies in the worktree, replace that subdir's
+# node_modules symlink with a real `npm ci`.
 new-worktree branch:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -53,8 +56,9 @@ new-worktree branch:
     echo ""
     echo "Worktree ready: $wt"
     echo "Next: cd $wt && direnv allow"
-    echo "node_modules + *.wasm are symlinked from the primary checkout; for"
-    echo "dependency changes, rm that subdir's node_modules symlink and npm ci."
+    echo "node_modules are symlinked from the primary checkout (shared); *.wasm"
+    echo "are copied (safe to rebuild). For dependency changes, rm that subdir's"
+    echo "node_modules symlink and npm ci."
 
 # Remove a feature worktree: just rm-worktree feature/my-branch
 # --force because the worktree intentionally holds untracked mirrored
