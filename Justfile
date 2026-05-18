@@ -669,7 +669,10 @@ datagen-magic db=".reference/mtga-carddb/Raw_CardDatabase.mtga" branch="datagen/
     git -C "$wt" commit -q -m "chore(magic): regenerate arena_cards from MTGA client DB"
     # Push from the worktree — the pre-push hook runs the full `just check`
     # here against the mirrored environment; a green local gate plus the
-    # PR's CI both guard the merge.
+    # PR's CI both guard the merge. Plain ssh `origin` is correct for the
+    # unattended systemd timer too: ~/.ssh/id_ed25519 is passphrase-less
+    # so ssh authenticates with no agent (HOME is set in the unit), and a
+    # global url.insteadOf rewrites https->ssh anyway.
     git -C "$wt" push -q -f origin "$branch"
     if [ -z "$(gh pr list --head "$branch" --state open --json number -q '.[].number')" ]; then
         gh pr create --base main --head "$branch" \
