@@ -17,12 +17,16 @@ proto-breaking:
 # symlinked (too large to copy; read-mostly). *.wasm is COPIED, not
 # symlinked, so an agent rebuilding a plugin in the worktree writes a
 # fresh file instead of corrupting the primary checkout's artifact
-# through the link. .env.local copied. gen.ts build outputs are NOT
-# mirrored — `just check` regenerates them via its build deps.
-_mirror-worktree-env wt:
+# through the link. .env.local is copied only when with_env=true: human
+# dev worktrees need it for the SvelteKit/Storybook dev server, but
+# `just check` does not read it, so the datagen worktree passes false
+# and no secrets land in /tmp. gen.ts build outputs are NOT mirrored —
+# `just check` regenerates them via its build deps.
+_mirror-worktree-env wt with_env="true":
     #!/usr/bin/env bash
     set -euo pipefail
     wt="{{ wt }}"
+    with_env="{{ with_env }}"
     for d in worker web site install/worker views reference; do
         if [ -d "$d/node_modules" ]; then
             mkdir -p "$wt/$d"
@@ -33,8 +37,13 @@ _mirror-worktree-env wt:
         mkdir -p "$wt/$(dirname "$w")"
         cp -p "$w" "$wt/$w"
     done < <(find plugins -name '*.wasm' -not -path '*/node_modules/*')
-    find . -name .env.local -not -path './.worktrees/*' -not -path './.devenv/*' \
-        -not -path './.reference/*' -print0 | cpio -0 -pdm "$wt" 2>/dev/null || true
+    if [ "$with_env" = "true" ]; then
+        while IFS= read -r e; do
+            mkdir -p "$wt/$(dirname "$e")"
+            cp -p "$e" "$wt/$e"
+        done < <(find . -name .env.local -not -path './.worktrees/*' \
+            -not -path './.devenv/*' -not -path './.reference/*')
+    fi
 
 # Create a feature worktree under .worktrees/<branch> with the gitignored
 # dev+build environment mirrored in: node_modules symlinked, built *.wasm
@@ -46,7 +55,7 @@ new-worktree branch:
     #!/usr/bin/env bash
     set -euo pipefail
     wt=".worktrees/{{ branch }}"
-    if [ -e "$wt" ]; then echo "$wt already exists" >&2; exit 1; fi
+    if [ -e "$wt" ] || [ -L "$wt" ]; then echo "$wt already exists" >&2; exit 1; fi
     if git show-ref --verify --quiet "refs/heads/{{ branch }}"; then
         git worktree add "$wt" "{{ branch }}"
     else
@@ -620,6 +629,20 @@ datagen-magic db=".reference/mtga-carddb/Raw_CardDatabase.mtga" branch="datagen/
     gen="plugins/magic/parser/data/arena_cards_gen.go"
     branch="{{ branch }}"
     db="{{ db }}"
+    # Reject param values that could break out of the bash string just
+    # literally interpolated them into. Only a concern for manual
+    # self-test misuse — the automated timer passes no args.
+    [[ "$branch" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "datagen-magic: invalid branch '$branch'" >&2; exit 1; }
+    [[ "$db" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "datagen-magic: invalid db '$db'" >&2; exit 1; }
+    # Capture whether $gen was already dirty BEFORE we regenerate, so the
+    # no-op/cleanup revert never silently discards a human's local edits.
+    gen_was_dirty=0
+    git diff --quiet -- "$gen" || gen_was_dirty=1
+    restore_gen() {
+        if [ "$gen_was_dirty" -eq 0 ]; then
+            git checkout -- "$gen" 2>/dev/null || true
+        fi
+    }
     if [ ! -f "$db" ]; then
         echo "MTGA card database not found at $db" >&2
         echo "Copy Raw_CardDatabase_*.mtga from your MTGA install:" >&2
@@ -629,14 +652,17 @@ datagen-magic db=".reference/mtga-carddb/Raw_CardDatabase.mtga" branch="datagen/
     fi
     go run ./plugins/magic/tools/mtga-carddb/ --card-db="$db" 2>&1 | sed 's/^/  [carddb] /'
 
-    if [ -z "$(git status --porcelain -- "$gen")" ]; then
-        echo "arena_cards: no change — no branch, no PR"
-        git checkout -- "$gen" 2>/dev/null || true
+    # Baseline the no-op decision on origin/main — that's what the PR is
+    # built against. Comparing the local checkout instead would open a
+    # zero-diff PR if the host is behind origin/main for $gen.
+    git fetch -q origin
+    if git diff --quiet origin/main -- "$gen"; then
+        echo "arena_cards: no change vs origin/main — no branch, no PR"
+        restore_gen
         exit 0
     fi
 
     echo "arena_cards changed — preparing PR on $branch"
-    git fetch -q origin
 
     # Build the commit in an isolated worktree based on origin/main. This
     # never switches the primary tree's branch and is immune to unrelated
@@ -650,19 +676,21 @@ datagen-magic db=".reference/mtga-carddb/Raw_CardDatabase.mtga" branch="datagen/
         git worktree remove --force "$wt" 2>/dev/null || true
         git worktree prune 2>/dev/null || true
         rm -rf "$wtbase"
-        # Artifact advances only through the merged PR — drop the local regen.
-        git checkout -- "$gen" 2>/dev/null || true
+        # Artifact advances only through the merged PR — drop the local
+        # regen, but never a human's pre-existing edits (see restore_gen).
+        restore_gen
     }
     trap cleanup EXIT
 
     git worktree prune 2>/dev/null || true
     git worktree add -q -B "$branch" "$wt" origin/main
 
-    # Mirror the gitignored dev+build environment so the pre-push
-    # `just check` gate runs in the worktree exactly as in the primary
-    # tree (node_modules + built *.wasm symlinked, .env.local copied) —
-    # no npm ci, no WASM rebuild. Shared with new-worktree.
-    just _mirror-worktree-env "$wt"
+    # Mirror the gitignored dev+build env so the pre-push `just check`
+    # gate runs in the worktree exactly as in the primary tree
+    # (node_modules symlinked, built *.wasm copied) — no npm ci, no WASM
+    # rebuild. Pass with_env=false: `just check` does not read .env.local
+    # and the datagen worktree must not write secrets into /tmp.
+    just _mirror-worktree-env "$wt" false
 
     cp "$gen" "$wt/$gen"
     git -C "$wt" add -- "$gen"
