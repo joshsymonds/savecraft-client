@@ -20,7 +20,7 @@
   <video src="https://github.com/user-attachments/assets/a44e59dd-b622-413f-a27a-6670cf51d74a" />
 </p>
 
-Savecraft gives Claude, ChatGPT, and Gemini real game data via [MCP](https://modelcontextprotocol.io/) on every supported game (Magic, Path of Exile, Factorio, RimWorld, Stellaris, Diablo II, and more): rules, items, builds, economy. For save-file games, it also parses your saves into structured data so your AI sees your actual characters, gear, and run progress.
+Savecraft gives Claude, ChatGPT, and Gemini real game data via [MCP](https://modelcontextprotocol.io/) on every supported game (Magic, Path of Exile, Factorio, RimWorld, Stellaris, Diablo II, and more): rules, items, builds, economy, the moment you add a game. Add a game and Savecraft connects it the right way for that game -- you never pick the plumbing. Account games (Path of Exile, World of Warcraft) connect through the game's own read-only sign-in. Save-file games are parsed by a local daemon on the machine you play on, so your AI sees your actual characters, gear, and run progress.
 
 ---
 
@@ -28,26 +28,32 @@ Savecraft gives Claude, ChatGPT, and Gemini real game data via [MCP](https://mod
 
 **1. Connect your AI**
 
-**ChatGPT:** install the [Savecraft app](https://chatgpt.com/apps/savecraft/asdk_app_69bf076444388191b92e9c482184b44c) — one click from the OpenAI app directory.
+**ChatGPT:** install the [Savecraft app](https://chatgpt.com/apps/savecraft/asdk_app_69bf076444388191b92e9c482184b44c) -- one click from the OpenAI app directory.
 
 **Claude:** sign in at [my.savecraft.gg](https://my.savecraft.gg) to get your MCP connector URL, then add it to Claude's connector settings.
 
-Your AI immediately gets expert modules for every supported game: rules, items, builds, economy data.
+**2. Add a game**
 
-**2. (Optional) Install the daemon**
+At [my.savecraft.gg](https://my.savecraft.gg) you add a game; Savecraft connects it the way that game works. There is one verb -- add a game -- and no install to start.
 
-For save-integration games (Diablo II, RimWorld, Factorio, Stellaris, Stardew Valley, etc.), install the daemon to let your AI read your live save state: characters, gear, decks, farms.
+- **Reference is instant.** Every supported game answers rules, items, builds, and economy questions the moment it's added: no account, no install, no saves.
+- **Account games** (Path of Exile -- a GGG-approved connection -- and World of Warcraft) sign in through the game's own provider, read-only. Your AI reads your live characters with nothing installed.
+- **Save-file games** (Diablo II, RimWorld, Stellaris, Stardew Valley, and more) are read by the Savecraft daemon on the machine you play on. The save files never leave your device -- only parsed state is sent. Install it where you play:
 
-Linux / Steam Deck:
-```bash
-curl -sSL https://install.savecraft.gg | bash
-```
+  Linux / Steam Deck:
+  ```bash
+  curl -sSL https://install.savecraft.gg | bash
+  ```
 
-Windows / Mac: download from [install.savecraft.gg](https://install.savecraft.gg)
+  Windows / Mac: download from [install.savecraft.gg](https://install.savecraft.gg)
 
-The daemon auto-detects supported games and starts syncing. Ask your AI about your character, your build, or your last run -- it already has the data.
+  It auto-detects supported games and starts syncing. Then ask your AI about your character, your build, or your last run -- it already has the data.
+
+- **Moddable games** (Factorio) push state from a Savecraft mod instead; adding the game points you to it.
 
 ## How It Works
+
+Reference data is served straight from the cloud, and account games reach it through the game's server-side OAuth -- neither needs anything on your machine. The diagram below is the **save-file** path: how a local game's saves become structured data your AI can read.
 
 ```
   ┌─────────────────────┐            ┌───────────────────────────┐
@@ -88,15 +94,15 @@ Plugins are sandboxed WASM binaries that parse save files. They read raw bytes o
 
 | Game | Format | Reference Modules | Status | Author |
 |------|--------|-------------------|--------|--------|
-| [Clair Obscur: Expedition 33](plugins/clair-obscur/) | Save file (WASM) | — | Beta | [@joshsymonds](https://github.com/joshsymonds) |
+| [Clair Obscur: Expedition 33](plugins/clair-obscur/) | Save file (WASM) | -- | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [Diablo II: Resurrected](plugins/d2r/) | `.d2s` / `.d2i` binary | Drop Calculator | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [Factorio](plugins/factorio/) | [Factorio Mod Portal](https://mods.factorio.com/mod/savecraft) + WASM | Recipe Lookup, Ratio Calculator, Oil Balancer, Tech Tree, Blueprint Analyzer, Evolution Tracker, Power Calculator, Production Flow | Alpha | [@joshsymonds](https://github.com/joshsymonds) |
 | [Magic: The Gathering Arena](plugins/magic/) | `Player.log` | Card Search, Rules Search, Draft Advisor, Play Advisor, Card Stats, Deckbuilding, Collection Diff, Match Stats, Sideboard Analysis, Mana Base | Beta | [@joshsymonds](https://github.com/joshsymonds) |
-| [Path of Exile](plugins/poe/) | [pobb.in / pastebin URL](https://savecraft.gg/poe) | Build Planner (headless Path of Building), Gem Search, Passive Tree Search, Unique Search, Mod Search, Economy Prices | Beta | [@joshsymonds](https://github.com/joshsymonds) |
+| [Path of Exile](plugins/poe/) | [GGG account (approved app)](https://savecraft.gg/poe) or pobb.in/pastebin URL | Build Planner (headless Path of Building), Gem Search, Passive Tree Search, Unique Search, Mod Search, Economy Prices | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [RimWorld](plugins/rimworld/) | [Steam Workshop mod](https://steamcommunity.com/sharedfiles/filedetails/?id=3693580596) | Surgery Calculator, Crop Optimizer, Combat Calculator, Material Lookup, Drug Analyzer, Raid Estimator, Gene Builder, Research Navigator | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [Stardew Valley](plugins/sdv/) | XML save directory | Gift Preferences, Crop Planner | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 | [Stellaris](plugins/stellaris/) | [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3702302465) + `.sav` (Clausewitz/Rust) | Tech Search, Tech Path, Building Search, Component Search, Tradition Search, Trait Search, Civic Search, Edict Search, Job Search | Alpha | [@joshsymonds](https://github.com/joshsymonds) |
-| [World of Warcraft](plugins/wow/) | Battle.net API | — | Beta | [@joshsymonds](https://github.com/joshsymonds) |
+| [World of Warcraft](plugins/wow/) | Battle.net API | -- | Beta | [@joshsymonds](https://github.com/joshsymonds) |
 
 See [`docs/games.md`](docs/games.md) for detailed descriptions of each game's sections and reference modules.
 
