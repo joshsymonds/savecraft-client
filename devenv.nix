@@ -86,6 +86,15 @@ in
     # Use nix-patched workerd binary for miniflare/vitest (NixOS can't run npm's dynamically linked workerd)
     export MINIFLARE_WORKERD_PATH="$(find ${pkgs.nodePackages.wrangler}/lib -name workerd -path '*/workerd-linux-64/bin/workerd' | head -1)"
 
+    # Workerd does outbound HTTPS during tests (Clerk OAuth, fetch() in DOs)
+    # and can't find the system trust store on NixOS without a hint. Point
+    # it at the nss-cacert bundle so TLS verifies cleanly; otherwise tests
+    # cascade-fail with "TLS peer's certificate is not trusted" → "Network
+    # connection lost" in unrelated assertions.
+    export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+    export NIX_SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+    export NODE_EXTRA_CA_CERTS=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+
     # PoB calc engine path — consumed by pob-server at runtime AND by the
     # Go integration tests in cmd/pob-server/ that spawn real wrapper.lua.
     # Mirrors nix/pob-server.nix's systemd unit. POB_ZLIB_PATH backs PoB's
