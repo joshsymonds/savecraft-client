@@ -117,7 +117,7 @@ test-go-race:
 
 # Run Worker tests (4 parallel shards, each with its own Miniflare)
 test-worker: build-manifests build-views
-    cd worker && npm run test:shard
+    cd worker && npm test
 
 # Run MCP App view component tests (vitest + @testing-library/svelte)
 test-views:
