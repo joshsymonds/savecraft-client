@@ -31,6 +31,15 @@ name = "Recipe & Item Lookup"
 description = "Look up any Satisfactory item, recipe, or production building by name. Returns exact ingredients, products, per-minute rates at 100% clock, craft duration, which buildings run it, alternate-recipe flags, and milestone unlock tiers. Use proactively for ANY question about what makes what, ratios, or building stats — prevents hallucinated recipe data."
 requires_save = false
 
+[reference.modules.production_planner]
+name = "Production Planner"
+description = "Plan a full Satisfactory production chain: target item and rate per minute returns machine counts per recipe, raw ore/fluid requirements, byproducts, and total power draw. Pass save_id to plan with the player's actual unlocked alternate recipes and see which machines they already have. Use for any 'how do I make N per minute of X' or factory scaling question."
+requires_save = false
+
+[reference.modules.production_planner.section_mappings]
+progression = "progression"
+production_summary = "production_summary"
+
 [default_paths]
 windows = "%LOCALAPPDATA%/FactoryGame/Saved/SaveGames/*"
 linux = "~/.steam/steam/steamapps/compatdata/526870/pfx/drive_c/users/steamuser/AppData/Local/FactoryGame/Saved/SaveGames/*"

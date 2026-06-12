@@ -197,10 +197,13 @@ func (s *saveState) buildProgressionSection() map[string]any {
 	}
 
 	alternates := make([]string, 0, len(groups.alternates))
+	alternateClasses := make([]string, 0, len(groups.alternates))
 	for _, a := range groups.alternates {
 		alternates = append(alternates, displayName(a))
+		alternateClasses = append(alternateClasses, a[strings.LastIndex(a, ".")+1:])
 	}
 	sort.Strings(alternates)
+	sort.Strings(alternateClasses)
 
 	data := map[string]any{
 		"currentTier":          groups.currentTier(),
@@ -208,7 +211,13 @@ func (s *saveState) buildProgressionSection() map[string]any {
 		"milestonesPerTier":    tierCounts,
 		"mamResearchCompleted": groups.mam,
 		"shopPurchases":        groups.shop,
-		"alternateRecipes":     map[string]any{"count": len(alternates), "names": alternates},
+		"alternateRecipes": map[string]any{
+			"count": len(alternates),
+			"names": alternates,
+			// Schematic class names, for the production_planner's
+			// unlocked-alternates resolution via reference data.
+			"schematicClassNames": alternateClasses,
+		},
 	}
 
 	if phase, ok := prop[sav.ObjectRef](s.gamePhase, "mCurrentGamePhase"); ok {
