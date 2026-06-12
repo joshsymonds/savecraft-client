@@ -13,8 +13,8 @@ import (
 
 func playerInventoryStacks(t *testing.T, fixture string) []any {
 	t.Helper()
-	objs := extractFromFixture(t, fixture, func(cls string) bool {
-		return strings.Contains(cls, "FGInventoryComponent")
+	objs := extractFromFixture(t, fixture, func(o sav.ObjectHeader) bool {
+		return strings.Contains(o.ClassPath, "FGInventoryComponent")
 	})
 	for _, o := range objs {
 		if !strings.Contains(o.InstanceName, "Char_Player") || !strings.HasSuffix(o.InstanceName, ".inventory") {
@@ -96,8 +96,8 @@ func TestGoldenPlayerInventoryCurrent12(t *testing.T) {
 // Storage containers at megafactory scale: every FGInventoryComponent in
 // the save must decode without error.
 func TestGoldenMegafactoryInventoriesDecode(t *testing.T) {
-	objs := extractFromFixture(t, "megafactory.sav", func(cls string) bool {
-		return strings.Contains(cls, "FGInventoryComponent")
+	objs := extractFromFixture(t, "megafactory.sav", func(o sav.ObjectHeader) bool {
+		return strings.Contains(o.ClassPath, "FGInventoryComponent")
 	})
 	if len(objs) == 0 {
 		t.Skip("no inventory components (fixture absent)")

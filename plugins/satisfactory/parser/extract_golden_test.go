@@ -11,7 +11,7 @@ import (
 	"github.com/joshsymonds/savecraft.gg/plugins/satisfactory/sav"
 )
 
-func extractFromFixture(t *testing.T, name string, want func(string) bool) []sav.Object {
+func extractFromFixture(t *testing.T, name string, want func(sav.ObjectHeader) bool) []sav.Object {
 	t.Helper()
 	f, err := os.Open("testdata/" + name)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -37,7 +37,7 @@ func extractFromFixture(t *testing.T, name string, want func(string) bool) []sav
 	return got
 }
 
-func wantPlayer(cls string) bool { return strings.Contains(cls, "Char_Player.") }
+func wantPlayer(o sav.ObjectHeader) bool { return strings.Contains(o.ClassPath, "Char_Player.") }
 
 // Expected data sizes were established independently with a python walker
 // over the raw bytes; these tests pin the Go extractor to them.
@@ -92,7 +92,7 @@ func TestGoldenExtractMegafactoryBoundedMemory(t *testing.T) {
 	// retained memory.
 	var players, calls int
 	var maxHeap uint64
-	want := func(cls string) bool {
+	want := func(o sav.ObjectHeader) bool {
 		calls++
 		if calls%50000 == 0 {
 			var ms runtime.MemStats
@@ -101,7 +101,7 @@ func TestGoldenExtractMegafactoryBoundedMemory(t *testing.T) {
 				maxHeap = ms.HeapAlloc
 			}
 		}
-		return wantPlayer(cls)
+		return wantPlayer(o)
 	}
 	err = sav.Extract(h, body, want, func(o sav.Object) error {
 		players++

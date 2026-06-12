@@ -103,8 +103,8 @@ func TestGoldenPlayerPropertiesCurrent12(t *testing.T) {
 // the heap bound — proves property decoding works at scale across both the
 // persistent level and sublevels.
 func TestGoldenMegafactoryDecodeMachines(t *testing.T) {
-	wantMachine := func(cls string) bool {
-		return strings.Contains(cls, "/Buildable/Factory/ConstructorMk1/")
+	wantMachine := func(o sav.ObjectHeader) bool {
+		return strings.Contains(o.ClassPath, "/Buildable/Factory/ConstructorMk1/")
 	}
 	objs := extractFromFixture(t, "megafactory.sav", wantMachine)
 	if len(objs) == 0 {
