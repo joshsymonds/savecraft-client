@@ -68,12 +68,22 @@ type ObjectData struct {
 	Skipped map[string]string
 }
 
+// parseCtx carries the format decisions through nested value parsing.
+type parseCtx struct {
+	newFormat   bool
+	saveVersion int32
+}
+
 // ParseObjectData decodes an extracted object's entity prelude and tagged
-// property list. Struct-, map-, and set-typed properties are skipped by
-// size and recorded in Skipped rather than decoded.
+// property list. Supported struct types decode to typed values; everything
+// else (maps, sets, unknown structs, undecodable values) is recorded in
+// Skipped — the declared value size keeps the stream aligned regardless.
 func ParseObjectData(o Object) (*ObjectData, error) {
-	newFormat := o.SaveVersion >= saveVersionPackageVersions &&
-		o.PackageVersionUE5 >= ue5PropertyTagCompleteTypeName
+	ctx := parseCtx{
+		newFormat: o.SaveVersion >= saveVersionPackageVersions &&
+			o.PackageVersionUE5 >= ue5PropertyTagCompleteTypeName,
+		saveVersion: o.SaveVersion,
+	}
 	r := newReader(bytes.NewReader(o.Data))
 	od := &ObjectData{Properties: map[string]any{}, Skipped: map[string]string{}}
 
@@ -98,14 +108,14 @@ func ParseObjectData(o Object) (*ObjectData, error) {
 		}
 	}
 
-	if newFormat {
+	if ctx.newFormat {
 		if _, err := r.byte("serialization control"); err != nil {
 			return nil, err
 		}
 	}
 
 	for {
-		name, value, skippedType, done, err := parseProperty(r, newFormat)
+		name, value, skippedType, done, err := parseProperty(r, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -146,12 +156,13 @@ func readObjectRef(r *reader) (ObjectRef, error) {
 
 // propertyTag is the format-independent view of one property's tag.
 type propertyTag struct {
-	name     string
-	typ      string
-	subtype  string // array/set element type, struct type, map key type
-	enumName string // legacy Byte/Enum metadata; new-format Byte child
-	size     int32
-	boolVal  bool
+	name       string
+	typ        string
+	subtype    string // array/set element type, struct type, map key type
+	subsubtype string // array-of-struct struct type (new-format node tree)
+	enumName   string // legacy Byte/Enum metadata; new-format Byte child
+	size       int32
+	boolVal    bool
 }
 
 func parsePropertyTag(r *reader, newFormat bool) (propertyTag, bool, error) {
@@ -165,7 +176,7 @@ func parsePropertyTag(r *reader, newFormat bool) (propertyTag, bool, error) {
 	}
 
 	if newFormat {
-		if tag.typ, tag.subtype, err = readTagNode(r, 0); err != nil {
+		if tag.typ, tag.subtype, tag.subsubtype, err = readTagNode(r, 0); err != nil {
 			return tag, false, err
 		}
 		if tag.typ == "ByteProperty" {
@@ -243,39 +254,41 @@ func parsePropertyTag(r *reader, newFormat bool) (propertyTag, bool, error) {
 	return tag, false, nil
 }
 
-// readTagNode parses an FPropertyTagNode tree, returning the root type name
-// and the first child's name (the element/struct subtype).
-func readTagNode(r *reader, depth int) (name, firstChild string, err error) {
+// readTagNode parses an FPropertyTagNode tree, returning the root type name,
+// the first child's name (element/struct subtype), and the first
+// grandchild's name (array-of-struct struct type).
+func readTagNode(r *reader, depth int) (name, firstChild, firstGrandchild string, err error) {
 	if depth > 8 {
-		return "", "", fmt.Errorf("property tag type tree deeper than %d", depth)
+		return "", "", "", fmt.Errorf("property tag type tree deeper than %d", depth)
 	}
 	if name, err = r.fstring("tag type name"); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	count, err := r.int32("tag type child count")
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	if count < 0 || count > 16 {
-		return "", "", fmt.Errorf("implausible tag type child count %d", count)
+		return "", "", "", fmt.Errorf("implausible tag type child count %d", count)
 	}
 	for i := range count {
-		child, _, err := readTagNode(r, depth+1)
+		child, grandchild, _, err := readTagNode(r, depth+1)
 		if err != nil {
-			return "", "", err
+			return "", "", "", err
 		}
 		if i == 0 {
-			firstChild = child
+			firstChild, firstGrandchild = child, grandchild
 		}
 	}
-	return name, firstChild, nil
+	return name, firstChild, firstGrandchild, nil
 }
 
 // parseProperty reads one tagged property. done is true at the "None"
 // terminator. A non-empty skippedType means the property was present but
-// not decoded (value bytes consumed by size).
-func parseProperty(r *reader, newFormat bool) (name string, value any, skippedType string, done bool, err error) {
-	tag, done, err := parsePropertyTag(r, newFormat)
+// not decoded. The declared value size frames the stream, so value-level
+// failures degrade to Skipped entries instead of aborting the object.
+func parseProperty(r *reader, ctx parseCtx) (name string, value any, skippedType string, done bool, err error) {
+	tag, done, err := parsePropertyTag(r, ctx.newFormat)
 	if err != nil || done {
 		return tag.name, nil, "", done, err
 	}
@@ -283,19 +296,36 @@ func parseProperty(r *reader, newFormat bool) (name string, value any, skippedTy
 		return tag.name, nil, "", false, fmt.Errorf("property %q: implausible size %d", tag.name, tag.size)
 	}
 
-	start := r.off
-	value, skippedType, err = parsePropertyValue(r, tag)
+	valueBytes, err := r.bytes(int(tag.size), "property value")
 	if err != nil {
-		return tag.name, nil, "", false, fmt.Errorf("property %q (%s): %w", tag.name, tag.typ, err)
+		return tag.name, nil, "", false, err
 	}
-	if consumed := r.off - start; consumed != int64(tag.size) {
-		return tag.name, nil, "", false, fmt.Errorf(
-			"property %q (%s): consumed %d bytes of %d declared", tag.name, tag.typ, consumed, tag.size)
+	vr := newReader(bytes.NewReader(valueBytes))
+	value, skippedType, valueErr := parsePropertyValue(vr, tag, ctx)
+	switch {
+	case valueErr != nil:
+		return tag.name, nil, fmt.Sprintf("%s (undecoded: %v)", describeTag(tag), valueErr), false, nil
+	case skippedType != "":
+		return tag.name, nil, skippedType, false, nil
+	case vr.off != int64(tag.size):
+		return tag.name, nil, fmt.Sprintf("%s (decoded %d of %d bytes)", describeTag(tag), vr.off, tag.size), false, nil
 	}
-	return tag.name, value, skippedType, false, nil
+	return tag.name, value, "", false, nil
 }
 
-func parsePropertyValue(r *reader, tag propertyTag) (any, string, error) {
+func describeTag(tag propertyTag) string {
+	desc := tag.typ
+	if tag.subtype != "" {
+		desc += "<" + tag.subtype
+		if tag.subsubtype != "" {
+			desc += "<" + tag.subsubtype + ">"
+		}
+		desc += ">"
+	}
+	return desc
+}
+
+func parsePropertyValue(r *reader, tag propertyTag, ctx parseCtx) (any, string, error) {
 	switch tag.typ {
 	case "BoolProperty":
 		return tag.boolVal, "", nil
@@ -343,20 +373,21 @@ func parsePropertyValue(r *reader, tag propertyTag) (any, string, error) {
 		ref, err := readObjectRef(r)
 		return ref, "", err
 	case "ArrayProperty":
-		return parseArrayValue(r, tag)
-	default:
-		// Struct, Map, Set, Text, SoftObject, and anything newer: skip the
-		// declared value size, record the type.
-		desc := tag.typ
-		if tag.subtype != "" {
-			desc += "<" + tag.subtype + ">"
+		return parseArrayValue(r, tag, ctx)
+	case "StructProperty":
+		if isUndecodableStruct(tag.subtype) {
+			return nil, describeTag(tag), nil
 		}
-		return nil, desc, r.discard(int64(tag.size), "skipped property value")
+		v, err := parseStructValue(r, tag.subtype, ctx)
+		return v, "", err
+	default:
+		// Map, Set, Text, SoftObject, and anything newer: the value bytes
+		// are already framed by size, just record the type.
+		return nil, describeTag(tag), nil
 	}
 }
 
-func parseArrayValue(r *reader, tag propertyTag) (any, string, error) {
-	start := r.off
+func parseArrayValue(r *reader, tag propertyTag, ctx parseCtx) (any, string, error) {
 	count, err := r.int32("array element count")
 	if err != nil {
 		return nil, "", err
@@ -365,15 +396,14 @@ func parseArrayValue(r *reader, tag propertyTag) (any, string, error) {
 		return nil, "", fmt.Errorf("implausible array element count %d", count)
 	}
 
+	if tag.subtype == "StructProperty" {
+		return parseStructArray(r, tag, ctx, count)
+	}
+
 	readElement := arrayElementReader(tag.subtype)
 	if readElement == nil {
-		// Unsupported element type (structs etc.): skip the rest of the
-		// declared value and record it.
-		remaining := int64(tag.size) - (r.off - start)
-		if remaining < 0 {
-			return nil, "", fmt.Errorf("array of %s overran its size", tag.subtype)
-		}
-		return nil, "ArrayProperty<" + tag.subtype + ">", r.discard(remaining, "skipped array")
+		// Unsupported element type: the value bytes are framed by size.
+		return nil, describeTag(tag), nil
 	}
 
 	values := make([]any, 0, count)
@@ -381,6 +411,38 @@ func parseArrayValue(r *reader, tag propertyTag) (any, string, error) {
 		v, err := readElement(r)
 		if err != nil {
 			return nil, "", fmt.Errorf("element %d/%d: %w", i+1, count, err)
+		}
+		values = append(values, v)
+	}
+	return values, "", nil
+}
+
+// parseStructArray reads an array of struct values. Legacy saves (< sv53)
+// carry an inner property tag naming the struct; new-format saves name it
+// in the outer tag's node tree.
+func parseStructArray(r *reader, tag propertyTag, ctx parseCtx, count int32) (any, string, error) {
+	structName := tag.subsubtype
+	if !ctx.newFormat {
+		if ctx.saveVersion >= saveVersionPackageVersions {
+			// sv >= 53 with legacy tags: no struct name available anywhere.
+			// Not observed in real saves (sv53+ always ships UE5 >= 1012).
+			return nil, describeTag(tag), nil
+		}
+		inner, _, err := parsePropertyTag(r, false)
+		if err != nil {
+			return nil, "", fmt.Errorf("array inner struct tag: %w", err)
+		}
+		structName = inner.subtype
+	}
+	if structName == "" || isUndecodableStruct(structName) {
+		return nil, "ArrayProperty<StructProperty<" + structName + ">>", nil
+	}
+
+	values := make([]any, 0, count)
+	for i := range count {
+		v, err := parseStructValue(r, structName, ctx)
+		if err != nil {
+			return nil, "", fmt.Errorf("struct element %d/%d (%s): %w", i+1, count, structName, err)
 		}
 		values = append(values, v)
 	}

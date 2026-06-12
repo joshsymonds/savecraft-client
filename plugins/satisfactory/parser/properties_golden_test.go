@@ -51,9 +51,31 @@ func TestGoldenPlayerPropertiesEarlyGame(t *testing.T) {
 	if !ok || buildGun.Path == "" {
 		t.Errorf("mBuildGun = %v, want non-empty ObjectRef", od.Properties["mBuildGun"])
 	}
-	// Vector structs are not decoded yet — they must land in Skipped.
-	if !strings.Contains(od.Skipped["mLastSafeGroundPositions"], "Vector") {
-		t.Errorf("Skipped[mLastSafeGroundPositions] = %q, want Vector struct", od.Skipped["mLastSafeGroundPositions"])
+	assertSafeGroundVectors(t, od)
+}
+
+// mLastSafeGroundPositions appears three times (a ring buffer) and decodes
+// to world-position vectors — non-zero, within the map's ±500k cm bounds.
+func assertSafeGroundVectors(t *testing.T, od *sav.ObjectData) {
+	t.Helper()
+	vecs, ok := od.Properties["mLastSafeGroundPositions"].([]any)
+	if !ok || len(vecs) != 3 {
+		t.Fatalf("mLastSafeGroundPositions = %v (%T), want 3 vectors",
+			od.Properties["mLastSafeGroundPositions"], od.Properties["mLastSafeGroundPositions"])
+	}
+	for i, v := range vecs {
+		vec, ok := v.([3]float64)
+		if !ok {
+			t.Fatalf("vector %d = %T", i, v)
+		}
+		if vec == ([3]float64{}) {
+			t.Errorf("vector %d is zero", i)
+		}
+		for _, c := range vec {
+			if c < -500_000 || c > 500_000 {
+				t.Errorf("vector %d component %v outside map bounds", i, c)
+			}
+		}
 	}
 }
 
@@ -74,9 +96,7 @@ func TestGoldenPlayerPropertiesCurrent12(t *testing.T) {
 	if !ok || buildGun.Path == "" {
 		t.Errorf("mBuildGun = %v, want non-empty ObjectRef", od.Properties["mBuildGun"])
 	}
-	if !strings.Contains(od.Skipped["mLastSafeGroundPositions"], "Vector") {
-		t.Errorf("Skipped[mLastSafeGroundPositions] = %q, want Vector struct", od.Skipped["mLastSafeGroundPositions"])
-	}
+	assertSafeGroundVectors(t, od)
 }
 
 // Decode every buildable factory machine in the megafactory while holding

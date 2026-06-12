@@ -20,9 +20,10 @@ func newPropWriter(newFormat bool) *propWriter {
 
 // tagMeta carries the per-type tag fields that differ between formats.
 type tagMeta struct {
-	subtype  string // array/set element type, struct type, map key type
-	enumName string // legacy Byte/Enum tag metadata
-	boolVal  bool
+	subtype    string // array/set element type, struct type, map key type
+	subsubtype string // array-of-struct: the struct type (new-format node tree)
+	enumName   string // legacy Byte/Enum tag metadata
+	boolVal    bool
 }
 
 func (w *propWriter) writeTag(name, typ string, size int32, meta tagMeta) {
@@ -41,7 +42,13 @@ func (w *propWriter) writeTag(name, typ string, size int32, meta tagMeta) {
 				child = meta.enumName
 			}
 			writeFString(w.buf, child, false)
-			writeI32(w.buf, 0) // grandchildren
+			if meta.subsubtype != "" {
+				writeI32(w.buf, 1) // grandchildren
+				writeFString(w.buf, meta.subsubtype, false)
+				writeI32(w.buf, 0)
+			} else {
+				writeI32(w.buf, 0) // grandchildren
+			}
 		}
 		writeI32(w.buf, size)
 		var flags byte
@@ -76,9 +83,17 @@ func (w *propWriter) writeTag(name, typ string, size int32, meta tagMeta) {
 	w.buf.WriteByte(0) // no property GUID
 }
 
+// end terminates a TOP-LEVEL property list: "None" plus the trailing
+// hasGuid int32 that follows an object's list.
 func (w *propWriter) end() {
 	writeFString(w.buf, "None", false)
 	writeI32(w.buf, 0) // hasGuid
+}
+
+// endList terminates a NESTED property list (generic struct values): bare
+// "None" with no trailing fields.
+func (w *propWriter) endList() {
+	writeFString(w.buf, "None", false)
 }
 
 func fstringBytes(s string) []byte {
