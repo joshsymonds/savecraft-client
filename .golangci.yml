@@ -563,6 +563,17 @@ linters:
           - godox
           - govet
 
+      # Binary format parser (same rationale as d2r above)
+      - path: plugins/satisfactory/.*\.go
+        linters:
+          - gocognit
+          - gocyclo
+          - cyclop
+          - funlen
+          - mnd
+          - varnamelen
+          - gosec
+
       # Entrypoints — ldflags injection targets must be package-level vars
       - path: cmd/savecraftd/main\.go
         linters:
