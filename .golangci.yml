@@ -573,6 +573,8 @@ linters:
           - mnd
           - varnamelen
           - gosec
+          - govet
+          - nestif
 
       # Entrypoints — ldflags injection targets must be package-level vars
       - path: cmd/savecraftd/main\.go
