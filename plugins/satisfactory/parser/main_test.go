@@ -36,7 +36,9 @@ func testState() *saveState {
 			sav.ObjectRef{Path: schematicBase + "/Progression/Schematic_1-1.Schematic_1-1_C"},
 			sav.ObjectRef{Path: schematicBase + "/Progression/Schematic_5-2.Schematic_5-2_C"},
 			sav.ObjectRef{Path: schematicBase + "/Research/Schematic_Caterium1.Schematic_Caterium1_C"},
-			sav.ObjectRef{Path: schematicBase + "/Alternate/Schematic_Alternate_WetConcrete.Schematic_Alternate_WetConcrete_C"},
+			sav.ObjectRef{
+				Path: schematicBase + "/Alternate/Schematic_Alternate_WetConcrete.Schematic_Alternate_WetConcrete_C",
+			},
 			sav.ObjectRef{Path: schematicBase + "/ResourceSink/Schematic_Sink_Coupon1.Schematic_Sink_Coupon1_C"},
 		},
 		"mActiveSchematic": sav.ObjectRef{Path: "/Game/X/Schematic_5-3.Schematic_5-3_C"},
