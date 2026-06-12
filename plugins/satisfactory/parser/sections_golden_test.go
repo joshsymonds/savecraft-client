@@ -102,6 +102,44 @@ func TestGoldenSectionsCurrent12(t *testing.T) {
 	}
 }
 
+// Megafactory factory sections, pinned from a probed run: 3,622
+// manufacturers across 146 recipe/clock groups, 621 extractors, 81 power
+// circuits, 384 coal generators.
+func TestGoldenFactorySectionsMegafactory(t *testing.T) {
+	state := parseFixtureSections(t, "megafactory.sav")
+
+	machines := state.buildMachinesSection()
+	if machines["totalManufacturers"] != 3622 {
+		t.Errorf("totalManufacturers = %v, want 3622", machines["totalManufacturers"])
+	}
+	if machines["totalExtractors"] != 621 {
+		t.Errorf("totalExtractors = %v, want 621", machines["totalExtractors"])
+	}
+
+	prod := state.buildProductionSection()
+	recipes, _ := prod["byRecipe"].([]map[string]any)
+	if len(recipes) != 96 {
+		t.Errorf("byRecipe = %d entries, want 96", len(recipes))
+	}
+	if recipes[0]["recipe"] != "Pure Aluminum Ingot" || recipes[0]["machines"] != 257 {
+		t.Errorf("top recipe = %v %v, want Pure Aluminum Ingot x257", recipes[0]["recipe"], recipes[0]["machines"])
+	}
+
+	power := state.buildPowerSection()
+	if power["circuits"] != 81 {
+		t.Errorf("circuits = %v, want 81", power["circuits"])
+	}
+	generators, _ := power["generators"].([]map[string]any)
+	if len(generators) == 0 || generators[0]["building"] != "Generator Coal" || generators[0]["count"] != 384 {
+		t.Errorf("top generators = %v, want 384 coal", generators[0])
+	}
+	// Measured productivity comes from the save's rolling window — sanity
+	// band, not exact, in case of float drift across architectures.
+	if pct, ok := generators[0]["measuredProductivityPct"].(float64); !ok || pct < 80 || pct > 90 {
+		t.Errorf("coal productivity = %v, want ~83", generators[0]["measuredProductivityPct"])
+	}
+}
+
 // The whole result line must stay under the daemon's 2MB cap even for a
 // megafactory.
 func TestGoldenResultSizeMegafactory(t *testing.T) {

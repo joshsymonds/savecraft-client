@@ -22,6 +22,12 @@ type saveState struct {
 	playerCount     int
 	playerPosition  [3]float32
 	playerInventory map[string]*sav.ObjectData // slot suffix -> decoded component
+
+	manufacturers       []machineRecord
+	extractors          []machineRecord
+	generators          []machineRecord
+	powerStorageCharges []float64
+	powerCircuits       int
 }
 
 func newSaveState(header *sav.Header) *saveState {
@@ -46,7 +52,10 @@ func (s *saveState) want(o sav.ObjectHeader) bool {
 		strings.Contains(o.InstanceName, "Char_Player") {
 		return true
 	}
-	return false
+	if strings.HasSuffix(o.ClassPath, ".FGPowerCircuit") {
+		return true
+	}
+	return factoryKind(o.ClassPath) != ""
 }
 
 func (s *saveState) collect(o sav.Object) error {
@@ -74,6 +83,10 @@ func (s *saveState) collect(o sav.Object) error {
 			s.playerPosition = o.Translation
 		}
 		s.playerCount++
+	case strings.HasSuffix(o.ClassPath, ".FGPowerCircuit"):
+		s.powerCircuits++
+	case factoryKind(o.ClassPath) != "":
+		s.collectFactory(factoryKind(o.ClassPath), o, od)
 	default: // player inventory component
 		slot := o.InstanceName[strings.LastIndex(o.InstanceName, ".")+1:]
 		// Multiplayer: keep the first (host) player's components only.
@@ -305,6 +318,18 @@ func (s *saveState) buildResult() map[string]any {
 		"player": map[string]any{
 			"description": "Player state: inventory items with counts, equipped gear, position, unlocked inventory size — use to check what materials are on hand",
 			"data":        s.buildPlayerSection(),
+		},
+		"machines": map[string]any{
+			"description": "Built production machines aggregated by building + recipe + clock speed, with producing counts and measured productivity (rolling in-game window); extractors by type — use to assess factory layout and find idle or starved machines",
+			"data":        s.buildMachinesSection(),
+		},
+		"production_summary": map[string]any{
+			"description": "Machines aggregated per recipe with total clock multipliers and measured productivity. Per-minute item rates are theoretical and require recipe reference data (not yet included) — do not invent rates; totalClock x recipe base rate gives max output once reference data is available",
+			"data":        s.buildProductionSection(),
+		},
+		"power": map[string]any{
+			"description": "Power grid: circuit count, generators by type and fuel with producing counts, battery storage charge — use to assess generation mix; MW capacity requires reference data, so counts are what the save provides",
+			"data":        s.buildPowerSection(),
 		},
 	}
 	return map[string]any{
