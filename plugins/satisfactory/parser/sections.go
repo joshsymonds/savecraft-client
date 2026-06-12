@@ -205,9 +205,16 @@ func (s *saveState) buildProgressionSection() map[string]any {
 	sort.Strings(alternates)
 	sort.Strings(alternateClasses)
 
+	milestoneClasses := make([]string, 0, len(groups.milestones))
+	for _, m := range groups.milestones {
+		milestoneClasses = append(milestoneClasses, m[strings.LastIndex(m, ".")+1:])
+	}
+	sort.Strings(milestoneClasses)
+
 	data := map[string]any{
 		"currentTier":          groups.currentTier(),
 		"milestonesPurchased":  len(groups.milestones),
+		"milestoneClassNames":  milestoneClasses,
 		"milestonesPerTier":    tierCounts,
 		"mamResearchCompleted": groups.mam,
 		"shopPurchases":        groups.shop,

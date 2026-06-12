@@ -40,6 +40,19 @@ requires_save = false
 progression = "progression"
 production_summary = "production_summary"
 
+[reference.modules.milestone_navigator]
+name = "Milestone Navigator"
+description = "Navigate Satisfactory tiers and milestones: exact costs and recipe unlocks per milestone, full tier listings, and — with save_id — every remaining milestone to a target tier with cumulative item costs based on what the player already purchased. Use for 'what do I need for Tier N' and unlock-path questions."
+requires_save = false
+
+[reference.modules.milestone_navigator.section_mappings]
+progression = "progression"
+
+[reference.modules.power_calculator]
+name = "Power Calculator"
+description = "Size Satisfactory generator farms: target megawatts returns generator counts per type, fuel consumption per minute for every accepted fuel, supplemental water rates, and nuclear waste output. Use for any power planning or 'how many generators / how much fuel' question."
+requires_save = false
+
 [default_paths]
 windows = "%LOCALAPPDATA%/FactoryGame/Saved/SaveGames/*"
 linux = "~/.steam/steam/steamapps/compatdata/526870/pfx/drive_c/users/steamuser/AppData/Local/FactoryGame/Saved/SaveGames/*"
