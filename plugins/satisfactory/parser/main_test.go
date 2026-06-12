@@ -28,7 +28,20 @@ func testState() *saveState {
 	s.playerCount = 1
 	s.playerPosition = [3]float32{100, -200, 300}
 	s.gameState = &sav.ObjectData{Properties: map[string]any{
-		"mIsSpaceElevatorBuilt": true,
+		"mIsSpaceElevatorBuilt":     true,
+		"mPartsCostMultiplier":      0.75,
+		"mEnergyCostMultiplier":     0.5,
+		"mSpacePartsCostMultiplier": 2.0,
+		"mNodeRandomization":        "ENodeRandomizationMode::NRM_Strict",
+		"mNodePuritySettings":       "ENodePuritySettings::NPS_Increase",
+		"mNodeRandomizationSeed":    int64(42),
+		"mCheatNoPower":             true,
+		"mCheatNoFuel":              true,
+	}}
+	s.gameRules = &sav.ObjectData{Properties: map[string]any{
+		"mStartingTier":            int64(3),
+		"mNoUnlockCost":            true,
+		"mUnlockInstantAltRecipes": true,
 	}}
 	schematicBase := "/Game/FactoryGame/Schematics"
 	s.schematics = &sav.ObjectData{Properties: map[string]any{
@@ -173,6 +186,41 @@ func TestBuildOverviewSection(t *testing.T) {
 	}
 	if data["gameBuild"] != int32(423794) {
 		t.Errorf("gameBuild = %v (%T)", data["gameBuild"], data["gameBuild"])
+	}
+
+	gm, _ := data["gameMode"].(map[string]any)
+	if gm == nil {
+		t.Fatal("gameMode missing from overview")
+	}
+	if gm["partsCostMultiplier"] != 0.75 || gm["energyCostMultiplier"] != 0.5 ||
+		gm["spacePartsCostMultiplier"] != 2.0 {
+		t.Errorf("multipliers = %v", gm)
+	}
+	if gm["nodeRandomization"] != "NRM_Strict" || gm["nodePurity"] != "NPS_Increase" {
+		t.Errorf("node settings = %v", gm)
+	}
+	if gm["nodeRandomizationSeed"] != int64(42) {
+		t.Errorf("seed = %v (%T)", gm["nodeRandomizationSeed"], gm["nodeRandomizationSeed"])
+	}
+	if gm["cheatNoPower"] != true || gm["cheatNoFuel"] != true {
+		t.Errorf("cheats = %v", gm)
+	}
+	if _, ok := gm["cheatNoCost"]; ok {
+		t.Errorf("cheatNoCost should be omitted when absent: %v", gm)
+	}
+	if gm["startingTier"] != int64(3) || gm["noUnlockCost"] != true ||
+		gm["unlockInstantAltRecipes"] != true {
+		t.Errorf("game rules = %v", gm)
+	}
+}
+
+// A vanilla save serializes none of the Game Mode properties (UE omits
+// defaults), so the overview must omit gameMode entirely.
+func TestOverviewOmitsVanillaGameMode(t *testing.T) {
+	s := newSaveState(testHeader())
+	s.gameState = &sav.ObjectData{Properties: map[string]any{"mIsSpaceElevatorBuilt": true}}
+	if _, ok := s.buildOverviewSection()["gameMode"]; ok {
+		t.Error("vanilla state should have no gameMode key")
 	}
 }
 

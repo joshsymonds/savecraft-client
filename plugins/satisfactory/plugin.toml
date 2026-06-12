@@ -34,12 +34,13 @@ requires_save = false
 
 [reference.modules.production_planner]
 name = "Production Planner"
-description = "Plan a full Satisfactory production chain: target item and rate per minute returns machine counts per recipe, raw ore/fluid requirements, byproducts, and total power draw. Pass save_id to plan with the player's actual unlocked alternate recipes and see which machines they already have. Use for any 'how do I make N per minute of X' or factory scaling question."
+description = "Plan a full Satisfactory production chain: target item and rate per minute returns machine counts per recipe, raw ore/fluid requirements, byproducts, and total power draw. Pass save_id to plan with the player's actual unlocked alternate recipes, existing machine capacity, and the session's Game Mode economy multipliers (1.2 parts cost / power consumption) applied automatically. Use for any 'how do I make N per minute of X' or factory scaling question."
 requires_save = false
 
 [reference.modules.production_planner.section_mappings]
 progression = "progression"
 production_summary = "production_summary"
+game_overview = "game_overview"
 
 [reference.modules.milestone_navigator]
 name = "Milestone Navigator"

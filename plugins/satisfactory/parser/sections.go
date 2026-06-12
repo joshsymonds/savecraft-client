@@ -14,6 +14,7 @@ type saveState struct {
 	header *sav.Header
 
 	gameState  *sav.ObjectData
+	gameRules  *sav.ObjectData
 	schematics *sav.ObjectData
 	gamePhase  *sav.ObjectData
 	research   *sav.ObjectData
@@ -62,6 +63,7 @@ func newSaveState(header *sav.Header) *saveState {
 func (s *saveState) want(o sav.ObjectHeader) bool {
 	switch {
 	case strings.HasSuffix(o.ClassPath, ".BP_GameState_C"),
+		strings.HasSuffix(o.ClassPath, ".FGGameRulesSubsystem"),
 		strings.HasSuffix(o.ClassPath, ".BP_SchematicManager_C"),
 		strings.HasSuffix(o.ClassPath, ".BP_GamePhaseManager_C"),
 		strings.HasSuffix(o.ClassPath, ".BP_ResearchManager_C"),
@@ -91,6 +93,8 @@ func (s *saveState) collect(o sav.Object) error {
 	switch {
 	case strings.HasSuffix(o.ClassPath, ".BP_GameState_C"):
 		s.gameState = od
+	case strings.HasSuffix(o.ClassPath, ".FGGameRulesSubsystem"):
+		s.gameRules = od
 	case strings.HasSuffix(o.ClassPath, ".BP_SchematicManager_C"):
 		s.schematics = od
 	case strings.HasSuffix(o.ClassPath, ".BP_GamePhaseManager_C"):
@@ -326,7 +330,66 @@ func (s *saveState) buildOverviewSection() map[string]any {
 	if s.playerCount > 0 {
 		data["players"] = s.playerCount
 	}
+	if gm := s.gameModeSettings(); len(gm) > 0 {
+		data["gameMode"] = gm
+	}
 	return data
+}
+
+// gameModeSettings reads the 1.2 Game Mode economy multipliers, node
+// settings, and AGS session rules from the game state and rules subsystem.
+// UE omits default-valued properties from the save, so presence implies
+// non-default; an empty map means a vanilla session.
+func (s *saveState) gameModeSettings() map[string]any {
+	gm := map[string]any{}
+	for key, name := range map[string]string{
+		"partsCostMultiplier":      "mPartsCostMultiplier",
+		"energyCostMultiplier":     "mEnergyCostMultiplier",
+		"spacePartsCostMultiplier": "mSpacePartsCostMultiplier",
+	} {
+		if v, ok := prop[float64](s.gameState, name); ok {
+			gm[key] = v
+		}
+	}
+	if v, ok := prop[string](s.gameState, "mNodeRandomization"); ok {
+		gm["nodeRandomization"] = enumShort(v)
+	}
+	if v, ok := prop[string](s.gameState, "mNodePuritySettings"); ok {
+		gm["nodePurity"] = enumShort(v)
+	}
+	if v, ok := prop[int64](s.gameState, "mNodeRandomizationSeed"); ok {
+		gm["nodeRandomizationSeed"] = v
+	}
+	for key, name := range map[string]string{
+		"cheatNoPower": "mCheatNoPower",
+		"cheatNoCost":  "mCheatNoCost",
+		"cheatNoFuel":  "mCheatNoFuel",
+	} {
+		if v, ok := prop[bool](s.gameState, name); ok && v {
+			gm[key] = true
+		}
+	}
+	if v, ok := prop[int64](s.gameRules, "mStartingTier"); ok {
+		gm["startingTier"] = v
+	}
+	for key, name := range map[string]string{
+		"noUnlockCost":            "mNoUnlockCost",
+		"unlockInstantAltRecipes": "mUnlockInstantAltRecipes",
+	} {
+		if v, ok := prop[bool](s.gameRules, name); ok && v {
+			gm[key] = true
+		}
+	}
+	return gm
+}
+
+// enumShort trims the UE enum type prefix: "ENodeRandomizationMode::NRM_Strict"
+// → "NRM_Strict". Unknown future values pass through untouched.
+func enumShort(v string) string {
+	if i := strings.LastIndex(v, "::"); i >= 0 {
+		return v[i+2:]
+	}
+	return v
 }
 
 func (s *saveState) buildSummary() string {
@@ -347,7 +410,7 @@ func (s *saveState) buildSummary() string {
 func (s *saveState) buildResult() map[string]any {
 	sections := map[string]any{
 		"game_overview": map[string]any{
-			"description": "Save metadata: session name, playtime, game build, save timestamp, creative/modded flags, space elevator status — fetch first to orient on which factory world this is",
+			"description": "Save metadata: session name, playtime, game build, save timestamp, creative/modded flags, space elevator status, and gameMode (1.2 Game Mode economy multipliers, node randomization, AGS cheats; absent = vanilla) — fetch first to orient on which factory world this is. When gameMode multipliers are present, vanilla recipe ratios do NOT apply; production_planner accounts for them automatically",
 			"data":        s.buildOverviewSection(),
 		},
 		"progression": map[string]any{

@@ -100,6 +100,29 @@ func TestGoldenSectionsCurrent12(t *testing.T) {
 	if len(items) != 30 {
 		t.Errorf("inventory items = %d, want 30", len(items))
 	}
+
+	// This session was created with non-default 1.2 Game Modes (probed).
+	gm, _ := state.buildOverviewSection()["gameMode"].(map[string]any)
+	if gm == nil {
+		t.Fatal("gameMode missing from current_1_2 overview")
+	}
+	if gm["partsCostMultiplier"] != 0.75 || gm["energyCostMultiplier"] != 0.5 ||
+		gm["spacePartsCostMultiplier"] != 0.75 {
+		t.Errorf("multipliers = %v", gm)
+	}
+	if gm["nodeRandomization"] != "NRM_Strict" || gm["nodePurity"] != "NPS_Increase" {
+		t.Errorf("node settings = %v", gm)
+	}
+	if gm["nodeRandomizationSeed"] != int64(1231861653) {
+		t.Errorf("seed = %v (%T)", gm["nodeRandomizationSeed"], gm["nodeRandomizationSeed"])
+	}
+	if gm["cheatNoPower"] != true || gm["cheatNoFuel"] != true {
+		t.Errorf("cheats = %v", gm)
+	}
+	if gm["startingTier"] != int64(6) || gm["noUnlockCost"] != true ||
+		gm["unlockInstantAltRecipes"] != true {
+		t.Errorf("game rules = %v", gm)
+	}
 }
 
 // Megafactory factory sections, pinned from a probed run: 3,622
@@ -107,6 +130,11 @@ func TestGoldenSectionsCurrent12(t *testing.T) {
 // circuits, 384 coal generators.
 func TestGoldenFactorySectionsMegafactory(t *testing.T) {
 	state := parseFixtureSections(t, "megafactory.sav")
+
+	// Vanilla session: no Game Mode properties serialized, no gameMode key.
+	if _, ok := state.buildOverviewSection()["gameMode"]; ok {
+		t.Error("megafactory (vanilla) should have no gameMode key")
+	}
 
 	machines := state.buildMachinesSection()
 	if machines["totalManufacturers"] != 3622 {
