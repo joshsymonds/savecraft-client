@@ -325,3 +325,48 @@ func TestSizeMismatchErrors(t *testing.T) {
 		t.Error("ParseObjectData = nil error, want size mismatch failure")
 	}
 }
+
+// FText values: culture-invariant (history None, user-entered names) and
+// Base (namespaced source strings) decode; other history types skip.
+func TestParseTextProperty(t *testing.T) {
+	od := parseProps(t, false, false, func(w *propWriter) {
+		invariant := &bytes.Buffer{}
+		writeU32(invariant, 2)    // flags
+		invariant.WriteByte(0xFF) // history type None (-1)
+		writeI32(invariant, 1)    // has culture invariant string
+		invariant.Write(fstringBytes("Almet Copper Mine"))
+		w.writeTag("stationName", "TextProperty", int32(invariant.Len()), tagMeta{})
+		w.buf.Write(invariant.Bytes())
+
+		base := &bytes.Buffer{}
+		writeU32(base, 0)
+		base.WriteByte(0) // history type Base
+		base.Write(fstringBytes("NS"))
+		base.Write(fstringBytes("KEY"))
+		base.Write(fstringBytes("Hello"))
+		w.writeTag("baseText", "TextProperty", int32(base.Len()), tagMeta{})
+		w.buf.Write(base.Bytes())
+
+		odd := &bytes.Buffer{}
+		writeU32(odd, 0)
+		odd.WriteByte(3) // unsupported history type
+		odd.Write(make([]byte, 6))
+		w.writeTag("weirdText", "TextProperty", int32(odd.Len()), tagMeta{})
+		w.buf.Write(odd.Bytes())
+
+		w.writeTag("after", "IntProperty", 4, tagMeta{})
+		writeI32(w.buf, 7)
+	})
+	if od.Properties["stationName"] != "Almet Copper Mine" {
+		t.Errorf("stationName = %v", od.Properties["stationName"])
+	}
+	if od.Properties["baseText"] != "Hello" {
+		t.Errorf("baseText = %v", od.Properties["baseText"])
+	}
+	if od.Skipped["weirdText"] == "" {
+		t.Errorf("weirdText not skipped: %v", od.Skipped)
+	}
+	if od.Properties["after"] != int64(7) {
+		t.Errorf("after = %v (misaligned)", od.Properties["after"])
+	}
+}

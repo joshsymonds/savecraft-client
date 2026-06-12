@@ -50,6 +50,7 @@ type machineRecord struct {
 	clock        float64
 	producing    bool
 	productivity float64 // measured produce/duration ratio, -1 if absent
+	node         string  // extractors: occupied resource node instance path
 }
 
 func (s *saveState) collectFactory(kind string, o sav.Object, od *sav.ObjectData) {
@@ -69,6 +70,9 @@ func (s *saveState) collectFactory(kind string, o sav.Object, od *sav.ObjectData
 	}
 	if fuel, ok := prop[sav.ObjectRef](od, "mCurrentFuelClass"); ok {
 		rec.fuel = fuel.Path
+	}
+	if node, ok := prop[sav.ObjectRef](od, "mExtractableResource"); ok {
+		rec.node = node.Path
 	}
 	duration, okDuration := prop[float64](od, "mLastProductivityMeasurementDuration")
 	produce, okProduce := prop[float64](od, "mLastProductivityMeasurementProduceDuration")

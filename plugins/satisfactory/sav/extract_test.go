@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func extractObjects(t *testing.T, saveVersion int32, levels []synthLevel, want func(string) bool) []Object {
+func extractObjects(t *testing.T, saveVersion int32, levels []synthLevel, want func(ObjectHeader) bool) []Object {
 	t.Helper()
 	body := buildBody(t, saveVersion, levels)
 	var got []Object
@@ -22,7 +22,7 @@ func extractObjects(t *testing.T, saveVersion int32, levels []synthLevel, want f
 }
 
 func TestExtractFilteredSV46(t *testing.T) {
-	want := func(cls string) bool { return strings.Contains(cls, "FGInventoryComponent") }
+	want := func(o ObjectHeader) bool { return strings.Contains(o.ClassPath, "FGInventoryComponent") }
 	got := extractObjects(t, 46, standardLevels(46), want)
 
 	if len(got) != 1 {
@@ -44,7 +44,7 @@ func TestExtractFilteredSV46(t *testing.T) {
 // synthetic builder attaches one to the FIRST object of each level, so
 // extracting a LATER object proves the framing was consumed correctly.
 func TestExtractAfterVersionDataBlockSV58(t *testing.T) {
-	want := func(cls string) bool { return strings.Contains(cls, "FGInventoryComponent") }
+	want := func(o ObjectHeader) bool { return strings.Contains(o.ClassPath, "FGInventoryComponent") }
 	got := extractObjects(t, 58, standardLevels(58), want)
 
 	if len(got) != 1 {
@@ -56,7 +56,7 @@ func TestExtractAfterVersionDataBlockSV58(t *testing.T) {
 }
 
 func TestExtractAll(t *testing.T) {
-	got := extractObjects(t, 58, standardLevels(58), func(string) bool { return true })
+	got := extractObjects(t, 58, standardLevels(58), func(ObjectHeader) bool { return true })
 	if len(got) != 3 {
 		t.Fatalf("got %d objects, want 3", len(got))
 	}
@@ -68,7 +68,7 @@ func TestExtractAll(t *testing.T) {
 }
 
 func TestExtractNothingMatches(t *testing.T) {
-	got := extractObjects(t, 46, standardLevels(46), func(string) bool { return false })
+	got := extractObjects(t, 46, standardLevels(46), func(ObjectHeader) bool { return false })
 	if len(got) != 0 {
 		t.Fatalf("got %d objects, want 0", len(got))
 	}
@@ -91,7 +91,7 @@ func TestExtractCountMismatch(t *testing.T) {
 	binary.LittleEndian.PutUint32(body[countOffset:], 999)
 
 	err := Extract(testHeaderFor(46), bytes.NewReader(body),
-		func(string) bool { return true },
+		func(ObjectHeader) bool { return true },
 		func(Object) error { return nil })
 	if err == nil {
 		t.Fatal("Extract = nil error, want count mismatch failure")
@@ -104,7 +104,7 @@ func TestExtractCountMismatch(t *testing.T) {
 func TestExtractPerLevelVersionDivergence(t *testing.T) {
 	levels := standardLevels(58)
 	levels[0].version = 46 // stale sublevel TOC: no object flags
-	want := func(cls string) bool { return strings.Contains(cls, "FGFactoryConnectionComponent") }
+	want := func(o ObjectHeader) bool { return strings.Contains(o.ClassPath, "FGFactoryConnectionComponent") }
 	got := extractObjects(t, 58, levels, want)
 
 	if len(got) != 1 {

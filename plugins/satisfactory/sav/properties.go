@@ -372,6 +372,8 @@ func parsePropertyValue(r *reader, tag propertyTag, ctx parseCtx) (any, string, 
 	case "ObjectProperty", "InterfaceProperty":
 		ref, err := readObjectRef(r)
 		return ref, "", err
+	case "TextProperty":
+		return parseTextValue(r)
 	case "ArrayProperty":
 		return parseArrayValue(r, tag, ctx)
 	case "StructProperty":
@@ -447,6 +449,43 @@ func parseStructArray(r *reader, tag propertyTag, ctx parseCtx, count int32) (an
 		values = append(values, v)
 	}
 	return values, "", nil
+}
+
+// parseTextValue decodes an FText: uint32 flags, int8 history type, then a
+// history-specific payload. Culture-invariant (None, the form user-entered
+// names like train stations take) and Base texts decode; other history
+// types degrade to Skipped via the lenient value path.
+func parseTextValue(r *reader) (any, string, error) {
+	if err := r.discard(4, "text flags"); err != nil {
+		return nil, "", err
+	}
+	historyType, err := r.byte("text history type")
+	if err != nil {
+		return nil, "", err
+	}
+	switch int8(historyType) {
+	case -1: // None
+		hasString, err := r.int32("culture invariant flag")
+		if err != nil {
+			return nil, "", err
+		}
+		if hasString != 1 {
+			return "", "", nil
+		}
+		s, err := r.fstring("text value")
+		return s, "", err
+	case 0: // Base
+		if _, err := r.fstring("text namespace"); err != nil {
+			return nil, "", err
+		}
+		if _, err := r.fstring("text key"); err != nil {
+			return nil, "", err
+		}
+		s, err := r.fstring("text source")
+		return s, "", err
+	default:
+		return nil, "", fmt.Errorf("unsupported text history type %d", int8(historyType))
+	}
 }
 
 // arrayElementReader returns a reader for supported array element types, or

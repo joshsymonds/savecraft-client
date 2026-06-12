@@ -140,6 +140,64 @@ func TestGoldenFactorySectionsMegafactory(t *testing.T) {
 	}
 }
 
+// Storage/logistics/resource_nodes pinned from a probed megafactory run:
+// 452 containers, 14.6M nitrogen gas in storage, 96 depot items, 64 trains
+// with player-named stations decoded from TextProperties.
+func TestGoldenLogisticsSectionsMegafactory(t *testing.T) {
+	state := parseFixtureSections(t, "megafactory.sav")
+
+	storage := state.buildStorageSection()
+	containers, _ := storage["containers"].(map[string]int)
+	if containers["Storage Container Mk2"] != 396 || containers["Storage Container Mk1"] != 56 {
+		t.Errorf("containers = %v, want 396 Mk2 + 56 Mk1", containers)
+	}
+	items, _ := storage["itemsInStorage"].([]map[string]any)
+	if len(items) != 93 {
+		t.Errorf("itemsInStorage = %d entries, want 93", len(items))
+	}
+	if len(items) > 0 && (items[0]["name"] != "Nitrogen Gas" || items[0]["count"] != int64(14604451)) {
+		t.Errorf("top stored item = %v %v, want Nitrogen Gas x14604451", items[0]["name"], items[0]["count"])
+	}
+	depot, _ := storage["dimensionalDepot"].(map[string]any)
+	depotItems, _ := depot["items"].([]map[string]any)
+	if len(depotItems) != 96 {
+		t.Errorf("depot items = %d, want 96", len(depotItems))
+	}
+
+	logistics := state.buildLogisticsSection()
+	trains, _ := logistics["trains"].(map[string]any)
+	if trains["trains"] != 64 || trains["locomotives"] != 91 || trains["freightWagons"] != 259 {
+		t.Errorf("trains = %v, want 64/91/259", trains)
+	}
+	if trains["stations"] != 82 || trains["timetables"] != 64 {
+		t.Errorf("stations = %v timetables = %v, want 82/64", trains["stations"], trains["timetables"])
+	}
+	stationNames, _ := trains["stationNames"].([]string)
+	if len(stationNames) != 82 || stationNames[0] != "Air-Liquide Eneco Exp" {
+		t.Errorf("stationNames = %d first %q, want 82 starting with Air-Liquide Eneco Exp",
+			len(stationNames), first(stationNames))
+	}
+	drones, _ := logistics["drones"].(map[string]any)
+	droneNames, _ := drones["stationNames"].([]string)
+	if drones["drones"] != 12 || len(droneNames) != 13 {
+		t.Errorf("drones = %v with %d stations, want 12/13", drones["drones"], len(droneNames))
+	}
+
+	// 621 extractors occupy 176 distinct sources: 451 water pumps share
+	// water volumes, miners sit one-per-node.
+	nodes := state.buildResourceNodesSection()
+	if nodes["occupiedNodes"] != 176 {
+		t.Errorf("occupiedNodes = %v, want 176", nodes["occupiedNodes"])
+	}
+}
+
+func first(s []string) string {
+	if len(s) == 0 {
+		return ""
+	}
+	return s[0]
+}
+
 // The whole result line must stay under the daemon's 2MB cap even for a
 // megafactory.
 func TestGoldenResultSizeMegafactory(t *testing.T) {

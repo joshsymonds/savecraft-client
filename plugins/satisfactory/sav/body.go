@@ -127,10 +127,10 @@ func WalkObjects(h *Header, body io.Reader, fn func(ObjectHeader) error) error {
 }
 
 // Extract streams the save body and invokes fn with header plus raw data
-// bytes for every object whose class path satisfies want. Non-matching
-// objects' data is discarded without buffering, so memory stays bounded by
-// the largest sublevel blob plus the largest matching object.
-func Extract(h *Header, body io.Reader, want func(classPath string) bool, fn func(Object) error) error {
+// bytes for every object whose header satisfies want. Non-matching objects'
+// data is discarded without buffering, so memory stays bounded by the
+// largest sublevel blob plus the largest matching object.
+func Extract(h *Header, body io.Reader, want func(ObjectHeader) bool, fn func(Object) error) error {
 	w := &walker{h: h, want: want, dataFn: fn, ue5: ue5DefaultVersion}
 	return w.walk(newReader(body))
 }
@@ -141,7 +141,7 @@ func Extract(h *Header, body io.Reader, want func(classPath string) bool, fn fun
 type walker struct {
 	h        *Header
 	headerFn func(ObjectHeader) error
-	want     func(string) bool
+	want     func(ObjectHeader) bool
 	dataFn   func(Object) error
 	ue5      int32 // save-global UE5 package version
 }
@@ -364,7 +364,7 @@ func (w *walker) collectTOC(r *reader, levelName string, levelVersion int32) (*t
 				return nil, err
 			}
 		}
-		if mask != nil && w.want(obj.ClassPath) {
+		if mask != nil && w.want(obj) {
 			mask.wanted[i] = true
 			mask.headers[int(i)] = obj
 		}

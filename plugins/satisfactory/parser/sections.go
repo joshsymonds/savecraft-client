@@ -28,10 +28,31 @@ type saveState struct {
 	generators          []machineRecord
 	powerStorageCharges []float64
 	powerCircuits       int
+
+	containerCounts   map[string]int
+	storedItems       map[string]int64 // item class -> total across containers
+	centralStorage    *sav.ObjectData
+	trains            int
+	locomotives       int
+	wagons            int
+	trainStations     int
+	trainStationNames []string
+	timetables        int
+	timetableStops    int
+	drones            int
+	droneStationNames []string
+	truckStations     int
+	vehicleCounts     map[string]int
 }
 
 func newSaveState(header *sav.Header) *saveState {
-	return &saveState{header: header, playerInventory: map[string]*sav.ObjectData{}}
+	return &saveState{
+		header:          header,
+		playerInventory: map[string]*sav.ObjectData{},
+		containerCounts: map[string]int{},
+		storedItems:     map[string]int64{},
+		vehicleCounts:   map[string]int{},
+	}
 }
 
 // want selects the objects the current sections need: progression manager
@@ -55,7 +76,7 @@ func (s *saveState) want(o sav.ObjectHeader) bool {
 	if strings.HasSuffix(o.ClassPath, ".FGPowerCircuit") {
 		return true
 	}
-	return factoryKind(o.ClassPath) != ""
+	return factoryKind(o.ClassPath) != "" || logisticsKind(o) != ""
 }
 
 func (s *saveState) collect(o sav.Object) error {
@@ -87,6 +108,8 @@ func (s *saveState) collect(o sav.Object) error {
 		s.powerCircuits++
 	case factoryKind(o.ClassPath) != "":
 		s.collectFactory(factoryKind(o.ClassPath), o, od)
+	case logisticsKind(o.ObjectHeader) != "":
+		s.collectLogistics(logisticsKind(o.ObjectHeader), o, od)
 	default: // player inventory component
 		slot := o.InstanceName[strings.LastIndex(o.InstanceName, ".")+1:]
 		// Multiplayer: keep the first (host) player's components only.
@@ -326,6 +349,18 @@ func (s *saveState) buildResult() map[string]any {
 		"production_summary": map[string]any{
 			"description": "Machines aggregated per recipe with total clock multipliers and measured productivity. Per-minute item rates are theoretical and require recipe reference data (not yet included) — do not invent rates; totalClock x recipe base rate gives max output once reference data is available",
 			"data":        s.buildProductionSection(),
+		},
+		"storage": map[string]any{
+			"description": "Stored materials: per-item totals across all storage containers, container counts, and the dimensional depot's uploaded items — use to find available materials beyond the player's pockets",
+			"data":        s.buildStorageSection(),
+		},
+		"logistics": map[string]any{
+			"description": "Transport networks: trains with named stations and timetables, drone routes with station tags, trucks and truck stations — use to understand how materials move between factories",
+			"data":        s.buildLogisticsSection(),
+		},
+		"resource_nodes": map[string]any{
+			"description": "Resource extraction: count of occupied resource nodes and extractors by type. Node resource types and purities require static map reference data (not yet included)",
+			"data":        s.buildResourceNodesSection(),
 		},
 		"power": map[string]any{
 			"description": "Power grid: circuit count, generators by type and fuel with producing counts, battery storage charge — use to assess generation mix; MW capacity requires reference data, so counts are what the save provides",
