@@ -129,7 +129,10 @@ func TestStructArrayInventoryStacks(t *testing.T) {
 		if first["NumItems"] != int64(64) {
 			t.Errorf("newFormat=%v stack[0].NumItems = %v", newFormat, first["NumItems"])
 		}
-		second := vals[1].(map[string]any)
+		second, ok := vals[1].(map[string]any)
+		if !ok {
+			t.Fatalf("newFormat=%v stack[1] = %T", newFormat, vals[1])
+		}
 		if second["NumItems"] != int64(13) {
 			t.Errorf("newFormat=%v stack[1].NumItems = %v", newFormat, second["NumItems"])
 		}

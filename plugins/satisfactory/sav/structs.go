@@ -34,23 +34,21 @@ type InventoryItem struct {
 	HasState  bool
 }
 
-// undecodableStructs have binary wire layouts this parser does not decode.
-// They cannot fall through to the generic property-list path (they are not
-// property lists), so they must be skipped by the declared property size.
-var undecodableStructs = map[string]bool{
-	"ClientIdentityInfo":            true,
-	"UniqueNetIdRepl":               true,
-	"PlayerInfoHandle":              true,
-	"FICFrameRange":                 true,
-	"LBBalancerIndexing":            true,
-	"FINNetworkTrace":               true,
-	"FIRTrace":                      true,
-	"FINGPUT1BufferPixel":           true,
-	"FINLuaProcessorStateStorage":   true,
-	"FINLuaRuntimePersistenceState": true,
+// isUndecodableStruct reports struct types with binary wire layouts this
+// parser does not decode. They cannot fall through to the generic
+// property-list path (they are not property lists), so they are skipped by
+// the declared property size instead.
+func isUndecodableStruct(name string) bool {
+	switch name {
+	case "ClientIdentityInfo", "UniqueNetIdRepl", "PlayerInfoHandle",
+		"FICFrameRange", "LBBalancerIndexing", "FINNetworkTrace", "FIRTrace",
+		"FINGPUT1BufferPixel", "FINLuaProcessorStateStorage",
+		"FINLuaRuntimePersistenceState":
+		return true
+	default:
+		return false
+	}
 }
-
-func isUndecodableStruct(name string) bool { return undecodableStructs[name] }
 
 // parseStructValue decodes one struct value by its type name. Unknown names
 // parse as a generic nested property list.
