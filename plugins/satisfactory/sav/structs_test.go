@@ -103,7 +103,8 @@ func TestStructArrayInventoryStacks(t *testing.T) {
 			if !newFormat {
 				// Inner legacy struct tag.
 				inner := newPropWriter(false)
-				inner.writeTag("mInventoryStacks", "StructProperty", int32(stacks.buf.Len()), tagMeta{subtype: "InventoryStack"})
+				inner.writeTag("mInventoryStacks", "StructProperty",
+					int32(stacks.buf.Len()), tagMeta{subtype: "InventoryStack"})
 				arr.Write(inner.buf.Bytes())
 			}
 			arr.Write(stacks.buf.Bytes())
