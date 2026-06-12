@@ -359,11 +359,11 @@ func (s *saveState) buildResult() map[string]any {
 			"data":        s.buildPlayerSection(),
 		},
 		"machines": map[string]any{
-			"description": "Built production machines aggregated by building + recipe + clock speed, with producing counts and measured productivity (rolling in-game window); extractors by type — use to assess factory layout and find idle or starved machines",
+			"description": "Built production machines aggregated by building + recipe + clock speed, with producing counts, somersloop-amplified counts, and measured productivity (rolling in-game window); extractors by type — use to assess factory layout and find idle or starved machines",
 			"data":        s.buildMachinesSection(),
 		},
 		"production_summary": map[string]any{
-			"description": "Machines aggregated per recipe with total clock multipliers and measured productivity. Per-minute item rates are theoretical and require recipe reference data (not yet included) — do not invent rates; totalClock x recipe base rate gives max output once reference data is available",
+			"description": "Machines aggregated per recipe with effective capacity (clock x somersloop boost, in 100%-clock machine equivalents), somersloop counts, and measured productivity. Do not invent per-minute item rates; effectiveCapacity x recipe base rate from the production_planner reference module gives max output",
 			"data":        s.buildProductionSection(),
 		},
 		"storage": map[string]any{

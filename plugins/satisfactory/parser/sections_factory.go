@@ -48,6 +48,7 @@ type machineRecord struct {
 	recipe       string // recipe class path ("" = no recipe set / extractor)
 	fuel         string // generators: fuel class path
 	clock        float64
+	boost        float64 // somersloop production amplification, 1.0 = none
 	producing    bool
 	productivity float64 // measured produce/duration ratio, -1 if absent
 	node         string  // extractors: occupied resource node instance path
@@ -57,10 +58,14 @@ func (s *saveState) collectFactory(kind string, o sav.Object, od *sav.ObjectData
 	rec := machineRecord{
 		building:     o.ClassPath[strings.LastIndex(o.ClassPath, ".")+1:],
 		clock:        1.0,
+		boost:        1.0,
 		productivity: -1,
 	}
 	if clock, ok := prop[float64](od, "mCurrentPotential"); ok {
 		rec.clock = clock
+	}
+	if boost, ok := prop[float64](od, "mCurrentProductionBoost"); ok {
+		rec.boost = boost
 	}
 	if producing, ok := prop[bool](od, "mIsProducing"); ok {
 		rec.producing = producing
@@ -100,7 +105,9 @@ type machineGroup struct {
 	fuel        string
 	count       int
 	producing   int
+	slooped     int // machines with somersloop amplification
 	sumClock    float64
+	sumCapacity float64 // Σ(clock × boost): 100%-clock machine equivalents
 	sumProd     float64
 	prodSamples int
 }
@@ -121,6 +128,10 @@ func groupMachines(records []machineRecord, key func(machineRecord) string) []*m
 			g.producing++
 		}
 		g.sumClock += r.clock
+		g.sumCapacity += r.clock * r.boost
+		if r.boost > 1 {
+			g.slooped++
+		}
 		if r.productivity >= 0 {
 			g.sumProd += r.productivity
 			g.prodSamples++
@@ -147,6 +158,9 @@ func (g *machineGroup) describe() map[string]any {
 	}
 	if g.fuel != "" {
 		out["fuel"] = displayName(g.fuel)
+	}
+	if g.slooped > 0 {
+		out["slooped"] = g.slooped
 	}
 	if g.prodSamples > 0 {
 		out["measuredProductivityPct"] = round2(100 * g.sumProd / float64(g.prodSamples))
@@ -189,11 +203,14 @@ func (s *saveState) buildProductionSection() map[string]any {
 			continue
 		}
 		entry := map[string]any{
-			"recipe":          displayName(g.recipe),
-			"recipeClassPath": g.recipe,
-			"machines":        g.count,
-			"producing":       g.producing,
-			"totalClock":      round2(g.sumClock),
+			"recipe":            displayName(g.recipe),
+			"recipeClassPath":   g.recipe,
+			"machines":          g.count,
+			"producing":         g.producing,
+			"effectiveCapacity": round2(g.sumCapacity),
+		}
+		if g.slooped > 0 {
+			entry["slooped"] = g.slooped
 		}
 		if g.prodSamples > 0 {
 			entry["measuredProductivityPct"] = round2(100 * g.sumProd / float64(g.prodSamples))

@@ -42,8 +42,10 @@ func factoryState() *saveState {
 		"mLastProductivityMeasurementDuration":        300.0,
 		"mLastProductivityMeasurementProduceDuration": 150.0,
 	})
+	// Overclocked to 150% and fully somersloop-amplified (2x output).
 	collectMachine(s, constructor, map[string]any{
 		"mCurrentRecipe": ironPlate, "mIsProducing": true, "mCurrentPotential": 1.5,
+		"mCurrentProductionBoost": 2.0,
 	})
 	// One recipe-less assembler.
 	assembler := "/Game/FactoryGame/Buildable/Factory/AssemblerMk1/Build_AssemblerMk1.Build_AssemblerMk1_C"
@@ -87,6 +89,13 @@ func TestBuildMachinesSection(t *testing.T) {
 	if top["measuredProductivityPct"] != 75.0 {
 		t.Errorf("measuredProductivityPct = %v, want 75 ((100+50)/2)", top["measuredProductivityPct"])
 	}
+	if _, ok := top["slooped"]; ok {
+		t.Errorf("unboosted group has slooped key: %v", top)
+	}
+	boosted := groups[1]
+	if boosted["slooped"] != 1 || boosted["avgClock"] != 1.5 {
+		t.Errorf("boosted group = %v, want slooped=1 avgClock=1.5", boosted)
+	}
 }
 
 func TestBuildProductionSection(t *testing.T) {
@@ -97,8 +106,12 @@ func TestBuildProductionSection(t *testing.T) {
 		t.Fatalf("byRecipe = %v, want 1 entry", recipes)
 	}
 	r := recipes[0]
-	if r["recipe"] != "Iron Plate" || r["machines"] != 3 || r["totalClock"] != 3.5 {
+	// Capacity in 100%-clock machine equivalents: 1 + 1 + 1.5*2 (sloop) = 5.
+	if r["recipe"] != "Iron Plate" || r["machines"] != 3 || r["effectiveCapacity"] != 5.0 {
 		t.Errorf("iron plate entry = %v", r)
+	}
+	if _, ok := r["totalClock"]; ok {
+		t.Errorf("totalClock should be replaced by effectiveCapacity: %v", r)
 	}
 	if data["machinesWithoutRecipe"] != 1 {
 		t.Errorf("machinesWithoutRecipe = %v, want 1", data["machinesWithoutRecipe"])
