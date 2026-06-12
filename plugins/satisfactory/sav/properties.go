@@ -1,7 +1,6 @@
 package sav
 
 import (
-	"bytes"
 	"fmt"
 	"math"
 )
@@ -84,7 +83,7 @@ func ParseObjectData(o Object) (*ObjectData, error) {
 			o.PackageVersionUE5 >= ue5PropertyTagCompleteTypeName,
 		saveVersion: o.SaveVersion,
 	}
-	r := newReader(bytes.NewReader(o.Data))
+	r := newSliceReader(o.Data)
 	od := &ObjectData{Properties: map[string]any{}, Skipped: map[string]string{}}
 
 	if o.IsActor {
@@ -300,7 +299,7 @@ func parseProperty(r *reader, ctx parseCtx) (name string, value any, skippedType
 	if err != nil {
 		return tag.name, nil, "", false, err
 	}
-	vr := newReader(bytes.NewReader(valueBytes))
+	vr := newSliceReader(valueBytes)
 	value, skippedType, valueErr := parsePropertyValue(vr, tag, ctx)
 	switch {
 	case valueErr != nil:

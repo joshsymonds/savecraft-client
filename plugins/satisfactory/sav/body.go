@@ -1,7 +1,6 @@
 package sav
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -227,7 +226,7 @@ func (w *walker) walkSublevel(r *reader) error {
 		}
 	} else {
 		// Version known exactly — parse the buffered TOC now.
-		if _, err := w.collectTOC(newReader(bytes.NewReader(tocBytes)), name, levelVersion); err != nil {
+		if _, err := w.collectTOC(newSliceReader(tocBytes), name, levelVersion); err != nil {
 			return fmt.Errorf("level %q TOC: %w", name, err)
 		}
 	}
@@ -261,11 +260,11 @@ func (w *walker) parseTOCEagerly(tocBytes []byte, name string) (*tocMask, int32,
 		fallback = saveVersionObjectFlags - 1 // with-flags header => try without
 	}
 
-	entries, primaryErr := w.collectTOC(newReader(bytes.NewReader(tocBytes)), name, primary)
+	entries, primaryErr := w.collectTOC(newSliceReader(tocBytes), name, primary)
 	if primaryErr == nil {
 		return entries, primary, nil
 	}
-	entries, fallbackErr := w.collectTOC(newReader(bytes.NewReader(tocBytes)), name, fallback)
+	entries, fallbackErr := w.collectTOC(newSliceReader(tocBytes), name, fallback)
 	if fallbackErr == nil {
 		return entries, fallback, nil
 	}
