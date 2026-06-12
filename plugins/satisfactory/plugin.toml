@@ -1,0 +1,31 @@
+game_id = "satisfactory"
+sources = ["wasm"]
+name = "Satisfactory"
+description = "Parses .sav save files: factory machines, production, power, storage, trains, progression"
+channel = "alpha"
+coverage = "partial"
+file_extensions = [".sav"]
+homepage = "https://savecraft.gg/plugins/satisfactory"
+
+limitations = [
+  "Saves from game version 1.0 onward only (save version 46+)",
+  "Per-minute production rates are theoretical pending recipe reference data; the save stores measured productivity percentages, not item rates",
+  "Resource node types and purities require static map reference data",
+  "Modded buildings and machines added after game 1.2 are not extracted",
+  "Blueprint designer contents are not parsed",
+]
+
+# The SaveGames glob matches per-user Epic/Steam ID folders; these siblings
+# are not user save directories.
+exclude_dirs = ["SaveGames_backup", "ServerLocalCache"]
+
+[attribution]
+sources = ["coffeestain"]
+
+[author]
+name = "Josh Symonds"
+github = "joshsymonds"
+
+[default_paths]
+windows = "%LOCALAPPDATA%/FactoryGame/Saved/SaveGames/*"
+linux = "~/.steam/steam/steamapps/compatdata/526870/pfx/drive_c/users/steamuser/AppData/Local/FactoryGame/Saved/SaveGames/*"
