@@ -38,15 +38,15 @@ type InventoryItem struct {
 // They cannot fall through to the generic property-list path (they are not
 // property lists), so they must be skipped by the declared property size.
 var undecodableStructs = map[string]bool{
-	"ClientIdentityInfo":          true,
-	"UniqueNetIdRepl":             true,
-	"PlayerInfoHandle":            true,
-	"FICFrameRange":               true,
-	"LBBalancerIndexing":          true,
-	"FINNetworkTrace":             true,
-	"FIRTrace":                    true,
-	"FINGPUT1BufferPixel":         true,
-	"FINLuaProcessorStateStorage": true,
+	"ClientIdentityInfo":            true,
+	"UniqueNetIdRepl":               true,
+	"PlayerInfoHandle":              true,
+	"FICFrameRange":                 true,
+	"LBBalancerIndexing":            true,
+	"FINNetworkTrace":               true,
+	"FIRTrace":                      true,
+	"FINGPUT1BufferPixel":           true,
+	"FINLuaProcessorStateStorage":   true,
 	"FINLuaRuntimePersistenceState": true,
 }
 

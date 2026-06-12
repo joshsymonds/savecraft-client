@@ -577,6 +577,7 @@ linters:
           - govet
           - nestif
           - ireturn
+          - goconst
 
       # Entrypoints — ldflags injection targets must be package-level vars
       - path: cmd/savecraftd/main\.go
