@@ -1,5 +1,6 @@
 game_id = "satisfactory"
 sources = ["wasm"]
+icon = "icon.png"
 name = "Satisfactory"
 description = "Parses .sav save files: factory machines, production, power, storage, trains, progression"
 channel = "alpha"
