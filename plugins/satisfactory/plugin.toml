@@ -26,6 +26,11 @@ sources = ["coffeestain"]
 name = "Josh Symonds"
 github = "joshsymonds"
 
+[reference.modules.recipe_lookup]
+name = "Recipe & Item Lookup"
+description = "Look up any Satisfactory item, recipe, or production building by name. Returns exact ingredients, products, per-minute rates at 100% clock, craft duration, which buildings run it, alternate-recipe flags, and milestone unlock tiers. Use proactively for ANY question about what makes what, ratios, or building stats — prevents hallucinated recipe data."
+requires_save = false
+
 [default_paths]
 windows = "%LOCALAPPDATA%/FactoryGame/Saved/SaveGames/*"
 linux = "~/.steam/steam/steamapps/compatdata/526870/pfx/drive_c/users/steamuser/AppData/Local/FactoryGame/Saved/SaveGames/*"

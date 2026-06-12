@@ -565,6 +565,7 @@ linters:
 
       # Binary format parser (same rationale as d2r above). ireturn:
       # decoded property values are inherently dynamic (any).
+      # gochecknoglobals: derived game-data tables.
       - path: plugins/satisfactory/.*\.go
         linters:
           - gocognit
@@ -578,6 +579,7 @@ linters:
           - nestif
           - ireturn
           - goconst
+          - gochecknoglobals
 
       # Entrypoints — ldflags injection targets must be package-level vars
       - path: cmd/savecraftd/main\.go
