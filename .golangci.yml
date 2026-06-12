@@ -563,7 +563,8 @@ linters:
           - godox
           - govet
 
-      # Binary format parser (same rationale as d2r above)
+      # Binary format parser (same rationale as d2r above). ireturn:
+      # decoded property values are inherently dynamic (any).
       - path: plugins/satisfactory/.*\.go
         linters:
           - gocognit
@@ -575,6 +576,7 @@ linters:
           - gosec
           - govet
           - nestif
+          - ireturn
 
       # Entrypoints — ldflags injection targets must be package-level vars
       - path: cmd/savecraftd/main\.go

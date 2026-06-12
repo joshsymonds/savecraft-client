@@ -103,15 +103,26 @@ type ObjectHeader struct {
 type Object struct {
 	ObjectHeader
 	SaveVersion int32 // per-object serialization version
-	Data        []byte
+	// PackageVersionUE5 selects the property tag format (>= 1012 uses the
+	// UE5 complete-type-name tags). Resolved from the object's own version
+	// data block when present, else the save-global one, else the UE5
+	// default of 1000. (A per-LEVEL override also exists in the format but
+	// streams after the level's data; no real save has been observed using
+	// it, and a wrong guess fails loudly in tag parsing.)
+	PackageVersionUE5 int32
+	Data              []byte
 }
+
+// ue5DefaultVersion applies when no FSaveObjectVersionData is present
+// (saves below sv53).
+const ue5DefaultVersion = 1000
 
 // WalkObjects streams every object header in the save body, level by level,
 // invoking fn for each. Data blobs are skipped wholesale; memory stays
 // bounded by the largest single sublevel TOC. Returning an error from fn
 // aborts the walk and returns that error.
 func WalkObjects(h *Header, body io.Reader, fn func(ObjectHeader) error) error {
-	w := &walker{h: h, headerFn: fn}
+	w := &walker{h: h, headerFn: fn, ue5: ue5DefaultVersion}
 	return w.walk(newReader(body))
 }
 
@@ -120,7 +131,7 @@ func WalkObjects(h *Header, body io.Reader, fn func(ObjectHeader) error) error {
 // objects' data is discarded without buffering, so memory stays bounded by
 // the largest sublevel blob plus the largest matching object.
 func Extract(h *Header, body io.Reader, want func(classPath string) bool, fn func(Object) error) error {
-	w := &walker{h: h, want: want, dataFn: fn}
+	w := &walker{h: h, want: want, dataFn: fn, ue5: ue5DefaultVersion}
 	return w.walk(newReader(body))
 }
 
@@ -132,6 +143,7 @@ type walker struct {
 	headerFn func(ObjectHeader) error
 	want     func(string) bool
 	dataFn   func(Object) error
+	ue5      int32 // save-global UE5 package version
 }
 
 func (w *walker) extracting() bool { return w.want != nil }
@@ -141,9 +153,11 @@ func (w *walker) walk(r *reader) error {
 		return err
 	}
 	if w.h.SaveVersion >= saveVersionPackageVersions {
-		if err := skipVersionData(r); err != nil {
+		ue5, err := readVersionData(r)
+		if err != nil {
 			return fmt.Errorf("version data: %w", err)
 		}
+		w.ue5 = ue5
 	}
 	if err := skipValidationGrids(r); err != nil {
 		return fmt.Errorf("validation grids: %w", err)
@@ -385,28 +399,39 @@ func (w *walker) emitData(r *reader, mask *tocMask) error {
 			return fmt.Errorf("object %d/%d: implausible data size %d", i+1, count, size)
 		}
 
+		var data []byte
 		if mask.wanted[i] {
-			data, err := r.bytes(int(size), "object data")
-			if err != nil {
+			if data, err = r.bytes(int(size), "object data"); err != nil {
 				return fmt.Errorf("object %d/%d: %w", i+1, count, err)
-			}
-			obj := Object{ObjectHeader: mask.headers[i], SaveVersion: version, Data: data}
-			if err := w.dataFn(obj); err != nil {
-				return err
 			}
 		} else if err := r.discard(int64(size), "object data"); err != nil {
 			return fmt.Errorf("object %d/%d: %w", i+1, count, err)
 		}
 
+		// The per-object version data block trails the data bytes but
+		// applies to them — read it before emitting.
+		ue5 := w.ue5
 		if version >= saveVersionPackageVersions {
 			hasVersionData, vdErr := r.int32("object version data flag")
 			if vdErr != nil {
 				return fmt.Errorf("object %d/%d: %w", i+1, count, vdErr)
 			}
 			if hasVersionData == 1 {
-				if vdErr := skipVersionData(r); vdErr != nil {
+				if ue5, vdErr = readVersionData(r); vdErr != nil {
 					return fmt.Errorf("object %d/%d version data: %w", i+1, count, vdErr)
 				}
+			}
+		}
+
+		if mask.wanted[i] {
+			obj := Object{
+				ObjectHeader:      mask.headers[i],
+				SaveVersion:       version,
+				PackageVersionUE5: ue5,
+				Data:              data,
+			}
+			if err := w.dataFn(obj); err != nil {
+				return err
 			}
 		}
 	}
@@ -556,13 +581,33 @@ func f32(b []byte) float32 {
 	return math.Float32frombits(binary.LittleEndian.Uint32(b))
 }
 
-// skipVersionData discards an FSaveObjectVersionData block: version numbers,
-// engine version, and the custom version GUID container.
-func skipVersionData(r *reader) error {
-	// data version u32, FileVersionUE4 i32, FileVersionUE5 i32, licensee i32.
-	if err := r.discard(16, "package versions"); err != nil {
-		return err
+// readVersionData parses an FSaveObjectVersionData block far enough to
+// capture FileVersionUE5 (which selects the property tag format) and
+// discards the rest.
+func readVersionData(r *reader) (int32, error) {
+	// data version u32, FileVersionUE4 i32.
+	if err := r.discard(8, "package versions"); err != nil {
+		return 0, err
 	}
+	ue5, err := r.int32("FileVersionUE5")
+	if err != nil {
+		return 0, err
+	}
+	if err := r.discard(4, "licensee version"); err != nil {
+		return 0, err
+	}
+	return ue5, skipVersionDataTail(r)
+}
+
+// skipVersionData discards a whole FSaveObjectVersionData block.
+func skipVersionData(r *reader) error {
+	_, err := readVersionData(r)
+	return err
+}
+
+// skipVersionDataTail discards everything after the package version fields:
+// the engine version and the custom-version GUID container.
+func skipVersionDataTail(r *reader) error {
 	// FEngineVersion: u16 major/minor/patch, u32 changelist, FString branch.
 	if err := r.discard(10, "engine version"); err != nil {
 		return err

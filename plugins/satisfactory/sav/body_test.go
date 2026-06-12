@@ -29,6 +29,7 @@ func writeI32(buf *bytes.Buffer, v int32)   { binary.Write(buf, binary.LittleEnd
 func writeI64(buf *bytes.Buffer, v int64)   { binary.Write(buf, binary.LittleEndian, v) }
 func writeU32(buf *bytes.Buffer, v uint32)  { binary.Write(buf, binary.LittleEndian, v) }
 func writeF32(buf *bytes.Buffer, v float32) { binary.Write(buf, binary.LittleEndian, v) }
+func writeF64(buf *bytes.Buffer, v float64) { binary.Write(buf, binary.LittleEndian, v) }
 
 func writeTOC(t *testing.T, lvl synthLevel) []byte {
 	t.Helper()
