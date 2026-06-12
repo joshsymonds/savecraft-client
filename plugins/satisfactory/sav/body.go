@@ -256,7 +256,7 @@ func (w *walker) parseTOCEagerly(tocBytes []byte, name string) (*tocMask, int32,
 		return entries, fallback, nil
 	}
 	return nil, 0, fmt.Errorf(
-		"unparseable under either flags interpretation: as v%d: %v; as v%d: %v",
+		"unparseable under either flags interpretation: as v%d: %w; as v%d: %w",
 		primary, primaryErr, fallback, fallbackErr)
 }
 
