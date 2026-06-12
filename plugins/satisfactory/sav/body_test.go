@@ -65,6 +65,42 @@ func writeTOC(t *testing.T, lvl synthLevel) []byte {
 	return toc.Bytes()
 }
 
+// dataPayload is the deterministic raw data written for an object in the
+// synthetic data blob: its instance name as bytes.
+func dataPayload(o synthObject) []byte { return []byte(o.instance) }
+
+// writeDataBlob serializes a level's data blob: int32 count, then per object
+// the framing fields (object save version, migrate flag, size, payload, and
+// for objects >= sv53 the per-object version data flag). The first object of
+// a >= sv53 level carries a version data block to exercise that path.
+func writeDataBlob(t *testing.T, saveVersion int32, lvl synthLevel) []byte {
+	t.Helper()
+	blob := &bytes.Buffer{}
+	writeI32(blob, int32(len(lvl.objects)))
+	for i, o := range lvl.objects {
+		writeI32(blob, saveVersion) // per-object save version
+		writeI32(blob, 0)           // shouldMigrateObjectRefsToPersistent
+		payload := dataPayload(o)
+		writeI32(blob, int32(len(payload)))
+		blob.Write(payload)
+		if saveVersion >= 53 {
+			if i == 0 {
+				writeI32(blob, 1) // has per-object version data
+				writeU32(blob, 1)
+				writeI32(blob, 522)
+				writeI32(blob, 1012)
+				writeI32(blob, 0)
+				blob.Write(make([]byte, 10))
+				writeFString(blob, "++", false)
+				writeI32(blob, 0)
+			} else {
+				writeI32(blob, 0)
+			}
+		}
+	}
+	return blob.Bytes()
+}
+
 // buildBody serializes a decompressed save body. saveVersion gates which
 // metadata appears; each level's TOC is written with its own version.
 func buildBody(t *testing.T, saveVersion int32, levels []synthLevel) []byte {
@@ -109,7 +145,7 @@ func buildBody(t *testing.T, saveVersion int32, levels []synthLevel) []byte {
 		toc := writeTOC(t, lvl)
 		writeI64(body, int64(len(toc)))
 		body.Write(toc)
-		data := []byte{0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01} // skipped wholesale
+		data := writeDataBlob(t, saveVersion, lvl)
 		writeI64(body, int64(len(data)))
 		body.Write(data)
 		if saveVersion >= 51 {
@@ -125,7 +161,9 @@ func buildBody(t *testing.T, saveVersion int32, levels []synthLevel) []byte {
 	toc := writeTOC(t, *persistent)
 	writeI64(body, int64(len(toc)))
 	body.Write(toc)
-	writeI64(body, 0) // empty data blob
+	data := writeDataBlob(t, saveVersion, *persistent)
+	writeI64(body, int64(len(data)))
+	body.Write(data)
 	writeI32(body, 0) // LevelToDestroyedActorsMap count
 
 	full := &bytes.Buffer{}
