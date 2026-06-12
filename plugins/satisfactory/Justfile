@@ -4,7 +4,13 @@ build-parser:
     GOOS=wasip1 GOARCH=wasm go build -o parser.wasm ./parser
 
 test:
-    go test ./sav/ ./parser/
+    go test ./sav/ ./parser/ ./reference/... ./tools/...
 
 lint:
-    golangci-lint run ./sav/ ./parser/
+    golangci-lint run ./sav/ ./parser/ ./reference/... ./tools/...
+
+# Regenerate reference data from the game-shipped Docs json.
+# Input: .reference/satisfactory-docs/en-US.json (copy from a game install:
+#   scp gnomon:.../Satisfactory/CommunityResources/Docs/en-US.json .reference/satisfactory-docs/)
+datagen:
+    go run ./tools/datagen/ -docs ../../.reference/satisfactory-docs/en-US.json -out reference/data

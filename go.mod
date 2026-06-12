@@ -16,7 +16,7 @@ require (
 
 require github.com/mattn/go-sqlite3 v1.14.37
 
-require golang.org/x/text v0.36.0 // indirect
+require golang.org/x/text v0.36.0
 
 require (
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
