@@ -221,6 +221,25 @@ func TestParseHeaderPre10SaveVersion(t *testing.T) {
 	}
 }
 
+// A save from a future game version (unknown format) must be rejected with
+// the explicit unsupported-version error naming found vs supported, not die
+// later in the body with a misleading corrupt_file.
+func TestParseHeaderFutureSaveVersion(t *testing.T) {
+	spec := defaultSpec()
+	spec.saveVersion = 99
+	_, err := ParseHeader(bytes.NewReader(buildHeader(spec)))
+	uve, ok := errors.AsType[*UnsupportedVersionError](err)
+	if !ok {
+		t.Fatalf("err = %v, want UnsupportedVersionError", err)
+	}
+	if uve.SaveVersion != 99 {
+		t.Errorf("SaveVersion = %d, want 99", uve.SaveVersion)
+	}
+	if !strings.Contains(uve.Error(), "99") || !strings.Contains(uve.Error(), "58") {
+		t.Errorf("error %q should name the found version and the supported ceiling", uve.Error())
+	}
+}
+
 func TestParseHeaderTruncated(t *testing.T) {
 	full := buildHeader(defaultSpec())
 	for _, n := range []int{0, 4, 11, 40, len(full) - 1} {

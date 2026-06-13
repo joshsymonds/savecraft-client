@@ -11,13 +11,20 @@ import (
 	"time"
 )
 
-// Version support floor: game release 1.0.
+// Version support range: game release 1.0 through the latest verified format.
 //
 // SaveHeaderVersion (FGSaveManagerInterface.h): 13 = Update 8 + 1.0, 14 = 1.1+.
 // SaveVersion (FGSaveCustomVersion.h): 46 = "Version1", the 1.0 release marker.
 const (
 	MinHeaderVersion = 13
 	MinSaveVersion   = 46
+
+	// MaxKnownSaveVersion is the newest SaveVersion verified against real
+	// saves (58 = game 1.2 era). Newer saves are rejected with a clear
+	// unsupported-version error rather than parsed best-effort into a
+	// misleading corrupt_file failure — bump only after checking a new
+	// game version's format against an actual save.
+	MaxKnownSaveVersion = 58
 
 	// headerVersionAddedSaveName: header v14 (game 1.1) inserted SaveName
 	// between BuildVersion and MapName.
@@ -31,7 +38,8 @@ const ueEpochTicks = 621355968000000000
 // ticksPerMillisecond converts UE FDateTime ticks (100ns) to milliseconds.
 const ticksPerMillisecond = 10000
 
-// UnsupportedVersionError reports a save older than game version 1.0.
+// UnsupportedVersionError reports a save outside the supported version
+// range: older than game 1.0 or newer than the last verified format.
 type UnsupportedVersionError struct {
 	HeaderVersion int32
 	SaveVersion   int32
@@ -40,8 +48,8 @@ type UnsupportedVersionError struct {
 func (e *UnsupportedVersionError) Error() string {
 	return fmt.Sprintf(
 		"unsupported save version: header version %d, save version %d "+
-			"(need header >= %d and save >= %d, i.e. a save from game version 1.0 or later)",
-		e.HeaderVersion, e.SaveVersion, MinHeaderVersion, MinSaveVersion,
+			"(need header >= %d and save %d-%d, i.e. game version 1.0 through 1.2)",
+		e.HeaderVersion, e.SaveVersion, MinHeaderVersion, MinSaveVersion, MaxKnownSaveVersion,
 	)
 }
 
@@ -69,9 +77,11 @@ type Header struct {
 // It consumes exactly the header bytes, leaving the reader positioned at the
 // first compressed body chunk.
 //
-// Returns *UnsupportedVersionError for pre-1.0 saves. Header versions newer
-// than 14 parse on a best-effort basis: fields are only ever appended, so
-// the known prefix remains valid (body parsing has its own version gates).
+// Returns *UnsupportedVersionError for pre-1.0 saves and for SaveVersions
+// newer than MaxKnownSaveVersion (unverified future formats). Header
+// versions newer than 14 still parse on a best-effort basis — header fields
+// are only ever appended — but the SaveVersion ceiling is what protects
+// body parsing from silently misreading a changed format.
 func ParseHeader(src io.Reader) (*Header, error) {
 	r := newReader(src)
 	return parseHeader(r)
@@ -87,7 +97,8 @@ func parseHeader(r *reader) (*Header, error) {
 	if h.SaveVersion, err = r.int32("save version"); err != nil {
 		return nil, err
 	}
-	if h.HeaderVersion < MinHeaderVersion || h.SaveVersion < MinSaveVersion {
+	if h.HeaderVersion < MinHeaderVersion || h.SaveVersion < MinSaveVersion ||
+		h.SaveVersion > MaxKnownSaveVersion {
 		return nil, &UnsupportedVersionError{HeaderVersion: h.HeaderVersion, SaveVersion: h.SaveVersion}
 	}
 	if h.BuildVersion, err = r.int32("build version"); err != nil {
