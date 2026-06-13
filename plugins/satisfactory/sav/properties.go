@@ -125,15 +125,7 @@ func ParseObjectData(o Object) (*ObjectData, error) {
 			od.Skipped[name] = skippedType
 			continue
 		}
-		if existing, dup := od.Properties[name]; dup {
-			if slice, ok := existing.([]any); ok {
-				od.Properties[name] = append(slice, value)
-			} else {
-				od.Properties[name] = []any{existing, value}
-			}
-		} else {
-			od.Properties[name] = value
-		}
+		addProperty(od.Properties, name, value)
 	}
 
 	// int32 hasGuid (+16 bytes) and class-specific trailing data follow;

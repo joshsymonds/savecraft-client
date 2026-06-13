@@ -220,14 +220,21 @@ func parseGenericStruct(r *reader, ctx parseCtx) (map[string]any, error) {
 		if skippedType != "" {
 			continue
 		}
-		if existing, dup := props[name]; dup {
-			if slice, ok := existing.([]any); ok {
-				props[name] = append(slice, value)
-			} else {
-				props[name] = []any{existing, value}
-			}
-		} else {
-			props[name] = value
-		}
+		addProperty(props, name, value)
 	}
+}
+
+// addProperty stores a decoded property, coalescing duplicate names
+// (UE serializes repeated properties for arrays-of-defaults) into []any.
+func addProperty(props map[string]any, name string, value any) {
+	existing, dup := props[name]
+	if !dup {
+		props[name] = value
+		return
+	}
+	if slice, ok := existing.([]any); ok {
+		props[name] = append(slice, value)
+		return
+	}
+	props[name] = []any{existing, value}
 }

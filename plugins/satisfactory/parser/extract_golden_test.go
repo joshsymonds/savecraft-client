@@ -95,6 +95,9 @@ func TestGoldenExtractMegafactoryBoundedMemory(t *testing.T) {
 	want := func(o sav.ObjectHeader) bool {
 		calls++
 		if calls%50000 == 0 {
+			// Force a collection so the sample measures retained heap, not
+			// GC-pacing-dependent floating garbage.
+			runtime.GC()
 			var ms runtime.MemStats
 			runtime.ReadMemStats(&ms)
 			if ms.HeapAlloc > maxHeap {

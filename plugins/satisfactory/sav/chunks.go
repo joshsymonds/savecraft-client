@@ -34,10 +34,13 @@ const (
 
 // chunkReader is a streaming io.Reader over the concatenated decompressed
 // chunks of a save body. At most one chunk's compressed bytes are in flight
-// at a time — memory stays bounded no matter how large the save is.
+// at a time — memory stays bounded no matter how large the save is. The
+// zlib reader is allocated once and Reset per chunk: a megafactory body is
+// ~4000 chunks, and a fresh flate window per chunk is pure GC churn.
 type chunkReader struct {
 	r       *reader
-	current io.ReadCloser // zlib stream of the chunk being read; nil between chunks
+	zr      io.ReadCloser // reusable zlib reader, allocated on first chunk
+	current io.Reader     // zlib stream of the chunk being read; nil between chunks
 	err     error         // sticky
 }
 
@@ -70,9 +73,9 @@ func (c *chunkReader) Read(p []byte) (int, error) {
 		n, err := c.current.Read(p)
 		switch {
 		case errors.Is(err, io.EOF):
-			// Chunk exhausted — close it and move on. Return what we have
-			// if anything was read; otherwise loop into the next chunk.
-			c.current.Close()
+			// Chunk exhausted — move on (the zlib reader is kept for Reset).
+			// Return what we have if anything was read; otherwise loop into
+			// the next chunk.
 			c.current = nil
 			if n > 0 {
 				return n, nil
@@ -132,12 +135,24 @@ func (c *chunkReader) nextChunk() error {
 			start, compSize, uncompSize)
 	}
 
-	zr, err := zlib.NewReader(io.LimitReader(c.r.r, compSize))
-	if err != nil {
-		return fmt.Errorf("chunk at offset %d: open zlib stream: %w", start, err)
+	limited := io.LimitReader(c.r.r, compSize)
+	if c.zr == nil {
+		zr, zErr := zlib.NewReader(limited)
+		if zErr != nil {
+			return fmt.Errorf("chunk at offset %d: open zlib stream: %w", start, zErr)
+		}
+		c.zr = zr
+	} else {
+		resetter, ok := c.zr.(zlib.Resetter)
+		if !ok {
+			return fmt.Errorf("chunk at offset %d: zlib reader is not a Resetter", start)
+		}
+		if resetErr := resetter.Reset(limited, nil); resetErr != nil {
+			return fmt.Errorf("chunk at offset %d: open zlib stream: %w", start, resetErr)
+		}
 	}
 	c.r.off += compSize
-	c.current = zr
+	c.current = c.zr
 	return nil
 }
 

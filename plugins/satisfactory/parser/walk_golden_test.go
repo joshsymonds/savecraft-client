@@ -101,6 +101,9 @@ func TestGoldenWalkMegafactoryBoundedMemory(t *testing.T) {
 	err = sav.WalkObjects(h, body, func(_ sav.ObjectHeader) error {
 		count++
 		if count%50000 == 0 {
+			// Force a collection so the sample measures retained heap, not
+			// GC-pacing-dependent floating garbage.
+			runtime.GC()
 			var ms runtime.MemStats
 			runtime.ReadMemStats(&ms)
 			if ms.HeapAlloc > maxHeap {

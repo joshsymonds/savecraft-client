@@ -61,7 +61,7 @@ Plugins are compiled as WASI executables. The daemon feeds raw save file bytes o
 {"type": "error", "errorType": "corrupt_file", "message": "Human-readable description", "byteOffset": 1234}
 ```
 
-Valid `error_type` values: `unsupported_version`, `corrupt_file`, `parse_error`.
+Valid `errorType` values: `unsupported_version`, `corrupt_file`, `parse_error`.
 
 ### Section Data Contract
 

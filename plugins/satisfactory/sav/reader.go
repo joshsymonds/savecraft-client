@@ -55,6 +55,9 @@ func (r *reader) bytes(n int, what string) ([]byte, error) {
 		r.off += int64(n)
 		return buf, nil
 	}
+	if n < 0 {
+		return nil, r.errAt(start, what, io.ErrUnexpectedEOF)
+	}
 	buf := make([]byte, n)
 	if _, err := io.ReadFull(r.r, buf); err != nil {
 		return nil, r.errAt(start, what, err)

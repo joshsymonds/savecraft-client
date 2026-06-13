@@ -68,6 +68,9 @@ type memWatchWriter struct {
 func (w *memWatchWriter) Write(p []byte) (int, error) {
 	w.written += int64(len(p))
 	if w.written >= w.nextSampleAt {
+		// Force a collection so the sample measures retained heap, not
+		// GC-pacing-dependent floating garbage.
+		runtime.GC()
 		var ms runtime.MemStats
 		runtime.ReadMemStats(&ms)
 		if ms.HeapAlloc > w.maxHeapAlloc {

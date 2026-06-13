@@ -22,6 +22,16 @@ func stderr() io.Writer { return os.Stderr }
 func main() {
 	enc := json.NewEncoder(os.Stdout)
 
+	// Defense in depth: the parser must emit a clean ndjson error instead
+	// of crashing on any input, including panics from undiscovered decode
+	// bugs. (A true stack overflow is still fatal — recover cannot catch it.)
+	defer func() {
+		if r := recover(); r != nil {
+			writeError(enc, "corrupt_file", fmt.Sprintf("parser panic: %v", r))
+			os.Exit(1)
+		}
+	}()
+
 	header, body, err := sav.Open(os.Stdin)
 	if err != nil {
 		writeError(enc, errorType(err), err.Error())
