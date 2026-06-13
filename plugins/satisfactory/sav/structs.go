@@ -53,6 +53,12 @@ func isUndecodableStruct(name string) bool {
 // parseStructValue decodes one struct value by its type name. Unknown names
 // parse as a generic nested property list.
 func parseStructValue(r *reader, structName string, ctx parseCtx) (any, error) {
+	// Every nested struct level — generic structs and struct arrays alike —
+	// re-enters through here, so this is the single recursion gate.
+	ctx.depth++
+	if ctx.depth > maxValueDepth {
+		return nil, fmt.Errorf("struct nesting exceeds %d levels", maxValueDepth)
+	}
 	wide := ctx.saveVersion >= saveVersion64BitVectors
 	switch structName {
 	case "Vector", "Rotator":

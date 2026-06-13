@@ -71,7 +71,14 @@ type ObjectData struct {
 type parseCtx struct {
 	newFormat   bool
 	saveVersion int32
+	depth       int // struct-value nesting level, bounded by maxValueDepth
 }
+
+// maxValueDepth bounds nested struct/array value recursion. Real saves nest
+// a handful of levels; a crafted file encoding deeper chains would
+// otherwise overflow the goroutine stack — a fatal error recover() cannot
+// catch. Exceeding the bound degrades the property to Skipped.
+const maxValueDepth = 64
 
 // ParseObjectData decodes an extracted object's entity prelude and tagged
 // property list. Supported struct types decode to typed values; everything

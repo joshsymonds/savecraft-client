@@ -174,3 +174,44 @@ func TestCorruptValueBecomesSkipped(t *testing.T) {
 		t.Errorf("after = %v (stream misaligned)", od.Properties["after"])
 	}
 }
+
+// A crafted save can nest struct values arbitrarily deep; the value parser
+// must bound recursion and degrade the property to Skipped instead of
+// overflowing the goroutine stack (which is fatal — recover cannot catch it).
+func TestDeeplyNestedStructBounded(t *testing.T) {
+	inner := newPropWriter(false)
+	inner.writeTag("Leaf", "IntProperty", 4, tagMeta{})
+	writeI32(inner.buf, 1)
+	inner.endList()
+	payload := inner.buf.Bytes()
+	for range 1000 {
+		w := newPropWriter(false)
+		w.writeTag("Nested", "StructProperty", int32(len(payload)), tagMeta{subtype: "Mystery"})
+		w.buf.Write(payload)
+		w.endList()
+		payload = w.buf.Bytes()
+	}
+
+	od := parseProps(t, false, false, func(w *propWriter) {
+		w.writeTag("Root", "StructProperty", int32(len(payload)), tagMeta{subtype: "Mystery"})
+		w.buf.Write(payload)
+	})
+
+	// The chain must truncate at the depth bound (the level past it degrades
+	// to a dropped nested property), never recurse the full 1000 levels.
+	depth := 0
+	for v, ok := od.Properties["Root"].(map[string]any); ok; v, ok = v["Nested"].(map[string]any) {
+		depth++
+		if depth > 1000 {
+			t.Fatal("nesting did not truncate")
+		}
+	}
+	if depth == 0 {
+		if _, skipped := od.Skipped["Root"]; !skipped {
+			t.Fatalf("Root neither parsed nor skipped: %v", od)
+		}
+	}
+	if depth > maxValueDepth {
+		t.Errorf("decoded nesting depth = %d, want <= %d", depth, maxValueDepth)
+	}
+}
