@@ -35,6 +35,16 @@ namespace SavecraftRimWorld.Collectors
             s.Fields[key] = Value.ForStruct(value);
         }
 
+        /// <summary>
+        /// Emit an explicit JSON null. Used so optional keys (e.g. an unarmed pawn's
+        /// weapon, an untitled pawn's royalty_title) are always present as null rather
+        /// than absent, so consumers never need key-existence checks.
+        /// </summary>
+        public static void SetNull(this Struct s, string key)
+        {
+            s.Fields[key] = Value.ForNull();
+        }
+
         public static void SetList(this Struct s, string key, IEnumerable<string> items)
         {
             var list = new ListValue();

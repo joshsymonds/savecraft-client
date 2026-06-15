@@ -18,7 +18,8 @@ namespace SavecraftRimWorld.Collectors
             "Backstory, all traits, all skills (level + passion), " +
             "mood value + all modifiers, all hediffs, equipment + apparel (with quality), " +
             "needs breakdown, current job, schedule. " +
-            "Biotech: xenotype, endo/xenogenes, gene metabolism/complexity/archite count.";
+            "Biotech: xenotype, endo/xenogenes, gene metabolism/complexity/archite count. " +
+            "Royalty: title, faction, honor, psylink level, psycasts, psychic entropy/sensitivity, permits.";
 
         public List<CollectedSection> CollectAll()
         {
@@ -51,6 +52,7 @@ namespace SavecraftRimWorld.Collectors
             CollectBackstory(pawn, p);
             CollectTraits(pawn, p);
             CollectGenes(pawn, p);
+            CollectRoyalty(pawn, p);
             CollectSkills(pawn, p);
             CollectMood(pawn, p);
             CollectHealth(pawn, p);
@@ -118,6 +120,56 @@ namespace SavecraftRimWorld.Collectors
             p.Set("gene_metabolism", metabolism);
             p.Set("gene_complexity", complexity);
             p.Set("archite_count", architeCount);
+        }
+
+        void CollectRoyalty(Pawn pawn, Struct p)
+        {
+            if (!ModsConfig.RoyaltyActive || pawn.royalty == null) return;
+
+            var title = pawn.royalty.MostSeniorTitle;
+            if (title != null)
+            {
+                p.Set("royalty_title", title.def.GetLabelCapFor(pawn));
+                p.Set("royalty_faction", title.faction?.Name ?? "");
+                p.Set("royalty_honor", pawn.royalty.GetFavor(title.faction));
+            }
+            else
+            {
+                p.SetNull("royalty_title");
+                p.SetNull("royalty_faction");
+                p.Set("royalty_honor", 0);
+            }
+
+            var entropy = pawn.psychicEntropy;
+            p.Set("psylink_level", (entropy?.Psylink as Hediff_Level)?.level ?? 0);
+            if (entropy != null)
+            {
+                p.Set("psychic_entropy_max", System.Math.Round(entropy.MaxEntropy, 1));
+                p.Set("psychic_sensitivity", System.Math.Round(entropy.PsychicSensitivity, 2));
+            }
+
+            var psycasts = new List<string>();
+            var abilities = pawn.abilities?.AllAbilitiesForReading;
+            if (abilities != null)
+            {
+                foreach (var ability in abilities)
+                {
+                    if (ability.def.IsPsycast)
+                        psycasts.Add(ability.def.label);
+                }
+            }
+            p.SetList("psycasts", psycasts);
+
+            var permits = new List<Struct>();
+            foreach (var fp in pawn.royalty.AllFactionPermits)
+            {
+                var permit = StructHelper.NewStruct();
+                permit.Set("permit", fp.Permit.label);
+                permit.Set("faction", fp.Faction?.Name ?? "");
+                permit.Set("on_cooldown", fp.OnCooldown);
+                permits.Add(permit);
+            }
+            p.SetList("royal_permits", permits);
         }
 
         void CollectSkills(Pawn pawn, Struct p)
