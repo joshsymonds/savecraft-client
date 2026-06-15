@@ -292,7 +292,8 @@ namespace SavecraftRimWorld.Collectors
 
         void CollectEquipment(Pawn pawn, Struct p)
         {
-            // Primary weapon
+            // Primary weapon — always emit the key (null when unarmed) so consumers
+            // never need key-existence checks.
             var primary = pawn.equipment?.Primary;
             if (primary != null)
             {
@@ -302,6 +303,10 @@ namespace SavecraftRimWorld.Collectors
                 if (qc != null)
                     weapon.Set("quality", qc.Quality.GetLabel());
                 p.Set("weapon", weapon);
+            }
+            else
+            {
+                p.SetNull("weapon");
             }
 
             // Apparel
