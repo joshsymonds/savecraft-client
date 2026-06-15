@@ -55,6 +55,23 @@ name = "Power Calculator"
 description = "Size Satisfactory generator farms: target megawatts returns generator counts per type, fuel consumption per minute for every accepted fuel, supplemental water rates, and nuclear waste output. Use for any power planning or 'how many generators / how much fuel' question."
 requires_save = false
 
+[reference.modules.space_elevator]
+name = "Space Elevator"
+description = "Satisfactory Project Assembly phase requirements: the exact parts and quantities each of the 5 phases needs, the recipe that makes each part, and the tiers each phase unlocks. Pass save_id to see the player's current phase, every remaining phase with cumulative parts, and the session's Space Parts Cost Multiplier applied automatically. Use for 'what does the space elevator need', endgame planning, and 'what's left to finish the game'."
+requires_save = false
+
+[reference.modules.space_elevator.section_mappings]
+progression = "progression"
+game_overview = "game_overview"
+
+[reference.modules.hard_drive_tiers]
+name = "Hard Drive Tiers"
+description = "Which Satisfactory alternate recipes (the random unlocks from hard drives at the MAM) are worth taking, re-derived by linear optimization for the current patch. Every recipe carries two tiers — effort (fewer/simpler buildings) and resources (less raw extraction) — with the modeled whole-factory improvement and per-metric deltas as evidence. Pass save_id to flag which alternates the player has unlocked and recommend the highest-value ones they haven't. Use for 'is this alternate worth it', 'which hard drive recipes should I prioritize', and 'best alternate for X'."
+requires_save = false
+
+[reference.modules.hard_drive_tiers.section_mappings]
+progression = "progression"
+
 [default_paths]
 windows = "%LOCALAPPDATA%/FactoryGame/Saved/SaveGames/*"
 linux = "~/.local/share/Steam/steamapps/compatdata/526870/pfx/drive_c/users/steamuser/AppData/Local/FactoryGame/Saved/SaveGames/*"

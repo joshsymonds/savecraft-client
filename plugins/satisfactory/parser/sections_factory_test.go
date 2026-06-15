@@ -53,8 +53,10 @@ func factoryState() *saveState {
 	// Extractor at 250%.
 	miner := "/Game/FactoryGame/Buildable/Factory/MinerMk3/Build_MinerMk3.Build_MinerMk3_C"
 	collectMachine(s, miner, map[string]any{"mIsProducing": true, "mCurrentPotential": 2.5})
-	// Two fuel generators on turbofuel, one nuclear.
-	turbo := sav.ObjectRef{Path: "/Game/X/Desc_TurboFuel.Desc_TurboFuel_C"}
+	// Two fuel generators on turbofuel, one nuclear. Fuel generators burn the
+	// liquid (Desc_LiquidTurboFuel_C, "Turbofuel"); Desc_TurboFuel_C is the
+	// packaged item.
+	turbo := sav.ObjectRef{Path: "/Game/X/Desc_LiquidTurboFuel.Desc_LiquidTurboFuel_C"}
 	fuelGen := "/Game/FactoryGame/Buildable/Factory/GeneratorFuel/Build_GeneratorFuel.Build_GeneratorFuel_C"
 	for range 2 {
 		collectMachine(s, fuelGen, map[string]any{"mIsProducing": true, "mCurrentFuelClass": turbo})
@@ -131,7 +133,7 @@ func TestBuildPowerSection(t *testing.T) {
 	if len(groups) != 2 {
 		t.Fatalf("generator groups = %v, want 2", groups)
 	}
-	if groups[0]["count"] != 2 || groups[0]["fuel"] != "Turbo Fuel" {
+	if groups[0]["count"] != 2 || groups[0]["fuel"] != "Turbofuel" {
 		t.Errorf("fuel generators = %v", groups[0])
 	}
 	storage, _ := data["powerStorage"].(map[string]any)

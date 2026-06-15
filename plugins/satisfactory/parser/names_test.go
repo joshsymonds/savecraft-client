@@ -1,17 +1,40 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestDisplayName(t *testing.T) {
 	cases := map[string]string{
 		"/Game/FactoryGame/Resource/Parts/IronPlate/Desc_IronPlate.Desc_IronPlate_C": "Iron Plate",
-		"Desc_ResourceSinkCoupon_C":                                                 "Resource Sink Coupon",
-		"BP_EquipmentDescriptorHazmatSuit_C":                                        "Hazmat Suit",
-		"BP_ItemDescriptorPortableMiner_C":                                          "Portable Miner",
-		"/Game/X/Schematic_Alternate_WetConcrete.Schematic_Alternate_WetConcrete_C": "Alternate Wet Concrete",
-		"Desc_Chainsaw_C":                                                           "Chainsaw",
+		"BP_EquipmentDescriptorHazmatSuit_C":                                         "Hazmat Suit",
+		"BP_ItemDescriptorPortableMiner_C":                                           "Portable Miner",
+		// Authoritative names override the class path: Coffee Stain's classes
+		// disagree with the in-game names, and the canonical table wins.
+		"/Game/.../Desc_SteelPlate.Desc_SteelPlate_C":                               "Steel Beam",
+		"Desc_SteelPlateReinforced_C":                                               "Encased Industrial Beam",
+		"/Game/X/Schematic_Alternate_WetConcrete.Schematic_Alternate_WetConcrete_C": "Alternate: Wet Concrete",
+		"Desc_Chainsaw_C": "Chainsaw",
 	}
 	for in, want := range cases {
+		if got := displayName(in); got != want {
+			t.Errorf("displayName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// Classes absent from the canonical table (mods, future content) fall back to
+// the class-path heuristic.
+func TestDisplayNameHeuristicFallback(t *testing.T) {
+	cases := map[string]string{
+		"/Game/Mods/Acme/Desc_AcmeWidget.Desc_AcmeWidget_C": "Acme Widget",
+		"Build_FutureMachineMk1_C":                          "Future Machine Mk1",
+	}
+	for in, want := range cases {
+		if _, canonical := canonicalNames[in[strings.LastIndex(in, ".")+1:]]; canonical {
+			t.Fatalf("test class %q is unexpectedly in canonicalNames", in)
+		}
 		if got := displayName(in); got != want {
 			t.Errorf("displayName(%q) = %q, want %q", in, got, want)
 		}
