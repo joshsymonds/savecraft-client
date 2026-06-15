@@ -61,10 +61,21 @@ func heuristicName(classPath string) string {
 
 var milestonePattern = regexp.MustCompile(`Schematic_(\d+)-(\d+)_C$`)
 
-// milestoneTier extracts the tier from a purchased milestone schematic class
-// name like ".../Schematic_5-1.Schematic_5-1_C". Returns 0 for schematics
-// that are not tier milestones (customizer unlocks etc.).
+// milestoneTier returns the in-game HUB tier of a purchased milestone schematic
+// like ".../Schematic_5-3.Schematic_5-3_C". The authoritative milestoneTiers
+// table (generated from Docs.json mTechTier) is consulted first, because the
+// class-name number is unreliable — Schematic_5-3_C is "Logistics Mk.3", a
+// Tier 4 milestone. The class-name regex is only a fallback for classes absent
+// from the table (mods / future content). Returns 0 for non-tier schematics
+// (customizer unlocks etc.).
 func milestoneTier(classPath string) int {
+	name := classPath
+	if i := strings.LastIndex(name, "."); i >= 0 {
+		name = name[i+1:]
+	}
+	if tier, ok := milestoneTiers[name]; ok {
+		return tier
+	}
 	m := milestonePattern.FindStringSubmatch(classPath)
 	if m == nil {
 		return 0

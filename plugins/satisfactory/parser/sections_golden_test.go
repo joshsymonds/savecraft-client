@@ -80,8 +80,11 @@ func TestGoldenSectionsCurrent12(t *testing.T) {
 	state := parseFixtureSections(t, "current_1_2.sav")
 
 	prog := state.buildProgressionSection()
-	if prog["currentTier"] != 6 {
-		t.Errorf("currentTier = %v, want 6", prog["currentTier"])
+	// Highest purchased milestone is authoritatively Tier 5 (Logistics Mk.4,
+	// Jetpack et al.); the class-name numbers reach "6-2" but those are Tier 5
+	// milestones, so the true HUB tier is 5, not 6.
+	if prog["currentTier"] != 5 {
+		t.Errorf("currentTier = %v, want 5", prog["currentTier"])
 	}
 	if prog["spaceElevatorPhase"] != 3 {
 		t.Errorf("spaceElevatorPhase = %v, want 3", prog["spaceElevatorPhase"])
