@@ -312,6 +312,7 @@ namespace SavecraftRimWorld
             // Core sections
             runner.Register(new ColonyOverviewCollector());
             runner.Register(new ColonistRosterCollector());
+            runner.Register(new RelationshipsCollector());
             runner.Register(new ResourcesCollector());
             runner.Register(new ResearchCollector());
             runner.Register(new SkillsAndWorkCollector());
