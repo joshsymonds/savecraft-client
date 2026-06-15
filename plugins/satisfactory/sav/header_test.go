@@ -235,7 +235,7 @@ func TestParseHeaderFutureSaveVersion(t *testing.T) {
 	if uve.SaveVersion != 99 {
 		t.Errorf("SaveVersion = %d, want 99", uve.SaveVersion)
 	}
-	if !strings.Contains(uve.Error(), "99") || !strings.Contains(uve.Error(), "58") {
+	if !strings.Contains(uve.Error(), "99") || !strings.Contains(uve.Error(), "60") {
 		t.Errorf("error %q should name the found version and the supported ceiling", uve.Error())
 	}
 }

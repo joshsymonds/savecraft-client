@@ -241,3 +241,46 @@ func TestGoldenResultSizeMegafactory(t *testing.T) {
 	}
 	t.Logf("megafactory result line: %dKB", len(encoded)>>10)
 }
+
+// current_sv60.sav is a real save from a later 1.2 patch (SaveVersion 60,
+// build 493833) — newer than the version ceiling shipped in v1.0.0, which
+// rejected it. It must parse cleanly: all sections populated, header
+// reported as sv60. Tier 3 early-game factory (probed from the real save).
+func TestGoldenSectionsSv60(t *testing.T) {
+	state := parseFixtureSections(t, "current_sv60.sav")
+
+	overview := state.buildOverviewSection()
+	if overview["saveVersion"] != int32(60) {
+		t.Errorf("saveVersion = %v, want 60", overview["saveVersion"])
+	}
+	if overview["gameBuild"] != int32(493833) {
+		t.Errorf("gameBuild = %v, want 493833", overview["gameBuild"])
+	}
+
+	prog := state.buildProgressionSection()
+	if prog["currentTier"] != 3 {
+		t.Errorf("currentTier = %v, want 3", prog["currentTier"])
+	}
+	if prog["milestonesPurchased"] != 9 {
+		t.Errorf("milestonesPurchased = %v, want 9", prog["milestonesPurchased"])
+	}
+
+	// The factory has real machines, power, and stored items — a parse that
+	// silently produced empty sections (the sv60-misparse failure mode) would
+	// trip these.
+	power := state.buildPowerSection()
+	if power["totalGenerators"] != 12 {
+		t.Errorf("totalGenerators = %v, want 12", power["totalGenerators"])
+	}
+	storage := state.buildStorageSection()
+	items, _ := storage["itemsInStorage"].([]map[string]any)
+	var screwCount int64 = -1
+	for _, it := range items {
+		if it["name"] == "Iron Screw" {
+			screwCount, _ = it["count"].(int64)
+		}
+	}
+	if screwCount != 7039 {
+		t.Errorf("Iron Screw count in storage = %d, want 7039", screwCount)
+	}
+}

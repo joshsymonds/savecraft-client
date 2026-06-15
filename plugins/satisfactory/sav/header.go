@@ -20,11 +20,11 @@ const (
 	MinSaveVersion   = 46
 
 	// MaxKnownSaveVersion is the newest SaveVersion verified against real
-	// saves (58 = game 1.2 era). Newer saves are rejected with a clear
-	// unsupported-version error rather than parsed best-effort into a
-	// misleading corrupt_file failure — bump only after checking a new
-	// game version's format against an actual save.
-	MaxKnownSaveVersion = 58
+	// saves (60 = game 1.2 later patches, build 493833). Newer saves are
+	// rejected with a clear unsupported-version error rather than parsed
+	// best-effort into a misleading corrupt_file failure — bump only after
+	// checking a new game version's format against an actual save.
+	MaxKnownSaveVersion = 60
 
 	// headerVersionAddedSaveName: header v14 (game 1.1) inserted SaveName
 	// between BuildVersion and MapName.

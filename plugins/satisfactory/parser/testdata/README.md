@@ -58,10 +58,21 @@ sessionName, playDurationSeconds, saveDateTime, ...`
   - BuildVersion = **481836**
 - **Session name:** `Another 1.2 Baby`
 
+## current_sv60.sav
+
+- **Original filename:** `Josh 2.sav`
+- **Source:** Josh's gnomon Satisfactory install (real save, captured 2026-06-15
+  during the first end-to-end daemon push). First sv60 save we had — the
+  v1.0.0 ceiling (58) rejected it, prompting verification + the bump to 60.
+- **File size:** 334,577 bytes (~327 KB)
+- **SHA-256:** `6f4b5dfaf083ea28b93ba317601f5437cd8df33465107a81fa7bdb906f41432e`
+- **SaveHeaderVersion = 14, SaveVersion = 60, BuildVersion = 493833**
+- **Session name:** `Josh` — Tier 3, 5.3 hours played
+
 ## Coverage
 
-The three fixtures cover both modern header versions (13 and 14) and save
-versions 46 (= 1.0), 52 (= 1.1), and 58 (= 1.2, current).
+The four fixtures cover both modern header versions (13 and 14) and save
+versions 46 (= 1.0), 52 (= 1.1), 58 (= early 1.2), and 60 (= later 1.2 patch).
 
 `megafactory.sav` is gitignored (22 MB) — re-download from the source URL above
 if missing; tests that need it skip when absent.

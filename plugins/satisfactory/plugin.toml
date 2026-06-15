@@ -9,7 +9,7 @@ file_extensions = [".sav"]
 homepage = "https://savecraft.gg/plugins/satisfactory"
 
 limitations = [
-  "Saves from game versions 1.0 through 1.2 only (save versions 46-58); newer game versions are rejected until their format is verified",
+  "Saves from game versions 1.0 through 1.2 only (save versions 46-60); newer game versions are rejected until their format is verified",
   "Per-minute production rates are theoretical pending recipe reference data; the save stores measured productivity percentages, not item rates",
   "Resource node types and purities require static map reference data",
   "Modded buildings and machines added after game 1.2 are not extracted",
