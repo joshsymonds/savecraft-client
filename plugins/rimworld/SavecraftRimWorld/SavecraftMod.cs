@@ -313,6 +313,7 @@ namespace SavecraftRimWorld
             runner.Register(new ColonyOverviewCollector());
             runner.Register(new ColonistRosterCollector());
             runner.Register(new RelationshipsCollector());
+            runner.Register(new AnomalyCollector());
             runner.Register(new ResourcesCollector());
             runner.Register(new ResearchCollector());
             runner.Register(new SkillsAndWorkCollector());
