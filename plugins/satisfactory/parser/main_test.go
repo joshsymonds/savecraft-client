@@ -47,7 +47,9 @@ func testState() *saveState {
 	s.schematics = &sav.ObjectData{Properties: map[string]any{
 		"mPurchasedSchematics": []any{
 			sav.ObjectRef{Path: schematicBase + "/Progression/Schematic_1-1.Schematic_1-1_C"},
-			sav.ObjectRef{Path: schematicBase + "/Progression/Schematic_5-2.Schematic_5-2_C"},
+			// Schematic_5-1 is "Oil Processing", authoritatively Tier 5 (the
+			// class-name number is not the tier — see milestoneTiers).
+			sav.ObjectRef{Path: schematicBase + "/Progression/Schematic_5-1.Schematic_5-1_C"},
 			sav.ObjectRef{Path: schematicBase + "/Research/Schematic_Caterium1.Schematic_Caterium1_C"},
 			sav.ObjectRef{
 				Path: schematicBase + "/Alternate/Schematic_Alternate_WetConcrete.Schematic_Alternate_WetConcrete_C",

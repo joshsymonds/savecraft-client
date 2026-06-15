@@ -56,6 +56,23 @@ func TestMilestoneTier(t *testing.T) {
 	}
 }
 
+// The milestone class-name numbering is out of sync with the in-game tier
+// (mTechTier) for several Tier 4-6 milestones, so the tier MUST come from
+// authoritative game data, not the class name. Reproduces the bug where a
+// player with Logistics Mk.3 (a Tier 4 milestone) is reported as Tier 5.
+func TestMilestoneTierAuthoritative(t *testing.T) {
+	cases := map[string]int{
+		"/Game/FactoryGame/Schematics/Progression/Schematic_5-3.Schematic_5-3_C": 4, // Logistics Mk.3
+		"Schematic_5-2_C": 6, // Industrial Manufacturing
+		"Schematic_6-1_C": 5, // Logistics Mk.4
+	}
+	for in, want := range cases {
+		if got := milestoneTier(in); got != want {
+			t.Errorf("milestoneTier(%q) = %d, want %d (authoritative tier)", in, got, want)
+		}
+	}
+}
+
 func TestElevatorPhase(t *testing.T) {
 	phasePath := "/Game/FactoryGame/GamePhases/GP_Project_Assembly_Phase_3.GP_Project_Assembly_Phase_3"
 	if got := elevatorPhase(phasePath); got != 3 {
