@@ -17,7 +17,8 @@ namespace SavecraftRimWorld.Collectors
             "Full detail for colonist {0}. " +
             "Backstory, all traits, all skills (level + passion), " +
             "mood value + all modifiers, all hediffs, equipment + apparel (with quality), " +
-            "needs breakdown, current job, schedule.";
+            "needs breakdown, current job, schedule. " +
+            "Biotech: xenotype, endo/xenogenes, gene metabolism/complexity/archite count.";
 
         public List<CollectedSection> CollectAll()
         {
@@ -49,6 +50,7 @@ namespace SavecraftRimWorld.Collectors
 
             CollectBackstory(pawn, p);
             CollectTraits(pawn, p);
+            CollectGenes(pawn, p);
             CollectSkills(pawn, p);
             CollectMood(pawn, p);
             CollectHealth(pawn, p);
@@ -85,6 +87,37 @@ namespace SavecraftRimWorld.Collectors
             }
             if (traits.Count > 0)
                 p.SetList("traits", traits);
+        }
+
+        void CollectGenes(Pawn pawn, Struct p)
+        {
+            if (!ModsConfig.BiotechActive || pawn.genes == null) return;
+
+            p.Set("xenotype", pawn.genes.XenotypeLabelCap);
+            p.Set("xenotype_custom", pawn.genes.CustomXenotype != null);
+
+            var endogenes = new List<string>();
+            foreach (var g in pawn.genes.Endogenes)
+                endogenes.Add(g.def.label);
+            p.SetList("endogenes", endogenes);
+
+            var xenogenes = new List<string>();
+            foreach (var g in pawn.genes.Xenogenes)
+                xenogenes.Add(g.def.label);
+            p.SetList("xenogenes", xenogenes);
+
+            // Biostats summed over active genes only (overridden genes don't count).
+            int metabolism = 0, complexity = 0, architeCount = 0;
+            foreach (var g in pawn.genes.GenesListForReading)
+            {
+                if (!g.Active) continue;
+                metabolism += g.def.biostatMet;
+                complexity += g.def.biostatCpx;
+                if (g.def.biostatArc > 0) architeCount++;
+            }
+            p.Set("gene_metabolism", metabolism);
+            p.Set("gene_complexity", complexity);
+            p.Set("archite_count", architeCount);
         }
 
         void CollectSkills(Pawn pawn, Struct p)
