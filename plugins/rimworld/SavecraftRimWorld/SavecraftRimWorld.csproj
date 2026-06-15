@@ -53,7 +53,7 @@
 
   <!-- Krafs reference stubs (CI/CD, no game install) -->
   <ItemGroup Condition="'$(UseGameDlls)' != 'true'">
-    <PackageReference Include="Krafs.Rimworld.Ref" Version="1.5.4104" PrivateAssets="all" />
+    <PackageReference Include="Krafs.Rimworld.Ref" Version="1.6.4850" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
