@@ -51,6 +51,28 @@
         '';
         meta.mainProgram = "pob-server";
       };
+
+      savecraftd = pkgs.buildGoModule {
+        pname = "savecraftd";
+        version = "0.1.0";
+        src = builtins.path {
+          name = "savecraft-src";
+          path = ./.;
+          filter = path: type:
+            let rel = pkgs.lib.removePrefix (toString ./.) (toString path);
+            in (type == "directory" && !pkgs.lib.hasPrefix "/vendor" rel)
+              || pkgs.lib.hasPrefix "/go.mod" rel
+              || pkgs.lib.hasPrefix "/go.sum" rel
+              || pkgs.lib.hasPrefix "/cmd/savecraftd" rel
+              || pkgs.lib.hasPrefix "/internal" rel;
+        };
+        subPackages = ["cmd/savecraftd"];
+        vendorHash = "sha256-AuQqjHn96UauVUb+WKm0WaNHt4etOVUvlBXsf7sSRiM=";
+        # The daemon uses encoding/json/v2 (jsontext); without the experiment
+        # Go's build constraints exclude those files. Matches devenv + CI.
+        env.GOEXPERIMENT = "jsonv2";
+        meta.mainProgram = "savecraftd";
+      };
     });
 
     devShells = forEachSystem (system: let
