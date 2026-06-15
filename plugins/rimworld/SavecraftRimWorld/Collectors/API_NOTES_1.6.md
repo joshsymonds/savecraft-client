@@ -74,9 +74,10 @@ Confirmed accessors:
   `LevelDef` (MonolithLevelDef, `.label`/`.defName`), `MonolithStudyProgress` (int),
   `MonolithStudyCompleted` (bool), `AnomalyStudyEnabled` (bool), `MonolithSpawned` (bool),
   field `hasPerformedVoidProvocation` (bool).
-- `Find.EntityCodex` → `EntityCodex`: field `discoveredEntities` (HashSet) →
-  `.Count` for entities discovered. (No separate "studied" count — studying an entity is
-  what discovers it; `entities_studied` dropped as redundant.)
+- `Find.EntityCodex` → `EntityCodex`: `discoveredEntities` is a NON-public field, so it is
+  not reachable from the mod. Use the public `DiscoveredCount(EntityCategoryDef)` summed over
+  `DefDatabase<EntityCategoryDef>.AllDefs` for `entities_discovered`. (No separate "studied"
+  count — studying an entity is what discovers it; `entities_studied` dropped as redundant.)
 - Both are null when Anomaly DLC inactive — gate on `ModsConfig.AnomalyActive`.
 
 ## R6 — Weapon null

@@ -36,13 +36,28 @@ namespace SavecraftRimWorld.Collectors
         }
 
         /// <summary>
-        /// Emit an explicit JSON null. Used so optional keys (e.g. an unarmed pawn's
-        /// weapon, an untitled pawn's royalty_title) are always present as null rather
-        /// than absent, so consumers never need key-existence checks.
+        /// Emit an explicit JSON null. Used so that, within a block that is emitted, an
+        /// optional key is present as null rather than absent — e.g. an unarmed pawn's
+        /// weapon, or the roster's at-a-glance scalars when a DLC is inactive — so
+        /// consumers don't need key-existence checks for those keys. Note: whole DLC
+        /// blocks in the colonist *detail* section are still omitted when the DLC is off;
+        /// this guarantee applies to keys within blocks that are actually emitted.
         /// </summary>
         public static void SetNull(this Struct s, string key)
         {
             s.Fields[key] = Value.ForNull();
+        }
+
+        /// <summary>
+        /// Set the key to <paramref name="value"/>, or to explicit JSON null when the
+        /// value is null. Keeps optional string scalars always-present-as-null.
+        /// </summary>
+        public static void SetOrNull(this Struct s, string key, string value)
+        {
+            if (value != null)
+                s.Set(key, value);
+            else
+                s.SetNull(key);
         }
 
         public static void SetList(this Struct s, string key, IEnumerable<string> items)

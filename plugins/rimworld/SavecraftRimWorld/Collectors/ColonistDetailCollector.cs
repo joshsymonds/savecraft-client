@@ -20,7 +20,7 @@ namespace SavecraftRimWorld.Collectors
             "needs breakdown, current job, schedule. " +
             "Biotech: xenotype, endo/xenogenes, gene metabolism/complexity/archite count. " +
             "Royalty: title, faction, honor, psylink level, psycasts, psychic entropy/sensitivity, permits. " +
-            "Ideology: ideo name, social role, certainty. " +
+            "Ideology: ideo name, role, certainty. " +
             "Capacities: manipulation/sight/hearing/moving/talking/eating/breathing/consciousness/blood (percent).";
 
         public List<CollectedSection> CollectAll()
