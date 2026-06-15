@@ -136,12 +136,12 @@ func TestBuildProgressionSection(t *testing.T) {
 	if data["spaceElevatorBuilt"] != true {
 		t.Errorf("spaceElevatorBuilt = %v, want true", data["spaceElevatorBuilt"])
 	}
-	if data["activeMilestone"] != "5-3" {
-		t.Errorf("activeMilestone = %v, want 5-3", data["activeMilestone"])
+	if data["activeMilestone"] != "Logistics Mk.3" {
+		t.Errorf("activeMilestone = %v, want Logistics Mk.3", data["activeMilestone"])
 	}
 	alts, _ := data["alternateRecipes"].(map[string]any)
 	names, _ := alts["names"].([]string)
-	if len(names) != 1 || names[0] != "Alternate Wet Concrete" {
+	if len(names) != 1 || names[0] != "Alternate: Wet Concrete" {
 		t.Errorf("alternateRecipes = %v", alts)
 	}
 }

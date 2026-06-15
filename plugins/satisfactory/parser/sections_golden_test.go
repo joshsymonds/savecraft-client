@@ -49,8 +49,8 @@ func TestGoldenSectionsEarlyGame(t *testing.T) {
 	if prog["spaceElevatorPhase"] != 4 {
 		t.Errorf("spaceElevatorPhase = %v, want 4", prog["spaceElevatorPhase"])
 	}
-	if prog["activeMilestone"] != "8-2" {
-		t.Errorf("activeMilestone = %v, want 8-2", prog["activeMilestone"])
+	if prog["activeMilestone"] != "Advanced Aluminum Production" {
+		t.Errorf("activeMilestone = %v, want Advanced Aluminum Production", prog["activeMilestone"])
 	}
 	if prog["mamResearchCompleted"] != 37 {
 		t.Errorf("mamResearchCompleted = %v, want 37", prog["mamResearchCompleted"])
@@ -276,11 +276,11 @@ func TestGoldenSectionsSv60(t *testing.T) {
 	items, _ := storage["itemsInStorage"].([]map[string]any)
 	var screwCount int64 = -1
 	for _, it := range items {
-		if it["name"] == "Iron Screw" {
+		if it["name"] == "Screws" {
 			screwCount, _ = it["count"].(int64)
 		}
 	}
 	if screwCount != 7039 {
-		t.Errorf("Iron Screw count in storage = %d, want 7039", screwCount)
+		t.Errorf("Screws count in storage = %d, want 7039", screwCount)
 	}
 }

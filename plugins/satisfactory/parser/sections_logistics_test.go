@@ -69,7 +69,7 @@ func TestBuildStorageSection(t *testing.T) {
 	}
 	depot, _ := data["dimensionalDepot"].(map[string]any)
 	depotItems, _ := depot["items"].([]map[string]any)
-	if len(depotItems) != 1 || depotItems[0]["name"] != "Cement" || depotItems[0]["count"] != int64(2500) {
+	if len(depotItems) != 1 || depotItems[0]["name"] != "Concrete" || depotItems[0]["count"] != int64(2500) {
 		t.Errorf("dimensionalDepot = %v", depot)
 	}
 }

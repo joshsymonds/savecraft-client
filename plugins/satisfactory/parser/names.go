@@ -5,15 +5,32 @@ import (
 	"strings"
 )
 
-// Display names are derived mechanically from class paths until the
-// Docs.json datagen provides authoritative ones. The raw class path is
-// always emitted alongside, so nothing downstream depends on the heuristic.
+// Display names come from the datagen-generated canonicalNames table (the
+// authoritative Docs.json names); the class-path heuristic below is only a
+// fallback for classes absent from that table (mods, future content). The raw
+// class path is always emitted alongside, so nothing downstream depends on the
+// heuristic.
 
 var camelBoundary = regexp.MustCompile(`([a-z0-9])([A-Z])`)
 
 // displayName turns a class path or class name into a readable label:
-// ".../Desc_IronPlate.Desc_IronPlate_C" -> "Iron Plate".
+// ".../Desc_IronPlate.Desc_IronPlate_C" -> "Iron Plate". The canonical table
+// is authoritative — it resolves the many cases where the class name disagrees
+// with the in-game name (".../Desc_SteelPlate_C" -> "Steel Beam").
 func displayName(classPath string) string {
+	name := classPath
+	if i := strings.LastIndex(name, "."); i >= 0 {
+		name = name[i+1:]
+	}
+	if canonical, ok := canonicalNames[name]; ok {
+		return canonical
+	}
+	return heuristicName(classPath)
+}
+
+// heuristicName derives a readable label from a class path when the class is
+// absent from canonicalNames.
+func heuristicName(classPath string) string {
 	classPrefixes := []string{
 		"BP_EquipmentDescriptor",
 		"BP_ItemDescriptor",
