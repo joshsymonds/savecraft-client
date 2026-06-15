@@ -19,7 +19,9 @@ namespace SavecraftRimWorld.Collectors
             "mood value + all modifiers, all hediffs, equipment + apparel (with quality), " +
             "needs breakdown, current job, schedule. " +
             "Biotech: xenotype, endo/xenogenes, gene metabolism/complexity/archite count. " +
-            "Royalty: title, faction, honor, psylink level, psycasts, psychic entropy/sensitivity, permits.";
+            "Royalty: title, faction, honor, psylink level, psycasts, psychic entropy/sensitivity, permits. " +
+            "Ideology: ideo name, social role, certainty. " +
+            "Capacities: manipulation/sight/hearing/moving/talking/eating/breathing/consciousness/blood (percent).";
 
         public List<CollectedSection> CollectAll()
         {
@@ -53,6 +55,8 @@ namespace SavecraftRimWorld.Collectors
             CollectTraits(pawn, p);
             CollectGenes(pawn, p);
             CollectRoyalty(pawn, p);
+            CollectIdeology(pawn, p);
+            CollectCapacities(pawn, p);
             CollectSkills(pawn, p);
             CollectMood(pawn, p);
             CollectHealth(pawn, p);
@@ -170,6 +174,50 @@ namespace SavecraftRimWorld.Collectors
                 permits.Add(permit);
             }
             p.SetList("royal_permits", permits);
+        }
+
+        void CollectIdeology(Pawn pawn, Struct p)
+        {
+            if (!ModsConfig.IdeologyActive || pawn.ideo == null) return;
+
+            var ideo = pawn.ideo.Ideo;
+            if (ideo == null) return;
+
+            p.Set("ideo_name", ideo.name);
+
+            var role = ideo.GetRole(pawn);
+            if (role != null)
+                p.Set("ideo_role", role.LabelCap);
+            else
+                p.SetNull("ideo_role");
+
+            p.Set("ideo_certainty", System.Math.Round(pawn.ideo.Certainty, 2));
+        }
+
+        void CollectCapacities(Pawn pawn, Struct p)
+        {
+            if (pawn.health?.capacities == null) return;
+
+            var capacities = StructHelper.NewStruct();
+            void Add(string key, PawnCapacityDef def)
+            {
+                if (def == null) return;
+                capacities.Set(key, System.Math.Round(pawn.health.capacities.GetLevel(def) * 100));
+            }
+
+            Add("manipulation", PawnCapacityDefOf.Manipulation);
+            Add("sight", PawnCapacityDefOf.Sight);
+            Add("hearing", PawnCapacityDefOf.Hearing);
+            Add("moving", PawnCapacityDefOf.Moving);
+            Add("talking", PawnCapacityDefOf.Talking);
+            Add("breathing", PawnCapacityDefOf.Breathing);
+            Add("consciousness", PawnCapacityDefOf.Consciousness);
+            Add("blood_filtration", PawnCapacityDefOf.BloodFiltration);
+            Add("blood_pumping", PawnCapacityDefOf.BloodPumping);
+            // Eating is a real PawnCapacityDef but not a PawnCapacityDefOf member.
+            Add("eating", DefDatabase<PawnCapacityDef>.GetNamedSilentFail("Eating"));
+
+            p.Set("capacities", capacities);
         }
 
         void CollectSkills(Pawn pawn, Struct p)
