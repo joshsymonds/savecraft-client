@@ -107,6 +107,10 @@ test-go:
     # mismatches that don't change the test binary's source-file hash
     # still re-execute (a real bug we shipped past once already).
     go test -count=1 ./cmd/...
+    # plugins/ Go packages: parsers, reference modules, datagen tools.
+    # Large gitignored fixtures (e.g. megafactory.sav) t.Skip when absent,
+    # so this runs everywhere; committed fixtures still exercise goldens.
+    go test -count=1 ./plugins/...
 
 # Run Go tests with race detector. Scoped to the source-of-truth packages
 # (same set as `test-go`); a raw ./... also globs the gitignored

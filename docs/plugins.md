@@ -58,10 +58,10 @@ Plugins are compiled as WASI executables. The daemon feeds raw save file bytes o
 
 **Error line (failure, exit code 1):**
 ```json
-{"type": "error", "error_type": "corrupt_file", "message": "Human-readable description", "byte_offset": 1234}
+{"type": "error", "errorType": "corrupt_file", "message": "Human-readable description", "byteOffset": 1234}
 ```
 
-Valid `error_type` values: `unsupported_version`, `corrupt_file`, `parse_error`.
+Valid `errorType` values: `unsupported_version`, `corrupt_file`, `parse_error`.
 
 ### Section Data Contract
 
@@ -137,7 +137,7 @@ func main() {
 func writeError(errType, message string) {
     enc.Encode(map[string]string{
         "type":       "error",
-        "error_type": errType,
+        "errorType": errType,
         "message":    message,
     })
 }
