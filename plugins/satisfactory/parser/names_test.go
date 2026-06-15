@@ -8,12 +8,12 @@ import (
 func TestDisplayName(t *testing.T) {
 	cases := map[string]string{
 		"/Game/FactoryGame/Resource/Parts/IronPlate/Desc_IronPlate.Desc_IronPlate_C": "Iron Plate",
-		"BP_EquipmentDescriptorHazmatSuit_C":                                        "Hazmat Suit",
-		"BP_ItemDescriptorPortableMiner_C":                                          "Portable Miner",
+		"BP_EquipmentDescriptorHazmatSuit_C":                                         "Hazmat Suit",
+		"BP_ItemDescriptorPortableMiner_C":                                           "Portable Miner",
 		// Authoritative names override the class path: Coffee Stain's classes
 		// disagree with the in-game names, and the canonical table wins.
-		"/Game/.../Desc_SteelPlate.Desc_SteelPlate_C":                     "Steel Beam",
-		"Desc_SteelPlateReinforced_C":                                     "Encased Industrial Beam",
+		"/Game/.../Desc_SteelPlate.Desc_SteelPlate_C":                               "Steel Beam",
+		"Desc_SteelPlateReinforced_C":                                               "Encased Industrial Beam",
 		"/Game/X/Schematic_Alternate_WetConcrete.Schematic_Alternate_WetConcrete_C": "Alternate: Wet Concrete",
 		"Desc_Chainsaw_C": "Chainsaw",
 	}
