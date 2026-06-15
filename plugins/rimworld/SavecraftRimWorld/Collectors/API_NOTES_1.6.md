@@ -66,16 +66,27 @@ curiosity members). Anomaly state is COLONY/GAME-level:
 - Entity knowledge / study unlocks live in `EntityCodex` / `EntityCodexEntryDef` /
   `StudyManager` (game-level), not per-pawn.
 - Per-pawn anomaly effects that DO exist are hediffs (inhumanized, void-touched, etc.),
-  already surfaced by the existing `health[]` list.
+  already surfaced by the existing `health[]` list (no per-pawn anomaly fields added).
 
-**Implication for R5 task:** per-pawn anomaly fields as specified cannot be implemented.
-Decide at the R5 task whether to (a) move colony-level anomaly state into
-ColonyOverviewCollector / a new section, or (b) drop R5. This satisfies the epic's
-"omit-and-note" clause for unresolvable Anomaly paths.
+**Resolution:** R5 reshaped into a colony-level `anomaly` section (new AnomalyCollector).
+Confirmed accessors:
+- `Find.Anomaly` → `GameComponent_Anomaly`: `Level` (int), `HighestLevelReached` (int),
+  `LevelDef` (MonolithLevelDef, `.label`/`.defName`), `MonolithStudyProgress` (int),
+  `MonolithStudyCompleted` (bool), `AnomalyStudyEnabled` (bool), `MonolithSpawned` (bool),
+  field `hasPerformedVoidProvocation` (bool).
+- `Find.EntityCodex` → `EntityCodex`: field `discoveredEntities` (HashSet) →
+  `.Count` for entities discovered. (No separate "studied" count — studying an entity is
+  what discovers it; `entities_studied` dropped as redundant.)
+- Both are null when Anomaly DLC inactive — gate on `ModsConfig.AnomalyActive`.
 
 ## R6 — Weapon null
 `Google.Protobuf.WellKnownTypes.Value.ForNull()` is available for emitting JSON null.
 Add a `StructHelper.SetNull(this Struct, string key)` helper.
+
+## R8 — Roster scalars
+Reuse the same accessors as R1/R2/R3 for `xenotype` (genes.XenotypeLabelCap),
+`royalty_title` (royalty.MostSeniorTitle), `ideo_role` (ideo.Ideo.GetRole(pawn)),
+`weapon_name` (equipment.Primary?.LabelCap), each null when DLC inactive / absent.
 
 ## Build
 - `Krafs.Rimworld.Ref` pinned to **1.6.4850** (matches the installed game build).
