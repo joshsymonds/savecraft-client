@@ -45,16 +45,19 @@ func runDaemon(version, serverURLDefault, installURLDefault, appName, statusPort
 		AppName:     appName,
 	}
 
-	var prog *svcmgr.Program
-	prog = svcmgr.New(svcCfg, func(ctx context.Context) error {
+	runErr := svcmgr.Run(func(ctx context.Context) error {
+		// Derive a cancelable context so the self-update restart path can
+		// trigger a graceful shutdown (cancel is the former Stop callback).
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
 		return runDaemonLoop(
-			ctx, logger, ringBuf, prog.Stop, svcCfg,
+			ctx, logger, ringBuf, cancel, svcCfg,
 			version, serverURLDefault, installURLDefault, appName, statusPortDefault, frontendURL,
 		)
 	})
-
-	if err := svcmgr.Run(prog); err != nil {
-		return fmt.Errorf("daemon run: %w", err)
+	if runErr != nil {
+		return fmt.Errorf("daemon run: %w", runErr)
 	}
 
 	return nil

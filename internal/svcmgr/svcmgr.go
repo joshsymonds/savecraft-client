@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"sync"
 
 	"golang.org/x/term"
 )
@@ -43,77 +42,24 @@ func defaultRunner(name string, args ...string) ([]byte, error) {
 	return out, nil
 }
 
-// Program manages the daemon lifecycle via context cancellation.
-type Program struct {
-	cfg    Config
-	run    RunFunc
-	cancel context.CancelFunc
-	once   sync.Once
-	wg     sync.WaitGroup
-	mu     sync.Mutex
-	err    error
-}
+// Run executes the daemon's main loop in the calling goroutine, passing it a
+// context that is canceled when a shutdown signal arrives. It returns whatever
+// the RunFunc returns — immediately, the moment the RunFunc returns, whether
+// that is because a signal canceled the context (graceful, typically nil) or
+// because the RunFunc terminated on its own (e.g. a fatal error).
+//
+// Running the work in the caller's goroutine — rather than launching it and
+// waiting separately on the signal channel — is deliberate: it makes process
+// lifetime equal to the RunFunc's lifetime. A fatal error therefore always
+// reaches the process exit code, so the OS service manager's restart policy
+// (e.g. systemd Restart=on-failure) actually fires. A supervisor that waited
+// only on a signal would leave the process alive-but-inert after the RunFunc
+// died, silently defeating that restart contract.
+func Run(run RunFunc) error {
+	ctx, cancel := signal.NotifyContext(context.Background(), shutdownSignals()...)
+	defer cancel()
 
-// New creates a Program that will execute run when started.
-func New(cfg Config, run RunFunc) *Program {
-	return &Program{
-		cfg: cfg,
-		run: run,
-	}
-}
-
-// Start launches the run function in a background goroutine.
-func (p *Program) Start() {
-	//nolint:gosec // G118: cancel is stored in p.cancel and called in Stop()
-	ctx, cancel := context.WithCancel(context.Background())
-	p.cancel = cancel
-
-	p.wg.Go(func() {
-		if err := p.run(ctx); err != nil {
-			p.mu.Lock()
-			p.err = err
-			p.mu.Unlock()
-		}
-	})
-}
-
-// Wait blocks until the run function goroutine completes.
-func (p *Program) Wait() {
-	p.wg.Wait()
-}
-
-// Stop cancels the context to signal the run function to shut down.
-// Safe to call multiple times.
-func (p *Program) Stop() {
-	p.once.Do(func() {
-		if p.cancel != nil {
-			p.cancel()
-		}
-	})
-}
-
-// Err returns the error from the run function, if any.
-func (p *Program) Err() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	return p.err
-}
-
-// Run starts the program, waits for a shutdown signal, then stops it.
-// Returns the error from the run function, if any.
-func Run(prog *Program) error {
-	prog.Start()
-
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, shutdownSignals()...)
-	<-sig
-	signal.Stop(sig)
-
-	prog.Stop()
-	prog.Wait()
-
-	return prog.Err()
+	return run(ctx)
 }
 
 // Interactive reports whether stderr is connected to a terminal.

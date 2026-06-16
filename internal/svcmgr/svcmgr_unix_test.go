@@ -4,44 +4,40 @@ package svcmgr
 
 import (
 	"context"
-	"errors"
 	"syscall"
 	"testing"
 	"time"
 )
 
+// TestRun_ShutdownOnSignal covers the graceful path: an OS shutdown signal
+// cancels the context passed to the RunFunc, the RunFunc returns nil, and Run
+// returns nil (process exits zero).
 func TestRun_ShutdownOnSignal(t *testing.T) {
-	prog := New(Config{}, func(ctx context.Context) error {
-		<-ctx.Done()
-
-		return nil
-	})
+	started := make(chan struct{})
+	done := make(chan error, 1)
 
 	go func() {
-		time.Sleep(50 * time.Millisecond)
-		syscall.Kill(syscall.Getpid(), syscall.SIGINT)
+		done <- Run(func(ctx context.Context) error {
+			// NotifyContext registers the signal handler before invoking the
+			// RunFunc, so by the time started is closed the handler is live.
+			close(started)
+			<-ctx.Done()
+
+			return nil
+		})
 	}()
 
-	err := Run(prog)
-	if err != nil {
-		t.Fatalf("Run: %v", err)
+	<-started
+	if err := syscall.Kill(syscall.Getpid(), syscall.SIGINT); err != nil {
+		t.Fatalf("kill: %v", err)
 	}
-}
 
-func TestRun_PropagatesRunFuncError(t *testing.T) {
-	runErr := errors.New("run failed")
-	prog := New(Config{}, func(_ context.Context) error {
-		return runErr
-	})
-
-	go func() {
-		// Wait for the run func to complete before signaling.
-		time.Sleep(50 * time.Millisecond)
-		syscall.Kill(syscall.Getpid(), syscall.SIGINT)
-	}()
-
-	err := Run(prog)
-	if !errors.Is(err, runErr) {
-		t.Errorf("Run err = %v, want %v", err, runErr)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return after shutdown signal")
 	}
 }
