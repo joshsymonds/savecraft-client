@@ -72,6 +72,11 @@ requires_save = false
 [reference.modules.hard_drive_tiers.section_mappings]
 progression = "progression"
 
+[reference.modules.building_reference]
+name = "Building Reference"
+description = "The game's own reference card for any Satisfactory building, straight from the shipped game data: the in-game description verbatim plus footprint/dimensions, build cost, power draw, conveyor/pipe throughput, storage capacity, and unlock tier. Covers every buildable — machines, generators, belts, pipes, foundations, blueprint designers, and the Dimensional Depot. Look up one building by name, or list a category (production, extraction, power, logistics, structure, special). Use PROACTIVELY whenever the player asks how a building works, what it does, its size/footprint, build cost, or stats — building facts drift between patches, so prefer this over memory. Works with no save connected."
+requires_save = false
+
 [default_paths]
 windows = "%LOCALAPPDATA%/FactoryGame/Saved/SaveGames/*"
 linux = "~/.local/share/Steam/steamapps/compatdata/526870/pfx/drive_c/users/steamuser/AppData/Local/FactoryGame/Saved/SaveGames/*"
