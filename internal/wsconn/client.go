@@ -160,7 +160,7 @@ func (c *Client) connectLoop(ctx context.Context) {
 func (c *Client) waitBackoff(ctx context.Context, delay time.Duration) bool {
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
-	c.log.WarnContext(ctx, "websocket disconnected, reconnecting", slog.Duration("delay", delay))
+	c.log.WarnContext(ctx, "websocket not connected, retrying after backoff", slog.Duration("delay", delay))
 	select {
 	case <-ctx.Done():
 		return false
@@ -259,8 +259,11 @@ func (c *Client) ForceReconnect() {
 }
 
 // Close shuts down the client, stopping the connect loop and closing the
-// connection. Canceling the loop context is what reliably unblocks the loop;
-// the explicit connection Close is a best-effort clean closure handshake.
+// connection. Canceling the loop context is what reliably unblocks the loop.
+// The connection is torn down with CloseNow (no close handshake): the loop
+// context is already canceled and the daemon sends its application-level
+// SourceOffline before this runs, so the WebSocket close handshake would only
+// add up to ~10s of shutdown latency (5s write + 5s read) without value.
 func (c *Client) Close() error {
 	c.log.Debug("websocket closing")
 	var closeErr error
@@ -270,7 +273,7 @@ func (c *Client) Close() error {
 			c.cancel()
 		}
 		if c.conn != nil {
-			closeErr = c.conn.Close(websocket.StatusNormalClosure, "shutdown")
+			closeErr = c.conn.CloseNow()
 			c.conn = nil
 		}
 		c.mu.Unlock()
