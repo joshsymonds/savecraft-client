@@ -207,24 +207,42 @@ func (r *fakeRunner) Run(
 }
 
 type fakeWSClient struct {
-	messages    chan []byte
-	reconnected chan struct{}
-	sent        [][]byte
-	connected   bool
-	sendErr     error // if non-nil, Send returns this error
-	mu          sync.Mutex
+	messages      chan []byte
+	connected     chan struct{}
+	sent          [][]byte
+	isConnected   bool
+	manualConnect bool  // if true, Start does not auto-signal the first connection
+	sendErr       error // if non-nil, Send returns this error
+	mu            sync.Mutex
 }
 
 func newFakeWSClient() *fakeWSClient {
 	return &fakeWSClient{
-		messages:    make(chan []byte, 10),
-		reconnected: make(chan struct{}, 1),
+		messages:  make(chan []byte, 10),
+		connected: make(chan struct{}, 1),
 	}
 }
 
-func (ws *fakeWSClient) Connect(_ context.Context) error {
-	ws.connected = true
-	return nil
+// Start mirrors the real client: it marks the connection live and signals the
+// first connection so the daemon announces online. With manualConnect set, it
+// stays disconnected so a test can drive the first connection explicitly
+// (simulating a connection that isn't available yet at startup).
+func (ws *fakeWSClient) Start(_ context.Context) {
+	if ws.manualConnect {
+		return
+	}
+	ws.isConnected = true
+	ws.signalConnected()
+}
+
+// signalConnected does the drain-then-send used by the real client, so a
+// signal is never lost but never blocks.
+func (ws *fakeWSClient) signalConnected() {
+	select {
+	case <-ws.connected:
+	default:
+	}
+	ws.connected <- struct{}{}
 }
 
 func (ws *fakeWSClient) Send(msg []byte) error {
@@ -239,11 +257,11 @@ func (ws *fakeWSClient) Send(msg []byte) error {
 	return nil
 }
 
-func (ws *fakeWSClient) Messages() <-chan []byte      { return ws.messages }
-func (ws *fakeWSClient) Reconnected() <-chan struct{} { return ws.reconnected }
-func (ws *fakeWSClient) ForceReconnect()              {}
-func (ws *fakeWSClient) Close() error                 { return nil }
-func (ws *fakeWSClient) Connected() bool              { return ws.connected }
+func (ws *fakeWSClient) Messages() <-chan []byte    { return ws.messages }
+func (ws *fakeWSClient) Connected() <-chan struct{} { return ws.connected }
+func (ws *fakeWSClient) ForceReconnect()            {}
+func (ws *fakeWSClient) Close() error               { return nil }
+func (ws *fakeWSClient) IsConnected() bool          { return ws.isConnected }
 
 // protoTypeName returns the oneof case name for a proto Message (e.g. "sourceOnline").
 func protoTypeName(msg *pb.Message) string {
@@ -2556,6 +2574,51 @@ func TestSendEvent_HeartbeatWireFormat(t *testing.T) {
 	}
 }
 
+// TestRun_AnnouncesOnFirstConnectSignal is the daemon-level boot-time
+// resilience guard: when the connection is not available at startup, Run must
+// NOT return or error and must NOT announce online — it waits. Once the
+// connection comes up (the Connected() signal), it announces. This is the
+// daemon-side complement to wsconn's in-process retry: a transient boot-time
+// failure can never wedge or crash the daemon.
+func TestRun_AnnouncesOnFirstConnectSignal(t *testing.T) {
+	ws := newFakeWSClient()
+	ws.manualConnect = true // connection is not available yet
+	cfg := Config{
+		SourceID: "deck",
+		Version:  "0.1.0",
+		Games:    map[string]GameConfig{},
+	}
+
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{},
+		ws, &fakePluginManager{}, nil, testLogger())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- d.Run(ctx) }()
+
+	// While disconnected, the daemon must not announce online and must not exit.
+	time.Sleep(50 * time.Millisecond)
+	if slices.Contains(ws.sentEventTypes(), "sourceOnline") {
+		t.Fatal("announced online before any connection was established")
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("Run returned before connecting (err=%v) — initial outage must not be fatal", err)
+	default:
+	}
+
+	// Connection comes up — daemon announces online.
+	ws.connected <- struct{}{}
+	waitFor(t, func() bool {
+		return slices.Contains(ws.sentEventTypes(), "sourceOnline")
+	})
+
+	cancel()
+	if err := <-done; err != nil {
+		t.Errorf("Run returned %v, want nil on graceful shutdown", err)
+	}
+}
+
 func TestRun_ReconnectReannounces(t *testing.T) {
 	ws := newFakeWSClient()
 	cfg := Config{
@@ -2596,7 +2659,7 @@ func TestRun_ReconnectReannounces(t *testing.T) {
 	}
 
 	// Simulate reconnect.
-	ws.reconnected <- struct{}{}
+	ws.connected <- struct{}{}
 
 	// Wait for second sourceOnline.
 	waitFor(t, func() bool {
@@ -2774,7 +2837,7 @@ func TestRequestUnlink_SendsAndBlocksForResult(t *testing.T) {
 	ws := newFakeWSClient()
 	d := New(d2rConfig(), d2rFS(), newFakeWatcher(), d2rRunner(), ws, &fakePluginManager{}, nil, testLogger())
 
-	ws.connected = true
+	ws.isConnected = true
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -2807,7 +2870,7 @@ func TestRequestUnlink_TimesOut(t *testing.T) {
 	ws := newFakeWSClient()
 	d := New(d2rConfig(), d2rFS(), newFakeWatcher(), d2rRunner(), ws, &fakePluginManager{}, nil, testLogger())
 
-	ws.connected = true
+	ws.isConnected = true
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -3261,7 +3324,7 @@ func countEventType(ws *fakeWSClient, eventType string) int {
 
 func TestPluginReloadChannel_ReloadsAndRescans(t *testing.T) {
 	ws := newFakeWSClient()
-	ws.connected = true
+	ws.isConnected = true
 
 	runner := &fakeRunner{
 		results: map[string]*GameState{
@@ -3361,7 +3424,7 @@ func TestPluginReloadChannel_ReloadsAndRescans(t *testing.T) {
 func TestPluginReloadChannel_NilDoesNotPanic(t *testing.T) {
 	// When no pluginReloadCh is set, the daemon should work normally.
 	ws := newFakeWSClient()
-	ws.connected = true
+	ws.isConnected = true
 
 	cfg := Config{
 		SourceID: "test",

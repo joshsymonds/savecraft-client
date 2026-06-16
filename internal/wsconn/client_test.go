@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -37,13 +38,23 @@ func echoServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
+// waitForConnected starts the client and blocks until its first connection is
+// established (signaled on Connected()), failing the test on timeout.
+func waitForConnected(t *testing.T, client *Client) {
+	t.Helper()
+	select {
+	case <-client.Connected():
+	case <-time.After(2 * time.Second):
+		t.Fatal("client did not connect")
+	}
+}
+
 func connectClient(t *testing.T, serverURL string, opts ...Option) *Client {
 	t.Helper()
 	client := New(serverURL, "token", opts...)
-	if err := client.Connect(context.Background()); err != nil {
-		t.Fatalf("Connect: %v", err)
-	}
+	client.Start(context.Background())
 	t.Cleanup(func() { client.Close() })
+	waitForConnected(t, client)
 	return client
 }
 
@@ -58,29 +69,67 @@ func waitForMsg(t *testing.T, ch <-chan []byte) []byte {
 	}
 }
 
-func TestConnect_Success(t *testing.T) {
+func TestStart_Connects(t *testing.T) {
 	srv := echoServer(t)
 	_ = connectClient(t, wsURL(srv.URL))
 }
 
-func TestConnect_ConnReadyClosedImmediately(t *testing.T) {
+// TestConnected_SignalsOnFirstConnect is the symmetry guard: the Connected()
+// channel must fire on the FIRST successful connection, not only on
+// reconnects. The old Connect/reconnect split signaled only on reconnect.
+func TestConnected_SignalsOnFirstConnect(t *testing.T) {
 	srv := echoServer(t)
-	client := connectClient(t, wsURL(srv.URL))
 
-	client.mu.Lock()
-	ready := client.connReady
-	client.mu.Unlock()
+	client := New(wsURL(srv.URL), "token")
+	client.Start(context.Background())
+	t.Cleanup(func() { client.Close() })
 
-	if ready == nil {
-		t.Fatal("connReady should be non-nil after Connect")
+	select {
+	case <-client.Connected():
+		// expected: the initial connection signals.
+	case <-time.After(2 * time.Second):
+		t.Fatal("Connected() did not signal on the first connection")
+	}
+}
+
+// TestStart_RetriesUntilConnected is the core regression guard for the
+// transient-as-fatal bug: an initial dial failure must NOT be fatal — the
+// client retries in-process and connects once the server is reachable.
+func TestStart_RetriesUntilConnected(t *testing.T) {
+	var attempts atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Reject the first two dials (non-101 responses fail websocket.Dial),
+		// then accept — simulating a server/network that isn't ready yet.
+		if attempts.Add(1) < 3 {
+			http.Error(w, "not ready", http.StatusServiceUnavailable)
+			return
+		}
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+		if err != nil {
+			return
+		}
+		defer conn.Close(websocket.StatusNormalClosure, "")
+		for {
+			if _, _, readErr := conn.Read(r.Context()); readErr != nil {
+				return
+			}
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	client := New(wsURL(srv.URL), "token", WithReconnect(10*time.Millisecond, 50*time.Millisecond))
+	client.Start(context.Background())
+	t.Cleanup(func() { client.Close() })
+
+	select {
+	case <-client.Connected():
+		// expected: connected after retrying past the early failures.
+	case <-time.After(3 * time.Second):
+		t.Fatal("client never connected despite retrying past initial failures")
 	}
 
-	// connReady should already be closed since conn is live.
-	select {
-	case <-ready:
-		// expected: channel is closed
-	default:
-		t.Fatal("connReady should be closed after successful Connect")
+	if got := attempts.Load(); got < 3 {
+		t.Errorf("expected the client to retry (>=3 dial attempts), got %d", got)
 	}
 }
 
@@ -124,10 +173,7 @@ func TestMessages_FromServer(t *testing.T) {
 func TestSend_DropsWhenClosed(t *testing.T) {
 	srv := echoServer(t)
 
-	client := New(wsURL(srv.URL), "token")
-	if err := client.Connect(context.Background()); err != nil {
-		t.Fatalf("Connect: %v", err)
-	}
+	client := connectClient(t, wsURL(srv.URL))
 	client.Close()
 
 	if err := client.Send([]byte("hello")); err != nil {
@@ -171,7 +217,7 @@ func TestReconnect_AfterServerClose(t *testing.T) {
 	}
 
 	// Verify functional on new connection via echo roundtrip.
-	// Retry Send because the client's reconnect() may not have set c.conn yet
+	// Retry Send because the connect loop may not have set c.conn yet
 	// even though the server already accepted (and pushed to conns).
 	deadline := time.After(2 * time.Second)
 	for {
@@ -189,7 +235,10 @@ func TestReconnect_AfterServerClose(t *testing.T) {
 	}
 }
 
-func TestReconnected_SignalsAfterReconnect(t *testing.T) {
+// TestConnected_SignalsAfterReconnect verifies the Connected() channel fires
+// again after a dropped connection is re-established (not only on first
+// connect).
+func TestConnected_SignalsAfterReconnect(t *testing.T) {
 	conns := make(chan *websocket.Conn, 5)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
@@ -206,30 +255,24 @@ func TestReconnected_SignalsAfterReconnect(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
+	// connectClient consumes the first Connected() signal.
 	client := connectClient(t, wsURL(srv.URL),
 		WithReconnect(10*time.Millisecond, 50*time.Millisecond),
 	)
-
-	// Reconnected channel should not signal on initial connect.
-	select {
-	case <-client.Reconnected():
-		t.Fatal("Reconnected() should not signal on initial connect")
-	case <-time.After(50 * time.Millisecond):
-	}
 
 	// Kill first connection to trigger reconnect.
 	conn1 := <-conns
 	conn1.Close(websocket.StatusGoingAway, "test disconnect")
 
-	// Wait for reconnect signal.
+	// Connected() should signal again after the reconnect.
 	select {
-	case <-client.Reconnected():
+	case <-client.Connected():
 		// expected
 	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for Reconnected() signal")
+		t.Fatal("timed out waiting for Connected() signal after reconnect")
 	}
 
-	// Wait for second server-side accept to confirm reconnect completed.
+	// Confirm a second server-side accept happened.
 	select {
 	case <-conns:
 	case <-time.After(2 * time.Second):
@@ -274,11 +317,11 @@ func TestForceReconnect_TriggersImmediateReconnect(t *testing.T) {
 		t.Fatal("timed out waiting for reconnect — ForceReconnect did not bypass backoff")
 	}
 
-	// Verify Reconnected() channel signals.
+	// Verify Connected() channel signals after the forced reconnect.
 	select {
-	case <-client.Reconnected():
+	case <-client.Connected():
 	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for Reconnected() signal after ForceReconnect")
+		t.Fatal("timed out waiting for Connected() signal after ForceReconnect")
 	}
 }
 
@@ -309,7 +352,7 @@ func TestForceReconnect_Idempotent(t *testing.T) {
 	client.ForceReconnect()
 	client.ForceReconnect()
 
-	// Should still reconnect exactly once.
+	// Should still reconnect.
 	select {
 	case <-conns:
 	case <-time.After(5 * time.Second):
@@ -320,27 +363,12 @@ func TestForceReconnect_Idempotent(t *testing.T) {
 func TestClose_Idempotent(t *testing.T) {
 	srv := echoServer(t)
 
-	client := New(wsURL(srv.URL), "token")
-	if err := client.Connect(context.Background()); err != nil {
-		t.Fatalf("Connect: %v", err)
-	}
+	client := connectClient(t, wsURL(srv.URL))
 
 	if err := client.Close(); err != nil {
 		t.Errorf("first Close: %v", err)
 	}
 	if err := client.Close(); err != nil {
 		t.Errorf("second Close: %v", err)
-	}
-}
-
-func TestConnect_BadURL(t *testing.T) {
-	client := New("ws://127.0.0.1:1/ws/daemon", "token")
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
-	err := client.Connect(ctx)
-	if err == nil {
-		client.Close()
-		t.Fatal("expected error for unreachable server")
 	}
 }

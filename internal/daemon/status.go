@@ -41,7 +41,7 @@ func (d *Daemon) Status() DaemonStatus {
 		Uptime:      time.Since(d.startTime).Truncate(time.Second).String(),
 		Version:     d.cfg.Version,
 		SourceID:    d.cfg.SourceID,
-		WSConnected: d.ws.Connected(),
+		WSConnected: d.ws.IsConnected(),
 		Games:       games,
 	}
 }

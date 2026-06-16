@@ -134,13 +134,13 @@ type Runner interface {
 
 // WSClient handles WebSocket communication with the server.
 type WSClient interface {
-	Connect(ctx context.Context) error
+	Start(ctx context.Context)
 	Send(msg []byte) error
 	Messages() <-chan []byte
-	Reconnected() <-chan struct{}
+	Connected() <-chan struct{}
 	ForceReconnect()
 	Close() error
-	Connected() bool
+	IsConnected() bool
 }
 
 // FS abstracts filesystem operations for testability.
@@ -497,18 +497,18 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 		slog.Int("game_count", len(d.cfg.Games)),
 	)
 
-	if err := d.ws.Connect(ctx); err != nil {
-		d.log.ErrorContext(ctx, "websocket connect failed", slog.String("error", err.Error()))
-		return fmt.Errorf("ws connect: %w", err)
-	}
-	d.log.InfoContext(ctx, "websocket connected", slog.String("server_url", d.cfg.ServerURL))
+	// Start the connection in the background. Establishing it is not a
+	// precondition for running: a transient failure (DNS not ready at boot,
+	// server unreachable) is retried in-process and never fatal. The daemon
+	// announces online — and re-announces — whenever a connection is
+	// established, via the Connected() signal in the event loop below.
+	d.ws.Start(ctx)
 	defer func() {
 		if closeErr := d.ws.Close(); closeErr != nil && runErr == nil {
 			runErr = fmt.Errorf("ws close: %w", closeErr)
 		}
 	}()
 
-	d.announceOnline(ctx)
 	return d.eventLoop(ctx)
 }
 
@@ -552,8 +552,8 @@ func (d *Daemon) eventLoop(ctx context.Context) error {
 			d.sendHeartbeat(ctx)
 		case <-d.pluginUpdateResetCh:
 			updateTicker.Reset(pluginUpdateInterval)
-		case <-d.ws.Reconnected():
-			d.log.InfoContext(ctx, "websocket reconnected, re-announcing")
+		case <-d.ws.Connected():
+			d.log.InfoContext(ctx, "websocket connected, announcing online")
 			d.announceOnline(ctx)
 		case <-d.powerResumeCh:
 			d.log.InfoContext(ctx, "power resume detected, forcing websocket reconnect")
