@@ -53,6 +53,15 @@ func TestRun_ReturnsNilImmediately(t *testing.T) {
 	}
 }
 
+// TestInteractive exercises the terminal-detection path. The result is
+// environment-dependent (true only when stderr is a TTY), so this asserts only
+// that it runs without panicking and returns a usable bool.
+func TestInteractive(t *testing.T) {
+	// Under `go test` stderr is normally not a terminal, but don't hard-assert
+	// false — a developer running tests from an interactive shell may see true.
+	t.Logf("Interactive() = %v", Interactive())
+}
+
 func TestControl_UnknownAction(t *testing.T) {
 	cfg := Config{
 		Name:        "test-daemon",
