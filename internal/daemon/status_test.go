@@ -79,14 +79,14 @@ func TestStatus_WSConnected(t *testing.T) {
 		ws, &fakePluginManager{}, nil, testLogger(),
 	)
 
-	// Before Connect, ws.connected is false.
+	// Before Start, ws.isConnected is false.
 	status := d.Status()
 	if status.WSConnected {
-		t.Error("should not be connected before Connect()")
+		t.Error("should not be connected before Start()")
 	}
 
-	// After Connect, ws.connected is true.
-	ws.Connect(context.Background())
+	// After Start, ws.isConnected is true.
+	ws.Start(context.Background())
 
 	status = d.Status()
 	if !status.WSConnected {
