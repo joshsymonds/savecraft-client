@@ -5,6 +5,36 @@ import (
 	"testing"
 )
 
+// On a real save, connection edges are captured and at least one edge touches
+// a known production machine.
+func TestGoldenConnectionAdjacency(t *testing.T) {
+	state := parseFixtureSections(t, "current_sv60.sav")
+	if len(state.connEdges) == 0 {
+		t.Fatal("no connection edges extracted")
+	}
+
+	machines := map[string]bool{}
+	for _, r := range state.manufacturers {
+		machines[r.instance] = true
+	}
+	for _, r := range state.extractors {
+		machines[r.instance] = true
+	}
+
+	touchesMachine := false
+	for _, e := range state.connEdges {
+		if e.from == "" || e.to == "" {
+			t.Errorf("edge with empty endpoint: %+v", e)
+		}
+		if machines[e.from] || machines[e.to] {
+			touchesMachine = true
+		}
+	}
+	if !touchesMachine {
+		t.Error("no connection edge touches a known manufacturer or extractor")
+	}
+}
+
 // On a real save the machines section's manufacturer groups carry a status
 // breakdown; per group the breakdown sums to the group count, group counts sum
 // to totalManufacturers, and at least one non-producing status appears.

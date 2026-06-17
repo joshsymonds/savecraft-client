@@ -35,6 +35,11 @@ type saveState struct {
 	// the machine records after the extract pass.
 	machineInventories map[string]*sav.ObjectData
 
+	// connEdges are belt/pipe links between actors, from connection
+	// components' mConnectedComponent refs; the logistics graph is built
+	// from them.
+	connEdges []connEdge
+
 	containerCounts   map[string]int
 	storedItems       map[string]int64 // item class -> total across containers
 	centralStorage    *sav.ObjectData
@@ -84,6 +89,9 @@ func (s *saveState) want(o sav.ObjectHeader) bool {
 	if isMachineInventory(o) {
 		return true
 	}
+	if _, ok := isConnectionComponent(o.ClassPath); ok {
+		return true
+	}
 	if strings.HasSuffix(o.ClassPath, ".FGPowerCircuit") {
 		return true
 	}
@@ -106,6 +114,13 @@ func (s *saveState) collect(o sav.Object) error {
 		// One undecodable object must not kill the whole parse; sections
 		// degrade to whatever was collected.
 		fmt.Fprintf(stderr(), "satisfactory: decode %s (%s): %v\n", o.InstanceName, o.ClassPath, err)
+		return nil
+	}
+
+	if transport, ok := isConnectionComponent(o.ClassPath); ok {
+		if e, ok := connEdgeFrom(o.InstanceName, od, transport); ok {
+			s.connEdges = append(s.connEdges, e)
+		}
 		return nil
 	}
 
