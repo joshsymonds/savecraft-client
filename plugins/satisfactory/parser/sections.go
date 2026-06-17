@@ -533,6 +533,10 @@ func (s *saveState) buildResult() map[string]any {
 			"description": "Resource extraction: count of occupied resource nodes and extractors by type. Node resource types and purities require static map reference data (not yet included)",
 			"data":        s.buildResourceNodesSection(),
 		},
+		"geography": map[string]any{
+			"description": "Spatial layout: bases (clusters of machines grouped by physical proximity, NOT belt connectivity — see production_lines for connected groups), each named by the nearest player map marker (or a compass sector) with a machine count, per-kind breakdown, and world-coordinate bounds; the player's map markers (name + position); visited biome areas; and resource-node usage (total nodes, and the extractors occupying nodes with the resource each yields — node purity is not in the save). Use to answer 'where is my X' and 'what does my map look like'",
+			"data":        s.buildGeographySection(),
+		},
 		"power": map[string]any{
 			"description": "Power grid: circuit count, generators by type and fuel with producing counts, battery storage charge — use to assess generation mix; MW capacity requires reference data, so counts are what the save provides",
 			"data":        s.buildPowerSection(),
