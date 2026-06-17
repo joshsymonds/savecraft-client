@@ -40,6 +40,12 @@ type saveState struct {
 	// from them.
 	connEdges []connEdge
 
+	// mapMarkers are player-placed named markers (geographic anchors).
+	// resourceNodePos maps a resource-node actor instance to its world
+	// position, for joining with the extractors that occupy them.
+	mapMarkers      []mapMarker
+	resourceNodePos map[string][3]float32
+
 	containerCounts   map[string]int
 	storedItems       map[string]int64 // item class -> total across containers
 	centralStorage    *sav.ObjectData
@@ -64,6 +70,7 @@ func newSaveState(header *sav.Header) *saveState {
 		storedItems:        map[string]int64{},
 		vehicleCounts:      map[string]int{},
 		machineInventories: map[string]*sav.ObjectData{},
+		resourceNodePos:    map[string][3]float32{},
 	}
 }
 
@@ -93,6 +100,9 @@ func (s *saveState) want(o sav.ObjectHeader) bool {
 		return true
 	}
 	if strings.HasSuffix(o.ClassPath, ".FGPowerCircuit") {
+		return true
+	}
+	if strings.HasSuffix(o.ClassPath, ".FGMapManager") || isResourceNode(o.ClassPath) {
 		return true
 	}
 	return factoryKind(o.ClassPath) != "" || logisticsKind(o) != ""
@@ -144,6 +154,10 @@ func (s *saveState) collect(o sav.Object) error {
 		s.playerCount++
 	case strings.HasSuffix(o.ClassPath, ".FGPowerCircuit"):
 		s.powerCircuits++
+	case strings.HasSuffix(o.ClassPath, ".FGMapManager"):
+		s.mapMarkers = parseMapMarkers(od)
+	case isResourceNode(o.ClassPath):
+		s.resourceNodePos[o.InstanceName] = o.Translation
 	case isMachineInventory(o.ObjectHeader):
 		s.machineInventories[o.InstanceName] = od
 	case factoryKind(o.ClassPath) != "":

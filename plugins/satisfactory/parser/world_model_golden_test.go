@@ -5,6 +5,29 @@ import (
 	"testing"
 )
 
+// On a real save, resource-node positions and visited areas are extracted.
+// (Markers may be absent in a fresh save — only require they are handled.)
+func TestGoldenGeographyData(t *testing.T) {
+	state := parseFixtureSections(t, "current_sv60.sav")
+
+	if len(state.resourceNodePos) == 0 {
+		t.Error("no resource node positions extracted")
+	}
+	for inst, pos := range state.resourceNodePos {
+		if inst == "" {
+			t.Error("empty node instance key")
+		}
+		_ = pos // positions may legitimately be far from origin; just ensure present
+	}
+
+	areas := state.visitedAreaNames()
+	if len(areas) == 0 {
+		t.Error("no visited areas extracted")
+	}
+	t.Logf("sv60: %d resource nodes, %d visited areas, %d markers",
+		len(state.resourceNodePos), len(areas), len(state.mapMarkers))
+}
+
 // On a real save, the connection adjacency contracts into multiple production
 // lines: storage containers act as boundaries (so the factory is NOT one giant
 // component), every line has a machine, and no machine is double-counted.
