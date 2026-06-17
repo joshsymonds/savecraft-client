@@ -481,11 +481,11 @@ func (s *saveState) buildResult() map[string]any {
 			"data":        s.buildPlayerSection(),
 		},
 		"machines": map[string]any{
-			"description": "Built production machines aggregated by building + recipe + clock speed, with producing counts, somersloop-amplified counts, measured productivity (rolling in-game window), and a status breakdown per group; extractors by type — use to assess factory layout and find idle machines. status keys: producing, throttled (running below capacity), blocked_downstream (output backed up), starved_upstream (an ingredient ran out), unconfigured (no recipe set), likely_unpowered (INFERRED by elimination — the save has no power-outage flag). A group with no status key is fully producing.",
+			"description": "Built production machines aggregated by building + recipe + clock speed, with producing counts, somersloop-amplified counts, measured productivity (rolling in-game window), and a status breakdown per group; extractors by type — use to assess factory layout and find idle machines. Status is derived from measured productivity, not the instantaneous producing flag (which reads false in saves taken while stopped). status keys: producing, throttled (running below capacity), blocked_downstream (output backed up), starved_upstream (an ingredient ran out), unconfigured (no recipe set), idle (not producing, cause undetermined — the save has no power-outage flag, so a power cause is NOT asserted). A group with no status key is fully producing.",
 			"data":        s.buildMachinesSection(),
 		},
 		"production_summary": map[string]any{
-			"description": "Machines aggregated per recipe with effective capacity (clock x somersloop boost, in 100%-clock machine equivalents), somersloop counts, measured productivity, and a status breakdown (see the machines section for status keys; likely_unpowered is inferred). Do not invent per-minute item rates; effectiveCapacity x recipe base rate from the production_planner reference module gives max output",
+			"description": "Machines aggregated per recipe with effective capacity (clock x somersloop boost, in 100%-clock machine equivalents), somersloop counts, measured productivity, and a status breakdown (see the machines section for status keys; idle means cause-undetermined, not a power claim). Do not invent per-minute item rates; effectiveCapacity x recipe base rate from the production_planner reference module gives max output",
 			"data":        s.buildProductionSection(),
 		},
 		"storage": map[string]any{

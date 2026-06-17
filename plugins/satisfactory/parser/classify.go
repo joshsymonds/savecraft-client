@@ -12,46 +12,60 @@ const (
 	statusBlocked      machineStatus = "blocked_downstream"
 	statusStarved      machineStatus = "starved_upstream"
 	statusUnconfigured machineStatus = "unconfigured"
-	// statusUnpowered is INFERRED by elimination — the save does not store a
-	// power-outage flag. It means: idle, with a recipe set, inputs present,
-	// and output not full, so the most likely cause is missing power.
-	statusUnpowered machineStatus = "likely_unpowered"
+	// statusIdle is the honest residual: not producing, with no detectable
+	// blocked/starved cause. The save cannot tell us why (no power-outage
+	// flag), so we do not assert one. A future power-corroboration step may
+	// refine some idle machines to a likely_unpowered status.
+	statusIdle machineStatus = "idle"
 )
 
-// throttledProductivityThreshold: a producing machine whose measured
-// produce/duration ratio falls below this is running below capacity
-// (intermittent starvation or backup) rather than at full output.
+// throttledProductivityThreshold: a machine whose measured produce/duration
+// ratio falls below this is running below capacity (intermittent starvation
+// or backup) rather than at full output.
 const throttledProductivityThreshold = 0.95
 
 // classifyMachine assigns one status to a manufacturer or extractor from its
 // resolved state. kind is "manufacturer" or "extractor"; generators are not
 // handled here (fuel-burn logic differs).
 //
-// The save records mIsProducing but never WHY a machine is idle, so an idle
-// machine is diagnosed from its inventory: a full output means downstream is
-// backed up; a missing ingredient means upstream is starved; otherwise the
-// residual cause is most likely power (statusUnpowered — an inference).
+// The "is it producing" decision keys on MEASURED PRODUCTIVITY over the last
+// in-game window, not the instantaneous mIsProducing flag — that flag is false
+// in cold/just-loaded saves even for healthy machines. mIsProducing is only a
+// fallback when no measurement exists. An idle machine is then diagnosed from
+// its inventory: a full output means downstream is backed up; a missing
+// ingredient means upstream is starved; otherwise the cause is undetermined
+// (statusIdle — never an asserted power state).
 func classifyMachine(rec machineRecord, kind string) machineStatus {
 	if kind == "manufacturer" && rec.recipe == "" {
 		return statusUnconfigured
 	}
-	if rec.producing {
-		if rec.productivity >= 0 && rec.productivity < throttledProductivityThreshold {
+
+	if rec.productivity >= 0 {
+		// Have a measurement: it is the source of truth.
+		switch {
+		case rec.productivity >= throttledProductivityThreshold:
+			return statusProducing
+		case rec.productivity > 0:
 			return statusThrottled
 		}
+		// productivity == 0: not producing this window; fall through to diagnosis.
+	} else if rec.producing {
+		// No measurement: trust the instantaneous flag.
 		return statusProducing
 	}
 
-	// Idle. Diagnose the cause.
+	return diagnoseIdle(rec, kind)
+}
+
+// diagnoseIdle determines why a non-producing machine is idle.
+func diagnoseIdle(rec machineRecord, kind string) machineStatus {
 	if kind == "extractor" {
 		if outputAtCapacity(rec.outputContents) {
 			return statusBlocked
 		}
-		return statusUnpowered
+		return statusIdle
 	}
-
-	spec, known := recipeIO[recipeClassName(rec.recipe)]
-	if known {
+	if spec, known := recipeIO[recipeClassName(rec.recipe)]; known {
 		if anyProductFull(spec.Products, rec.outputContents) {
 			return statusBlocked
 		}
@@ -59,7 +73,7 @@ func classifyMachine(rec machineRecord, kind string) machineStatus {
 			return statusStarved
 		}
 	}
-	return statusUnpowered
+	return statusIdle
 }
 
 // classTail extracts the short class name (e.g. "Recipe_Screw_C",

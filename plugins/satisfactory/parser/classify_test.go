@@ -15,40 +15,41 @@ func TestClassifyManufacturer(t *testing.T) {
 		want machineStatus
 	}{
 		{
-			name: "producing at full productivity",
+			name: "producing: productivity at full",
 			rec: machineRecord{
-				recipe: screwRecipe, producing: true, productivity: 1.0,
+				recipe: screwRecipe, productivity: 1.0,
 				inputContents: []invStack{{"Desc_IronRod_C", 200}},
 			},
 			want: statusProducing,
 		},
 		{
-			name: "producing without a measurement",
-			rec: machineRecord{
-				recipe: screwRecipe, producing: true, productivity: -1,
-			},
+			name: "producing: at the throttle threshold",
+			rec:  machineRecord{recipe: screwRecipe, productivity: throttledProductivityThreshold},
 			want: statusProducing,
 		},
 		{
-			name: "throttled below threshold",
-			rec: machineRecord{
-				recipe: screwRecipe, producing: true, productivity: 0.5,
-			},
+			name: "producing: no measurement, mIsProducing fallback true",
+			rec:  machineRecord{recipe: screwRecipe, producing: true, productivity: -1},
+			want: statusProducing,
+		},
+		{
+			name: "throttled: productivity below threshold",
+			rec:  machineRecord{recipe: screwRecipe, productivity: 0.5},
 			want: statusThrottled,
 		},
 		{
-			name: "blocked: output at stack max",
+			name: "blocked: productivity 0, output at stack max",
 			rec: machineRecord{
-				recipe: screwRecipe, producing: false,
+				recipe: screwRecipe, productivity: 0,
 				inputContents:  []invStack{{"Desc_IronRod_C", 200}},
 				outputContents: []invStack{{"Desc_IronScrew_C", 500}},
 			},
 			want: statusBlocked,
 		},
 		{
-			name: "starved: ingredient absent",
+			name: "starved: productivity 0, ingredient absent",
 			rec: machineRecord{
-				recipe: screwRecipe, producing: false,
+				recipe: screwRecipe, productivity: 0,
 				inputContents:  nil,
 				outputContents: []invStack{{"Desc_IronScrew_C", 100}},
 			},
@@ -56,50 +57,58 @@ func TestClassifyManufacturer(t *testing.T) {
 		},
 		{
 			name: "unconfigured: no recipe",
-			rec:  machineRecord{recipe: "", producing: false},
+			rec:  machineRecord{recipe: "", productivity: 0},
 			want: statusUnconfigured,
 		},
 		{
-			name: "unpowered: input present, output not full, idle",
+			name: "idle: productivity 0, input present, output not full",
 			rec: machineRecord{
-				recipe: screwRecipe, producing: false,
+				recipe: screwRecipe, productivity: 0,
 				inputContents:  []invStack{{"Desc_IronRod_C", 50}},
 				outputContents: []invStack{{"Desc_IronScrew_C", 100}},
 			},
-			want: statusUnpowered,
+			want: statusIdle,
 		},
 		{
-			name: "fluid ingredient absent → starved",
+			name: "idle: no measurement, not producing, inputs ok",
 			rec: machineRecord{
-				recipe: leachedRecipe, producing: false,
+				recipe: screwRecipe, producing: false, productivity: -1,
+				inputContents: []invStack{{"Desc_IronRod_C", 50}},
+			},
+			want: statusIdle,
+		},
+		{
+			name: "starved: fluid ingredient absent",
+			rec: machineRecord{
+				recipe: leachedRecipe, productivity: 0,
 				inputContents: []invStack{{"Desc_OreIron_C", 50}}, // no SulfuricAcid
 			},
 			want: statusStarved,
 		},
 		{
-			name: "fluid ingredient present → not starved (unpowered)",
+			name: "idle: fluid ingredient present, not starved",
 			rec: machineRecord{
-				recipe: leachedRecipe, producing: false,
+				recipe: leachedRecipe, productivity: 0,
 				inputContents: []invStack{{"Desc_OreIron_C", 50}, {"Desc_SulfuricAcid_C", 1000}},
 			},
-			want: statusUnpowered,
+			want: statusIdle,
 		},
 		{
-			name: "product lacks a stack size → not blocked",
+			name: "idle: product lacks a stack size → not blocked",
 			rec: machineRecord{
-				recipe: storageRecipe, producing: false,
+				recipe: storageRecipe, productivity: 0,
 				inputContents:  []invStack{{"Desc_IronPlate_C", 10}, {"Desc_IronRod_C", 10}},
 				outputContents: []invStack{{"Desc_StorageContainerMk1_C", 50}},
 			},
-			want: statusUnpowered,
+			want: statusIdle,
 		},
 		{
-			name: "unknown recipe, idle → unpowered (no panic)",
+			name: "idle: unknown recipe (no panic)",
 			rec: machineRecord{
-				recipe: "/Game/X/Recipe_Modded.Recipe_Modded_C", producing: false,
+				recipe: "/Game/X/Recipe_Modded.Recipe_Modded_C", productivity: 0,
 				inputContents: []invStack{{"Desc_Whatever_C", 5}},
 			},
-			want: statusUnpowered,
+			want: statusIdle,
 		},
 	}
 	for _, tc := range cases {
@@ -119,29 +128,34 @@ func TestClassifyExtractor(t *testing.T) {
 	}{
 		{
 			name: "producing",
-			rec:  machineRecord{producing: true, productivity: 1.0},
+			rec:  machineRecord{productivity: 1.0},
 			want: statusProducing,
+		},
+		{
+			name: "throttled",
+			rec:  machineRecord{productivity: 0.4},
+			want: statusThrottled,
 		},
 		{
 			name: "blocked: output ore at stack max",
 			rec: machineRecord{
-				producing:      false,
+				productivity:   0,
 				outputContents: []invStack{{"Desc_OreIron_C", 100}}, // SS_MEDIUM
 			},
 			want: statusBlocked,
 		},
 		{
-			name: "unpowered: output below max, idle",
+			name: "idle: output below max",
 			rec: machineRecord{
-				producing:      false,
+				productivity:   0,
 				outputContents: []invStack{{"Desc_OreIron_C", 50}},
 			},
-			want: statusUnpowered,
+			want: statusIdle,
 		},
 		{
-			name: "no recipe never makes an extractor unconfigured",
-			rec:  machineRecord{recipe: "", producing: false, outputContents: nil},
-			want: statusUnpowered,
+			name: "idle: no recipe never makes an extractor unconfigured",
+			rec:  machineRecord{recipe: "", productivity: 0, outputContents: nil},
+			want: statusIdle,
 		},
 	}
 	for _, tc := range cases {

@@ -19,7 +19,7 @@ func TestGoldenMachinesStatusConsistency(t *testing.T) {
 	groups, _ := data["manufacturers"].([]map[string]any)
 
 	sumCounts := 0
-	sawNonProducing := false
+	tally := map[machineStatus]int{}
 	for _, g := range groups {
 		count, _ := g["count"].(int)
 		sumCounts += count
@@ -30,9 +30,7 @@ func TestGoldenMachinesStatusConsistency(t *testing.T) {
 		groupSum := 0
 		for st, n := range status {
 			groupSum += n
-			if st != statusProducing && n > 0 {
-				sawNonProducing = true
-			}
+			tally[st] += n
 		}
 		if groupSum != count {
 			t.Errorf("group %v: status sum %d != count %d", g["recipe"], groupSum, count)
@@ -41,8 +39,13 @@ func TestGoldenMachinesStatusConsistency(t *testing.T) {
 	if sumCounts != total {
 		t.Errorf("Σ group counts %d != totalManufacturers %d", sumCounts, total)
 	}
-	if !sawNonProducing {
-		t.Error("expected at least one non-producing manufacturer status in current_sv60.sav")
+	// sv60 was saved while the factory was stopped (productivity 0 across the
+	// board) → machines read as idle, never as a fabricated power state.
+	if tally[statusIdle] == 0 {
+		t.Errorf("expected idle machines in current_sv60.sav, got tally %v", tally)
+	}
+	if got := tally[machineStatus("likely_unpowered")]; got != 0 {
+		t.Errorf("expected zero likely_unpowered (not power-corroborated), got %d", got)
 	}
 }
 
