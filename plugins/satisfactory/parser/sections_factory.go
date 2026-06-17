@@ -54,6 +54,7 @@ type invStack struct {
 type machineRecord struct {
 	instance       string     // actor instance path, e.g. Persistent_Level:PersistentLevel.Build_ConstructorMk1_C_7
 	position       [3]float32 // world position (cm)
+	kind           string     // "manufacturer" | "extractor" | "generator"
 	building       string     // class name, e.g. Build_ConstructorMk1_C
 	recipe         string     // recipe class path ("" = no recipe set / extractor)
 	fuel           string     // generators: fuel class path
@@ -70,6 +71,7 @@ func (s *saveState) collectFactory(kind string, o sav.Object, od *sav.ObjectData
 	rec := machineRecord{
 		instance:     o.InstanceName,
 		position:     o.Translation,
+		kind:         kind,
 		building:     o.ClassPath[strings.LastIndex(o.ClassPath, ".")+1:],
 		clock:        1.0,
 		boost:        1.0,

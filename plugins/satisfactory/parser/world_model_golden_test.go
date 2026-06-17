@@ -5,6 +5,33 @@ import (
 	"testing"
 )
 
+// On a real save, the production_lines section reports multiple named lines
+// and accounts for every machine (in a line or unconnected).
+func TestGoldenProductionLinesSection(t *testing.T) {
+	state := parseFixtureSections(t, "current_sv60.sav")
+	data := state.buildProductionLinesSection()
+
+	lineCount, _ := data["lineCount"].(int)
+	if lineCount <= 1 {
+		t.Errorf("lineCount = %d, want > 1", lineCount)
+	}
+	lines, _ := data["lines"].([]map[string]any)
+	sumInLine := 0
+	for _, l := range lines {
+		mc, _ := l["machineCount"].(int)
+		sumInLine += mc
+		if _, ok := l["name"].(string); !ok {
+			t.Errorf("line missing name: %+v", l)
+		}
+	}
+	unconnected, _ := data["unconnectedMachines"].(int)
+	total := len(state.manufacturers) + len(state.extractors) + len(state.generators)
+	if sumInLine+unconnected != total {
+		t.Errorf("Σ line machines %d + unconnected %d != total %d", sumInLine, unconnected, total)
+	}
+	t.Logf("sv60: %d lines, %d unconnected, %d total machines", lineCount, unconnected, total)
+}
+
 // On a real save, resource-node positions and visited areas are extracted.
 // (Markers may be absent in a fresh save — only require they are handled.)
 func TestGoldenGeographyData(t *testing.T) {
