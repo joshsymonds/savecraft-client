@@ -5,6 +5,50 @@ import (
 	"testing"
 )
 
+// On a real save, the connection adjacency contracts into multiple production
+// lines: storage containers act as boundaries (so the factory is NOT one giant
+// component), every line has a machine, and no machine is double-counted.
+func TestGoldenProductionLines(t *testing.T) {
+	state := parseFixtureSections(t, "current_sv60.sav")
+	machines := map[string]bool{}
+	for _, r := range state.manufacturers {
+		machines[r.instance] = true
+	}
+	for _, r := range state.extractors {
+		machines[r.instance] = true
+	}
+	for _, r := range state.generators {
+		machines[r.instance] = true
+	}
+
+	lines := buildProductionLines(state.connEdges, machines)
+	if len(lines) == 0 {
+		t.Fatal("no production lines built")
+	}
+	t.Logf("current_sv60.sav: %d production lines from %d machines", len(lines), len(machines))
+
+	seen := map[string]bool{}
+	for _, l := range lines {
+		if len(l.machines) == 0 {
+			t.Errorf("line with no machine: %+v", l)
+		}
+		for _, m := range l.machines {
+			if seen[m] {
+				t.Errorf("machine %s in more than one line", m)
+			}
+			seen[m] = true
+		}
+	}
+	if len(seen) > len(machines) {
+		t.Errorf("distinct line machines %d > total machines %d", len(seen), len(machines))
+	}
+	// Storage boundaries must split the factory into more than one line, not
+	// merge everything into a single component.
+	if len(lines) < 2 {
+		t.Errorf("expected >1 line (storage boundaries split the factory), got %d", len(lines))
+	}
+}
+
 // On a real save, connection edges are captured and at least one edge touches
 // a known production machine.
 func TestGoldenConnectionAdjacency(t *testing.T) {
