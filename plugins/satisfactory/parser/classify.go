@@ -62,11 +62,16 @@ func classifyMachine(rec machineRecord, kind string) machineStatus {
 	return statusUnpowered
 }
 
-// recipeClassName extracts the recipe class (e.g. "Recipe_Screw_C") from a
-// full class path; recipeIO and itemStackSize are keyed by that short name.
-func recipeClassName(path string) string {
+// classTail extracts the short class name (e.g. "Recipe_Screw_C",
+// "Desc_IronScrew_C") from a full class path. recipeIO and itemStackSize are
+// keyed by that short name, but inventory stacks carry the full path, so both
+// sides are reduced to the tail before comparison.
+func classTail(path string) string {
 	return path[strings.LastIndex(path, ".")+1:]
 }
+
+// recipeClassName is classTail applied to a recipe path.
+func recipeClassName(path string) string { return classTail(path) }
 
 // anyProductFull reports whether any recipe product occupies its output slot
 // at or beyond the item's stack limit (so the machine cannot push more). An
@@ -78,7 +83,7 @@ func anyProductFull(products []itemAmount, output []invStack) bool {
 			continue
 		}
 		for _, st := range output {
-			if st.itemClass == p.Class && st.count >= int64(max) {
+			if classTail(st.itemClass) == p.Class && st.count >= int64(max) {
 				return true
 			}
 		}
@@ -93,7 +98,7 @@ func anyIngredientAbsent(ingredients []itemAmount, input []invStack) bool {
 	for _, ing := range ingredients {
 		found := false
 		for _, st := range input {
-			if st.itemClass == ing.Class && st.count > 0 {
+			if classTail(st.itemClass) == ing.Class && st.count > 0 {
 				found = true
 				break
 			}
@@ -109,7 +114,7 @@ func anyIngredientAbsent(ingredients []itemAmount, input []invStack) bool {
 // stack limit — used for extractors, which have no recipe.
 func outputAtCapacity(output []invStack) bool {
 	for _, st := range output {
-		max, ok := itemStackSize[st.itemClass]
+		max, ok := itemStackSize[classTail(st.itemClass)]
 		if ok && st.count >= int64(max) {
 			return true
 		}

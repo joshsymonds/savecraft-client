@@ -114,26 +114,29 @@ func (s *saveState) collectFactory(kind string, o sav.Object, od *sav.ObjectData
 
 // machineGroup aggregates identical machines.
 type machineGroup struct {
-	building    string
-	recipe      string
-	fuel        string
-	count       int
-	producing   int
-	slooped     int // machines with somersloop amplification
-	sumClock    float64
-	sumCapacity float64 // Σ(clock × boost): 100%-clock machine equivalents
-	sumProd     float64
-	prodSamples int
+	building     string
+	recipe       string
+	fuel         string
+	count        int
+	producing    int
+	slooped      int // machines with somersloop amplification
+	sumClock     float64
+	sumCapacity  float64 // Σ(clock × boost): 100%-clock machine equivalents
+	sumProd      float64
+	prodSamples  int
+	statusCounts map[machineStatus]int // by classifyMachine; empty when kind=""
 }
 
-func groupMachines(records []machineRecord, key func(machineRecord) string) []*machineGroup {
+// groupMachines buckets records by key. kind selects the classifier rules
+// ("manufacturer"/"extractor"); kind "" skips classification (e.g. generators).
+func groupMachines(records []machineRecord, kind string, key func(machineRecord) string) []*machineGroup {
 	byKey := map[string]*machineGroup{}
 	order := []string{}
 	for _, r := range records {
 		k := key(r)
 		g, ok := byKey[k]
 		if !ok {
-			g = &machineGroup{building: r.building, recipe: r.recipe, fuel: r.fuel}
+			g = &machineGroup{building: r.building, recipe: r.recipe, fuel: r.fuel, statusCounts: map[machineStatus]int{}}
 			byKey[k] = g
 			order = append(order, k)
 		}
@@ -149,6 +152,9 @@ func groupMachines(records []machineRecord, key func(machineRecord) string) []*m
 		if r.productivity >= 0 {
 			g.sumProd += r.productivity
 			g.prodSamples++
+		}
+		if kind != "" {
+			g.statusCounts[classifyMachine(r, kind)]++
 		}
 	}
 	groups := make([]*machineGroup, 0, len(order))
@@ -179,7 +185,23 @@ func (g *machineGroup) describe() map[string]any {
 	if g.prodSamples > 0 {
 		out["measuredProductivityPct"] = round2(100 * g.sumProd / float64(g.prodSamples))
 	}
+	// Report the status breakdown only when something is not producing — a
+	// fully-producing group needs no detail (keeps output lean).
+	if g.hasIdle() {
+		out["status"] = g.statusCounts
+	}
 	return out
+}
+
+// hasIdle reports whether any machine in the group is in a non-producing
+// status.
+func (g *machineGroup) hasIdle() bool {
+	for st, n := range g.statusCounts {
+		if st != statusProducing && n > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func round2(v float64) float64 {
@@ -195,10 +217,10 @@ func describeGroups(groups []*machineGroup) []map[string]any {
 }
 
 func (s *saveState) buildMachinesSection() map[string]any {
-	manufacturers := groupMachines(s.manufacturers, func(r machineRecord) string {
+	manufacturers := groupMachines(s.manufacturers, "manufacturer", func(r machineRecord) string {
 		return r.building + "|" + r.recipe + "|" + fmt.Sprintf("%.4f", r.clock)
 	})
-	extractors := groupMachines(s.extractors, func(r machineRecord) string {
+	extractors := groupMachines(s.extractors, "extractor", func(r machineRecord) string {
 		return r.building + "|" + fmt.Sprintf("%.4f", r.clock)
 	})
 	return map[string]any{
@@ -210,7 +232,7 @@ func (s *saveState) buildMachinesSection() map[string]any {
 }
 
 func (s *saveState) buildProductionSection() map[string]any {
-	byRecipe := groupMachines(s.manufacturers, func(r machineRecord) string { return r.recipe })
+	byRecipe := groupMachines(s.manufacturers, "manufacturer", func(r machineRecord) string { return r.recipe })
 	recipes := make([]map[string]any, 0, len(byRecipe))
 	for _, g := range byRecipe {
 		if g.recipe == "" {
@@ -229,6 +251,9 @@ func (s *saveState) buildProductionSection() map[string]any {
 		if g.prodSamples > 0 {
 			entry["measuredProductivityPct"] = round2(100 * g.sumProd / float64(g.prodSamples))
 		}
+		if g.hasIdle() {
+			entry["status"] = g.statusCounts
+		}
 		recipes = append(recipes, entry)
 	}
 	idle := 0
@@ -244,7 +269,7 @@ func (s *saveState) buildProductionSection() map[string]any {
 }
 
 func (s *saveState) buildPowerSection() map[string]any {
-	generators := groupMachines(s.generators, func(r machineRecord) string {
+	generators := groupMachines(s.generators, "", func(r machineRecord) string {
 		return r.building + "|" + r.fuel
 	})
 
