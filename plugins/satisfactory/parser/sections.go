@@ -30,6 +30,11 @@ type saveState struct {
 	powerStorageCharges []float64
 	powerCircuits       int
 
+	// machineInventories holds factory-machine input/output inventory
+	// components keyed by their instance path; resolve() joins them onto
+	// the machine records after the extract pass.
+	machineInventories map[string]*sav.ObjectData
+
 	containerCounts   map[string]int
 	storedItems       map[string]int64 // item class -> total across containers
 	centralStorage    *sav.ObjectData
@@ -48,11 +53,12 @@ type saveState struct {
 
 func newSaveState(header *sav.Header) *saveState {
 	return &saveState{
-		header:          header,
-		playerInventory: map[string]*sav.ObjectData{},
-		containerCounts: map[string]int{},
-		storedItems:     map[string]int64{},
-		vehicleCounts:   map[string]int{},
+		header:             header,
+		playerInventory:    map[string]*sav.ObjectData{},
+		containerCounts:    map[string]int{},
+		storedItems:        map[string]int64{},
+		vehicleCounts:      map[string]int{},
+		machineInventories: map[string]*sav.ObjectData{},
 	}
 }
 
@@ -75,10 +81,23 @@ func (s *saveState) want(o sav.ObjectHeader) bool {
 		strings.Contains(o.InstanceName, "Char_Player") {
 		return true
 	}
+	if isMachineInventory(o) {
+		return true
+	}
 	if strings.HasSuffix(o.ClassPath, ".FGPowerCircuit") {
 		return true
 	}
 	return factoryKind(o.ClassPath) != "" || logisticsKind(o) != ""
+}
+
+// isMachineInventory reports whether o is a factory machine's input or output
+// inventory component. Manufacturers own both; extractors own an output;
+// generators own a fuel input. Storage buffers (.StorageInventory) and player
+// slots use different suffixes and are routed elsewhere.
+func isMachineInventory(o sav.ObjectHeader) bool {
+	return strings.Contains(o.ClassPath, "FGInventoryComponent") &&
+		(strings.HasSuffix(o.InstanceName, ".InputInventory") ||
+			strings.HasSuffix(o.InstanceName, ".OutputInventory"))
 }
 
 func (s *saveState) collect(o sav.Object) error {
@@ -110,6 +129,8 @@ func (s *saveState) collect(o sav.Object) error {
 		s.playerCount++
 	case strings.HasSuffix(o.ClassPath, ".FGPowerCircuit"):
 		s.powerCircuits++
+	case isMachineInventory(o.ObjectHeader):
+		s.machineInventories[o.InstanceName] = od
 	case factoryKind(o.ClassPath) != "":
 		s.collectFactory(factoryKind(o.ClassPath), o, od)
 	case logisticsKind(o.ObjectHeader) != "":
@@ -273,6 +294,44 @@ func inventoryItems(od *sav.ObjectData) []map[string]any {
 		})
 	}
 	return items
+}
+
+// inventoryStacks decodes an inventory component's non-empty slots into
+// typed item/count pairs.
+func inventoryStacks(od *sav.ObjectData) []invStack {
+	raw, _ := prop[[]any](od, "mInventoryStacks")
+	out := make([]invStack, 0, len(raw))
+	for _, r := range raw {
+		stack, ok := r.(map[string]any)
+		if !ok {
+			continue
+		}
+		item, ok := stack["Item"].(sav.InventoryItem)
+		if !ok || item.ItemClass == "" {
+			continue
+		}
+		count, _ := stack["NumItems"].(int64)
+		out = append(out, invStack{itemClass: item.ItemClass, count: count})
+	}
+	return out
+}
+
+// resolve joins each machine record with its input/output inventory contents,
+// looked up by instance path. Idempotent: safe to call more than once.
+func (s *saveState) resolve() {
+	fill := func(records []machineRecord) {
+		for i := range records {
+			if od, ok := s.machineInventories[records[i].instance+".InputInventory"]; ok {
+				records[i].inputContents = inventoryStacks(od)
+			}
+			if od, ok := s.machineInventories[records[i].instance+".OutputInventory"]; ok {
+				records[i].outputContents = inventoryStacks(od)
+			}
+		}
+	}
+	fill(s.manufacturers)
+	fill(s.extractors)
+	fill(s.generators)
 }
 
 func (s *saveState) buildPlayerSection() map[string]any {

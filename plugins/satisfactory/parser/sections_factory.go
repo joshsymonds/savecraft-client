@@ -41,21 +41,35 @@ func factoryKind(classPath string) string {
 	}
 }
 
+// invStack is one resolved inventory slot: an item class and its count.
+type invStack struct {
+	itemClass string
+	count     int64
+}
+
 // machineRecord is the compact per-machine state kept during the streaming
-// pass (full ObjectData is not retained).
+// pass (full ObjectData is not retained). Inventory contents are attached
+// after the pass by resolve(), which joins the machine's input/output
+// inventory components by instance path.
 type machineRecord struct {
-	building     string // class name, e.g. Build_ConstructorMk1_C
-	recipe       string // recipe class path ("" = no recipe set / extractor)
-	fuel         string // generators: fuel class path
-	clock        float64
-	boost        float64 // somersloop production amplification, 1.0 = none
-	producing    bool
-	productivity float64 // measured produce/duration ratio, -1 if absent
-	node         string  // extractors: occupied resource node instance path
+	instance       string     // actor instance path, e.g. Persistent_Level:PersistentLevel.Build_ConstructorMk1_C_7
+	position       [3]float32 // world position (cm)
+	building       string     // class name, e.g. Build_ConstructorMk1_C
+	recipe         string     // recipe class path ("" = no recipe set / extractor)
+	fuel           string     // generators: fuel class path
+	clock          float64
+	boost          float64 // somersloop production amplification, 1.0 = none
+	producing      bool
+	productivity   float64    // measured produce/duration ratio, -1 if absent
+	node           string     // extractors: occupied resource node instance path
+	inputContents  []invStack // resolved input inventory (empty for extractors)
+	outputContents []invStack // resolved output inventory
 }
 
 func (s *saveState) collectFactory(kind string, o sav.Object, od *sav.ObjectData) {
 	rec := machineRecord{
+		instance:     o.InstanceName,
+		position:     o.Translation,
 		building:     o.ClassPath[strings.LastIndex(o.ClassPath, ".")+1:],
 		clock:        1.0,
 		boost:        1.0,

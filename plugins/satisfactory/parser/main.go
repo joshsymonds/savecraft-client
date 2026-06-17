@@ -46,6 +46,7 @@ func main() {
 		writeError(enc, errorType(err), err.Error())
 		os.Exit(1)
 	}
+	state.resolve()
 
 	if encodeErr := enc.Encode(state.buildResult()); encodeErr != nil {
 		os.Exit(1)
