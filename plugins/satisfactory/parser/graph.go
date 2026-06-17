@@ -54,20 +54,7 @@ func buildProductionLines(edges []connEdge, machines map[string]bool) []producti
 		return !machines[n] && !isPassthrough(classOf(n))
 	}
 
-	parent := map[string]string{}
-	var find func(string) string
-	find = func(x string) string {
-		p, ok := parent[x]
-		if !ok {
-			parent[x] = x
-			return x
-		}
-		if p != x {
-			parent[x] = find(p)
-		}
-		return parent[x]
-	}
-	union := func(a, b string) { parent[find(a)] = find(b) }
+	uf := newUnionFind[string]()
 
 	type boundaryAttach struct{ boundary, other string }
 	var attaches []boundaryAttach
@@ -76,7 +63,7 @@ func buildProductionLines(edges []connEdge, machines map[string]bool) []producti
 
 	for _, e := range edges {
 		if e.from == e.to {
-			find(e.from)
+			uf.find(e.from)
 			continue
 		}
 		fb, tb := isBoundary(e.from), isBoundary(e.to)
@@ -86,24 +73,24 @@ func buildProductionLines(edges []connEdge, machines map[string]bool) []producti
 			// between machines, ignore.
 		case fb:
 			attaches = append(attaches, boundaryAttach{e.from, e.to})
-			find(e.to)
+			uf.find(e.to)
 		case tb:
 			attaches = append(attaches, boundaryAttach{e.to, e.from})
-			find(e.from)
+			uf.find(e.from)
 		default:
-			union(e.from, e.to)
+			uf.union(e.from, e.to)
 			internals = append(internals, internalEdge{e.from, e.transport})
 		}
 	}
 
 	members := map[string][]string{}
-	for n := range parent {
-		r := find(n)
+	for n := range uf.parent {
+		r := uf.find(n)
 		members[r] = append(members[r], n)
 	}
 	transports := map[string]map[string]bool{}
 	for _, ie := range internals {
-		r := find(ie.node)
+		r := uf.find(ie.node)
 		if transports[r] == nil {
 			transports[r] = map[string]bool{}
 		}
@@ -111,7 +98,7 @@ func buildProductionLines(edges []connEdge, machines map[string]bool) []producti
 	}
 	terminals := map[string]map[string]bool{}
 	for _, a := range attaches {
-		r := find(a.other)
+		r := uf.find(a.other)
 		if terminals[r] == nil {
 			terminals[r] = map[string]bool{}
 		}

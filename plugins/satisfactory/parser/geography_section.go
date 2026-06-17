@@ -34,23 +34,9 @@ func clusterBases(machines []machineRecord, cellSize float64) [][]machineRecord 
 		occupied[k] = append(occupied[k], m)
 	}
 
-	parent := map[cellKey]cellKey{}
-	var find func(cellKey) cellKey
-	find = func(x cellKey) cellKey {
-		p, ok := parent[x]
-		if !ok {
-			parent[x] = x
-			return x
-		}
-		if p != x {
-			parent[x] = find(p)
-		}
-		return parent[x]
-	}
-	union := func(a, b cellKey) { parent[find(a)] = find(b) }
-
+	uf := newUnionFind[cellKey]()
 	for k := range occupied {
-		find(k)
+		uf.find(k)
 		for dx := -1; dx <= 1; dx++ {
 			for dy := -1; dy <= 1; dy++ {
 				if dx == 0 && dy == 0 {
@@ -58,7 +44,7 @@ func clusterBases(machines []machineRecord, cellSize float64) [][]machineRecord 
 				}
 				n := cellKey{k.cx + dx, k.cy + dy}
 				if _, ok := occupied[n]; ok {
-					union(k, n)
+					uf.union(k, n)
 				}
 			}
 		}
@@ -66,7 +52,7 @@ func clusterBases(machines []machineRecord, cellSize float64) [][]machineRecord 
 
 	groups := map[cellKey][]machineRecord{}
 	for k, ms := range occupied {
-		r := find(k)
+		r := uf.find(k)
 		groups[r] = append(groups[r], ms...)
 	}
 
@@ -84,6 +70,19 @@ func clusterBases(machines []machineRecord, cellSize float64) [][]machineRecord 
 	return bases
 }
 
+// topLabel returns the most common key (ties broken lexicographically) — used
+// to descriptor-prefix a base name with its dominant building type.
+func topLabel(counts map[string]int) string {
+	best := ""
+	bestCount := -1
+	for label, n := range counts {
+		if n > bestCount || (n == bestCount && label < best) {
+			best, bestCount = label, n
+		}
+	}
+	return best
+}
+
 func (s *saveState) buildGeographySection() map[string]any {
 	var all []machineRecord
 	all = append(all, s.manufacturers...)
@@ -94,20 +93,23 @@ func (s *saveState) buildGeographySection() map[string]any {
 	for _, group := range clusterBases(all, baseCellSize) {
 		positions := make([][3]float32, len(group))
 		byKind := map[string]int{}
+		buildings := map[string]int{}
 		minX, minY := math.Inf(1), math.Inf(1)
 		maxX, maxY := math.Inf(-1), math.Inf(-1)
 		for i, m := range group {
 			positions[i] = m.position
 			byKind[m.kind]++
+			buildings[displayName(m.building)]++
 			x, y := float64(m.position[0]), float64(m.position[1])
 			minX, minY = math.Min(minX, x), math.Min(minY, y)
 			maxX, maxY = math.Max(maxX, x), math.Max(maxY, y)
 		}
 		c := centroid(positions)
 		bases = append(bases, map[string]any{
-			"name":         regionName(float64(c[0]), float64(c[1]), s.mapMarkers),
+			"name":         topLabel(buildings) + " " + regionName(float64(c[0]), float64(c[1]), s.mapMarkers),
 			"machineCount": len(group),
 			"byKind":       byKind,
+			"centroid":     posMap(c),
 			"bounds":       map[string]any{"minX": minX, "minY": minY, "maxX": maxX, "maxY": maxY},
 		})
 	}

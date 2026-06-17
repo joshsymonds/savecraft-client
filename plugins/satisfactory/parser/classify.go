@@ -92,12 +92,12 @@ func recipeClassName(path string) string { return classTail(path) }
 // item with no known stack size cannot be judged full.
 func anyProductFull(products []itemAmount, output []invStack) bool {
 	for _, p := range products {
-		max, ok := itemStackSize[p.Class]
+		stackMax, ok := itemStackSize[p.Class]
 		if !ok {
 			continue
 		}
 		for _, st := range output {
-			if classTail(st.itemClass) == p.Class && st.count >= int64(max) {
+			if classTail(st.itemClass) == p.Class && st.count >= int64(stackMax) {
 				return true
 			}
 		}
@@ -128,8 +128,8 @@ func anyIngredientAbsent(ingredients []itemAmount, input []invStack) bool {
 // stack limit — used for extractors, which have no recipe.
 func outputAtCapacity(output []invStack) bool {
 	for _, st := range output {
-		max, ok := itemStackSize[classTail(st.itemClass)]
-		if ok && st.count >= int64(max) {
+		stackMax, ok := itemStackSize[classTail(st.itemClass)]
+		if ok && st.count >= int64(stackMax) {
 			return true
 		}
 	}

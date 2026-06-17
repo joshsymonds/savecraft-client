@@ -12,6 +12,25 @@ type lineGroup struct {
 	status   map[machineStatus]int
 }
 
+// dominantDescriptor labels a line by the recipe (or building, for
+// recipe-less extractors) of its largest machine group, so two lines sharing
+// the same nearest marker still get distinct names (e.g. "Motor" vs "Screws").
+func dominantDescriptor(groups map[string]*lineGroup, order []string) string {
+	best := ""
+	bestCount := -1
+	for _, k := range order {
+		g := groups[k]
+		label := displayName(g.building)
+		if g.recipe != "" {
+			label = displayName(g.recipe)
+		}
+		if g.count > bestCount || (g.count == bestCount && label < best) {
+			best, bestCount = label, g.count
+		}
+	}
+	return best
+}
+
 func mapHasIdle(status map[machineStatus]int) bool {
 	for st, n := range status {
 		if st != statusProducing && n > 0 {
@@ -121,7 +140,7 @@ func (s *saveState) buildProductionLinesSection() map[string]any {
 		}
 
 		line := map[string]any{
-			"name":         regionName(float64(c[0]), float64(c[1]), s.mapMarkers),
+			"name":         dominantDescriptor(groups, order) + " " + regionName(float64(c[0]), float64(c[1]), s.mapMarkers),
 			"machineCount": len(l.machines),
 			"recipes":      recipes,
 		}
