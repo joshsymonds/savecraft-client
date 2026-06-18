@@ -30,6 +30,22 @@ type saveState struct {
 	powerStorageCharges []float64
 	powerCircuits       int
 
+	// machineInventories holds factory-machine input/output inventory
+	// components keyed by their instance path; resolve() joins them onto
+	// the machine records after the extract pass.
+	machineInventories map[string]*sav.ObjectData
+
+	// connEdges are belt/pipe links between actors, from connection
+	// components' mConnectedComponent refs; the logistics graph is built
+	// from them.
+	connEdges []connEdge
+
+	// mapMarkers are player-placed named markers (geographic anchors).
+	// resourceNodePos maps a resource-node actor instance to its world
+	// position, for joining with the extractors that occupy them.
+	mapMarkers      []mapMarker
+	resourceNodePos map[string][3]float32
+
 	containerCounts   map[string]int
 	storedItems       map[string]int64 // item class -> total across containers
 	centralStorage    *sav.ObjectData
@@ -48,11 +64,13 @@ type saveState struct {
 
 func newSaveState(header *sav.Header) *saveState {
 	return &saveState{
-		header:          header,
-		playerInventory: map[string]*sav.ObjectData{},
-		containerCounts: map[string]int{},
-		storedItems:     map[string]int64{},
-		vehicleCounts:   map[string]int{},
+		header:             header,
+		playerInventory:    map[string]*sav.ObjectData{},
+		containerCounts:    map[string]int{},
+		storedItems:        map[string]int64{},
+		vehicleCounts:      map[string]int{},
+		machineInventories: map[string]*sav.ObjectData{},
+		resourceNodePos:    map[string][3]float32{},
 	}
 }
 
@@ -75,10 +93,29 @@ func (s *saveState) want(o sav.ObjectHeader) bool {
 		strings.Contains(o.InstanceName, "Char_Player") {
 		return true
 	}
+	if isMachineInventory(o) {
+		return true
+	}
+	if _, ok := isConnectionComponent(o.ClassPath); ok {
+		return true
+	}
 	if strings.HasSuffix(o.ClassPath, ".FGPowerCircuit") {
 		return true
 	}
+	if strings.HasSuffix(o.ClassPath, ".FGMapManager") || isResourceNode(o.ClassPath) {
+		return true
+	}
 	return factoryKind(o.ClassPath) != "" || logisticsKind(o) != ""
+}
+
+// isMachineInventory reports whether o is a factory machine's input or output
+// inventory component. Manufacturers own both; extractors own an output;
+// generators own a fuel input. Storage buffers (.StorageInventory) and player
+// slots use different suffixes and are routed elsewhere.
+func isMachineInventory(o sav.ObjectHeader) bool {
+	return strings.Contains(o.ClassPath, "FGInventoryComponent") &&
+		(strings.HasSuffix(o.InstanceName, ".InputInventory") ||
+			strings.HasSuffix(o.InstanceName, ".OutputInventory"))
 }
 
 func (s *saveState) collect(o sav.Object) error {
@@ -87,6 +124,13 @@ func (s *saveState) collect(o sav.Object) error {
 		// One undecodable object must not kill the whole parse; sections
 		// degrade to whatever was collected.
 		fmt.Fprintf(stderr(), "satisfactory: decode %s (%s): %v\n", o.InstanceName, o.ClassPath, err)
+		return nil
+	}
+
+	if transport, ok := isConnectionComponent(o.ClassPath); ok {
+		if e, ok := connEdgeFrom(o.InstanceName, od, transport); ok {
+			s.connEdges = append(s.connEdges, e)
+		}
 		return nil
 	}
 
@@ -110,6 +154,12 @@ func (s *saveState) collect(o sav.Object) error {
 		s.playerCount++
 	case strings.HasSuffix(o.ClassPath, ".FGPowerCircuit"):
 		s.powerCircuits++
+	case strings.HasSuffix(o.ClassPath, ".FGMapManager"):
+		s.mapMarkers = parseMapMarkers(od)
+	case isResourceNode(o.ClassPath):
+		s.resourceNodePos[o.InstanceName] = o.Translation
+	case isMachineInventory(o.ObjectHeader):
+		s.machineInventories[o.InstanceName] = od
 	case factoryKind(o.ClassPath) != "":
 		s.collectFactory(factoryKind(o.ClassPath), o, od)
 	case logisticsKind(o.ObjectHeader) != "":
@@ -275,6 +325,44 @@ func inventoryItems(od *sav.ObjectData) []map[string]any {
 	return items
 }
 
+// inventoryStacks decodes an inventory component's non-empty slots into
+// typed item/count pairs.
+func inventoryStacks(od *sav.ObjectData) []invStack {
+	raw, _ := prop[[]any](od, "mInventoryStacks")
+	out := make([]invStack, 0, len(raw))
+	for _, r := range raw {
+		stack, ok := r.(map[string]any)
+		if !ok {
+			continue
+		}
+		item, ok := stack["Item"].(sav.InventoryItem)
+		if !ok || item.ItemClass == "" {
+			continue
+		}
+		count, _ := stack["NumItems"].(int64)
+		out = append(out, invStack{itemClass: item.ItemClass, count: count})
+	}
+	return out
+}
+
+// resolve joins each machine record with its input/output inventory contents,
+// looked up by instance path. Idempotent: safe to call more than once.
+func (s *saveState) resolve() {
+	fill := func(records []machineRecord) {
+		for i := range records {
+			if od, ok := s.machineInventories[records[i].instance+".InputInventory"]; ok {
+				records[i].inputContents = inventoryStacks(od)
+			}
+			if od, ok := s.machineInventories[records[i].instance+".OutputInventory"]; ok {
+				records[i].outputContents = inventoryStacks(od)
+			}
+		}
+	}
+	fill(s.manufacturers)
+	fill(s.extractors)
+	fill(s.generators)
+}
+
 func (s *saveState) buildPlayerSection() map[string]any {
 	// The player inventory components that hold worn gear.
 	equipmentSlotNames := []string{"ArmSlot", "BackSlot", "BodySlot", "HeadSlot", "LegsSlot"}
@@ -422,11 +510,15 @@ func (s *saveState) buildResult() map[string]any {
 			"data":        s.buildPlayerSection(),
 		},
 		"machines": map[string]any{
-			"description": "Built production machines aggregated by building + recipe + clock speed, with producing counts, somersloop-amplified counts, and measured productivity (rolling in-game window); extractors by type — use to assess factory layout and find idle or starved machines",
+			"description": "Built production machines aggregated by building + recipe + clock speed, with producing counts, somersloop-amplified counts, measured productivity (rolling in-game window), and a status breakdown per group; extractors by type — use to assess factory layout and find idle machines. Status is derived from measured productivity, not the instantaneous producing flag (which reads false in saves taken while stopped). status keys: producing, throttled (running below capacity), blocked_downstream (output backed up), starved_upstream (an ingredient ran out), unconfigured (no recipe set), idle (not producing, cause undetermined — the save has no power-outage flag, so a power cause is NOT asserted). A group with no status key is fully producing.",
 			"data":        s.buildMachinesSection(),
 		},
+		"production_lines": map[string]any{
+			"description": "Belt/pipe-connected production lines — each a group of machines physically linked by conveyors/pipes, named by the nearest player map marker (or a compass sector when none is near). Per line: machines grouped by building+recipe with status counts, transport types (belt/pipe), boundary terminals it attaches to (storage, sinks, train docking stations — building type, not player station name yet), and individual problem machines (blocked_downstream/starved_upstream/idle) with position. Two physically separate lines of the same recipe appear separately. unconnectedMachines counts machines with no belt/pipe link (see the machines section for those). Use to answer 'what are my production lines' and 'where is the problem'",
+			"data":        s.buildProductionLinesSection(),
+		},
 		"production_summary": map[string]any{
-			"description": "Machines aggregated per recipe with effective capacity (clock x somersloop boost, in 100%-clock machine equivalents), somersloop counts, and measured productivity. Do not invent per-minute item rates; effectiveCapacity x recipe base rate from the production_planner reference module gives max output",
+			"description": "Machines aggregated per recipe with effective capacity (clock x somersloop boost, in 100%-clock machine equivalents), somersloop counts, measured productivity, and a status breakdown (see the machines section for status keys; idle means cause-undetermined, not a power claim). Do not invent per-minute item rates; effectiveCapacity x recipe base rate from the production_planner reference module gives max output",
 			"data":        s.buildProductionSection(),
 		},
 		"storage": map[string]any{
@@ -440,6 +532,10 @@ func (s *saveState) buildResult() map[string]any {
 		"resource_nodes": map[string]any{
 			"description": "Resource extraction: count of occupied resource nodes and extractors by type. Node resource types and purities require static map reference data (not yet included)",
 			"data":        s.buildResourceNodesSection(),
+		},
+		"geography": map[string]any{
+			"description": "Spatial layout: bases (clusters of machines grouped by physical proximity, NOT belt connectivity — see production_lines for connected groups), each named by the nearest player map marker (or a compass sector) with a machine count, per-kind breakdown, and world-coordinate bounds; the player's map markers (name + position); visited biome areas; and resource-node usage (total nodes, and the extractors occupying nodes with the resource each yields — node purity is not in the save). Use to answer 'where is my X' and 'what does my map look like'",
+			"data":        s.buildGeographySection(),
 		},
 		"power": map[string]any{
 			"description": "Power grid: circuit count, generators by type and fuel with producing counts, battery storage charge — use to assess generation mix; MW capacity requires reference data, so counts are what the save provides",

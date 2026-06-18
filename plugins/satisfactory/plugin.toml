@@ -11,7 +11,10 @@ homepage = "https://savecraft.gg/plugins/satisfactory"
 limitations = [
   "Saves from game versions 1.0 through 1.2 only (save versions 46-60); newer game versions are rejected until their format is verified",
   "Per-minute production rates are theoretical pending recipe reference data; the save stores measured productivity percentages, not item rates",
-  "Resource node types and purities require static map reference data",
+  "Machine status is inferred: 'producing'/'throttled' from measured productivity, 'blocked_downstream'/'starved_upstream' from inventory, and 'idle' when the cause is undetermined. The save has no power-outage flag, so an idle machine is never asserted to be unpowered; a power-corroborated status is not yet implemented",
+  "Production lines cover belt/pipe-connected machines only; machines with no connection are reported via unconnectedMachines. Train/drone/truck routing between terminals is not reconstructed — stations, ports, sinks, and storage appear as line boundaries by building type, not by player-given station name",
+  "Geography bases are proximity clusters of machines, not belt-connectivity groups (see production_lines for connected groups)",
+  "Resource node types and purities require static map reference data; the geography section infers a node's resource from its extractor's output but cannot report purity",
   "Modded buildings and machines added after game 1.2 are not extracted",
   "Blueprint designer contents are not parsed",
 ]

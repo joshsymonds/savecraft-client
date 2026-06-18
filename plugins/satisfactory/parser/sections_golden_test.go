@@ -31,6 +31,7 @@ func parseFixtureSections(t *testing.T, name string) *saveState {
 	if err := sav.Extract(header, body, state.want, state.collect); err != nil {
 		t.Fatalf("Extract(%s): %v", name, err)
 	}
+	state.resolve()
 	return state
 }
 
