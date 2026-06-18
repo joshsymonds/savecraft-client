@@ -32,7 +32,7 @@ github = "joshsymonds"
 
 [reference.modules.recipe_lookup]
 name = "Recipe & Item Lookup"
-description = "Look up any Satisfactory item, recipe, or production building by name. Returns exact ingredients, products, per-minute rates at 100% clock, craft duration, which buildings run it, alternate-recipe flags, and milestone unlock tiers. Use proactively for ANY question about what makes what, ratios, or building stats — prevents hallucinated recipe data."
+description = "Look up any Satisfactory item, recipe, or production building by name. Returns exact ingredients, products, per-minute rates at 100% clock, craft duration, which buildings run it, alternate-recipe flags, and milestone unlock tiers. Covers the build/craft cost of everything that has a recipe — including equipment (chainsaw, jetpack, rebar gun), vehicles (Truck, Tractor, Explorer), trains (Locomotive, Freight Car), and ammunition — not just factory machines. Use proactively for ANY question about what makes what, ratios, build/craft costs, or building stats — prevents hallucinated recipe data."
 requires_save = false
 
 [reference.modules.production_planner]
@@ -77,7 +77,7 @@ progression = "progression"
 
 [reference.modules.building_reference]
 name = "Building Reference"
-description = "The game's own reference card for any Satisfactory building, straight from the shipped game data: the in-game description verbatim plus footprint/dimensions, build cost, power draw, conveyor/pipe throughput, storage capacity, and unlock tier. Covers every buildable — machines, generators, belts, pipes, foundations, blueprint designers, and the Dimensional Depot. Look up one building by name, or list a category (production, extraction, power, logistics, structure, special). Use PROACTIVELY whenever the player asks how a building works, what it does, its size/footprint, build cost, or stats — building facts drift between patches, so prefer this over memory. Works with no save connected."
+description = "The game's own reference card for any Satisfactory building, straight from the shipped game data: the in-game description verbatim plus footprint/dimensions, build cost, power draw, conveyor/pipe throughput, storage capacity, and unlock tier. Covers every buildable — machines, generators, belts, pipes, foundations, blueprint designers, and the Dimensional Depot. Look up one building by name, or list a category (production, extraction, power, logistics, structure, special). Use PROACTIVELY whenever the player asks how a building works, what it does, its size/footprint, build cost, or stats — building facts drift between patches, so prefer this over memory. Covers only placeable buildings — for the cost of vehicles, trains, equipment, or ammunition use recipe_lookup instead. Works with no save connected."
 requires_save = false
 
 [default_paths]
