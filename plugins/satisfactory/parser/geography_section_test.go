@@ -13,7 +13,7 @@ func TestClusterBases(t *testing.T) {
 	near2 := machineRecord{instance: "b", position: [3]float32{25000, 0, 0}} // adjacent cell
 	far := machineRecord{instance: "c", position: [3]float32{5000000, 0, 0}}
 
-	bases := clusterBases([]machineRecord{near1, near2, far}, baseCellSize)
+	bases := clusterBases([]machineRecord{near1, near2, far})
 	if len(bases) != 2 {
 		t.Fatalf("bases = %d, want 2", len(bases))
 	}
@@ -22,7 +22,7 @@ func TestClusterBases(t *testing.T) {
 		t.Errorf("base sizes = %d, %d; want 2, 1", len(bases[0]), len(bases[1]))
 	}
 
-	if got := clusterBases(nil, baseCellSize); len(got) != 0 {
+	if got := clusterBases(nil); len(got) != 0 {
 		t.Errorf("empty input → %d bases, want 0", len(got))
 	}
 }
@@ -32,8 +32,8 @@ func TestClusterBasesDeterministic(t *testing.T) {
 		{instance: "a", position: [3]float32{0, 0, 0}},
 		{instance: "b", position: [3]float32{9000000, 0, 0}},
 	}
-	first := clusterBases(m, baseCellSize)
-	second := clusterBases(m, baseCellSize)
+	first := clusterBases(m)
+	second := clusterBases(m)
 	if len(first) != 2 {
 		t.Fatalf("bases = %d, want 2", len(first))
 	}

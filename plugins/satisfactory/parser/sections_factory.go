@@ -131,14 +131,23 @@ type machineGroup struct {
 
 // groupMachines buckets records by key. kind selects the classifier rules
 // ("manufacturer"/"extractor"); kind "" skips classification (e.g. generators).
-func groupMachines(records []machineRecord, kind string, key func(machineRecord) string) []*machineGroup {
+func groupMachines(
+	records []machineRecord,
+	kind string,
+	key func(machineRecord) string,
+) []*machineGroup {
 	byKey := map[string]*machineGroup{}
 	order := []string{}
 	for _, r := range records {
 		k := key(r)
 		g, ok := byKey[k]
 		if !ok {
-			g = &machineGroup{building: r.building, recipe: r.recipe, fuel: r.fuel, statusCounts: map[machineStatus]int{}}
+			g = &machineGroup{
+				building:     r.building,
+				recipe:       r.recipe,
+				fuel:         r.fuel,
+				statusCounts: map[machineStatus]int{},
+			}
 			byKey[k] = g
 			order = append(order, k)
 		}
@@ -199,7 +208,7 @@ func (g *machineGroup) describe() map[string]any {
 // status.
 func (g *machineGroup) hasIdle() bool {
 	for st, n := range g.statusCounts {
-		if st != statusProducing && n > 0 {
+		if st != statusBalanced && n > 0 {
 			return true
 		}
 	}
@@ -234,7 +243,11 @@ func (s *saveState) buildMachinesSection() map[string]any {
 }
 
 func (s *saveState) buildProductionSection() map[string]any {
-	byRecipe := groupMachines(s.manufacturers, "manufacturer", func(r machineRecord) string { return r.recipe })
+	byRecipe := groupMachines(
+		s.manufacturers,
+		"manufacturer",
+		func(r machineRecord) string { return r.recipe },
+	)
 	recipes := make([]map[string]any, 0, len(byRecipe))
 	for _, g := range byRecipe {
 		if g.recipe == "" {

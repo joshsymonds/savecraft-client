@@ -123,7 +123,13 @@ func (s *saveState) collect(o sav.Object) error {
 	if err != nil {
 		// One undecodable object must not kill the whole parse; sections
 		// degrade to whatever was collected.
-		fmt.Fprintf(stderr(), "satisfactory: decode %s (%s): %v\n", o.InstanceName, o.ClassPath, err)
+		fmt.Fprintf(
+			stderr(),
+			"satisfactory: decode %s (%s): %v\n",
+			o.InstanceName,
+			o.ClassPath,
+			err,
+		)
 		return nil
 	}
 
@@ -247,7 +253,10 @@ func (s *saveState) buildProgressionSection() map[string]any {
 	sort.Ints(tiers)
 	tierCounts := make([]map[string]any, 0, len(tiers))
 	for _, tier := range tiers {
-		tierCounts = append(tierCounts, map[string]any{"tier": tier, "milestonesPurchased": perTier[tier]})
+		tierCounts = append(
+			tierCounts,
+			map[string]any{"tier": tier, "milestonesPurchased": perTier[tier]},
+		)
 	}
 
 	alternates := make([]string, 0, len(groups.alternates))
@@ -339,7 +348,10 @@ func inventoryStacks(od *sav.ObjectData) []invStack {
 		if !ok || item.ItemClass == "" {
 			continue
 		}
-		count, _ := stack["NumItems"].(int64)
+		count := int64(0) // absent NumItems defaults to 0.
+		if c, ok := stack["NumItems"].(int64); ok {
+			count = c
+		}
 		out = append(out, invStack{itemClass: item.ItemClass, count: count})
 	}
 	return out

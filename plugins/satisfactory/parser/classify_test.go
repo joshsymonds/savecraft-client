@@ -10,32 +10,80 @@ const (
 
 func TestClassifyManufacturer(t *testing.T) {
 	cases := []struct {
-		name string
-		rec  machineRecord
-		want machineStatus
+		name         string
+		rec          machineRecord
+		wantStatus   machineStatus
+		wantLimiting string // "" = none expected
 	}{
 		{
-			name: "producing: productivity at full",
+			name: "balanced: productivity at full",
 			rec: machineRecord{
 				recipe: screwRecipe, productivity: 1.0,
 				inputContents: []invStack{{"Desc_IronRod_C", 200}},
 			},
-			want: statusProducing,
+			wantStatus: statusBalanced,
 		},
 		{
-			name: "producing: at the throttle threshold",
-			rec:  machineRecord{recipe: screwRecipe, productivity: throttledProductivityThreshold},
-			want: statusProducing,
+			name: "balanced: at the throttle threshold",
+			rec: machineRecord{
+				recipe:       screwRecipe,
+				productivity: throttledProductivityThreshold,
+			},
+			wantStatus: statusBalanced,
 		},
 		{
-			name: "producing: no measurement, mIsProducing fallback true",
-			rec:  machineRecord{recipe: screwRecipe, producing: true, productivity: -1},
-			want: statusProducing,
+			name:       "balanced: no measurement, mIsProducing fallback true",
+			rec:        machineRecord{recipe: screwRecipe, producing: true, productivity: -1},
+			wantStatus: statusBalanced,
 		},
 		{
-			name: "throttled: productivity below threshold",
-			rec:  machineRecord{recipe: screwRecipe, productivity: 0.5},
-			want: statusThrottled,
+			name: "input_limited: throttled, one input below a craft",
+			// leached needs OreIron 5 + SulfuricAcid 1000. OreIron 2 (ratio 0.4)
+			// is thin; acid 5000 (ratio 5) is plentiful → OreIron is the limiter.
+			rec: machineRecord{
+				recipe:       leachedRecipe,
+				productivity: 0.5,
+				inputContents: []invStack{
+					{"/Game/X/Desc_OreIron.Desc_OreIron_C", 2},
+					{"/Game/X/Desc_SulfuricAcid.Desc_SulfuricAcid_C", 5000},
+				},
+			},
+			wantStatus:   statusInputLimited,
+			wantLimiting: displayName("Desc_OreIron_C"),
+		},
+		{
+			name: "input_limited: thinnest of two thin inputs wins",
+			// OreIron 3 (ratio 0.6) vs SulfuricAcid 100 (ratio 0.1) → acid limits.
+			rec: machineRecord{
+				recipe:       leachedRecipe,
+				productivity: 0.3,
+				inputContents: []invStack{
+					{"/Game/X/Desc_OreIron.Desc_OreIron_C", 3},
+					{"/Game/X/Desc_SulfuricAcid.Desc_SulfuricAcid_C", 100},
+				},
+			},
+			wantStatus:   statusInputLimited,
+			wantLimiting: displayName("Desc_SulfuricAcid_C"),
+		},
+		{
+			name: "output_limited: throttled, inputs plentiful, output near full",
+			rec: machineRecord{
+				recipe:        screwRecipe,
+				productivity:  0.5,
+				inputContents: []invStack{{"Desc_IronRod_C", 200}},
+				outputContents: []invStack{
+					{"/Game/X/Desc_IronScrew.Desc_IronScrew_C", 450},
+				}, // 450/500 = 0.9
+			},
+			wantStatus: statusOutputLimited,
+		},
+		{
+			name: "output_limited: throttled, inputs plentiful, output empty (no observable input constraint)",
+			rec: machineRecord{
+				recipe: screwRecipe, productivity: 0.5,
+				inputContents: []invStack{{"Desc_IronRod_C", 200}},
+			},
+			wantStatus: statusOutputLimited,
 		},
 		{
 			name: "blocked: productivity 0, output at stack max",
@@ -44,21 +92,22 @@ func TestClassifyManufacturer(t *testing.T) {
 				inputContents:  []invStack{{"Desc_IronRod_C", 200}},
 				outputContents: []invStack{{"Desc_IronScrew_C", 500}},
 			},
-			want: statusBlocked,
+			wantStatus: statusBlocked,
 		},
 		{
-			name: "starved: productivity 0, ingredient absent",
+			name: "starved: productivity 0, ingredient absent, names the ingredient",
 			rec: machineRecord{
 				recipe: screwRecipe, productivity: 0,
 				inputContents:  nil,
 				outputContents: []invStack{{"Desc_IronScrew_C", 100}},
 			},
-			want: statusStarved,
+			wantStatus:   statusStarved,
+			wantLimiting: displayName("Desc_IronRod_C"),
 		},
 		{
-			name: "unconfigured: no recipe",
-			rec:  machineRecord{recipe: "", productivity: 0},
-			want: statusUnconfigured,
+			name:       "unconfigured: no recipe",
+			rec:        machineRecord{recipe: "", productivity: 0},
+			wantStatus: statusUnconfigured,
 		},
 		{
 			name: "idle: productivity 0, input present, output not full",
@@ -67,7 +116,7 @@ func TestClassifyManufacturer(t *testing.T) {
 				inputContents:  []invStack{{"Desc_IronRod_C", 50}},
 				outputContents: []invStack{{"Desc_IronScrew_C", 100}},
 			},
-			want: statusIdle,
+			wantStatus: statusIdle,
 		},
 		{
 			name: "idle: no measurement, not producing, inputs ok",
@@ -75,15 +124,16 @@ func TestClassifyManufacturer(t *testing.T) {
 				recipe: screwRecipe, producing: false, productivity: -1,
 				inputContents: []invStack{{"Desc_IronRod_C", 50}},
 			},
-			want: statusIdle,
+			wantStatus: statusIdle,
 		},
 		{
-			name: "starved: fluid ingredient absent",
+			name: "starved: fluid ingredient absent, names the fluid",
 			rec: machineRecord{
 				recipe: leachedRecipe, productivity: 0,
 				inputContents: []invStack{{"Desc_OreIron_C", 50}}, // no SulfuricAcid
 			},
-			want: statusStarved,
+			wantStatus:   statusStarved,
+			wantLimiting: displayName("Desc_SulfuricAcid_C"),
 		},
 		{
 			name: "idle: fluid ingredient present, not starved",
@@ -91,7 +141,7 @@ func TestClassifyManufacturer(t *testing.T) {
 				recipe: leachedRecipe, productivity: 0,
 				inputContents: []invStack{{"Desc_OreIron_C", 50}, {"Desc_SulfuricAcid_C", 1000}},
 			},
-			want: statusIdle,
+			wantStatus: statusIdle,
 		},
 		{
 			name: "idle: product lacks a stack size → not blocked",
@@ -100,7 +150,7 @@ func TestClassifyManufacturer(t *testing.T) {
 				inputContents:  []invStack{{"Desc_IronPlate_C", 10}, {"Desc_IronRod_C", 10}},
 				outputContents: []invStack{{"Desc_StorageContainerMk1_C", 50}},
 			},
-			want: statusIdle,
+			wantStatus: statusIdle,
 		},
 		{
 			name: "idle: unknown recipe (no panic)",
@@ -108,13 +158,17 @@ func TestClassifyManufacturer(t *testing.T) {
 				recipe: "/Game/X/Recipe_Modded.Recipe_Modded_C", productivity: 0,
 				inputContents: []invStack{{"Desc_Whatever_C", 5}},
 			},
-			want: statusIdle,
+			wantStatus: statusIdle,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := classifyMachine(tc.rec, "manufacturer"); got != tc.want {
-				t.Errorf("classifyMachine = %q, want %q", got, tc.want)
+			got := diagnose(tc.rec, "manufacturer")
+			if got.status != tc.wantStatus {
+				t.Errorf("status = %q, want %q", got.status, tc.wantStatus)
+			}
+			if got.limitingInput != tc.wantLimiting {
+				t.Errorf("limitingInput = %q, want %q", got.limitingInput, tc.wantLimiting)
 			}
 		})
 	}
@@ -127,14 +181,14 @@ func TestClassifyExtractor(t *testing.T) {
 		want machineStatus
 	}{
 		{
-			name: "producing",
+			name: "balanced",
 			rec:  machineRecord{productivity: 1.0},
-			want: statusProducing,
+			want: statusBalanced,
 		},
 		{
-			name: "throttled",
+			name: "output_limited: throttled with no recipe inputs",
 			rec:  machineRecord{productivity: 0.4},
-			want: statusThrottled,
+			want: statusOutputLimited,
 		},
 		{
 			name: "blocked: output ore at stack max",

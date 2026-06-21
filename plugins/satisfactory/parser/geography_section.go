@@ -16,16 +16,17 @@ const maxOccupiedNodes = 50
 type cellKey struct{ cx, cy int }
 
 // clusterBases groups machines into spatial bases: connected regions of
-// occupied grid cells (8-neighbour adjacency). Deterministic: bases ordered by
-// size desc then smallest member instance; members sorted by instance.
-func clusterBases(machines []machineRecord, cellSize float64) [][]machineRecord {
+// occupied grid cells (8-neighbor adjacency, cells of baseCellSize).
+// Deterministic: bases ordered by size desc then smallest member instance;
+// members sorted by instance.
+func clusterBases(machines []machineRecord) [][]machineRecord {
 	if len(machines) == 0 {
 		return nil
 	}
 	cellOf := func(m machineRecord) cellKey {
 		return cellKey{
-			cx: int(math.Floor(float64(m.position[0]) / cellSize)),
-			cy: int(math.Floor(float64(m.position[1]) / cellSize)),
+			cx: int(math.Floor(float64(m.position[0]) / baseCellSize)),
+			cy: int(math.Floor(float64(m.position[1]) / baseCellSize)),
 		}
 	}
 	occupied := map[cellKey][]machineRecord{}
@@ -84,13 +85,14 @@ func topLabel(counts map[string]int) string {
 }
 
 func (s *saveState) buildGeographySection() map[string]any {
-	var all []machineRecord
+	all := make([]machineRecord, 0, len(s.manufacturers)+len(s.extractors)+len(s.generators))
 	all = append(all, s.manufacturers...)
 	all = append(all, s.extractors...)
 	all = append(all, s.generators...)
 
-	bases := make([]map[string]any, 0)
-	for _, group := range clusterBases(all, baseCellSize) {
+	groups := clusterBases(all)
+	bases := make([]map[string]any, 0, len(groups))
+	for _, group := range groups {
 		positions := make([][3]float32, len(group))
 		byKind := map[string]int{}
 		buildings := map[string]int{}
@@ -106,7 +108,13 @@ func (s *saveState) buildGeographySection() map[string]any {
 		}
 		c := centroid(positions)
 		bases = append(bases, map[string]any{
-			"name":         topLabel(buildings) + " " + regionName(float64(c[0]), float64(c[1]), s.mapMarkers),
+			"name": topLabel(
+				buildings,
+			) + " " + regionName(
+				float64(c[0]),
+				float64(c[1]),
+				s.mapMarkers,
+			),
 			"machineCount": len(group),
 			"byKind":       byKind,
 			"centroid":     posMap(c),
@@ -127,7 +135,7 @@ func (s *saveState) buildGeographySection() map[string]any {
 	}
 }
 
-// resourceNodesGeo summarises resource-node usage: the total node count and the
+// resourceNodesGeo summarizes resource-node usage: the total node count and the
 // extractors occupying a node, with the resource each yields (inferred from the
 // extractor's output) — purity is not in the save and is not reported.
 func (s *saveState) resourceNodesGeo() map[string]any {

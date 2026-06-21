@@ -19,7 +19,11 @@ import (
 // stderr is the unstructured debug log sink (captured by the daemon).
 func stderr() io.Writer { return os.Stderr }
 
-func main() {
+func main() { os.Exit(run()) }
+
+// run drives the parse and returns the process exit code. Keeping os.Exit out
+// of the deferred-recover scope (it lives in main) ensures the recover runs.
+func run() (code int) {
 	enc := json.NewEncoder(os.Stdout)
 
 	// Defense in depth: the parser must emit a clean ndjson error instead
@@ -28,14 +32,14 @@ func main() {
 	defer func() {
 		if r := recover(); r != nil {
 			writeError(enc, "corrupt_file", fmt.Sprintf("parser panic: %v", r))
-			os.Exit(1)
+			code = 1
 		}
 	}()
 
 	header, body, err := sav.Open(os.Stdin)
 	if err != nil {
 		writeError(enc, errorType(err), err.Error())
-		os.Exit(1)
+		return 1
 	}
 
 	writeStatusf(enc, "Session %q, build %d, %.1f hours played",
@@ -44,13 +48,14 @@ func main() {
 	state := newSaveState(header)
 	if err := sav.Extract(header, body, state.want, state.collect); err != nil {
 		writeError(enc, errorType(err), err.Error())
-		os.Exit(1)
+		return 1
 	}
 	state.resolve()
 
 	if encodeErr := enc.Encode(state.buildResult()); encodeErr != nil {
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 // errorType maps a parse error to the plugin contract's errorType values.

@@ -172,18 +172,37 @@ func TestBuildLinesTwoDisjointSameRecipe(t *testing.T) {
 
 func TestBuildLinesDeterministicOrder(t *testing.T) {
 	// Line A has 3 machines, line B has 2 — A must sort first.
-	a1, a2, a3 := inst("Build_ConstructorMk1_C", 1), inst("Build_AssemblerMk1_C", 2), inst("Build_SmelterMk1_C", 3)
+	a1, a2, a3 := inst(
+		"Build_ConstructorMk1_C",
+		1,
+	), inst(
+		"Build_AssemblerMk1_C",
+		2,
+	), inst(
+		"Build_SmelterMk1_C",
+		3,
+	)
 	mgA := inst("Build_ConveyorAttachmentMerger_C", 10)
 	b1, b2 := inst("Build_ConstructorMk1_C", 4), inst("Build_AssemblerMk1_C", 5)
 	beltB := inst("Build_ConveyorBeltMk1_C", 11)
-	edges := []connEdge{belt(a1, mgA), belt(a2, mgA), belt(mgA, a3), belt(b1, beltB), belt(beltB, b2)}
+	edges := []connEdge{
+		belt(a1, mgA),
+		belt(a2, mgA),
+		belt(mgA, a3),
+		belt(b1, beltB),
+		belt(beltB, b2),
+	}
 
 	lines := buildProductionLines(edges, machineSet(a1, a2, a3, b1, b2))
 	if len(lines) != 2 {
 		t.Fatalf("lines = %d, want 2", len(lines))
 	}
 	if len(lines[0].machines) != 3 || len(lines[1].machines) != 2 {
-		t.Errorf("order by machine count desc broken: %d then %d", len(lines[0].machines), len(lines[1].machines))
+		t.Errorf(
+			"order by machine count desc broken: %d then %d",
+			len(lines[0].machines),
+			len(lines[1].machines),
+		)
 	}
 	// Stable across a re-run.
 	again := buildProductionLines(edges, machineSet(a1, a2, a3, b1, b2))

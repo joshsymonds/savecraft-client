@@ -33,9 +33,22 @@ func dominantDescriptor(groups map[string]*lineGroup, order []string) string {
 
 func mapHasIdle(status map[machineStatus]int) bool {
 	for st, n := range status {
-		if st != statusProducing && n > 0 {
+		if st != statusBalanced && n > 0 {
 			return true
 		}
+	}
+	return false
+}
+
+// isProblem reports whether a status is worth calling out per-machine on a
+// line: a stall (blocked/starved/idle) or a below-capacity producer
+// (input/output limited). Balanced and unconfigured machines are not problems.
+func isProblem(st machineStatus) bool {
+	switch st {
+	case statusBlocked, statusStarved, statusIdle, statusInputLimited, statusOutputLimited:
+		return true
+	case statusBalanced, statusUnconfigured:
+		return false
 	}
 	return false
 }
@@ -97,7 +110,11 @@ func (s *saveState) buildProductionLinesSection() map[string]any {
 			key := rec.building + "|" + rec.recipe
 			g := groups[key]
 			if g == nil {
-				g = &lineGroup{building: rec.building, recipe: rec.recipe, status: map[machineStatus]int{}}
+				g = &lineGroup{
+					building: rec.building,
+					recipe:   rec.recipe,
+					status:   map[machineStatus]int{},
+				}
 				groups[key] = g
 				order = append(order, key)
 			}
@@ -106,20 +123,23 @@ func (s *saveState) buildProductionLinesSection() map[string]any {
 			if rec.kind != "manufacturer" && rec.kind != "extractor" {
 				continue // generators are not status-classified
 			}
-			st := classifyMachine(*rec, rec.kind)
-			g.status[st]++
-			if st == statusBlocked || st == statusStarved || st == statusIdle {
+			d := diagnose(*rec, rec.kind)
+			g.status[d.status]++
+			if isProblem(d.status) {
 				if len(problems) >= maxLineProblems {
 					omitted++
 					continue
 				}
 				problem := map[string]any{
 					"building": displayName(rec.building),
-					"status":   string(st),
+					"status":   string(d.status),
 					"position": posMap(rec.position),
 				}
 				if rec.recipe != "" {
 					problem["recipe"] = displayName(rec.recipe)
+				}
+				if d.limitingInput != "" {
+					problem["limitingInput"] = d.limitingInput
 				}
 				problems = append(problems, problem)
 			}
@@ -140,7 +160,14 @@ func (s *saveState) buildProductionLinesSection() map[string]any {
 		}
 
 		line := map[string]any{
-			"name":         dominantDescriptor(groups, order) + " " + regionName(float64(c[0]), float64(c[1]), s.mapMarkers),
+			"name": dominantDescriptor(
+				groups,
+				order,
+			) + " " + regionName(
+				float64(c[0]),
+				float64(c[1]),
+				s.mapMarkers,
+			),
 			"machineCount": len(l.machines),
 			"recipes":      recipes,
 		}

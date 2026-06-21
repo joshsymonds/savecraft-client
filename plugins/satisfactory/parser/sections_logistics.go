@@ -186,7 +186,11 @@ func (s *saveState) buildResourceNodesSection() map[string]any {
 			nodes[r.node] = true
 		}
 	}
-	byExtractor := groupMachines(s.extractors, "extractor", func(r machineRecord) string { return r.building })
+	byExtractor := groupMachines(
+		s.extractors,
+		"extractor",
+		func(r machineRecord) string { return r.building },
+	)
 	return map[string]any{
 		"occupiedNodes": len(nodes),
 		"byExtractor":   describeGroups(byExtractor),

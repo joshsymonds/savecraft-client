@@ -122,7 +122,11 @@ func TestGoldenExtractMegafactoryBoundedMemory(t *testing.T) {
 	}
 	const heapLimit = 32 << 20
 	if maxHeap > heapLimit {
-		t.Errorf("HeapAlloc high-water = %dMB during extraction, want < %dMB", maxHeap>>20, heapLimit>>20)
+		t.Errorf(
+			"HeapAlloc high-water = %dMB during extraction, want < %dMB",
+			maxHeap>>20,
+			heapLimit>>20,
+		)
 	}
 	t.Logf("extracted %d player objects, HeapAlloc high-water %dMB", players, maxHeap>>20)
 }

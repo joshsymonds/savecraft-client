@@ -11,7 +11,7 @@ import (
 const markerNearRadius = 80000.0
 
 // centerEpsilon: a centroid within this 2D distance of the world origin is
-// labelled "map center" rather than a compass sector.
+// labeled "map center" rather than a compass sector.
 const centerEpsilon = 1.0
 
 // centroid is the component-wise mean of the positions; the zero vector for an
@@ -70,7 +70,7 @@ func sectorOf(x, y float64) string {
 	if deg < 0 {
 		deg += 360
 	}
-	// Sectors centred on each direction, 45° wide, starting at E going CCW.
+	// Sectors centered on each direction, 45° wide, starting at E going CCW.
 	sectors := []string{"E", "NE", "N", "NW", "W", "SW", "S", "SE"}
 	idx := int(math.Floor((deg+22.5)/45)) % 8
 	return sectors[idx]

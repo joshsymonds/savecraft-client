@@ -29,16 +29,26 @@ func logisticsState() *saveState {
 	collectLogisticsObj(s, "/Script/FactoryGame.FGInventoryComponent",
 		"L:P.Build_StorageContainerMk2_C_2.StorageInventory", stacks)
 	// Central storage with one depot item.
-	collectLogisticsObj(s, "/Script/FactoryGame.FGCentralStorageSubsystem", "L:P.CentralStorage", map[string]any{
-		"mStoredItems": []any{
-			map[string]any{
-				"ItemClass": sav.ObjectRef{Path: "/Game/X/Desc_Cement.Desc_Cement_C"},
-				"Amount":    int64(2500),
+	collectLogisticsObj(
+		s,
+		"/Script/FactoryGame.FGCentralStorageSubsystem",
+		"L:P.CentralStorage",
+		map[string]any{
+			"mStoredItems": []any{
+				map[string]any{
+					"ItemClass": sav.ObjectRef{Path: "/Game/X/Desc_Cement.Desc_Cement_C"},
+					"Amount":    int64(2500),
+				},
 			},
 		},
-	})
+	)
 	// Train network.
-	collectLogisticsObj(s, "/Game/FactoryGame/Buildable/Vehicle/Train/-Shared/BP_Train.BP_Train_C", "L:P.T1", nil)
+	collectLogisticsObj(
+		s,
+		"/Game/FactoryGame/Buildable/Vehicle/Train/-Shared/BP_Train.BP_Train_C",
+		"L:P.T1",
+		nil,
+	)
 	locomotiveCls := "/Game/FactoryGame/Buildable/Vehicle/Train/Locomotive/BP_Locomotive.BP_Locomotive_C"
 	collectLogisticsObj(s, locomotiveCls, "L:P.L1", nil)
 	stationCls := "/Game/FactoryGame/Buildable/Factory/Train/Station/Build_TrainStation.Build_TrainStation_C"
@@ -52,7 +62,12 @@ func logisticsState() *saveState {
 	collectLogisticsObj(s, droneCls, "L:P.D1", nil)
 	collectLogisticsObj(s, "/Script/FactoryGame.FGDroneStationInfo", "L:P.DS1",
 		map[string]any{"mBuildingTag": "Fuel Port"})
-	collectLogisticsObj(s, "/Game/FactoryGame/Buildable/Vehicle/Truck/BP_Truck.BP_Truck_C", "L:P.V1", nil)
+	collectLogisticsObj(
+		s,
+		"/Game/FactoryGame/Buildable/Vehicle/Truck/BP_Truck.BP_Truck_C",
+		"L:P.V1",
+		nil,
+	)
 	return s
 }
 
@@ -69,7 +84,8 @@ func TestBuildStorageSection(t *testing.T) {
 	}
 	depot, _ := data["dimensionalDepot"].(map[string]any)
 	depotItems, _ := depot["items"].([]map[string]any)
-	if len(depotItems) != 1 || depotItems[0]["name"] != "Concrete" || depotItems[0]["count"] != int64(2500) {
+	if len(depotItems) != 1 || depotItems[0]["name"] != "Concrete" ||
+		depotItems[0]["count"] != int64(2500) {
 		t.Errorf("dimensionalDepot = %v", depot)
 	}
 }

@@ -36,7 +36,10 @@ func TestGoldenPlayerPropertiesEarlyGame(t *testing.T) {
 	od, obj := decodePlayer(t, "early_game.sav")
 
 	if obj.PackageVersionUE5 != 1000 {
-		t.Errorf("PackageVersionUE5 = %d, want 1000 (sv46 has no version data)", obj.PackageVersionUE5)
+		t.Errorf(
+			"PackageVersionUE5 = %d, want 1000 (sv46 has no version data)",
+			obj.PackageVersionUE5,
+		)
 	}
 	if len(od.Components) != 9 {
 		t.Errorf("components = %d (%v), want 9", len(od.Components), componentNames(od))
@@ -89,8 +92,11 @@ func TestGoldenPlayerPropertiesCurrent12(t *testing.T) {
 		t.Errorf("components = %d (%v), want 9", len(od.Components), componentNames(od))
 	}
 	if _, ok := od.Properties["mLastSafeGroundPositionLoopHead"].(int64); !ok {
-		t.Errorf("mLastSafeGroundPositionLoopHead = %v (%T), want int64",
-			od.Properties["mLastSafeGroundPositionLoopHead"], od.Properties["mLastSafeGroundPositionLoopHead"])
+		t.Errorf(
+			"mLastSafeGroundPositionLoopHead = %v (%T), want int64",
+			od.Properties["mLastSafeGroundPositionLoopHead"],
+			od.Properties["mLastSafeGroundPositionLoopHead"],
+		)
 	}
 	buildGun, ok := od.Properties["mBuildGun"].(sav.ObjectRef)
 	if !ok || buildGun.Path == "" {

@@ -31,9 +31,9 @@ func parseMapMarkers(od *sav.ObjectData) []mapMarker {
 		if !ok {
 			continue
 		}
-		name, _ := m["Name"].(string)
-		loc, ok := m["Location"].(map[string]any)
-		if name == "" || !ok {
+		name, nameOK := m["Name"].(string)
+		loc, locOK := m["Location"].(map[string]any)
+		if !nameOK || name == "" || !locOK {
 			continue
 		}
 		x, xok := loc["X"].(float64)
@@ -41,7 +41,10 @@ func parseMapMarkers(od *sav.ObjectData) []mapMarker {
 		if !xok || !yok {
 			continue
 		}
-		z, _ := loc["Z"].(float64)
+		z := 0.0 // Z is optional; absent height defaults to 0.
+		if zv, ok := loc["Z"].(float64); ok {
+			z = zv
+		}
 		out = append(out, mapMarker{name: name, x: x, y: y, z: z})
 	}
 	return out
