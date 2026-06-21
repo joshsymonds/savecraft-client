@@ -27,6 +27,7 @@ type saveState struct {
 	manufacturers       []machineRecord
 	extractors          []machineRecord
 	generators          []machineRecord
+	belts               []beltRecord // conveyor belts + lifts (tier, position, throughput)
 	powerStorageCharges []float64
 	powerCircuits       int
 
@@ -139,6 +140,9 @@ func (s *saveState) want(o sav.ObjectHeader) bool {
 	if strings.HasSuffix(o.ClassPath, ".FGMapManager") || isResourceNode(o.ClassPath) {
 		return true
 	}
+	if isBelt(o.ClassPath) {
+		return true
+	}
 	return factoryKind(o.ClassPath) != "" || logisticsKind(o) != ""
 }
 
@@ -200,6 +204,14 @@ func (s *saveState) collect(o sav.Object) error {
 		s.resourceNodePos[o.InstanceName] = o.Translation
 	case isMachineInventory(o.ObjectHeader):
 		s.machineInventories[o.InstanceName] = od
+	case isBelt(o.ClassPath):
+		class := o.ClassPath[strings.LastIndex(o.ClassPath, ".")+1:]
+		s.belts = append(s.belts, beltRecord{
+			instance:   o.InstanceName,
+			class:      class,
+			position:   o.Translation,
+			throughput: beltThroughput[class],
+		})
 	case factoryKind(o.ClassPath) != "":
 		s.collectFactory(factoryKind(o.ClassPath), o, od)
 	case logisticsKind(o.ObjectHeader) != "":
