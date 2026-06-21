@@ -76,35 +76,27 @@ func terminalSummary(terminals []string) []map[string]any {
 }
 
 // lineDelivery computes a line's inbound belt throughput ceiling — the slowest
-// belt feeding the line's machine inputs via a directed belt→machine edge — and
-// a delivery-limited flag when the line's largest externally-supplied item rate
-// exceeds that ceiling. Returns the ceiling (and whether one was found) plus the
-// flag map (nil when within ceiling, no feeder, or no external demand).
+// belt feeding the line's machine inputs — and a delivery-limited flag when the
+// line's largest externally-supplied item rate exceeds that ceiling. The
+// ceiling is read from feederMinByMachine (machine instance → slowest inbound
+// belt feeding it), precomputed once by the caller. Returns the ceiling (and
+// whether one was found) plus the flag map (nil when within ceiling, no feeder,
+// or no external demand).
 //
 // The flag is conservative: it cannot map a specific item to a specific belt
 // (that needs belt contents), so it compares the heaviest required external
 // feed against the slowest inbound belt. A machine fed via a splitter has no
 // direct belt→machine edge, so its line may report no ceiling.
-func (s *saveState) lineDelivery(
+func lineDelivery(
 	machines []string,
 	byInstance map[string]*machineRecord,
-	beltThroughputByInstance map[string]float64,
+	feederMinByMachine map[string]float64,
 ) (ceiling float64, hasCeiling bool, limited map[string]any) {
-	lineSet := make(map[string]bool, len(machines))
 	for _, mi := range machines {
-		lineSet[mi] = true
-	}
-
-	for _, e := range s.connEdges {
-		if !e.directed || e.transport != "belt" || !lineSet[e.to] {
-			continue
-		}
-		t, ok := beltThroughputByInstance[e.from]
-		if !ok || t <= 0 {
-			continue
-		}
-		if !hasCeiling || t < ceiling {
-			ceiling, hasCeiling = t, true
+		if t, ok := feederMinByMachine[mi]; ok {
+			if !hasCeiling || t < ceiling {
+				ceiling, hasCeiling = t, true
+			}
 		}
 	}
 
@@ -160,6 +152,23 @@ func (s *saveState) buildProductionLinesSection() map[string]any {
 	beltThroughputByInstance := make(map[string]float64, len(s.belts))
 	for _, b := range s.belts {
 		beltThroughputByInstance[b.instance] = b.throughput
+	}
+
+	// feederMinByMachine maps a machine instance to the slowest belt feeding its
+	// inputs (a directed belt→machine edge). Built in one pass over the edges so
+	// per-line delivery analysis is O(machines), not O(lines × edges).
+	feederMinByMachine := map[string]float64{}
+	for _, e := range s.connEdges {
+		if !e.directed || e.transport != "belt" {
+			continue
+		}
+		t, ok := beltThroughputByInstance[e.from]
+		if !ok || t <= 0 {
+			continue
+		}
+		if cur, seen := feederMinByMachine[e.to]; !seen || t < cur {
+			feederMinByMachine[e.to] = t
+		}
 	}
 
 	lines := buildProductionLines(s.connEdges, machineSet)
@@ -257,10 +266,10 @@ func (s *saveState) buildProductionLinesSection() map[string]any {
 		if omitted > 0 {
 			line["problemsOmitted"] = omitted
 		}
-		if ceiling, ok, limited := s.lineDelivery(
+		if ceiling, ok, limited := lineDelivery(
 			l.machines,
 			byInstance,
-			beltThroughputByInstance,
+			feederMinByMachine,
 		); ok {
 			line["inboundBeltCeiling"] = ceiling
 			if limited != nil {
