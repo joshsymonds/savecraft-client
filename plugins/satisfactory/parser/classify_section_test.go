@@ -62,19 +62,16 @@ func TestMachinesSectionStatusBreakdown(t *testing.T) {
 	if !ok {
 		t.Fatalf("group has no status map: %v", groups[0])
 	}
-	want := map[machineStatus]int{
-		statusBalanced:      1,
-		statusBlocked:       1,
-		statusStarved:       1,
-		statusInputLimited:  0,
-		statusOutputLimited: 0,
-		statusUnconfigured:  0,
-		statusIdle:          0,
-	}
-	for st, n := range want {
-		if status[st] != n {
-			t.Errorf("status[%s] = %d, want %d (full: %v)", st, status[st], n, status)
-		}
+	// Exact equality catches a missing status, a wrong count, AND a machine
+	// mis-classified into an unexpected status (e.g. input_limited). Built by
+	// assignment, not an enum-keyed literal, so it asserts only the three
+	// statuses that should appear without listing every taxonomy member.
+	want := map[machineStatus]int{}
+	want[statusBalanced] = 1
+	want[statusBlocked] = 1
+	want[statusStarved] = 1
+	if !maps.Equal(status, want) {
+		t.Errorf("status = %v, want %v", status, want)
 	}
 	sum := 0
 	for _, n := range status {

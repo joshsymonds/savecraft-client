@@ -26,10 +26,6 @@ type itemFlow struct {
 	rawSupplied      bool // an in-base extractor outputs this item
 }
 
-// roundRate rounds a per-minute value to 2 decimals, correct for negatives too
-// (the house round2 truncates toward zero, which mis-rounds a negative net).
-func roundRate(v float64) float64 { return math.Round(v*100) / 100 }
-
 func newItemFlow() *itemFlow {
 	return &itemFlow{producers: map[string]*recipeRate{}, consumers: map[string]*recipeRate{}}
 }
@@ -170,10 +166,10 @@ func flowItemEntry(item string, f *itemFlow, buffer int64) map[string]any {
 	entry := map[string]any{
 		"item":           displayName(item),
 		"classPath":      item,
-		"producedPerMin": roundRate(f.producedRated),
-		"measuredPerMin": roundRate(f.producedMeasured),
-		"consumedPerMin": roundRate(f.consumedRated),
-		"net":            roundRate(f.producedRated - f.consumedRated),
+		"producedPerMin": round2(f.producedRated),
+		"measuredPerMin": round2(f.producedMeasured),
+		"consumedPerMin": round2(f.consumedRated),
+		"net":            round2(f.producedRated - f.consumedRated),
 		"buffer":         buffer,
 	}
 	if f.rawSupplied {
@@ -208,7 +204,7 @@ func rateList(m map[string]*recipeRate) []map[string]any {
 	out := make([]map[string]any, 0, len(list))
 	for _, r := range list {
 		out = append(out, map[string]any{
-			"recipe": r.recipe, "machines": r.machines, "ratePerMin": roundRate(r.rate),
+			"recipe": r.recipe, "machines": r.machines, "ratePerMin": round2(r.rate),
 		})
 	}
 	return out

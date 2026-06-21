@@ -55,7 +55,10 @@ type saveState struct {
 	storageInventories []storageInv
 	// baseIdx memoizes the shared base index (bases() builds it once); both
 	// the geography and storage sections consume it so they never disagree.
-	baseIdx           *baseIndex
+	baseIdx *baseIndex
+	// storageBuckets memoizes per-base storage stocks (storageBucketsByBaseID
+	// builds it once); the storage and flow_balance sections both read it.
+	storageBuckets    map[int]map[string]int64
 	centralStorage    *sav.ObjectData
 	trains            int
 	locomotives       int

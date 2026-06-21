@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -215,8 +216,10 @@ func (g *machineGroup) hasIdle() bool {
 	return false
 }
 
+// round2 rounds to 2 decimals. Uses math.Round (half away from zero) so it is
+// correct for negative values too — e.g. the flow_balance net field.
 func round2(v float64) float64 {
-	return float64(int(v*100+0.5)) / 100
+	return math.Round(v*100) / 100
 }
 
 func describeGroups(groups []*machineGroup) []map[string]any {

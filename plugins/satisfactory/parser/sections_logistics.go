@@ -160,6 +160,9 @@ func (s *saveState) buildStorageSection() map[string]any {
 // stocks (base id -> item class -> count). Shared by the storage section's
 // byBase display and the flow_balance buffer column, so both read one number.
 func (s *saveState) storageBucketsByBaseID() map[int]map[string]int64 {
+	if s.storageBuckets != nil {
+		return s.storageBuckets
+	}
 	idx := s.bases()
 	buckets := map[int]map[string]int64{}
 	for _, inv := range s.storageInventories {
@@ -180,6 +183,7 @@ func (s *saveState) storageBucketsByBaseID() map[int]map[string]int64 {
 			b[st.itemClass] += st.count
 		}
 	}
+	s.storageBuckets = buckets
 	return buckets
 }
 
