@@ -204,6 +204,10 @@ func TestGoldenWorldModelInventoryJoin(t *testing.T) {
 		}
 	}
 	if screws != 144 {
-		t.Errorf("output iron screws = %d, want 144 (outputContents=%+v)", screws, rec.outputContents)
+		t.Errorf(
+			"output iron screws = %d, want 144 (outputContents=%+v)",
+			screws,
+			rec.outputContents,
+		)
 	}
 }

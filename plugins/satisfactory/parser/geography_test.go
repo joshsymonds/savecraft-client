@@ -43,7 +43,9 @@ func TestParseMapMarkersAbsent(t *testing.T) {
 }
 
 func TestAreaName(t *testing.T) {
-	got := areaName("/Game/FactoryGame/Interface/UI/Minimap/MapAreaPersistenLevel/Area_RockyDesert_2.Area_RockyDesert_2_C")
+	got := areaName(
+		"/Game/FactoryGame/Interface/UI/Minimap/MapAreaPersistenLevel/Area_RockyDesert_2.Area_RockyDesert_2_C",
+	)
 	if got != "Area_RockyDesert_2" {
 		t.Errorf("areaName = %q, want Area_RockyDesert_2", got)
 	}

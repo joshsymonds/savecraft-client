@@ -154,7 +154,11 @@ func TestGoldenFactorySectionsMegafactory(t *testing.T) {
 		t.Errorf("byRecipe = %d entries, want 96", len(recipes))
 	}
 	if recipes[0]["recipe"] != "Pure Aluminum Ingot" || recipes[0]["machines"] != 257 {
-		t.Errorf("top recipe = %v %v, want Pure Aluminum Ingot x257", recipes[0]["recipe"], recipes[0]["machines"])
+		t.Errorf(
+			"top recipe = %v %v, want Pure Aluminum Ingot x257",
+			recipes[0]["recipe"],
+			recipes[0]["machines"],
+		)
 	}
 
 	power := state.buildPowerSection()
@@ -162,7 +166,8 @@ func TestGoldenFactorySectionsMegafactory(t *testing.T) {
 		t.Errorf("circuits = %v, want 81", power["circuits"])
 	}
 	generators, _ := power["generators"].([]map[string]any)
-	if len(generators) == 0 || generators[0]["building"] != "Generator Coal" || generators[0]["count"] != 384 {
+	if len(generators) == 0 || generators[0]["building"] != "Generator Coal" ||
+		generators[0]["count"] != 384 {
 		t.Errorf("top generators = %v, want 384 coal", generators[0])
 	}
 	// Measured productivity comes from the save's rolling window — sanity
@@ -187,8 +192,13 @@ func TestGoldenLogisticsSectionsMegafactory(t *testing.T) {
 	if len(items) != 93 {
 		t.Errorf("itemsInStorage = %d entries, want 93", len(items))
 	}
-	if len(items) > 0 && (items[0]["name"] != "Nitrogen Gas" || items[0]["count"] != int64(14604451)) {
-		t.Errorf("top stored item = %v %v, want Nitrogen Gas x14604451", items[0]["name"], items[0]["count"])
+	if len(items) > 0 &&
+		(items[0]["name"] != "Nitrogen Gas" || items[0]["count"] != int64(14604451)) {
+		t.Errorf(
+			"top stored item = %v %v, want Nitrogen Gas x14604451",
+			items[0]["name"],
+			items[0]["count"],
+		)
 	}
 	depot, _ := storage["dimensionalDepot"].(map[string]any)
 	depotItems, _ := depot["items"].([]map[string]any)
@@ -202,7 +212,11 @@ func TestGoldenLogisticsSectionsMegafactory(t *testing.T) {
 		t.Errorf("trains = %v, want 64/91/259", trains)
 	}
 	if trains["stations"] != 82 || trains["timetables"] != 64 {
-		t.Errorf("stations = %v timetables = %v, want 82/64", trains["stations"], trains["timetables"])
+		t.Errorf(
+			"stations = %v timetables = %v, want 82/64",
+			trains["stations"],
+			trains["timetables"],
+		)
 	}
 	stationNames, _ := trains["stationNames"].([]string)
 	if len(stationNames) != 82 || stationNames[0] != "Air-Liquide Eneco Exp" {

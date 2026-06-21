@@ -17,7 +17,8 @@ func playerInventoryStacks(t *testing.T, fixture string) []any {
 		return strings.Contains(o.ClassPath, "FGInventoryComponent")
 	})
 	for _, o := range objs {
-		if !strings.Contains(o.InstanceName, "Char_Player") || !strings.HasSuffix(o.InstanceName, ".inventory") {
+		if !strings.Contains(o.InstanceName, "Char_Player") ||
+			!strings.HasSuffix(o.InstanceName, ".inventory") {
 			continue
 		}
 		od, err := sav.ParseObjectData(o)
@@ -110,7 +111,8 @@ func TestGoldenMegafactoryInventoriesDecode(t *testing.T) {
 			t.Fatalf("ParseObjectData(%s): %v", o.InstanceName, err)
 		}
 		decoded++
-		if stacks, ok := od.Properties["mInventoryStacks"].([]any); ok && countNonEmpty(stacks) > 0 {
+		if stacks, ok := od.Properties["mInventoryStacks"].([]any); ok &&
+			countNonEmpty(stacks) > 0 {
 			withStacks++
 		}
 	}

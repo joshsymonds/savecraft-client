@@ -50,11 +50,15 @@ func testState() *saveState {
 			// Schematic_5-1 is "Oil Processing", authoritatively Tier 5 (the
 			// class-name number is not the tier — see milestoneTiers).
 			sav.ObjectRef{Path: schematicBase + "/Progression/Schematic_5-1.Schematic_5-1_C"},
-			sav.ObjectRef{Path: schematicBase + "/Research/Schematic_Caterium1.Schematic_Caterium1_C"},
+			sav.ObjectRef{
+				Path: schematicBase + "/Research/Schematic_Caterium1.Schematic_Caterium1_C",
+			},
 			sav.ObjectRef{
 				Path: schematicBase + "/Alternate/Schematic_Alternate_WetConcrete.Schematic_Alternate_WetConcrete_C",
 			},
-			sav.ObjectRef{Path: schematicBase + "/ResourceSink/Schematic_Sink_Coupon1.Schematic_Sink_Coupon1_C"},
+			sav.ObjectRef{
+				Path: schematicBase + "/ResourceSink/Schematic_Sink_Coupon1.Schematic_Sink_Coupon1_C",
+			},
 		},
 		"mActiveSchematic": sav.ObjectRef{Path: "/Game/X/Schematic_5-3.Schematic_5-3_C"},
 	}}
@@ -232,8 +236,8 @@ func TestBuildResultEmptyState(t *testing.T) {
 	s := newSaveState(testHeader())
 	result := s.buildResult()
 	sections, _ := result["sections"].(map[string]any)
-	if len(sections) != 11 {
-		t.Fatalf("sections = %d, want 11 (the epic's full roster)", len(sections))
+	if len(sections) != 12 {
+		t.Fatalf("sections = %d, want 12 (the epic's full roster)", len(sections))
 	}
 	summary, _ := result["summary"].(string)
 	if strings.Contains(summary, "Tier") {
@@ -242,7 +246,9 @@ func TestBuildResultEmptyState(t *testing.T) {
 }
 
 func TestErrorTypeMapping(t *testing.T) {
-	if got := errorType(&sav.UnsupportedVersionError{HeaderVersion: 12}); got != "unsupported_version" {
+	if got := errorType(
+		&sav.UnsupportedVersionError{HeaderVersion: 12},
+	); got != "unsupported_version" {
 		t.Errorf("errorType(UnsupportedVersionError) = %q, want unsupported_version", got)
 	}
 	if got := errorType(strings.NewReader("").UnreadByte()); got != "corrupt_file" {

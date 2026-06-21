@@ -36,15 +36,26 @@ func TestConnEdgeFrom(t *testing.T) {
 	}
 
 	pipe := &sav.ObjectData{Properties: map[string]any{
-		"mConnectedComponent": sav.ObjectRef{Path: "Persistent_Level:PersistentLevel.Build_GeneratorCoal_C_3.FGPipeConnectionFactory"},
+		"mConnectedComponent": sav.ObjectRef{
+			Path: "Persistent_Level:PersistentLevel.Build_GeneratorCoal_C_3.FGPipeConnectionFactory",
+		},
 	}}
-	pe, ok := connEdgeFrom("Persistent_Level:PersistentLevel.Build_Pipeline_C_9.PipelineConnection0", pipe, "pipe")
-	if !ok || pe.transport != "pipe" || pe.to != "Persistent_Level:PersistentLevel.Build_GeneratorCoal_C_3" {
+	pe, ok := connEdgeFrom(
+		"Persistent_Level:PersistentLevel.Build_Pipeline_C_9.PipelineConnection0",
+		pipe,
+		"pipe",
+	)
+	if !ok || pe.transport != "pipe" ||
+		pe.to != "Persistent_Level:PersistentLevel.Build_GeneratorCoal_C_3" {
 		t.Errorf("pipe edge = %+v ok=%v", pe, ok)
 	}
 
 	// Snap-only / unconnected: no mConnectedComponent → no edge.
-	if _, ok := connEdgeFrom("x.SnapOnly0", &sav.ObjectData{Properties: map[string]any{}}, "belt"); ok {
+	if _, ok := connEdgeFrom(
+		"x.SnapOnly0",
+		&sav.ObjectData{Properties: map[string]any{}},
+		"belt",
+	); ok {
 		t.Error("unconnected component should produce no edge")
 	}
 }

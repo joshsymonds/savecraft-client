@@ -46,8 +46,19 @@ type saveState struct {
 	mapMarkers      []mapMarker
 	resourceNodePos map[string][3]float32
 
-	containerCounts   map[string]int
-	storedItems       map[string]int64 // item class -> total across containers
+	containerCounts map[string]int
+	storedItems     map[string]int64 // item class -> total across containers
+	// containerPos maps a storage container actor instance to its world
+	// position; storageInventories records each container's contents joined
+	// to that container by instance prefix, so storage can be bucketed by base.
+	containerPos       map[string][3]float32
+	storageInventories []storageInv
+	// baseIdx memoizes the shared base index (bases() builds it once); both
+	// the geography and storage sections consume it so they never disagree.
+	baseIdx *baseIndex
+	// storageBuckets memoizes per-base storage stocks (storageBucketsByBaseID
+	// builds it once); the storage and flow_balance sections both read it.
+	storageBuckets    map[int]map[string]int64
 	centralStorage    *sav.ObjectData
 	trains            int
 	locomotives       int
@@ -62,16 +73,39 @@ type saveState struct {
 	vehicleCounts     map[string]int
 }
 
+// storageInv is one storage container's resolved contents, tagged with the
+// owning container's instance path so it can be joined to a position.
+type storageInv struct {
+	owner string
+	items []invStack
+}
+
 func newSaveState(header *sav.Header) *saveState {
 	return &saveState{
 		header:             header,
 		playerInventory:    map[string]*sav.ObjectData{},
 		containerCounts:    map[string]int{},
 		storedItems:        map[string]int64{},
+		containerPos:       map[string][3]float32{},
 		vehicleCounts:      map[string]int{},
 		machineInventories: map[string]*sav.ObjectData{},
 		resourceNodePos:    map[string][3]float32{},
 	}
+}
+
+// bases returns the shared base index, building it once over all machines.
+// Both the geography and storage sections use it so their base definitions
+// (and names) always agree.
+func (s *saveState) bases() baseIndex {
+	if s.baseIdx == nil {
+		all := make([]machineRecord, 0, len(s.manufacturers)+len(s.extractors)+len(s.generators))
+		all = append(all, s.manufacturers...)
+		all = append(all, s.extractors...)
+		all = append(all, s.generators...)
+		idx := newBaseIndex(all)
+		s.baseIdx = &idx
+	}
+	return *s.baseIdx
 }
 
 // want selects the objects the current sections need: progression manager
@@ -123,7 +157,13 @@ func (s *saveState) collect(o sav.Object) error {
 	if err != nil {
 		// One undecodable object must not kill the whole parse; sections
 		// degrade to whatever was collected.
-		fmt.Fprintf(stderr(), "satisfactory: decode %s (%s): %v\n", o.InstanceName, o.ClassPath, err)
+		fmt.Fprintf(
+			stderr(),
+			"satisfactory: decode %s (%s): %v\n",
+			o.InstanceName,
+			o.ClassPath,
+			err,
+		)
 		return nil
 	}
 
@@ -247,7 +287,10 @@ func (s *saveState) buildProgressionSection() map[string]any {
 	sort.Ints(tiers)
 	tierCounts := make([]map[string]any, 0, len(tiers))
 	for _, tier := range tiers {
-		tierCounts = append(tierCounts, map[string]any{"tier": tier, "milestonesPurchased": perTier[tier]})
+		tierCounts = append(
+			tierCounts,
+			map[string]any{"tier": tier, "milestonesPurchased": perTier[tier]},
+		)
 	}
 
 	alternates := make([]string, 0, len(groups.alternates))
@@ -339,7 +382,10 @@ func inventoryStacks(od *sav.ObjectData) []invStack {
 		if !ok || item.ItemClass == "" {
 			continue
 		}
-		count, _ := stack["NumItems"].(int64)
+		count := int64(0) // absent NumItems defaults to 0.
+		if c, ok := stack["NumItems"].(int64); ok {
+			count = c
+		}
 		out = append(out, invStack{itemClass: item.ItemClass, count: count})
 	}
 	return out
@@ -510,16 +556,20 @@ func (s *saveState) buildResult() map[string]any {
 			"data":        s.buildPlayerSection(),
 		},
 		"machines": map[string]any{
-			"description": "Built production machines aggregated by building + recipe + clock speed, with producing counts, somersloop-amplified counts, measured productivity (rolling in-game window), and a status breakdown per group; extractors by type — use to assess factory layout and find idle machines. Status is derived from measured productivity, not the instantaneous producing flag (which reads false in saves taken while stopped). status keys: producing, throttled (running below capacity), blocked_downstream (output backed up), starved_upstream (an ingredient ran out), unconfigured (no recipe set), idle (not producing, cause undetermined — the save has no power-outage flag, so a power cause is NOT asserted). A group with no status key is fully producing.",
+			"description": "Built production machines aggregated by building + recipe + clock speed, with producing counts, somersloop-amplified counts, measured productivity (rolling in-game window), and a status breakdown per group; extractors by type — use to assess factory layout and find idle machines. Status is derived from measured productivity, not the instantaneous producing flag (which reads false in saves taken while stopped). status keys: balanced (producing at capacity), input_limited (below capacity, constrained by a thin input — see the per-machine limitingInput in production_lines), output_limited (below capacity, output backing up), blocked_downstream (output fully backed up), starved_upstream (an ingredient ran out), unconfigured (no recipe set), idle (not producing, cause undetermined — the save has no power-outage flag, so a power cause is NOT asserted). A group with no status key is fully balanced.",
 			"data":        s.buildMachinesSection(),
 		},
 		"production_lines": map[string]any{
-			"description": "Belt/pipe-connected production lines — each a group of machines physically linked by conveyors/pipes, named by the nearest player map marker (or a compass sector when none is near). Per line: machines grouped by building+recipe with status counts, transport types (belt/pipe), boundary terminals it attaches to (storage, sinks, train docking stations — building type, not player station name yet), and individual problem machines (blocked_downstream/starved_upstream/idle) with position. Two physically separate lines of the same recipe appear separately. unconnectedMachines counts machines with no belt/pipe link (see the machines section for those). Use to answer 'what are my production lines' and 'where is the problem'",
+			"description": "Belt/pipe-connected production lines — each a group of machines physically linked by conveyors/pipes, named by the nearest player map marker (or a compass sector when none is near). Per line: machines grouped by building+recipe with status counts, transport types (belt/pipe), boundary terminals it attaches to (storage, sinks, train docking stations — building type, not player station name yet), and individual problem machines (input_limited/output_limited/blocked_downstream/starved_upstream/idle) with position; an input_limited or starved machine carries limitingInput naming the constraining item (the decisive datum for 'which input is short'). Two physically separate lines of the same recipe appear separately. unconnectedMachines counts machines with no belt/pipe link (see the machines section for those). Use to answer 'what are my production lines' and 'where is the problem'",
 			"data":        s.buildProductionLinesSection(),
 		},
 		"production_summary": map[string]any{
-			"description": "Machines aggregated per recipe with effective capacity (clock x somersloop boost, in 100%-clock machine equivalents), somersloop counts, measured productivity, and a status breakdown (see the machines section for status keys; idle means cause-undetermined, not a power claim). Do not invent per-minute item rates; effectiveCapacity x recipe base rate from the production_planner reference module gives max output",
+			"description": "Machines aggregated per recipe with effective capacity (clock x somersloop boost, in 100%-clock machine equivalents), somersloop counts, measured productivity, and a status breakdown (see the machines section for status keys; idle means cause-undetermined, not a power claim). Do not invent per-minute item rates; effectiveCapacity x recipe base rate from the production_planner reference module gives max output. For a per-base supply/demand/buffer view with computed per-minute rates, use flow_balance instead",
 			"data":        s.buildProductionSection(),
+		},
+		"flow_balance": map[string]any{
+			"description": "Per-base item flow model — for each base (the same proximity clusters as geography), every item's computed production/min (rated AND measured throughput), consumption/min, net balance, in-base storage buffer, and the producing/consuming recipes with their rates. This is the section for 'why is my factory short on X' and 'where does the deficit land': net < 0 means in-base demand exceeds supply; consumers surfaces hidden draws (e.g. an alt recipe quietly eating wire). rawSupplied means an in-base extractor mines the item, so a negative net is fed by mining, not a shortfall. Rates come from recipe durations: somersloop boost amplifies output only, consumption is clock-only. Cross-base belts are not modeled, so a surplus in another base is not netted here. Items are ordered most-imbalanced first",
+			"data":        s.buildFlowBalanceSection(),
 		},
 		"storage": map[string]any{
 			"description": "Stored materials: per-item totals across all storage containers, container counts, and the dimensional depot's uploaded items — use to find available materials beyond the player's pockets",

@@ -8,7 +8,12 @@ import (
 
 // collectMachineAt mirrors collectMachine but carries an instance path and
 // world position, so position capture and inventory joins can be exercised.
-func collectMachineAt(s *saveState, classPath, instance string, pos [3]float32, props map[string]any) {
+func collectMachineAt(
+	s *saveState,
+	classPath, instance string,
+	pos [3]float32,
+	props map[string]any,
+) {
 	o := sav.Object{ObjectHeader: sav.ObjectHeader{
 		ClassPath:    classPath,
 		InstanceName: instance,
@@ -76,10 +81,14 @@ func TestResolveJoinsInventoryContents(t *testing.T) {
 	s.resolve()
 
 	a := s.manufacturers[0]
-	if len(a.inputContents) != 1 || a.inputContents[0].itemClass != "/Game/X/Desc_IronRod.Desc_IronRod_C" || a.inputContents[0].count != 200 {
+	if len(a.inputContents) != 1 ||
+		a.inputContents[0].itemClass != "/Game/X/Desc_IronRod.Desc_IronRod_C" ||
+		a.inputContents[0].count != 200 {
 		t.Errorf("machineA input = %+v, want IronRod=200", a.inputContents)
 	}
-	if len(a.outputContents) != 1 || a.outputContents[0].itemClass != "/Game/X/Desc_IronScrew.Desc_IronScrew_C" || a.outputContents[0].count != 144 {
+	if len(a.outputContents) != 1 ||
+		a.outputContents[0].itemClass != "/Game/X/Desc_IronScrew.Desc_IronScrew_C" ||
+		a.outputContents[0].count != 144 {
 		t.Errorf("machineA output = %+v, want IronScrew=144", a.outputContents)
 	}
 
@@ -94,7 +103,11 @@ func TestResolveJoinsInventoryContents(t *testing.T) {
 	// Machine C has no inventory components: contents resolve empty, no panic.
 	c := s.manufacturers[1]
 	if len(c.inputContents) != 0 || len(c.outputContents) != 0 {
-		t.Errorf("machineC contents = in:%+v out:%+v, want both empty", c.inputContents, c.outputContents)
+		t.Errorf(
+			"machineC contents = in:%+v out:%+v, want both empty",
+			c.inputContents,
+			c.outputContents,
+		)
 	}
 }
 

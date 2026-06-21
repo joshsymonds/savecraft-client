@@ -18,10 +18,31 @@ func TestMachinesSectionStatusBreakdown(t *testing.T) {
 	blocked := "Persistent_Level:PersistentLevel.Build_ConstructorMk1_C_2"
 	starved := "Persistent_Level:PersistentLevel.Build_ConstructorMk1_C_3"
 
-	collectMachineAt(s, constructor, producing, [3]float32{1, 0, 0}, mergeProps(recipe, map[string]any{"mIsProducing": true,
-		"mLastProductivityMeasurementDuration": 300.0, "mLastProductivityMeasurementProduceDuration": 300.0}))
-	collectMachineAt(s, constructor, blocked, [3]float32{2, 0, 0}, mergeProps(recipe, map[string]any{"mIsProducing": false}))
-	collectMachineAt(s, constructor, starved, [3]float32{3, 0, 0}, mergeProps(recipe, map[string]any{"mIsProducing": false}))
+	collectMachineAt(
+		s,
+		constructor,
+		producing,
+		[3]float32{1, 0, 0},
+		mergeProps(recipe, map[string]any{
+			"mIsProducing":                                true,
+			"mLastProductivityMeasurementDuration":        300.0,
+			"mLastProductivityMeasurementProduceDuration": 300.0,
+		}),
+	)
+	collectMachineAt(
+		s,
+		constructor,
+		blocked,
+		[3]float32{2, 0, 0},
+		mergeProps(recipe, map[string]any{"mIsProducing": false}),
+	)
+	collectMachineAt(
+		s,
+		constructor,
+		starved,
+		[3]float32{3, 0, 0},
+		mergeProps(recipe, map[string]any{"mIsProducing": false}),
+	)
 
 	// blocked: output at stack max; starved: empty input.
 	s.machineInventories[blocked+".OutputInventory"] = &sav.ObjectData{Properties: map[string]any{
@@ -41,11 +62,16 @@ func TestMachinesSectionStatusBreakdown(t *testing.T) {
 	if !ok {
 		t.Fatalf("group has no status map: %v", groups[0])
 	}
-	want := map[machineStatus]int{statusProducing: 1, statusBlocked: 1, statusStarved: 1}
-	for st, n := range want {
-		if status[st] != n {
-			t.Errorf("status[%s] = %d, want %d (full: %v)", st, status[st], n, status)
-		}
+	// Exact equality catches a missing status, a wrong count, AND a machine
+	// mis-classified into an unexpected status (e.g. input_limited). Built by
+	// assignment, not an enum-keyed literal, so it asserts only the three
+	// statuses that should appear without listing every taxonomy member.
+	want := map[machineStatus]int{}
+	want[statusBalanced] = 1
+	want[statusBlocked] = 1
+	want[statusStarved] = 1
+	if !maps.Equal(status, want) {
+		t.Errorf("status = %v, want %v", status, want)
 	}
 	sum := 0
 	for _, n := range status {
@@ -60,9 +86,18 @@ func TestMachinesSectionStatusBreakdown(t *testing.T) {
 func TestMachinesSectionNoStatusWhenAllProducing(t *testing.T) {
 	s := newSaveState(testHeader())
 	constructor := "/Game/FactoryGame/Buildable/Factory/ConstructorMk1/Build_ConstructorMk1.Build_ConstructorMk1_C"
-	collectMachineAt(s, constructor, "Persistent_Level:PersistentLevel.Build_ConstructorMk1_C_9", [3]float32{0, 0, 0},
-		map[string]any{"mCurrentRecipe": sav.ObjectRef{Path: screwRecipe}, "mIsProducing": true,
-			"mLastProductivityMeasurementDuration": 300.0, "mLastProductivityMeasurementProduceDuration": 300.0})
+	collectMachineAt(
+		s,
+		constructor,
+		"Persistent_Level:PersistentLevel.Build_ConstructorMk1_C_9",
+		[3]float32{0, 0, 0},
+		map[string]any{
+			"mCurrentRecipe":                              sav.ObjectRef{Path: screwRecipe},
+			"mIsProducing":                                true,
+			"mLastProductivityMeasurementDuration":        300.0,
+			"mLastProductivityMeasurementProduceDuration": 300.0,
+		},
+	)
 	s.resolve()
 	groups, _ := s.buildMachinesSection()["manufacturers"].([]map[string]any)
 	if _, has := groups[0]["status"]; has {

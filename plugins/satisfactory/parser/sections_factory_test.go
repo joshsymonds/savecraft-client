@@ -30,7 +30,9 @@ func collectMachine(s *saveState, classPath string, props map[string]any) {
 func factoryState() *saveState {
 	s := newSaveState(testHeader())
 	constructor := "/Game/FactoryGame/Buildable/Factory/ConstructorMk1/Build_ConstructorMk1.Build_ConstructorMk1_C"
-	ironPlate := sav.ObjectRef{Path: "/Game/FactoryGame/Recipes/Constructor/Recipe_IronPlate.Recipe_IronPlate_C"}
+	ironPlate := sav.ObjectRef{
+		Path: "/Game/FactoryGame/Recipes/Constructor/Recipe_IronPlate.Recipe_IronPlate_C",
+	}
 	// Two iron plate constructors at 100% (one idle), one at 150% clock.
 	collectMachine(s, constructor, map[string]any{
 		"mCurrentRecipe": ironPlate, "mIsProducing": true,
@@ -89,7 +91,10 @@ func TestBuildMachinesSection(t *testing.T) {
 		t.Errorf("top group = %v", top)
 	}
 	if top["measuredProductivityPct"] != 75.0 {
-		t.Errorf("measuredProductivityPct = %v, want 75 ((100+50)/2)", top["measuredProductivityPct"])
+		t.Errorf(
+			"measuredProductivityPct = %v, want 75 ((100+50)/2)",
+			top["measuredProductivityPct"],
+		)
 	}
 	if _, ok := top["slooped"]; ok {
 		t.Errorf("unboosted group has slooped key: %v", top)

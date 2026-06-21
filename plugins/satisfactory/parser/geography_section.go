@@ -2,7 +2,6 @@ package main
 
 import (
 	"math"
-	"sort"
 )
 
 // baseCellSize is the grid resolution (cm, ≈240 m) for clustering machines
@@ -15,59 +14,18 @@ const maxOccupiedNodes = 50
 
 type cellKey struct{ cx, cy int }
 
-// clusterBases groups machines into spatial bases: connected regions of
-// occupied grid cells (8-neighbour adjacency). Deterministic: bases ordered by
-// size desc then smallest member instance; members sorted by instance.
-func clusterBases(machines []machineRecord, cellSize float64) [][]machineRecord {
-	if len(machines) == 0 {
-		return nil
+// baseName labels a base by its dominant building type and nearest region,
+// e.g. "Constructor Rocky Desert". Shared by the geography and storage sections
+// so a base has exactly one name everywhere.
+func baseName(members []machineRecord, markers []mapMarker) string {
+	buildings := map[string]int{}
+	positions := make([][3]float32, len(members))
+	for i, m := range members {
+		buildings[displayName(m.building)]++
+		positions[i] = m.position
 	}
-	cellOf := func(m machineRecord) cellKey {
-		return cellKey{
-			cx: int(math.Floor(float64(m.position[0]) / cellSize)),
-			cy: int(math.Floor(float64(m.position[1]) / cellSize)),
-		}
-	}
-	occupied := map[cellKey][]machineRecord{}
-	for _, m := range machines {
-		k := cellOf(m)
-		occupied[k] = append(occupied[k], m)
-	}
-
-	uf := newUnionFind[cellKey]()
-	for k := range occupied {
-		uf.find(k)
-		for dx := -1; dx <= 1; dx++ {
-			for dy := -1; dy <= 1; dy++ {
-				if dx == 0 && dy == 0 {
-					continue
-				}
-				n := cellKey{k.cx + dx, k.cy + dy}
-				if _, ok := occupied[n]; ok {
-					uf.union(k, n)
-				}
-			}
-		}
-	}
-
-	groups := map[cellKey][]machineRecord{}
-	for k, ms := range occupied {
-		r := uf.find(k)
-		groups[r] = append(groups[r], ms...)
-	}
-
-	bases := make([][]machineRecord, 0, len(groups))
-	for _, ms := range groups {
-		sort.Slice(ms, func(i, j int) bool { return ms[i].instance < ms[j].instance })
-		bases = append(bases, ms)
-	}
-	sort.Slice(bases, func(i, j int) bool {
-		if len(bases[i]) != len(bases[j]) {
-			return len(bases[i]) > len(bases[j])
-		}
-		return bases[i][0].instance < bases[j][0].instance
-	})
-	return bases
+	c := centroid(positions)
+	return topLabel(buildings) + " " + regionName(float64(c[0]), float64(c[1]), markers)
 }
 
 // topLabel returns the most common key (ties broken lexicographically) — used
@@ -84,29 +42,23 @@ func topLabel(counts map[string]int) string {
 }
 
 func (s *saveState) buildGeographySection() map[string]any {
-	var all []machineRecord
-	all = append(all, s.manufacturers...)
-	all = append(all, s.extractors...)
-	all = append(all, s.generators...)
-
-	bases := make([]map[string]any, 0)
-	for _, group := range clusterBases(all, baseCellSize) {
+	groups := s.bases().bases
+	bases := make([]map[string]any, 0, len(groups))
+	for _, group := range groups {
 		positions := make([][3]float32, len(group))
 		byKind := map[string]int{}
-		buildings := map[string]int{}
 		minX, minY := math.Inf(1), math.Inf(1)
 		maxX, maxY := math.Inf(-1), math.Inf(-1)
 		for i, m := range group {
 			positions[i] = m.position
 			byKind[m.kind]++
-			buildings[displayName(m.building)]++
 			x, y := float64(m.position[0]), float64(m.position[1])
 			minX, minY = math.Min(minX, x), math.Min(minY, y)
 			maxX, maxY = math.Max(maxX, x), math.Max(maxY, y)
 		}
 		c := centroid(positions)
 		bases = append(bases, map[string]any{
-			"name":         topLabel(buildings) + " " + regionName(float64(c[0]), float64(c[1]), s.mapMarkers),
+			"name":         baseName(group, s.mapMarkers),
 			"machineCount": len(group),
 			"byKind":       byKind,
 			"centroid":     posMap(c),
@@ -127,7 +79,7 @@ func (s *saveState) buildGeographySection() map[string]any {
 	}
 }
 
-// resourceNodesGeo summarises resource-node usage: the total node count and the
+// resourceNodesGeo summarizes resource-node usage: the total node count and the
 // extractors occupying a node, with the resource each yields (inferred from the
 // extractor's output) — purity is not in the save and is not reported.
 func (s *saveState) resourceNodesGeo() map[string]any {

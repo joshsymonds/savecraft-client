@@ -8,12 +8,12 @@ import (
 
 const minerClass = "/Game/FactoryGame/Buildable/Factory/MinerMk1/Build_MinerMk1.Build_MinerMk1_C"
 
-func TestClusterBases(t *testing.T) {
+func TestBaseIndexClusters(t *testing.T) {
 	near1 := machineRecord{instance: "a", position: [3]float32{0, 0, 0}}
 	near2 := machineRecord{instance: "b", position: [3]float32{25000, 0, 0}} // adjacent cell
 	far := machineRecord{instance: "c", position: [3]float32{5000000, 0, 0}}
 
-	bases := clusterBases([]machineRecord{near1, near2, far}, baseCellSize)
+	bases := newBaseIndex([]machineRecord{near1, near2, far}).bases
 	if len(bases) != 2 {
 		t.Fatalf("bases = %d, want 2", len(bases))
 	}
@@ -22,23 +22,60 @@ func TestClusterBases(t *testing.T) {
 		t.Errorf("base sizes = %d, %d; want 2, 1", len(bases[0]), len(bases[1]))
 	}
 
-	if got := clusterBases(nil, baseCellSize); len(got) != 0 {
+	if got := newBaseIndex(nil).bases; len(got) != 0 {
 		t.Errorf("empty input → %d bases, want 0", len(got))
 	}
 }
 
-func TestClusterBasesDeterministic(t *testing.T) {
+func TestBaseIndexDeterministic(t *testing.T) {
 	m := []machineRecord{
 		{instance: "a", position: [3]float32{0, 0, 0}},
 		{instance: "b", position: [3]float32{9000000, 0, 0}},
 	}
-	first := clusterBases(m, baseCellSize)
-	second := clusterBases(m, baseCellSize)
-	if len(first) != 2 {
-		t.Fatalf("bases = %d, want 2", len(first))
+	first := newBaseIndex(m)
+	second := newBaseIndex(m)
+	if len(first.bases) != 2 {
+		t.Fatalf("bases = %d, want 2", len(first.bases))
 	}
-	if first[0][0].instance != second[0][0].instance {
-		t.Error("clusterBases not deterministic")
+	if first.bases[0][0].instance != second.bases[0][0].instance {
+		t.Error("newBaseIndex not deterministic")
+	}
+	// assign must also be stable across rebuilds.
+	pos := [3]float32{0, 0, 0}
+	if first.assign(pos) != second.assign(pos) {
+		t.Error("assign not deterministic across rebuilds")
+	}
+}
+
+func TestBaseIndexAssign(t *testing.T) {
+	// Two bases: A at the origin cell, B far away on the +X axis.
+	a := machineRecord{instance: "a", position: [3]float32{0, 0, 0}}
+	b := machineRecord{instance: "b", position: [3]float32{5000000, 0, 0}}
+	idx := newBaseIndex([]machineRecord{a, b})
+	if len(idx.bases) != 2 {
+		t.Fatalf("bases = %d, want 2", len(idx.bases))
+	}
+	// Base 0 is the larger... here both are size 1, so order is by instance:
+	// "a" (origin) is base 0, "b" (far) is base 1.
+	aBase, bBase := idx.assign(a.position), idx.assign(b.position)
+
+	// A container sitting in base A's own cell → base A.
+	if got := idx.assign([3]float32{1000, 1000, 0}); got != aBase {
+		t.Errorf("in-cell assign = %d, want %d (base A)", got, aBase)
+	}
+	// A container in an empty cell, but much closer to B → base B (nearest centroid).
+	if got := idx.assign([3]float32{4900000, 0, 0}); got != bBase {
+		t.Errorf("between-bases assign = %d, want %d (nearest base B)", got, bBase)
+	}
+	// A container in an empty cell closer to A → base A.
+	if got := idx.assign([3]float32{200000, 0, 0}); got != aBase {
+		t.Errorf("between-bases assign = %d, want %d (nearest base A)", got, aBase)
+	}
+}
+
+func TestBaseIndexAssignEmpty(t *testing.T) {
+	if got := newBaseIndex(nil).assign([3]float32{0, 0, 0}); got != -1 {
+		t.Errorf("assign on empty index = %d, want -1", got)
 	}
 }
 
