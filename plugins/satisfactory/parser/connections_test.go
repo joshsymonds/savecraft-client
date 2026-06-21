@@ -59,3 +59,34 @@ func TestConnEdgeFrom(t *testing.T) {
 		t.Error("unconnected component should produce no edge")
 	}
 }
+
+func TestConnEdgeDirection(t *testing.T) {
+	const (
+		machine = "L:P.Build_AssemblerMk1_C_5"
+		belt    = "L:P.Build_ConveyorBeltMk1_C_9"
+	)
+	connTo := func(target string) *sav.ObjectData {
+		return &sav.ObjectData{Properties: map[string]any{
+			"mConnectedComponent": sav.ObjectRef{Path: target + ".ConveyorAny0"},
+		}}
+	}
+
+	// Output connector: flow leaves the machine → owner→connected, directed.
+	out, _ := connEdgeFrom(machine+".Output0", connTo(belt), "belt")
+	if out.from != machine || out.to != belt || !out.directed {
+		t.Errorf("output edge = %+v, want %s→%s directed", out, machine, belt)
+	}
+
+	// Input connector: flow enters the machine → connected→owner (reversed), directed.
+	in, _ := connEdgeFrom(machine+".Input1", connTo(belt), "belt")
+	if in.from != belt || in.to != machine || !in.directed {
+		t.Errorf("input edge = %+v, want %s→%s directed", in, belt, machine)
+	}
+
+	// Belt-side ConveyorAny connector: direction unknown → undirected, but still
+	// from=owner→to=connected for connectivity.
+	beltSide, _ := connEdgeFrom(belt+".ConveyorAny1", connTo(machine), "belt")
+	if beltSide.from != belt || beltSide.to != machine || beltSide.directed {
+		t.Errorf("conveyor-any edge = %+v, want %s→%s undirected", beltSide, belt, machine)
+	}
+}
