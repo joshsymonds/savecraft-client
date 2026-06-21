@@ -75,6 +75,75 @@ func terminalSummary(terminals []string) []map[string]any {
 	return out
 }
 
+// lineDelivery computes a line's inbound belt throughput ceiling — the slowest
+// belt feeding the line's machine inputs via a directed belt→machine edge — and
+// a delivery-limited flag when the line's largest externally-supplied item rate
+// exceeds that ceiling. Returns the ceiling (and whether one was found) plus the
+// flag map (nil when within ceiling, no feeder, or no external demand).
+//
+// The flag is conservative: it cannot map a specific item to a specific belt
+// (that needs belt contents), so it compares the heaviest required external
+// feed against the slowest inbound belt. A machine fed via a splitter has no
+// direct belt→machine edge, so its line may report no ceiling.
+func (s *saveState) lineDelivery(
+	machines []string,
+	byInstance map[string]*machineRecord,
+	beltThroughputByInstance map[string]float64,
+) (ceiling float64, hasCeiling bool, limited map[string]any) {
+	lineSet := make(map[string]bool, len(machines))
+	for _, mi := range machines {
+		lineSet[mi] = true
+	}
+
+	for _, e := range s.connEdges {
+		if !e.directed || e.transport != "belt" || !lineSet[e.to] {
+			continue
+		}
+		t, ok := beltThroughputByInstance[e.from]
+		if !ok || t <= 0 {
+			continue
+		}
+		if !hasCeiling || t < ceiling {
+			ceiling, hasCeiling = t, true
+		}
+	}
+
+	produced := map[string]float64{}
+	consumed := map[string]float64{}
+	for _, mi := range machines {
+		rec := byInstance[mi]
+		if rec == nil || rec.kind != "manufacturer" || rec.recipe == "" {
+			continue
+		}
+		spec, ok := recipeIO[recipeClassName(rec.recipe)]
+		if !ok {
+			continue
+		}
+		for _, p := range spec.Products {
+			produced[p.Class] += outputPerMin(spec, p.Class, rec.clock, rec.boost)
+		}
+		for _, ing := range spec.Ingredients {
+			consumed[ing.Class] += inputPerMin(spec, ing.Class, rec.clock)
+		}
+	}
+
+	worstItem, worstRate := "", 0.0
+	for item, c := range consumed {
+		if demand := c - produced[item]; demand > worstRate {
+			worstItem, worstRate = item, demand
+		}
+	}
+
+	if hasCeiling && worstRate > ceiling {
+		limited = map[string]any{
+			"item":           displayName(worstItem),
+			"requiredPerMin": round2(worstRate),
+			"beltCeiling":    ceiling,
+		}
+	}
+	return ceiling, hasCeiling, limited
+}
+
 func (s *saveState) buildProductionLinesSection() map[string]any {
 	byInstance := map[string]*machineRecord{}
 	machineSet := map[string]bool{}
@@ -87,6 +156,11 @@ func (s *saveState) buildProductionLinesSection() map[string]any {
 	index(s.manufacturers)
 	index(s.extractors)
 	index(s.generators)
+
+	beltThroughputByInstance := make(map[string]float64, len(s.belts))
+	for _, b := range s.belts {
+		beltThroughputByInstance[b.instance] = b.throughput
+	}
 
 	lines := buildProductionLines(s.connEdges, machineSet)
 
@@ -182,6 +256,16 @@ func (s *saveState) buildProductionLinesSection() map[string]any {
 		}
 		if omitted > 0 {
 			line["problemsOmitted"] = omitted
+		}
+		if ceiling, ok, limited := s.lineDelivery(
+			l.machines,
+			byInstance,
+			beltThroughputByInstance,
+		); ok {
+			line["inboundBeltCeiling"] = ceiling
+			if limited != nil {
+				line["deliveryLimited"] = limited
+			}
 		}
 		out = append(out, line)
 	}
