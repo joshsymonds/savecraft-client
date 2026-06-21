@@ -512,6 +512,12 @@ linters:
         linters:
           - gosec
 
+      # datagen reads game data files from a trusted -input path, not user input
+      - path: 'plugins/songsofsyx/tools/datagen/.*\.go'
+        text: 'G304'
+        linters:
+          - gosec
+
       # Self-updater must chmod downloaded binaries to be executable (0o700)
       - path: 'internal/selfupdate/.*\.go'
         text: 'G302'
