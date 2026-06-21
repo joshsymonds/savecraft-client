@@ -156,9 +156,12 @@ func (s *saveState) buildStorageSection() map[string]any {
 // the dimensional depot uploader, which is not a StorageContainerMk) are
 // omitted here but remain in the global itemsInStorage total. Bases are ordered
 // by id (matching the geography section) and items within a base by count desc.
-func (s *saveState) storageByBase() []map[string]any {
+// storageBucketsByBaseID groups positioned storage contents into per-base item
+// stocks (base id -> item class -> count). Shared by the storage section's
+// byBase display and the flow_balance buffer column, so both read one number.
+func (s *saveState) storageBucketsByBaseID() map[int]map[string]int64 {
 	idx := s.bases()
-	buckets := map[int]map[string]int64{} // base id -> item class -> count
+	buckets := map[int]map[string]int64{}
 	for _, inv := range s.storageInventories {
 		pos, ok := s.containerPos[inv.owner]
 		if !ok {
@@ -177,6 +180,12 @@ func (s *saveState) storageByBase() []map[string]any {
 			b[st.itemClass] += st.count
 		}
 	}
+	return buckets
+}
+
+func (s *saveState) storageByBase() []map[string]any {
+	idx := s.bases()
+	buckets := s.storageBucketsByBaseID()
 
 	baseIDs := make([]int, 0, len(buckets))
 	for id := range buckets {

@@ -236,8 +236,8 @@ func TestBuildResultEmptyState(t *testing.T) {
 	s := newSaveState(testHeader())
 	result := s.buildResult()
 	sections, _ := result["sections"].(map[string]any)
-	if len(sections) != 11 {
-		t.Fatalf("sections = %d, want 11 (the epic's full roster)", len(sections))
+	if len(sections) != 12 {
+		t.Fatalf("sections = %d, want 12 (the epic's full roster)", len(sections))
 	}
 	summary, _ := result["summary"].(string)
 	if strings.Contains(summary, "Tier") {
