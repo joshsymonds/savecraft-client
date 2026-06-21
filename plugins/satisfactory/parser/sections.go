@@ -46,8 +46,16 @@ type saveState struct {
 	mapMarkers      []mapMarker
 	resourceNodePos map[string][3]float32
 
-	containerCounts   map[string]int
-	storedItems       map[string]int64 // item class -> total across containers
+	containerCounts map[string]int
+	storedItems     map[string]int64 // item class -> total across containers
+	// containerPos maps a storage container actor instance to its world
+	// position; storageInventories records each container's contents joined
+	// to that container by instance prefix, so storage can be bucketed by base.
+	containerPos       map[string][3]float32
+	storageInventories []storageInv
+	// baseIdx memoizes the shared base index (bases() builds it once); both
+	// the geography and storage sections consume it so they never disagree.
+	baseIdx           *baseIndex
 	centralStorage    *sav.ObjectData
 	trains            int
 	locomotives       int
@@ -62,16 +70,39 @@ type saveState struct {
 	vehicleCounts     map[string]int
 }
 
+// storageInv is one storage container's resolved contents, tagged with the
+// owning container's instance path so it can be joined to a position.
+type storageInv struct {
+	owner string
+	items []invStack
+}
+
 func newSaveState(header *sav.Header) *saveState {
 	return &saveState{
 		header:             header,
 		playerInventory:    map[string]*sav.ObjectData{},
 		containerCounts:    map[string]int{},
 		storedItems:        map[string]int64{},
+		containerPos:       map[string][3]float32{},
 		vehicleCounts:      map[string]int{},
 		machineInventories: map[string]*sav.ObjectData{},
 		resourceNodePos:    map[string][3]float32{},
 	}
+}
+
+// bases returns the shared base index, building it once over all machines.
+// Both the geography and storage sections use it so their base definitions
+// (and names) always agree.
+func (s *saveState) bases() baseIndex {
+	if s.baseIdx == nil {
+		all := make([]machineRecord, 0, len(s.manufacturers)+len(s.extractors)+len(s.generators))
+		all = append(all, s.manufacturers...)
+		all = append(all, s.extractors...)
+		all = append(all, s.generators...)
+		idx := newBaseIndex(all)
+		s.baseIdx = &idx
+	}
+	return *s.baseIdx
 }
 
 // want selects the objects the current sections need: progression manager

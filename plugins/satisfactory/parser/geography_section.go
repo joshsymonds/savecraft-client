@@ -14,6 +14,20 @@ const maxOccupiedNodes = 50
 
 type cellKey struct{ cx, cy int }
 
+// baseName labels a base by its dominant building type and nearest region,
+// e.g. "Constructor Rocky Desert". Shared by the geography and storage sections
+// so a base has exactly one name everywhere.
+func baseName(members []machineRecord, markers []mapMarker) string {
+	buildings := map[string]int{}
+	positions := make([][3]float32, len(members))
+	for i, m := range members {
+		buildings[displayName(m.building)]++
+		positions[i] = m.position
+	}
+	c := centroid(positions)
+	return topLabel(buildings) + " " + regionName(float64(c[0]), float64(c[1]), markers)
+}
+
 // topLabel returns the most common key (ties broken lexicographically) — used
 // to descriptor-prefix a base name with its dominant building type.
 func topLabel(counts map[string]int) string {
@@ -28,36 +42,23 @@ func topLabel(counts map[string]int) string {
 }
 
 func (s *saveState) buildGeographySection() map[string]any {
-	all := make([]machineRecord, 0, len(s.manufacturers)+len(s.extractors)+len(s.generators))
-	all = append(all, s.manufacturers...)
-	all = append(all, s.extractors...)
-	all = append(all, s.generators...)
-
-	groups := newBaseIndex(all).bases
+	groups := s.bases().bases
 	bases := make([]map[string]any, 0, len(groups))
 	for _, group := range groups {
 		positions := make([][3]float32, len(group))
 		byKind := map[string]int{}
-		buildings := map[string]int{}
 		minX, minY := math.Inf(1), math.Inf(1)
 		maxX, maxY := math.Inf(-1), math.Inf(-1)
 		for i, m := range group {
 			positions[i] = m.position
 			byKind[m.kind]++
-			buildings[displayName(m.building)]++
 			x, y := float64(m.position[0]), float64(m.position[1])
 			minX, minY = math.Min(minX, x), math.Min(minY, y)
 			maxX, maxY = math.Max(maxX, x), math.Max(maxY, y)
 		}
 		c := centroid(positions)
 		bases = append(bases, map[string]any{
-			"name": topLabel(
-				buildings,
-			) + " " + regionName(
-				float64(c[0]),
-				float64(c[1]),
-				s.mapMarkers,
-			),
+			"name":         baseName(group, s.mapMarkers),
 			"machineCount": len(group),
 			"byKind":       byKind,
 			"centroid":     posMap(c),

@@ -54,16 +54,18 @@ func (s *saveState) collectLogistics(kind string, o sav.Object, od *sav.ObjectDa
 	switch kind {
 	case "container":
 		s.containerCounts[displayName(o.ClassPath)]++
+		s.containerPos[o.InstanceName] = o.Translation
 	case "centralStorage":
 		s.centralStorage = od
 	case "storageInventory":
-		for _, item := range inventoryItems(od) {
-			cls, clsOK := item["classPath"].(string)
-			count, countOK := item["count"].(int64)
-			if clsOK && countOK {
-				s.storedItems[cls] += count
-			}
+		stacks := inventoryStacks(od)
+		for _, st := range stacks {
+			s.storedItems[st.itemClass] += st.count
 		}
+		s.storageInventories = append(s.storageInventories, storageInv{
+			owner: strings.TrimSuffix(o.InstanceName, ".StorageInventory"),
+			items: stacks,
+		})
 	case "train":
 		s.trains++
 	case "locomotive":
@@ -116,6 +118,10 @@ func (s *saveState) buildStorageSection() map[string]any {
 		"itemsInStorage": items,
 	}
 
+	if byBase := s.storageByBase(); len(byBase) > 0 {
+		data["byBase"] = byBase
+	}
+
 	if stored, ok := prop[[]any](s.centralStorage, "mStoredItems"); ok {
 		depot := make([]map[string]any, 0, len(stored))
 		for _, raw := range stored {
@@ -143,6 +149,69 @@ func (s *saveState) buildStorageSection() map[string]any {
 		data["dimensionalDepot"] = map[string]any{"items": depot}
 	}
 	return data
+}
+
+// storageByBase buckets each positioned storage container's contents into its
+// geography base. Containers whose owning actor had no captured position (e.g.
+// the dimensional depot uploader, which is not a StorageContainerMk) are
+// omitted here but remain in the global itemsInStorage total. Bases are ordered
+// by id (matching the geography section) and items within a base by count desc.
+func (s *saveState) storageByBase() []map[string]any {
+	idx := s.bases()
+	buckets := map[int]map[string]int64{} // base id -> item class -> count
+	for _, inv := range s.storageInventories {
+		pos, ok := s.containerPos[inv.owner]
+		if !ok {
+			continue
+		}
+		base := idx.assign(pos)
+		if base < 0 {
+			continue
+		}
+		b := buckets[base]
+		if b == nil {
+			b = map[string]int64{}
+			buckets[base] = b
+		}
+		for _, st := range inv.items {
+			b[st.itemClass] += st.count
+		}
+	}
+
+	baseIDs := make([]int, 0, len(buckets))
+	for id := range buckets {
+		baseIDs = append(baseIDs, id)
+	}
+	sort.Ints(baseIDs)
+
+	out := make([]map[string]any, 0, len(baseIDs))
+	for _, id := range baseIDs {
+		type entry struct {
+			cls   string
+			count int64
+		}
+		list := make([]entry, 0, len(buckets[id]))
+		for cls, count := range buckets[id] {
+			list = append(list, entry{cls, count})
+		}
+		sort.Slice(list, func(i, j int) bool {
+			if list[i].count != list[j].count {
+				return list[i].count > list[j].count
+			}
+			return list[i].cls < list[j].cls
+		})
+		items := make([]map[string]any, 0, len(list))
+		for _, e := range list {
+			items = append(items, map[string]any{
+				"name": displayName(e.cls), "classPath": e.cls, "count": e.count,
+			})
+		}
+		out = append(out, map[string]any{
+			"base":  baseName(idx.bases[id], s.mapMarkers),
+			"items": items,
+		})
+	}
+	return out
 }
 
 func (s *saveState) buildLogisticsSection() map[string]any {
