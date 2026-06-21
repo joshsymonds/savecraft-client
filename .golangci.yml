@@ -519,10 +519,15 @@ linters:
           - gosec
 
       # WASM reference router dispatches to handlers returning heterogeneous
-      # result types (any) — same as other plugins' reference modules.
+      # result types (any) — same as other plugins' reference modules. dupl: the
+      # per-entity modules (rooms/resources/races/tech) are intentionally
+      # parallel CRUD glue; the shared logic already lives in resolveEntity /
+      # buildIndex, and the residual type-specific wrappers keep readable,
+      # self-describing JSON (rooms/techs) rather than a generic shape.
       - path: 'plugins/songsofsyx/reference/.*\.go'
         linters:
           - ireturn
+          - dupl
 
       # Self-updater must chmod downloaded binaries to be executable (0o700)
       - path: 'internal/selfupdate/.*\.go'
