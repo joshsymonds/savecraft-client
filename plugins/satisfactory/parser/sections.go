@@ -27,6 +27,7 @@ type saveState struct {
 	manufacturers       []machineRecord
 	extractors          []machineRecord
 	generators          []machineRecord
+	belts               []beltRecord // conveyor belts + lifts (tier, position, throughput)
 	powerStorageCharges []float64
 	powerCircuits       int
 
@@ -139,6 +140,9 @@ func (s *saveState) want(o sav.ObjectHeader) bool {
 	if strings.HasSuffix(o.ClassPath, ".FGMapManager") || isResourceNode(o.ClassPath) {
 		return true
 	}
+	if isBelt(o.ClassPath) {
+		return true
+	}
 	return factoryKind(o.ClassPath) != "" || logisticsKind(o) != ""
 }
 
@@ -200,6 +204,14 @@ func (s *saveState) collect(o sav.Object) error {
 		s.resourceNodePos[o.InstanceName] = o.Translation
 	case isMachineInventory(o.ObjectHeader):
 		s.machineInventories[o.InstanceName] = od
+	case isBelt(o.ClassPath):
+		class := o.ClassPath[strings.LastIndex(o.ClassPath, ".")+1:]
+		s.belts = append(s.belts, beltRecord{
+			instance:   o.InstanceName,
+			class:      class,
+			position:   o.Translation,
+			throughput: beltThroughput[class],
+		})
 	case factoryKind(o.ClassPath) != "":
 		s.collectFactory(factoryKind(o.ClassPath), o, od)
 	case logisticsKind(o.ObjectHeader) != "":
@@ -560,7 +572,7 @@ func (s *saveState) buildResult() map[string]any {
 			"data":        s.buildMachinesSection(),
 		},
 		"production_lines": map[string]any{
-			"description": "Belt/pipe-connected production lines — each a group of machines physically linked by conveyors/pipes, named by the nearest player map marker (or a compass sector when none is near). Per line: machines grouped by building+recipe with status counts, transport types (belt/pipe), boundary terminals it attaches to (storage, sinks, train docking stations — building type, not player station name yet), and individual problem machines (input_limited/output_limited/blocked_downstream/starved_upstream/idle) with position; an input_limited or starved machine carries limitingInput naming the constraining item (the decisive datum for 'which input is short'). Two physically separate lines of the same recipe appear separately. unconnectedMachines counts machines with no belt/pipe link (see the machines section for those). Use to answer 'what are my production lines' and 'where is the problem'",
+			"description": "Belt/pipe-connected production lines — each a group of machines physically linked by conveyors/pipes, named by the nearest player map marker (or a compass sector when none is near). Per line: machines grouped by building+recipe with status counts, transport types (belt/pipe), boundary terminals it attaches to (storage, sinks, train docking stations — building type, not player station name yet), and individual problem machines (input_limited/output_limited/blocked_downstream/starved_upstream/idle) with position; an input_limited or starved machine carries limitingInput naming the constraining item (the decisive datum for 'which input is short'). inboundBeltCeiling is the slowest belt (items/min) feeding the line's machine inputs — the delivery throughput limit; deliveryLimited flags when the line's largest externally-supplied item demand (item + requiredPerMin) exceeds that ceiling, i.e. the feed belt physically cannot deliver enough — distinguishing a DELIVERY bottleneck (upgrade the belt) from a PRODUCTION shortfall (build more machines; see flow_balance). The delivery flag is conservative: it compares the heaviest required feed against the slowest inbound belt and cannot yet map a specific item to a specific belt, and a machine fed via a splitter has no direct belt edge so its line may report no ceiling. Two physically separate lines of the same recipe appear separately. unconnectedMachines counts machines with no belt/pipe link (see the machines section for those). Use to answer 'what are my production lines' and 'where is the problem'",
 			"data":        s.buildProductionLinesSection(),
 		},
 		"production_summary": map[string]any{

@@ -160,6 +160,107 @@ func TestProductionLinesSectionLimitingInput(t *testing.T) {
 	}
 }
 
+// twoCableLineFedBy builds one line of two cable constructors (consuming
+// 120 wire/min total, none produced in-line) fed by a belt of the given
+// instance/throughput, and returns the line's emitted map.
+func twoCableLineFedBy(t *testing.T, beltInst string, throughput float64) map[string]any {
+	t.Helper()
+	s := newSaveState(testHeader())
+	c1 := inst("Build_ConstructorMk1_C", 1)
+	c2 := inst("Build_ConstructorMk1_C", 2)
+	collectMachineAt(s, consClass, c1, [3]float32{0, 0, 0}, recipeProp(cableRecipe))
+	collectMachineAt(s, consClass, c2, [3]float32{100, 0, 0}, recipeProp(cableRecipe))
+	s.belts = []beltRecord{
+		{instance: beltInst, class: "Build_ConveyorBeltMk1_C", throughput: throughput},
+	}
+	// The belt feeds both machines' inputs (directed belt→machine), which also
+	// unions them into one line.
+	s.connEdges = []connEdge{
+		{from: beltInst, to: c1, transport: "belt", directed: true},
+		{from: beltInst, to: c2, transport: "belt", directed: true},
+	}
+	s.resolve()
+	lines, _ := s.buildProductionLinesSection()["lines"].([]map[string]any)
+	if len(lines) != 1 {
+		t.Fatalf("lines = %d, want 1", len(lines))
+	}
+	return lines[0]
+}
+
+func TestProductionLineDeliveryLimited(t *testing.T) {
+	beltInst := inst("Build_ConveyorBeltMk1_C", 99)
+	line := twoCableLineFedBy(t, beltInst, 60) // Mk1: 60/min, demand 120/min wire
+
+	if line["inboundBeltCeiling"] != 60.0 {
+		t.Errorf("inboundBeltCeiling = %v, want 60", line["inboundBeltCeiling"])
+	}
+	dl, ok := line["deliveryLimited"].(map[string]any)
+	if !ok {
+		t.Fatalf("deliveryLimited missing: %+v", line)
+	}
+	if dl["item"] != "Wire" || dl["requiredPerMin"] != 120.0 || dl["beltCeiling"] != 60.0 {
+		t.Errorf("deliveryLimited = %v, want Wire 120 over ceiling 60", dl)
+	}
+}
+
+func TestProductionLineNotDeliveryLimitedFastBelt(t *testing.T) {
+	beltInst := inst("Build_ConveyorBeltMk5_C", 99)
+	line := twoCableLineFedBy(t, beltInst, 780) // Mk5: 780/min >> 120/min demand
+
+	if line["inboundBeltCeiling"] != 780.0 {
+		t.Errorf("inboundBeltCeiling = %v, want 780", line["inboundBeltCeiling"])
+	}
+	if _, has := line["deliveryLimited"]; has {
+		t.Errorf("should not be delivery-limited on a Mk5 belt: %v", line["deliveryLimited"])
+	}
+}
+
+func TestProductionLineInternallySupplied(t *testing.T) {
+	// A wire constructor (Recipe_Wire: 1 copper → 2 wire, 4s = 30 wire/min) and a
+	// cable constructor (60 wire/min) on one Mk1-fed line. Wire is partly produced
+	// in-line, so the external wire demand (60-30=30) is below the 60 ceiling, and
+	// copper demand (15/min) is too → not delivery-limited.
+	s := newSaveState(testHeader())
+	wireM := inst("Build_ConstructorMk1_C", 1)
+	cableM := inst("Build_ConstructorMk1_C", 2)
+	collectMachineAt(s, consClass, wireM, [3]float32{0, 0, 0}, recipeProp(wireRecipe))
+	collectMachineAt(s, consClass, cableM, [3]float32{100, 0, 0}, recipeProp(cableRecipe))
+	beltInst := inst("Build_ConveyorBeltMk1_C", 99)
+	s.belts = []beltRecord{{instance: beltInst, class: "Build_ConveyorBeltMk1_C", throughput: 60}}
+	s.connEdges = []connEdge{
+		{from: beltInst, to: wireM, transport: "belt", directed: true},
+		{from: beltInst, to: cableM, transport: "belt", directed: true},
+	}
+	s.resolve()
+	lines, _ := s.buildProductionLinesSection()["lines"].([]map[string]any)
+	if _, has := lines[0]["deliveryLimited"]; has {
+		t.Errorf(
+			"in-line wire production should keep external demand under ceiling: %v",
+			lines[0]["deliveryLimited"],
+		)
+	}
+}
+
+func TestProductionLineNoInboundBelt(t *testing.T) {
+	// A line whose machines have no directed belt feeder → no ceiling, no flag.
+	s := newSaveState(testHeader())
+	c1 := inst("Build_ConstructorMk1_C", 1)
+	belt0 := inst("Build_ConveyorBeltMk1_C", 2)
+	c2 := inst("Build_ConstructorMk1_C", 3)
+	collectMachineAt(s, consClass, c1, [3]float32{0, 0, 0}, recipeProp(cableRecipe))
+	collectMachineAt(s, consClass, c2, [3]float32{100, 0, 0}, recipeProp(cableRecipe))
+	// Undirected belt links only (no directed feeder edge).
+	s.connEdges = []connEdge{belt(c1, belt0), belt(belt0, c2)}
+	s.resolve()
+	lines, _ := s.buildProductionLinesSection()["lines"].([]map[string]any)
+	if _, has := lines[0]["inboundBeltCeiling"]; has {
+		t.Errorf("no directed feeder → no inboundBeltCeiling: %v", lines[0]["inboundBeltCeiling"])
+	}
+	if _, has := lines[0]["deliveryLimited"]; has {
+		t.Errorf("no feeder → no deliveryLimited")
+	}
+}
+
 func TestProductionLinesSectionUnconnected(t *testing.T) {
 	s := newSaveState(testHeader())
 	c1, belt0, c2 := inst(
