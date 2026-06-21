@@ -518,6 +518,12 @@ linters:
         linters:
           - gosec
 
+      # WASM reference router dispatches to handlers returning heterogeneous
+      # result types (any) — same as other plugins' reference modules.
+      - path: 'plugins/songsofsyx/reference/.*\.go'
+        linters:
+          - ireturn
+
       # Self-updater must chmod downloaded binaries to be executable (0o700)
       - path: 'internal/selfupdate/.*\.go'
         text: 'G302'
