@@ -118,3 +118,7 @@ worker/test/fixtures/spot-check.sql
 
 # Local marketing/distribution drafts (kept on disk, not in the repo)
 /reddit-post*.md
+
+# just recipe serialization locks (see build-views / build-manifests)
+/.build-views.lock
+/.build-manifests.lock

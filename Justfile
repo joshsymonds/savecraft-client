@@ -328,8 +328,9 @@ storybook:
     cd web && npm run storybook
 
 # Build game manifests → worker/src/mcp/manifests.gen.ts
+# flock: serialized for the same reason as build-views below.
 build-manifests:
-    npx tsx scripts/build-manifests.ts
+    flock .build-manifests.lock -c 'npx tsx scripts/build-manifests.ts'
 
 # Refresh the spot-check fixture from production D1 (read-only).
 # Output: worker/test/fixtures/spot-check.sql (gitignored).
@@ -359,8 +360,10 @@ extract-tree-data:
 
 # Build MCP App views → worker/src/mcp/views.gen.ts
 # Consumes the committed tree-data.gen.json — does NOT regenerate it.
+# flock: `just check` runs lint-worker and test-worker in parallel and both
+# depend on this recipe — unserialized, concurrent builds race on views.gen.ts.
 build-views:
-    cd views && npx tsx scripts/build.ts
+    flock .build-views.lock -c 'cd views && npx tsx scripts/build.ts'
 
 # Start Storybook (MCP App views)
 storybook-views:
