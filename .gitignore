@@ -33,7 +33,7 @@ plugins/**/test-parser
 /d2r
 
 # Node
-node_modules/
+node_modules
 
 # SvelteKit generated
 .svelte-kit/
