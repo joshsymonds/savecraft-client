@@ -259,20 +259,21 @@ lint-no-dead-urls:
 lint-no-rogue-ggg-calls:
     #!/usr/bin/env bash
     set -uo pipefail
-    # Allowed only under plugins/poe/adapter/. Scan shipping source
-    # (not tests, which import the adapter helpers legitimately).
+    # Allowed only in the shared GGG client (worker/src/adapters/ggg.ts)
+    # and the PoE adapters that import it. Scan shipping source (not
+    # tests, which import the adapter helpers legitimately).
     hits=$(grep -rnE "gggGet\(|api\.pathofexile\.com|pathofexile\.com/oauth|ensureGggAccessToken" \
         --include='*.ts' --include='*.js' \
         --exclude='*.test.ts' --exclude='*.test.js' \
         --exclude-dir='test' --exclude-dir='tests' \
         worker/src plugins 2>/dev/null \
-        | grep -vE '(^|/)plugins/poe/adapter/' || true)
+        | grep -vE '(^|/)plugins/poe2?/adapter/|(^|/)worker/src/adapters/ggg\.ts:' || true)
     if [ -n "$hits" ]; then
-        echo "Rogue GGG API reference outside plugins/poe/adapter/ (Req 7: only refresh_save/fetchState may call GGG):"
+        echo "Rogue GGG API reference outside the shared GGG client / PoE adapters (Req 7: only refresh_save/fetchState may call GGG):"
         echo "$hits"
         exit 1
     fi
-    echo "OK: GGG API references confined to plugins/poe/adapter/"
+    echo "OK: GGG API references confined to the shared GGG client and PoE adapters"
 
 # Format shell scripts
 fmt-sh:
