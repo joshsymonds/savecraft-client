@@ -7,6 +7,11 @@ let
   # setup with no per-test cloning, and guarantees dev/CI/prod parity on
   # the PoB revision.
   pobSrc = import ./nix/pob-source.nix { inherit pkgs; };
+  # Pinned PathOfBuilding-PoE2 source — same revision the production
+  # NixOS module uses (nix/pob-server.nix). Tests in cmd/pob-server/ that
+  # spawn a real wrapper.lua against the PoE2 pool read POB2_DIR; mirrors
+  # pobSrc above so dev/CI/prod can never drift on the PoE2 revision.
+  pob2Src = import ./nix/pob2-source.nix { inherit pkgs; };
 in
 {
   dotenv.enable = true;
@@ -99,9 +104,15 @@ in
     # Go integration tests in cmd/pob-server/ that spawn real wrapper.lua.
     # Mirrors nix/pob-server.nix's systemd unit. POB_ZLIB_PATH backs PoB's
     # FFI Inflate/Deflate (HeadlessWrapper stubs them otherwise, breaking
-    # build-code import + Timeless Jewel LUTs).
+    # build-code import + Timeless Jewel LUTs). Shared by both games —
+    # wrapper.lua's zlib FFI binding is game-agnostic.
     export POB_DIR=${pobSrc}/src
     export POB_ZLIB_PATH=${pkgs.zlib}/lib/libz.so
+
+    # PathOfBuilding-PoE2 calc engine path — same role as POB_DIR above,
+    # for the PoE2 process pool (POB_GAME=poe2). No separate zlib path:
+    # wrapper.lua's POB_ZLIB_PATH lookup is not game-specific.
+    export POB2_DIR=${pob2Src}/src
   '';
 
   processes.web.exec = "cd web && npm run dev";
