@@ -41,7 +41,10 @@
               || pkgs.lib.hasPrefix "/go.mod" rel
               || pkgs.lib.hasPrefix "/go.sum" rel
               || pkgs.lib.hasPrefix "/cmd/pob-server" rel
-              || pkgs.lib.hasPrefix "/internal" rel;
+              || pkgs.lib.hasPrefix "/internal" rel
+              # pob-server's poe2 import tests share the adapter's GGG
+              # character fixtures rather than duplicating them.
+              || pkgs.lib.hasPrefix "/plugins/poe2/testdata" rel;
         };
         subPackages = ["cmd/pob-server"];
         vendorHash = "sha256-QXcXRR/AnEIW0nejzdpG2lXYYhUBs9wHTWBWl5QkdfM=";
