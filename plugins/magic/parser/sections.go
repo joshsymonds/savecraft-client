@@ -673,11 +673,14 @@ func processGRE(gs *GameState, raw json.RawMessage) {
 				if !isTargetSpec || session.seenPersistentAnnotations[ann.ID] {
 					continue
 				}
-				session.seenPersistentAnnotations[ann.ID] = true
 				action := handleTargetSpec(ann, session.objectRegistry)
-				if action != nil {
-					turn.Actions = append(turn.Actions, *action)
+				if action == nil {
+					// Don't mark seen: the affector may not be registered yet;
+					// a later resend of this persistent annotation can succeed.
+					continue
 				}
+				session.seenPersistentAnnotations[ann.ID] = true
+				turn.Actions = append(turn.Actions, *action)
 			}
 		}
 	}
@@ -804,8 +807,6 @@ func annotationToAction(ann greAnnotation, registry map[int]greGameObject) *Game
 			return handleTapUntap(ann, registry)
 		case "AnnotationType_AbilityInstanceCreated":
 			return handleAbilityCreated(ann, registry)
-		case "AnnotationType_TargetSpec":
-			return handleTargetSpec(ann, registry)
 		case "AnnotationType_PowerToughnessModCreated":
 			return handleStatMod(ann, registry)
 		}

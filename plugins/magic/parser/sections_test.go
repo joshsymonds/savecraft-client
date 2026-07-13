@@ -1008,46 +1008,10 @@ func TestPlayerSubmittedTargetsProducesNoAction(t *testing.T) {
 	}
 }
 
-func TestHandleTargetSpecCardSource(t *testing.T) {
-	// TargetSpec: affectorId=the targeting spell/ability instance, affectedIds=the
-	// chosen target instances.
-	objects := `
-		{"instanceId": 256, "grpId": 82159, "ownerSeatId": 1, "controllerSeatId": 1, "visibility": "Visibility_Public"},
-		{"instanceId": 248, "grpId": 82160, "ownerSeatId": 2, "visibility": "Visibility_Public"}
-	`
-	annotations := `{
-		"id": 513, "affectorId": 256, "affectedIds": [248],
-		"type": ["AnnotationType_TargetSpec"],
-		"details": [{"key": "abilityGrpId", "type": "KeyValuePairValueType_int32", "valueInt32": [1]}]
-	}`
-	gs := BuildGameState(greTestEntries(objects, annotations))
-	action := findAction(gs, "target")
-	if action == nil {
-		t.Fatal("expected target action")
-	}
-	if action.Target == nil {
-		t.Fatal("expected Target subtype")
-	}
-	if action.Target.CardName != "Sheoldred, the Apocalypse" {
-		t.Errorf("expected source card 'Sheoldred, the Apocalypse', got %q", action.Target.CardName)
-	}
-	if action.Target.CardID != 82159 {
-		t.Errorf("expected source cardId 82159, got %d", action.Target.CardID)
-	}
-	if len(action.Target.Targets) != 1 || action.Target.Targets[0] != "Sheoldred's Restoration" {
-		t.Errorf("expected target ['Sheoldred's Restoration'], got %v", action.Target.Targets)
-	}
-	if action.Player != 1 {
-		t.Errorf("expected player 1 (controllerSeatId), got %d", action.Player)
-	}
-}
-
 func TestTargetSpecFromPersistentAnnotations(t *testing.T) {
 	// Real MTGA logs carry ALL AnnotationType_TargetSpec annotations inside
 	// gameStateMessage.persistentAnnotations, never the regular annotations
-	// array (verified 21/21 in a real Player.log). This is the same scenario
-	// as TestHandleTargetSpecCardSource but delivered the way real logs
-	// actually deliver it.
+	// array (verified 21/21 in a real Player.log).
 	objects := `
 		{"instanceId": 256, "grpId": 82159, "ownerSeatId": 1, "controllerSeatId": 1, "visibility": "Visibility_Public"},
 		{"instanceId": 248, "grpId": 82160, "ownerSeatId": 2, "visibility": "Visibility_Public"}
