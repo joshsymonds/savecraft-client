@@ -748,6 +748,36 @@ func greTestEntries(objects, annotations string) []LogEntry {
 	}
 }
 
+// greTestEntriesPersistent builds log entries that set up a match and inject a
+// GRE message with the given game objects and persistentAnnotations (instead
+// of the regular annotations array). Sibling to greTestEntries: real MTGA logs
+// carry AnnotationType_TargetSpec exclusively via persistentAnnotations, never
+// the regular annotations array.
+func greTestEntriesPersistent(objects, persistentAnnotations string) []LogEntry {
+	return []LogEntry{
+		{Label: "AuthenticateResponse", JSON: json.RawMessage(`{"authenticateResponse":{"clientId":"player1","screenName":"Me"}}`)},
+		{Label: "MatchGameRoomStateChangedEvent", JSON: json.RawMessage(`{
+			"matchGameRoomStateChangedEvent": {"gameRoomInfo": {
+				"stateType": "MatchGameRoomStateType_Playing",
+				"gameRoomConfig": {"matchId": "m1",
+					"reservedPlayers": [
+						{"userId": "player1", "playerName": "Me", "systemSeatId": 1, "eventId": "Test"},
+						{"userId": "opp", "playerName": "Opp", "systemSeatId": 2, "eventId": "Test"}
+					]}
+			}}
+		}`)},
+		{Label: "GreToClientEvent", JSON: json.RawMessage(`{
+			"greToClientEvent": {"greToClientMessages": [{"type": "GREMessageType_GameStateMessage",
+				"gameStateMessage": {
+					"turnInfo": {"turnNumber": 1, "activePlayer": 1, "phase": "Phase_Main1"},
+					"gameObjects": [` + objects + `],
+					"persistentAnnotations": [` + persistentAnnotations + `]
+				}
+			}]}
+		}`)},
+	}
+}
+
 // greGameOverEntries builds log entries that set up a match and inject a GRE
 // message carrying end-of-game signals: an optional gameInfo blob (pass "null"
 // to omit) and optional persistentAnnotations entries. Sibling to
@@ -1012,20 +1042,123 @@ func TestHandleTargetSpecCardSource(t *testing.T) {
 	}
 }
 
+func TestTargetSpecFromPersistentAnnotations(t *testing.T) {
+	// Real MTGA logs carry ALL AnnotationType_TargetSpec annotations inside
+	// gameStateMessage.persistentAnnotations, never the regular annotations
+	// array (verified 21/21 in a real Player.log). This is the same scenario
+	// as TestHandleTargetSpecCardSource but delivered the way real logs
+	// actually deliver it.
+	objects := `
+		{"instanceId": 256, "grpId": 82159, "ownerSeatId": 1, "controllerSeatId": 1, "visibility": "Visibility_Public"},
+		{"instanceId": 248, "grpId": 82160, "ownerSeatId": 2, "visibility": "Visibility_Public"}
+	`
+	persistentAnnotations := `{
+		"id": 513, "affectorId": 256, "affectedIds": [248],
+		"type": ["AnnotationType_TargetSpec"],
+		"details": [{"key": "abilityGrpId", "type": "KeyValuePairValueType_int32", "valueInt32": [1]}]
+	}`
+	gs := BuildGameState(greTestEntriesPersistent(objects, persistentAnnotations))
+	action := findAction(gs, "target")
+	if action == nil {
+		t.Fatal("expected target action from persistentAnnotations")
+	}
+	if action.Target == nil {
+		t.Fatal("expected Target subtype")
+	}
+	if action.Target.CardName != "Sheoldred, the Apocalypse" {
+		t.Errorf("expected source card 'Sheoldred, the Apocalypse', got %q", action.Target.CardName)
+	}
+	if action.Target.CardID != 82159 {
+		t.Errorf("expected source cardId 82159, got %d", action.Target.CardID)
+	}
+	if len(action.Target.Targets) != 1 || action.Target.Targets[0] != "Sheoldred's Restoration" {
+		t.Errorf("expected target ['Sheoldred's Restoration'], got %v", action.Target.Targets)
+	}
+	if action.Player != 1 {
+		t.Errorf("expected player 1 (controllerSeatId), got %d", action.Player)
+	}
+}
+
+func TestTargetSpecPersistentAnnotationDedupedAcrossGREEvents(t *testing.T) {
+	// Persistent annotations are resent on every subsequent GreToClientEvent
+	// within a game. The seenAnnotations map used for the regular annotations
+	// array is scoped per processGRE call, so it cannot dedup a persistent
+	// annotation ID that repeats across two separate log entries — that
+	// requires session-level (greSessionState) tracking.
+	objects := `
+		{"instanceId": 256, "grpId": 82159, "ownerSeatId": 1, "controllerSeatId": 1, "visibility": "Visibility_Public"},
+		{"instanceId": 248, "grpId": 82160, "ownerSeatId": 2, "visibility": "Visibility_Public"}
+	`
+	persistentAnnotation := `{
+		"id": 513, "affectorId": 256, "affectedIds": [248],
+		"type": ["AnnotationType_TargetSpec"],
+		"details": [{"key": "abilityGrpId", "type": "KeyValuePairValueType_int32", "valueInt32": [1]}]
+	}`
+	entries := []LogEntry{
+		{Label: "AuthenticateResponse", JSON: json.RawMessage(`{"authenticateResponse":{"clientId":"player1","screenName":"Me"}}`)},
+		{Label: "MatchGameRoomStateChangedEvent", JSON: json.RawMessage(`{
+			"matchGameRoomStateChangedEvent": {"gameRoomInfo": {
+				"stateType": "MatchGameRoomStateType_Playing",
+				"gameRoomConfig": {"matchId": "m1",
+					"reservedPlayers": [
+						{"userId": "player1", "playerName": "Me", "systemSeatId": 1, "eventId": "Test"},
+						{"userId": "opp", "playerName": "Opp", "systemSeatId": 2, "eventId": "Test"}
+					]}
+			}}
+		}`)},
+		{Label: "GreToClientEvent", JSON: json.RawMessage(`{
+			"greToClientEvent": {"greToClientMessages": [{"type": "GREMessageType_GameStateMessage",
+				"gameStateMessage": {
+					"turnInfo": {"turnNumber": 1, "activePlayer": 1, "phase": "Phase_Main1"},
+					"gameObjects": [` + objects + `],
+					"persistentAnnotations": [` + persistentAnnotation + `]
+				}
+			}]}
+		}`)},
+		{Label: "GreToClientEvent", JSON: json.RawMessage(`{
+			"greToClientEvent": {"greToClientMessages": [{"type": "GREMessageType_GameStateMessage",
+				"gameStateMessage": {
+					"turnInfo": {"turnNumber": 1, "activePlayer": 1, "phase": "Phase_Main1"},
+					"persistentAnnotations": [` + persistentAnnotation + `]
+				}
+			}]}
+		}`)},
+	}
+	gs := BuildGameState(entries)
+
+	var targetActions int
+	if gs.GameLogs != nil {
+		for _, game := range gs.GameLogs.Games {
+			for _, turn := range game.Turns {
+				for _, action := range turn.Actions {
+					if action.Type == "target" {
+						targetActions++
+					}
+				}
+			}
+		}
+	}
+	if targetActions != 1 {
+		t.Errorf("expected exactly 1 target action after the same persistent annotation ID repeats across GRE events, got %d", targetActions)
+	}
+}
+
 func TestHandleTargetSpecAbilitySourceTargetingPlayer(t *testing.T) {
 	// A TargetSpec sourced from an ability instance resolves the human-meaningful
 	// card via objectSourceGrpId (the ability's own grpId is not in the card DB).
 	// A target can also be a player seat (1/2), not present in the object registry.
+	// Delivered via persistentAnnotations, matching real MTGA log shape (real
+	// logs never carry TargetSpec in the regular annotations array).
 	objects := `{
 		"instanceId": 223, "grpId": 203159, "type": "GameObjectType_Ability",
 		"zoneId": 27, "ownerSeatId": 2, "controllerSeatId": 2,
 		"objectSourceGrpId": 100561, "parentId": 211, "visibility": "Visibility_Public"
 	}`
-	annotations := `{
+	persistentAnnotations := `{
 		"id": 242, "affectorId": 223, "affectedIds": [1],
 		"type": ["AnnotationType_TargetSpec"]
 	}`
-	gs := BuildGameState(greTestEntries(objects, annotations))
+	gs := BuildGameState(greTestEntriesPersistent(objects, persistentAnnotations))
 	action := findAction(gs, "target")
 	if action == nil {
 		t.Fatal("expected target action")

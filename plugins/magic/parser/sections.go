@@ -383,14 +383,16 @@ func processMatchRoom(gs *GameState, raw json.RawMessage) {
 // MTGA sends incremental game state updates — objects persist until explicitly
 // removed, so we accumulate them across messages for annotation resolution.
 type greSessionState struct {
-	objectRegistry map[int]greGameObject // instanceId → game object, persists across messages
-	seenCards      map[int]bool          // GrpIDs already recorded for opponent card tracking
+	objectRegistry            map[int]greGameObject // instanceId → game object, persists across messages
+	seenCards                 map[int]bool          // GrpIDs already recorded for opponent card tracking
+	seenPersistentAnnotations map[int]bool          // persistent annotation IDs already converted to actions; persistentAnnotations are resent on every GreToClientEvent within a game, so dedup must survive across processGRE calls
 }
 
 func newGRESessionState() *greSessionState {
 	return &greSessionState{
-		objectRegistry: make(map[int]greGameObject),
-		seenCards:      make(map[int]bool),
+		objectRegistry:            make(map[int]greGameObject),
+		seenCards:                 make(map[int]bool),
+		seenPersistentAnnotations: make(map[int]bool),
 	}
 }
 
@@ -648,6 +650,35 @@ func processGRE(gs *GameState, raw json.RawMessage) {
 
 			// Second pass: enrich CastActions with ManaPaid data.
 			enrichManaPaid(turn, gsm.Annotations, session.objectRegistry)
+		}
+
+		// Real MTGA logs carry AnnotationType_TargetSpec exclusively inside
+		// persistentAnnotations, never the regular annotations array. Route only
+		// TargetSpec from here — other annotation kinds arrive via annotations
+		// (or are already handled above, like LossOfGame), and blanket-routing
+		// every persistent annotation kind risks duplicating those. Persistent
+		// annotations are resent on every subsequent GreToClientEvent within the
+		// game, so dedup on the session-level seenPersistentAnnotations map
+		// (not the per-call seenAnnotations map) to avoid re-adding the same
+		// target action each time the state is resent.
+		if turn != nil && gsm.PersistentAnnotations != nil {
+			for _, ann := range gsm.PersistentAnnotations {
+				var isTargetSpec bool
+				for _, t := range ann.Type {
+					if t == "AnnotationType_TargetSpec" {
+						isTargetSpec = true
+						break
+					}
+				}
+				if !isTargetSpec || session.seenPersistentAnnotations[ann.ID] {
+					continue
+				}
+				session.seenPersistentAnnotations[ann.ID] = true
+				action := handleTargetSpec(ann, session.objectRegistry)
+				if action != nil {
+					turn.Actions = append(turn.Actions, *action)
+				}
+			}
 		}
 	}
 }
