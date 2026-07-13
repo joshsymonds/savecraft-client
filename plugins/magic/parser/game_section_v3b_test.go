@@ -154,6 +154,49 @@ func TestGameSectionV3b_DropsEmptyPhase(t *testing.T) {
 	}
 }
 
+func TestGameSectionV3b_IncludesGameEnd(t *testing.T) {
+	gs := &GameState{
+		GameLogs: &GameLogSection{
+			Games: []GameLog{{
+				MatchID: "m1",
+				Turns: []TurnLog{
+					{TurnNumber: 1, Phase: "Phase_Main1"},
+				},
+				End: &GameEnd{WinningSeat: 1, Reason: "ResultReason_Game", Detail: "SBA_LifeTotal"},
+			}},
+		},
+	}
+	data := gameSectionV3b(t, gs, "m1")
+	end, ok := data["end"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected 'end' key as map, got %T", data["end"])
+	}
+	if end["w"] != 1 {
+		t.Errorf("expected end.w == 1, got %v", end["w"])
+	}
+	if end["r"] != "ResultReason_Game" {
+		t.Errorf("expected end.r == 'ResultReason_Game', got %v", end["r"])
+	}
+	if end["d"] != "SBA_LifeTotal" {
+		t.Errorf("expected end.d == 'SBA_LifeTotal', got %v", end["d"])
+	}
+}
+
+func TestGameSectionV3b_OmitsGameEndWhenNil(t *testing.T) {
+	gs := &GameState{
+		GameLogs: &GameLogSection{
+			Games: []GameLog{{
+				MatchID: "m1",
+				Turns:   []TurnLog{{TurnNumber: 1, Phase: "Phase_Main1"}},
+			}},
+		},
+	}
+	data := gameSectionV3b(t, gs, "m1")
+	if _, ok := data["end"]; ok {
+		t.Error("should not emit 'end' key when game.End is nil")
+	}
+}
+
 func TestGameSectionV3b_CardDictionary(t *testing.T) {
 	gs := &GameState{
 		GameLogs: &GameLogSection{
@@ -568,7 +611,7 @@ func TestGameSectionV3b_DescriptionIncludesLegend(t *testing.T) {
 	// Must document the highest-frequency renames so the AI can interpret the
 	// payload without out-of-band schema.
 	requiredLegendEntries := []string{
-		"c=cardId", "p=player", "m=manaPaid", "ph=phase", "cd=cards",
+		"c=cardId", "p=player", "m=manaPaid", "ph=phase", "cd=cards", "end=", "w=winning seat",
 	}
 	for _, entry := range requiredLegendEntries {
 		if !strings.Contains(desc, entry) {

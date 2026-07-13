@@ -176,7 +176,7 @@ func buildPlayerSummary(gs *GameState) map[string]any {
 			}
 			entry := map[string]any{
 				"matchId": game.MatchID,
-				"turns":   len(game.Turns),
+				"turns":   maxTurnNumber(game.Turns),
 				"section": "game:" + game.MatchID,
 			}
 			// Cross-reference match data for opponent/result if available.
@@ -195,6 +195,20 @@ func buildPlayerSummary(gs *GameState) map[string]any {
 	}
 
 	return summary
+}
+
+// maxTurnNumber returns the highest TurnNumber across a game's turn snapshot
+// entries, or 0 if there are none. MTGA emits multiple (turnNumber, phase)
+// snapshots per real turn (one per phase), so len(turns) overcounts — the
+// real turn count is the max TurnNumber observed.
+func maxTurnNumber(turns []TurnLog) int {
+	highest := 0
+	for _, t := range turns {
+		if t.TurnNumber > highest {
+			highest = t.TurnNumber
+		}
+	}
+	return highest
 }
 
 func buildSummary(gs *GameState) string {

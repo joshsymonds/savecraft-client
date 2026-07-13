@@ -65,6 +65,7 @@ func processAuth(gs *GameState, raw json.RawMessage) {
 func processStartHook(gs *GameState, raw json.RawMessage) {
 	var hook struct {
 		Decks           map[string]startHookDeck `json:"Decks"`
+		DeckSummaries   []startHookDeckSummary   `json:"DeckSummaries"`
 		DeckSummariesV2 []startHookDeckSummary   `json:"DeckSummariesV2"`
 		InventoryInfo   *startHookInventory      `json:"InventoryInfo"`
 	}
@@ -72,13 +73,18 @@ func processStartHook(gs *GameState, raw json.RawMessage) {
 		return
 	}
 
-	// Build deck summaries index by ID for O(1) join.
-	summaryByID := make(map[string]startHookDeckSummary, len(hook.DeckSummariesV2))
+	// Build deck summaries index by ID for O(1) join. MTGA renamed this field
+	// from DeckSummariesV2 to DeckSummaries in ~April 2026; when both are
+	// present for the same DeckId, DeckSummaries (the new key) wins.
+	summaryByID := make(map[string]startHookDeckSummary, len(hook.DeckSummariesV2)+len(hook.DeckSummaries))
 	for _, s := range hook.DeckSummariesV2 {
 		summaryByID[s.DeckID] = s
 	}
+	for _, s := range hook.DeckSummaries {
+		summaryByID[s.DeckID] = s
+	}
 
-	// Join Decks + DeckSummariesV2 to produce complete Deck objects.
+	// Join Decks + deck summaries to produce complete Deck objects.
 	// Skip precon decks with unlocalized names (MTGA internal localization keys).
 	if len(hook.Decks) > 0 {
 		section := &ActiveDecksSection{}
@@ -398,6 +404,12 @@ func processGRE(gs *GameState, raw json.RawMessage) {
 					GameInfo    *struct {
 						MatchID     string `json:"matchID"`
 						SuperFormat string `json:"superFormat"`
+						Stage       string `json:"stage"`
+						Results     []struct {
+							Scope         string `json:"scope"`
+							WinningTeamID int    `json:"winningTeamId"`
+							Reason        string `json:"reason"`
+						} `json:"results"`
 					} `json:"gameInfo"`
 					TurnInfo *struct {
 						TurnNumber   int    `json:"turnNumber"`
@@ -411,9 +423,10 @@ func processGRE(gs *GameState, raw json.RawMessage) {
 						OwnerSeatID       int    `json:"ownerSeatId"`
 						ObjectInstanceIDs []int  `json:"objectInstanceIds"`
 					} `json:"zones"`
-					GameObjects []greGameObject `json:"gameObjects"`
-					Annotations []greAnnotation `json:"annotations"`
-					Players     []struct {
+					GameObjects           []greGameObject `json:"gameObjects"`
+					Annotations           []greAnnotation `json:"annotations"`
+					PersistentAnnotations []greAnnotation `json:"persistentAnnotations"`
+					Players               []struct {
 						LifeTotal        int `json:"lifeTotal"`
 						SystemSeatNumber int `json:"systemSeatNumber"`
 						ManaPool         []struct {
@@ -477,6 +490,59 @@ func processGRE(gs *GameState, raw json.RawMessage) {
 					ArenaID: obj.GrpID,
 				})
 			}
+		}
+
+		// Game-over signal from gameInfo: stage=GameStage_GameOver plus a
+		// MatchScope_Game result carries the winning seat and result reason.
+		// Preserve any Detail already set by a LossOfGame persistent annotation
+		// processed earlier in this same GRE event.
+		if gsm.GameInfo != nil && gsm.GameInfo.Stage == "GameStage_GameOver" {
+			for _, r := range gsm.GameInfo.Results {
+				if r.Scope != "MatchScope_Game" {
+					continue
+				}
+				var detail string
+				if currentGame.End != nil {
+					detail = currentGame.End.Detail
+				}
+				currentGame.End = &GameEnd{
+					WinningSeat: r.WinningTeamID,
+					Reason:      r.Reason,
+					Detail:      detail,
+				}
+				break
+			}
+		}
+
+		// LossOfGame persistent annotations enrich End.Detail with the specific
+		// loss cause (e.g. SBA_LifeTotal, Concede) and can establish End before
+		// gameInfo's GameStage_GameOver signal arrives.
+		for _, ann := range gsm.PersistentAnnotations {
+			var isLossOfGame bool
+			for _, t := range ann.Type {
+				if t == "AnnotationType_LossOfGame" {
+					isLossOfGame = true
+					break
+				}
+			}
+			if !isLossOfGame || len(ann.AffectedIDs) == 0 {
+				continue
+			}
+			var reason string
+			for _, d := range ann.Details {
+				if d.Key == "reason" && len(d.ValueString) > 0 {
+					reason = d.ValueString[0]
+				}
+			}
+			if currentGame.End == nil {
+				losingSeat := ann.AffectedIDs[0]
+				winningSeat := 1
+				if losingSeat == 1 {
+					winningSeat = 2
+				}
+				currentGame.End = &GameEnd{WinningSeat: winningSeat}
+			}
+			currentGame.End.Detail = reason
 		}
 
 		// Find or create the turn for this message. When turnInfo is present,
@@ -650,16 +716,17 @@ func manaColorName(color int) string {
 }
 
 type greGameObject struct {
-	InstanceID       int      `json:"instanceId"`
-	GrpID            int      `json:"grpId"`
-	Type             string   `json:"type"`
-	ZoneID           int      `json:"zoneId"`
-	OwnerSeatID      int      `json:"ownerSeatId"`
-	ControllerSeatID int      `json:"controllerSeatId"`
-	Visibility       string   `json:"visibility"`
-	CardTypes        []string `json:"cardTypes"`
-	SubTypes         []string `json:"subtypes"`
-	Power            struct {
+	InstanceID        int      `json:"instanceId"`
+	GrpID             int      `json:"grpId"`
+	Type              string   `json:"type"`
+	ZoneID            int      `json:"zoneId"`
+	OwnerSeatID       int      `json:"ownerSeatId"`
+	ControllerSeatID  int      `json:"controllerSeatId"`
+	ObjectSourceGrpID int      `json:"objectSourceGrpId"`
+	Visibility        string   `json:"visibility"`
+	CardTypes         []string `json:"cardTypes"`
+	SubTypes          []string `json:"subtypes"`
+	Power             struct {
 		Value int `json:"value"`
 	} `json:"power"`
 	Toughness struct {
@@ -706,8 +773,8 @@ func annotationToAction(ann greAnnotation, registry map[int]greGameObject) *Game
 			return handleTapUntap(ann, registry)
 		case "AnnotationType_AbilityInstanceCreated":
 			return handleAbilityCreated(ann, registry)
-		case "AnnotationType_PlayerSubmittedTargets":
-			return handleTargetSubmitted(ann, registry)
+		case "AnnotationType_TargetSpec":
+			return handleTargetSpec(ann, registry)
 		case "AnnotationType_PowerToughnessModCreated":
 			return handleStatMod(ann, registry)
 		}
@@ -902,16 +969,29 @@ func handleAbilityCreated(ann greAnnotation, registry map[int]greGameObject) *Ga
 	}
 }
 
-func handleTargetSubmitted(ann greAnnotation, registry map[int]greGameObject) *GameAction {
-	// affectorId is the source card (or player seat), affectedIds are the targets.
-	// Try affectorId first, fall back to looking up the source.
-	obj, ok := registry[ann.AffectorID]
-	if !ok || !obj.isCard() {
-		// affectorId might be a player seat — still create the action if we have targets.
-		// Use a zero-value source.
-		obj = greGameObject{OwnerSeatID: ann.AffectorID}
+// handleTargetSpec resolves the chosen targets for a spell or ability from an
+// AnnotationType_TargetSpec annotation. affectorId is the targeting spell/ability
+// instance; affectedIds are the chosen target instances (a target may also be a
+// bare player seat — 1 or 2 — not present in the object registry).
+func handleTargetSpec(ann greAnnotation, registry map[int]greGameObject) *GameAction {
+	source, ok := registry[ann.AffectorID]
+	if !ok {
+		return nil
 	}
-	card := data.ArenaCards[obj.GrpID]
+
+	// The source instance may be an ability; abilities' own grpId is not in the
+	// card DB, so resolve the human-meaningful card via objectSourceGrpId instead.
+	sourceGrpID := source.GrpID
+	if source.Type == "GameObjectType_Ability" {
+		sourceGrpID = source.ObjectSourceGrpID
+	}
+	card := data.ArenaCards[sourceGrpID]
+
+	// Use controllerSeatId for steal effects; fall back to ownerSeatId.
+	seatID := source.ControllerSeatID
+	if seatID == 0 {
+		seatID = source.OwnerSeatID
+	}
 
 	var targets []string
 	for _, aid := range ann.AffectedIDs {
@@ -920,6 +1000,8 @@ func handleTargetSubmitted(ann greAnnotation, registry map[int]greGameObject) *G
 			if targetCard.Name != "" {
 				targets = append(targets, targetCard.Name)
 			}
+		} else if aid == 1 || aid == 2 {
+			targets = append(targets, "player")
 		}
 	}
 	if len(targets) == 0 {
@@ -927,11 +1009,11 @@ func handleTargetSubmitted(ann greAnnotation, registry map[int]greGameObject) *G
 	}
 
 	return &GameAction{
-		Player: obj.OwnerSeatID,
+		Player: seatID,
 		Type:   "target",
 		Target: &TargetAction{
 			CardName: card.Name,
-			CardID:   obj.GrpID,
+			CardID:   sourceGrpID,
 			Targets:  targets,
 		},
 	}

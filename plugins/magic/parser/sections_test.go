@@ -68,6 +68,83 @@ func TestBuildStartHookDecks(t *testing.T) {
 	}
 }
 
+func TestBuildStartHookDecksNewSummaryKey(t *testing.T) {
+	// MTGA renamed the StartHook field DeckSummariesV2 -> DeckSummaries in
+	// ~April 2026; current clients send only the new key.
+	hookJSON := `{
+		"Decks": {
+			"deck-uuid-1": {
+				"MainDeck": [{"cardId": 82159, "quantity": 4}, {"cardId": 82160, "quantity": 3}],
+				"Sideboard": [{"cardId": 82159, "quantity": 1}],
+				"CommandZone": []
+			}
+		},
+		"DeckSummaries": [{
+			"DeckId": "deck-uuid-1",
+			"Name": "My Arena Deck",
+			"Attributes": [{"name": "Format", "value": "Standard"}]
+		}]
+	}`
+	entries := []LogEntry{{
+		Arrow: "<==",
+		Label: "StartHook",
+		JSON:  json.RawMessage(hookJSON),
+	}}
+	gs := BuildGameState(entries)
+	if gs.ActiveDecks == nil {
+		t.Fatal("expected active_decks section")
+	}
+	if len(gs.ActiveDecks.Decks) != 1 {
+		t.Fatalf("expected 1 deck, got %d", len(gs.ActiveDecks.Decks))
+	}
+	deck := gs.ActiveDecks.Decks[0]
+	if deck.Name != "My Arena Deck" {
+		t.Errorf("expected deck name 'My Arena Deck', got %q", deck.Name)
+	}
+	if deck.Format != "Standard" {
+		t.Errorf("expected format 'Standard', got %q", deck.Format)
+	}
+}
+
+func TestBuildStartHookDecksBothSummaryKeysNewWins(t *testing.T) {
+	// When both DeckSummaries and DeckSummariesV2 are present for the same
+	// DeckId, DeckSummaries (the new key) wins.
+	hookJSON := `{
+		"Decks": {
+			"deck-uuid-1": {
+				"MainDeck": [{"cardId": 82159, "quantity": 4}],
+				"Sideboard": [],
+				"CommandZone": []
+			}
+		},
+		"DeckSummariesV2": [{
+			"DeckId": "deck-uuid-1",
+			"Name": "Old Name",
+			"Attributes": [{"name": "Format", "value": "Historic"}]
+		}],
+		"DeckSummaries": [{
+			"DeckId": "deck-uuid-1",
+			"Name": "New Name",
+			"Attributes": [{"name": "Format", "value": "Standard"}]
+		}]
+	}`
+	entries := []LogEntry{{
+		Arrow: "<==",
+		Label: "StartHook",
+		JSON:  json.RawMessage(hookJSON),
+	}}
+	gs := BuildGameState(entries)
+	if gs.ActiveDecks == nil || len(gs.ActiveDecks.Decks) != 1 {
+		t.Fatal("expected 1 deck")
+	}
+	if gs.ActiveDecks.Decks[0].Name != "New Name" {
+		t.Errorf("expected DeckSummaries to win, got name %q", gs.ActiveDecks.Decks[0].Name)
+	}
+	if gs.ActiveDecks.Decks[0].Format != "Standard" {
+		t.Errorf("expected DeckSummaries to win, got format %q", gs.ActiveDecks.Decks[0].Format)
+	}
+}
+
 func TestPreconDecksFiltered(t *testing.T) {
 	hookJSON := `{
 		"Decks": {
@@ -671,6 +748,34 @@ func greTestEntries(objects, annotations string) []LogEntry {
 	}
 }
 
+// greGameOverEntries builds log entries that set up a match and inject a GRE
+// message carrying end-of-game signals: an optional gameInfo blob (pass "null"
+// to omit) and optional persistentAnnotations entries. Sibling to
+// greTestEntries, which covers per-turn annotations instead.
+func greGameOverEntries(gameInfo, persistentAnnotations string) []LogEntry {
+	return []LogEntry{
+		{Label: "AuthenticateResponse", JSON: json.RawMessage(`{"authenticateResponse":{"clientId":"player1","screenName":"Me"}}`)},
+		{Label: "MatchGameRoomStateChangedEvent", JSON: json.RawMessage(`{
+			"matchGameRoomStateChangedEvent": {"gameRoomInfo": {
+				"stateType": "MatchGameRoomStateType_Playing",
+				"gameRoomConfig": {"matchId": "m1",
+					"reservedPlayers": [
+						{"userId": "player1", "playerName": "Me", "systemSeatId": 1, "eventId": "Test"},
+						{"userId": "opp", "playerName": "Opp", "systemSeatId": 2, "eventId": "Test"}
+					]}
+			}}
+		}`)},
+		{Label: "GreToClientEvent", JSON: json.RawMessage(`{
+			"greToClientEvent": {"greToClientMessages": [{"type": "GREMessageType_GameStateMessage",
+				"gameStateMessage": {
+					"gameInfo": ` + gameInfo + `,
+					"persistentAnnotations": [` + persistentAnnotations + `]
+				}
+			}]}
+		}`)},
+	}
+}
+
 // findAction searches all turns for a GameAction with the given type.
 func findAction(gs *GameState, actionType string) *GameAction {
 	if gs.GameLogs == nil {
@@ -857,15 +962,33 @@ func TestHandleAbilityCreated(t *testing.T) {
 	}
 }
 
-func TestHandleTargetSubmitted(t *testing.T) {
-	// PlayerSubmittedTargets: affectedIds=target objects
+func TestPlayerSubmittedTargetsProducesNoAction(t *testing.T) {
+	// PlayerSubmittedTargets: affectorId=player seat, affectedIds=[the spell/ability
+	// instance itself] — no target info here. This annotation must never emit a
+	// target action (previously it incorrectly emitted the spell's own name as
+	// its target).
+	objects := `{"instanceId": 223, "grpId": 82159, "ownerSeatId": 2, "visibility": "Visibility_Public"}`
+	annotations := `{
+		"id": 243, "affectorId": 2, "affectedIds": [223],
+		"type": ["AnnotationType_PlayerSubmittedTargets"]
+	}`
+	gs := BuildGameState(greTestEntries(objects, annotations))
+	if action := findAction(gs, "target"); action != nil {
+		t.Fatalf("expected no target action from PlayerSubmittedTargets, got %+v", action)
+	}
+}
+
+func TestHandleTargetSpecCardSource(t *testing.T) {
+	// TargetSpec: affectorId=the targeting spell/ability instance, affectedIds=the
+	// chosen target instances.
 	objects := `
-		{"instanceId": 200, "grpId": 82159, "ownerSeatId": 1, "visibility": "Visibility_Public"},
-		{"instanceId": 300, "grpId": 82160, "ownerSeatId": 2, "visibility": "Visibility_Public"}
+		{"instanceId": 256, "grpId": 82159, "ownerSeatId": 1, "controllerSeatId": 1, "visibility": "Visibility_Public"},
+		{"instanceId": 248, "grpId": 82160, "ownerSeatId": 2, "visibility": "Visibility_Public"}
 	`
 	annotations := `{
-		"id": 1, "affectorId": 200, "affectedIds": [300],
-		"type": ["AnnotationType_PlayerSubmittedTargets"]
+		"id": 513, "affectorId": 256, "affectedIds": [248],
+		"type": ["AnnotationType_TargetSpec"],
+		"details": [{"key": "abilityGrpId", "type": "KeyValuePairValueType_int32", "valueInt32": [1]}]
 	}`
 	gs := BuildGameState(greTestEntries(objects, annotations))
 	action := findAction(gs, "target")
@@ -875,11 +998,52 @@ func TestHandleTargetSubmitted(t *testing.T) {
 	if action.Target == nil {
 		t.Fatal("expected Target subtype")
 	}
-	if len(action.Target.Targets) != 1 {
-		t.Fatalf("expected 1 target, got %d", len(action.Target.Targets))
+	if action.Target.CardName != "Sheoldred, the Apocalypse" {
+		t.Errorf("expected source card 'Sheoldred, the Apocalypse', got %q", action.Target.CardName)
 	}
-	if action.Target.Targets[0] != "Sheoldred's Restoration" {
-		t.Errorf("expected target 'Sheoldred's Restoration', got %q", action.Target.Targets[0])
+	if action.Target.CardID != 82159 {
+		t.Errorf("expected source cardId 82159, got %d", action.Target.CardID)
+	}
+	if len(action.Target.Targets) != 1 || action.Target.Targets[0] != "Sheoldred's Restoration" {
+		t.Errorf("expected target ['Sheoldred's Restoration'], got %v", action.Target.Targets)
+	}
+	if action.Player != 1 {
+		t.Errorf("expected player 1 (controllerSeatId), got %d", action.Player)
+	}
+}
+
+func TestHandleTargetSpecAbilitySourceTargetingPlayer(t *testing.T) {
+	// A TargetSpec sourced from an ability instance resolves the human-meaningful
+	// card via objectSourceGrpId (the ability's own grpId is not in the card DB).
+	// A target can also be a player seat (1/2), not present in the object registry.
+	objects := `{
+		"instanceId": 223, "grpId": 203159, "type": "GameObjectType_Ability",
+		"zoneId": 27, "ownerSeatId": 2, "controllerSeatId": 2,
+		"objectSourceGrpId": 100561, "parentId": 211, "visibility": "Visibility_Public"
+	}`
+	annotations := `{
+		"id": 242, "affectorId": 223, "affectedIds": [1],
+		"type": ["AnnotationType_TargetSpec"]
+	}`
+	gs := BuildGameState(greTestEntries(objects, annotations))
+	action := findAction(gs, "target")
+	if action == nil {
+		t.Fatal("expected target action")
+	}
+	if action.Target == nil {
+		t.Fatal("expected Target subtype")
+	}
+	if action.Target.CardName != "Raphael, Tough Turtle" {
+		t.Errorf("expected source card 'Raphael, Tough Turtle' (via objectSourceGrpId), got %q", action.Target.CardName)
+	}
+	if action.Target.CardID != 100561 {
+		t.Errorf("expected source cardId 100561 (objectSourceGrpId), got %d", action.Target.CardID)
+	}
+	if len(action.Target.Targets) != 1 || action.Target.Targets[0] != "player" {
+		t.Errorf("expected target ['player'], got %v", action.Target.Targets)
+	}
+	if action.Player != 2 {
+		t.Errorf("expected player 2, got %d", action.Player)
 	}
 }
 
@@ -910,6 +1074,55 @@ func TestHandleStatMod(t *testing.T) {
 	}
 	if action.StatMod.Toughness != 3 {
 		t.Errorf("expected toughness 3, got %d", action.StatMod.Toughness)
+	}
+}
+
+func TestGameOverGameInfoSetsGameEnd(t *testing.T) {
+	// gameStateMessage.gameInfo at game end carries stage=GameStage_GameOver and
+	// a MatchScope_Game result with winningTeamId + reason.
+	gameInfo := `{
+		"matchID": "m1", "gameNumber": 1,
+		"stage": "GameStage_GameOver", "matchState": "MatchState_GameComplete",
+		"results": [{"scope": "MatchScope_Game", "result": "ResultType_WinLoss", "winningTeamId": 1, "reason": "ResultReason_Game"}]
+	}`
+	gs := BuildGameState(greGameOverEntries(gameInfo, ""))
+	if gs.GameLogs == nil || len(gs.GameLogs.Games) == 0 {
+		t.Fatal("expected a game log")
+	}
+	game := gs.GameLogs.Games[len(gs.GameLogs.Games)-1]
+	if game.End == nil {
+		t.Fatal("expected GameLog.End to be populated")
+	}
+	if game.End.WinningSeat != 1 {
+		t.Errorf("expected winningSeat 1, got %d", game.End.WinningSeat)
+	}
+	if game.End.Reason != "ResultReason_Game" {
+		t.Errorf("expected reason 'ResultReason_Game', got %q", game.End.Reason)
+	}
+}
+
+func TestLossOfGamePersistentAnnotationSetsDetail(t *testing.T) {
+	// persistentAnnotations LossOfGame: affectedIds[0] is the LOSING seat;
+	// details key "reason" carries the loss cause (e.g. SBA_LifeTotal, Concede).
+	persistentAnnotations := `{
+		"id": 1190, "affectedIds": [2],
+		"type": ["AnnotationType_LossOfGame"],
+		"details": [{"key": "reason", "type": "KeyValuePairValueType_string", "valueString": ["SBA_LifeTotal"]}]
+	}`
+	gs := BuildGameState(greGameOverEntries("null", persistentAnnotations))
+	if gs.GameLogs == nil || len(gs.GameLogs.Games) == 0 {
+		t.Fatal("expected a game log")
+	}
+	game := gs.GameLogs.Games[len(gs.GameLogs.Games)-1]
+	if game.End == nil {
+		t.Fatal("expected GameLog.End to be populated from LossOfGame annotation")
+	}
+	if game.End.Detail != "SBA_LifeTotal" {
+		t.Errorf("expected detail 'SBA_LifeTotal', got %q", game.End.Detail)
+	}
+	// Losing seat is 2, so the winning seat is the other seat (1).
+	if game.End.WinningSeat != 1 {
+		t.Errorf("expected winningSeat 1 (other seat of losing seat 2), got %d", game.End.WinningSeat)
 	}
 }
 
@@ -1388,6 +1601,33 @@ func TestBuildOutputSectionsPlayerSummary(t *testing.T) {
 	// Draft history unchanged
 	if _, ok := sections["draft_history"]; !ok {
 		t.Error("expected draft_history section")
+	}
+}
+
+func TestGameIndexTurnsCountsRealTurns(t *testing.T) {
+	// MTGA logs multiple (turnNumber, phase) snapshot entries per real turn
+	// (~5 per turn: begin, main1, combat, main2, end). The games index "turns"
+	// count must reflect real game turns (max TurnNumber), not the number of
+	// snapshot entries.
+	gs := &GameState{
+		GameLogs: &GameLogSection{
+			Games: []GameLog{{
+				MatchID: "match-001",
+				Turns: []TurnLog{
+					{TurnNumber: 1, Phase: "Phase_Beginning"},
+					{TurnNumber: 1, Phase: "Phase_Main1"},
+					{TurnNumber: 2, Phase: "Phase_Beginning"},
+				},
+			}},
+		},
+	}
+	data := buildPlayerSummary(gs)
+	games := data["games"].([]map[string]any)
+	if len(games) != 1 {
+		t.Fatalf("expected 1 game index entry, got %d", len(games))
+	}
+	if games[0]["turns"] != 2 {
+		t.Errorf("expected turns 2 (max TurnNumber), got %v", games[0]["turns"])
 	}
 }
 

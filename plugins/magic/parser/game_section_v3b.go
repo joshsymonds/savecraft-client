@@ -64,6 +64,7 @@ const v3bSectionLegend = "Turn-by-turn game log for match %s (v3b compressed sha
 	"at=abilityType, mt=moveType, td=tapped, ic=isCombat, src/sid=damage source, " +
 	"am=amount, tgs=targets, pw=power, tf=toughness, ct=cardTypes, st=subTypes, " +
 	"tdb=isTapped, cd=cards dict (cardId as string to cardName; JSON stringifies integer keys), tn=turns. " +
+	"end=game end marker (final message only): w=winning seat, r=result reason, d=detail (loss cause, may be absent). " +
 	"Action kind is the inner key (cast/tap/move/ability/damage/resolve/statMod/target); " +
 	"action objects carry cardId only, resolve names via cd. " +
 	"Triggered abilities on basic lands are omitted as engine noise. " +
@@ -89,11 +90,29 @@ func buildV3bGameSectionData(game GameLog) map[string]any {
 		turns = append(turns, buildV3bTurn(turn, landIds))
 	}
 
-	return map[string]any{
+	out := map[string]any{
 		"matchId": game.MatchID,
 		"cd":      cards,
 		"tn":      turns,
 	}
+	if game.End != nil {
+		out["end"] = buildV3bGameEnd(game.End)
+	}
+	return out
+}
+
+// buildV3bGameEnd compresses a GameEnd marker. Empty Reason/Detail strings
+// are omitted (Detail in particular is often unset — only LossOfGame
+// annotations populate it).
+func buildV3bGameEnd(end *GameEnd) map[string]any {
+	out := map[string]any{"w": end.WinningSeat}
+	if end.Reason != "" {
+		out["r"] = end.Reason
+	}
+	if end.Detail != "" {
+		out["d"] = end.Detail
+	}
+	return out
 }
 
 // collectCardLookup walks all actions in a game and returns a cardId→cardName

@@ -128,7 +128,18 @@ type GameLogSection struct {
 type GameLog struct {
 	MatchID      string           `json:"matchId"`
 	Turns        []TurnLog        `json:"turns"`
+	End          *GameEnd         `json:"end,omitempty"`
 	sessionState *greSessionState `json:"-"` // persistent GRE state, not serialized
+}
+
+// GameEnd captures the end-of-game result: the winning seat, the match-scope
+// result reason (e.g. ResultReason_Game, ResultReason_Concede), and an
+// optional loss-cause detail (e.g. SBA_LifeTotal, Concede) from a
+// LossOfGame persistent annotation.
+type GameEnd struct {
+	WinningSeat int    `json:"winningSeat"`
+	Reason      string `json:"reason,omitempty"`
+	Detail      string `json:"detail,omitempty"`
 }
 
 // TurnLog records actions in a single turn with decision context.
