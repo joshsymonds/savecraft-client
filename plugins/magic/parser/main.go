@@ -21,26 +21,41 @@ func main() {
 	sections := buildOutputSections(gs)
 
 	// Build identity and summary.
-	saveName := gs.DisplayName
-	if saveName == "" {
-		saveName = gs.PlayerID
-	}
-	if saveName == "" {
-		saveName = "Unknown Player"
-	}
+	saveName, displayName := buildIdentity(gs)
 
 	summary := buildSummary(gs)
 
 	enc.Encode(map[string]any{
 		"type": "result",
 		"identity": map[string]any{
-			"saveName": saveName,
-			"gameId":   "magic",
-			"extra":    buildExtra(gs),
+			"saveName":    saveName,
+			"gameId":      "magic",
+			"extra":       buildExtra(gs),
+			"displayName": displayName,
 		},
 		"summary":  summary,
 		"sections": sections,
 	})
+}
+
+// buildIdentity derives the save's stable identity key and display label.
+// MTGA is one save per source, so saveName is a constant. displayName
+// follows the chain screenName -> clientId -> empty; MTGA's AuthenticateResponse
+// (the only screenName source) fires on match connection, not client login, so
+// a session where the player never queues a match has no name available. An
+// empty displayName is intentional here — the worker treats empty as "no
+// update" and read surfaces supply their own fallback copy, so this plugin
+// never emits a literal placeholder that could overwrite a previously-learned
+// real screen name.
+func buildIdentity(gs *GameState) (saveName, displayName string) {
+	saveName = "player"
+
+	displayName = gs.DisplayName
+	if displayName == "" {
+		displayName = gs.PlayerID
+	}
+
+	return saveName, displayName
 }
 
 func buildOutputSections(gs *GameState) map[string]any {
