@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -1698,6 +1699,24 @@ func TestBuildOutputSectionsPlayerSummary(t *testing.T) {
 	// Draft history unchanged
 	if _, ok := sections["draft_history"]; !ok {
 		t.Error("expected draft_history section")
+	}
+}
+
+func TestBuildOutputSectionsPlayerSummaryDescriptionMentionsRollingWindow(t *testing.T) {
+	// player_summary's matches/games indexes only cover the current
+	// Player.log — MTGA truncates the log on client restart. The description
+	// must say so, and must point AI readers at match_stats for full history.
+	sections := buildOutputSections(&GameState{})
+	psMap := sections["player_summary"].(map[string]any)
+	desc, ok := psMap["description"].(string)
+	if !ok {
+		t.Fatalf("player_summary description should be a string, got %T", psMap["description"])
+	}
+	if !strings.Contains(desc, "current Player.log") {
+		t.Error("player_summary description should note that matches/games only cover the current Player.log")
+	}
+	if !strings.Contains(desc, "match_stats") {
+		t.Error("player_summary description should point to the match_stats reference module for full match history")
 	}
 }
 

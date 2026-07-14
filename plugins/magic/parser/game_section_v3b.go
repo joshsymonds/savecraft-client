@@ -63,14 +63,14 @@ const v3bSectionLegend = "Turn-by-turn game log for match %s (v3b compressed sha
 	"ph=phase, pl=players, t=turnNumber, ap=activePlayer, l=lifeTotal, s=seat, " +
 	"at=abilityType, mt=moveType, td=tapped, ic=isCombat, src/sid=damage source, " +
 	"am=amount, tgs=targets, pw=power, tf=toughness, ct=cardTypes, st=subTypes, " +
-	"tdb=isTapped, cd=cards dict (cardId as string to cardName; JSON stringifies integer keys), tn=turns. " +
+	"tdb=isTapped, cd=cards dict (cardId as string to cardName; JSON stringifies integer keys; " +
+	"unresolved ids are omitted — id absent from cd means never named), tn=turns. " +
 	"end=game end marker (final message only): w=winning seat, r=result reason, d=detail (loss cause, may be absent). " +
 	"Action kind is the inner key (cast/tap/move/ability/damage/resolve/statMod/target); " +
 	"action objects carry cardId only, resolve names via cd. " +
 	"Triggered abilities on basic lands are omitted as engine noise. " +
 	"For structured analysis prefer query_reference magic play_advisor " +
-	"mode=game_review match_id=%s — that path summarizes server-side within token limits. " +
-	"This raw section is for custom turn-level inspection."
+	"mode=game_review match_id=%s — that path summarizes server-side within token limits."
 
 // buildV3bGameSectionDescription returns the per-section description string
 // for a `game:<matchId>` section, including the v3b key legend and a pointer
@@ -117,7 +117,11 @@ func buildV3bGameEnd(end *GameEnd) map[string]any {
 
 // collectCardLookup walks all actions in a game and returns a cardId→cardName
 // map. When the same cardId appears with multiple names (empty vs populated),
-// the non-empty name wins.
+// the non-empty name wins. CardIds that never resolve to a non-empty name
+// (the MTGA client didn't log one — e.g. a hidden opponent object) are
+// omitted from the result entirely rather than kept with an empty name, so
+// consumers see a clean "absent means unresolved" signal instead of noise
+// like {"5": ""}.
 func collectCardLookup(game GameLog) map[int]string {
 	lookup := map[int]string{}
 	consider := func(id int, name string) {
@@ -154,6 +158,17 @@ func collectCardLookup(game GameLog) map[int]string {
 			for _, perm := range p.Battlefield {
 				consider(perm.CardID, perm.CardName)
 			}
+		}
+	}
+	return dropUnresolvedNames(lookup)
+}
+
+// dropUnresolvedNames removes entries whose name is still empty after all
+// occurrences have been considered — cardIds the MTGA client never named.
+func dropUnresolvedNames(lookup map[int]string) map[int]string {
+	for id, name := range lookup {
+		if name == "" {
+			delete(lookup, id)
 		}
 	}
 	return lookup

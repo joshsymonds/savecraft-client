@@ -48,7 +48,7 @@ func buildOutputSections(gs *GameState) map[string]any {
 
 	// Always emit player_summary — the compact overview for get_save.
 	sections["player_summary"] = map[string]any{
-		"description": "Player overview: rank, currencies (gold/gems/wildcards/boosters), deck names, match results, and game log index — start here to understand the player's current state. Note: Magic Arena does not log the player's card collection to Player.log, so owned-card queries cannot be answered from save data.",
+		"description": "Player overview: rank, currencies (gold/gems/wildcards/boosters), deck names, match results, and game log index — start here to understand the player's current state. Note: Magic Arena does not log the player's card collection to Player.log, so owned-card queries cannot be answered from save data. The matches/games indexes only cover matches recorded in the current Player.log — MTGA truncates this log on client restart, so older matches roll off and disappear from these indexes. For cumulative match history (summary stats and trends across all recorded matches, not turn-by-turn logs for rolled-off matches), use the magic match_stats reference module.",
 		"data":        buildPlayerSummary(gs),
 	}
 

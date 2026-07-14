@@ -274,6 +274,36 @@ func TestGameSectionV3b_CardDictPrefersNonEmptyName(t *testing.T) {
 	}
 }
 
+func TestGameSectionV3b_CardDictOmitsUnresolvedNames(t *testing.T) {
+	// Real-world case: a cardId whose name the MTGA logger never resolved
+	// (empty string on every occurrence) is confusing noise in the cd dict —
+	// e.g. {"5": ""}. It should be omitted entirely rather than emitted with
+	// an empty name.
+	gs := &GameState{
+		GameLogs: &GameLogSection{
+			Games: []GameLog{{
+				MatchID: "m1",
+				Turns: []TurnLog{{
+					TurnNumber: 1,
+					Phase:      "Phase_Main1",
+					Actions: []GameAction{
+						{Player: 2, Type: "stat_mod", StatMod: &StatModAction{CardID: 100999, CardName: "", Power: 1, Toughness: 1}},
+						{Player: 1, Type: "cast", Cast: &CastAction{CardID: 100605, CardName: "Genghis Frog"}},
+					},
+				}},
+			}},
+		},
+	}
+	data := gameSectionV3b(t, gs, "m1")
+	cd := data["cd"].(map[int]string)
+	if _, ok := cd[100999]; ok {
+		t.Errorf("cd should not contain an entry for cardId 100999 (never resolved to a name), got %q", cd[100999])
+	}
+	if cd[100605] != "Genghis Frog" {
+		t.Errorf("cd[100605]: want 'Genghis Frog', got %q", cd[100605])
+	}
+}
+
 func TestGameSectionV3b_DropsBasicLandTriggersByName(t *testing.T) {
 	gs := &GameState{
 		GameLogs: &GameLogSection{
@@ -642,6 +672,13 @@ func TestGameSectionV3b_DescriptionIncludesLegend(t *testing.T) {
 	// post-JSON shape, not the in-memory one.
 	if !strings.Contains(desc, "string") {
 		t.Error("description should note that cd keys are stringified (JSON encodes int keys as strings)")
+	}
+
+	// Must document that unresolved (never-named) cardIds are omitted from cd
+	// entirely, so an AI reader knows an absent key means an unnamed card/
+	// engine object rather than a missing entry.
+	if !strings.Contains(desc, "unresolved") || !strings.Contains(desc, "absent from cd") {
+		t.Error("description should note that unresolved card ids are omitted from cd (an id absent from cd was never named)")
 	}
 }
 
