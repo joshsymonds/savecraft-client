@@ -1637,6 +1637,34 @@ func TestPushSaveResult_GameRemoved_UnwatchesAndRemoves(t *testing.T) {
 	}
 }
 
+func TestPushSaveResult_GameRemoved_EvictsStickySaveNames(t *testing.T) {
+	ws := newFakeWSClient()
+	watcher := newFakeWatcher()
+	cfg := d2rConfig()
+
+	d := New(cfg, d2rFS(), watcher, d2rRunner(), ws, &fakePluginManager{}, nil, testLogger())
+	d.watchedDirs["/saves/d2r"] = "d2r"
+	d.lastKnownSaveNames["/saves/d2r/Hammerdin.d2s"] = "Hammerdin"
+	d.lastKnownSaveNames["/saves/other/Sorceress.d2s"] = "Sorceress"
+
+	// Send PushSaveResult with GAME_REMOVED error
+	cmd, _ := proto.Marshal(&pb.Message{Payload: &pb.Message_PushSaveResult{PushSaveResult: &pb.PushSaveResult{
+		Error:  pb.PushSaveError_PUSH_SAVE_ERROR_GAME_REMOVED,
+		GameId: "d2r",
+	}}})
+	d.handleCommand(context.Background(), cmd)
+
+	// The sticky name under the unwatched game's directory should be evicted.
+	if _, ok := d.lastKnownSaveNames["/saves/d2r/Hammerdin.d2s"]; ok {
+		t.Error("lastKnownSaveNames still contains /saves/d2r/Hammerdin.d2s after GAME_REMOVED")
+	}
+
+	// The sticky name under an unrelated directory should survive.
+	if name, ok := d.lastKnownSaveNames["/saves/other/Sorceress.d2s"]; !ok || name != "Sorceress" {
+		t.Errorf("lastKnownSaveNames[/saves/other/Sorceress.d2s] = %q, %v, want \"Sorceress\", true", name, ok)
+	}
+}
+
 func TestPushSaveResult_GameRemoved_UnknownGame(t *testing.T) {
 	ws := newFakeWSClient()
 	watcher := newFakeWatcher()
