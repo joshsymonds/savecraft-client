@@ -3764,7 +3764,10 @@ type SaveIdentity struct {
 	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// Game-specific display metadata. e.g. {"class": "Paladin", "level": 89}
 	// Uses Struct to preserve value types (numbers, strings, bools).
-	Extra         *structpb.Struct `protobuf:"bytes,2,opt,name=extra,proto3" json:"extra,omitempty"`
+	Extra *structpb.Struct `protobuf:"bytes,2,opt,name=extra,proto3" json:"extra,omitempty"`
+	// Mutable display label, updated in place on every push. `name` remains
+	// the immutable identity key.
+	DisplayName   string `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3811,6 +3814,13 @@ func (x *SaveIdentity) GetExtra() *structpb.Struct {
 		return x.Extra
 	}
 	return nil
+}
+
+func (x *SaveIdentity) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
 }
 
 var File_savecraft_v1_protocol_proto protoreflect.FileDescriptor
@@ -4077,10 +4087,11 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\fSourceLinked\x12\x1b\n" +
 	"\tuser_uuid\x18\x01 \x01(\tR\buserUuid\"\x0e\n" +
 	"\fUnlinkSource\"\x12\n" +
-	"\x10DeregisterSource\"Q\n" +
+	"\x10DeregisterSource\"t\n" +
 	"\fSaveIdentity\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12-\n" +
-	"\x05extra\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05extra*\xa1\x01\n" +
+	"\x05extra\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05extra\x12!\n" +
+	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName*\xa1\x01\n" +
 	"\x0eParseErrorType\x12 \n" +
 	"\x1cPARSE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$PARSE_ERROR_TYPE_UNSUPPORTED_VERSION\x10\x01\x12!\n" +

@@ -584,6 +584,23 @@ func TestParseAndPush_GameScopedSave(t *testing.T) {
 	}
 }
 
+func TestToProtoIdentity_DisplayName(t *testing.T) {
+	id := Identity{
+		SaveName:    "Player1234",
+		GameID:      "magic",
+		DisplayName: "Player One",
+	}
+
+	si := toProtoIdentity(id)
+
+	if si.Name != "Player1234" {
+		t.Errorf("Name = %q, want Player1234", si.Name)
+	}
+	if si.DisplayName != "Player One" {
+		t.Errorf("DisplayName = %q, want %q", si.DisplayName, "Player One")
+	}
+}
+
 // --- Tests: scanGame ---
 
 func TestScanGame_DetectsGame(t *testing.T) {

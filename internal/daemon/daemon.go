@@ -45,9 +45,10 @@ type GameState struct {
 
 // Identity identifies a specific save within a game.
 type Identity struct {
-	SaveName string         `json:"saveName,omitempty"`
-	GameID   string         `json:"gameId"`
-	Extra    map[string]any `json:"extra,omitempty"`
+	SaveName    string         `json:"saveName,omitempty"`
+	GameID      string         `json:"gameId"`
+	Extra       map[string]any `json:"extra,omitempty"`
+	DisplayName string         `json:"displayName,omitempty"`
 }
 
 // Section is a named block of game state data.
@@ -1887,7 +1888,7 @@ func toParseErrorType(s string) pb.ParseErrorType {
 
 // toProtoIdentity converts a daemon Identity to a proto SaveIdentity.
 func toProtoIdentity(id Identity) *pb.SaveIdentity {
-	si := &pb.SaveIdentity{Name: id.SaveName}
+	si := &pb.SaveIdentity{Name: id.SaveName, DisplayName: id.DisplayName}
 	if len(id.Extra) > 0 {
 		extra, err := structpb.NewStruct(id.Extra)
 		if err == nil {
