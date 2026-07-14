@@ -281,6 +281,28 @@ func TestParsePluginOutput_SkipsInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestParsePluginOutput_DisplayName(t *testing.T) {
+	runner := &WazeroRunner{}
+
+	input := strings.NewReader(
+		`{"type":"result","identity":{"saveName":"Player1234","gameId":"magic","displayName":"Player One"},"summary":"Player One","sections":{}}` + "\n",
+	)
+
+	state, err := runner.parsePluginOutput(input, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if state == nil {
+		t.Fatal("expected result")
+	}
+	if state.Identity.SaveName != "Player1234" {
+		t.Errorf("saveName = %q, want Player1234", state.Identity.SaveName)
+	}
+	if state.Identity.DisplayName != "Player One" {
+		t.Errorf("displayName = %q, want %q", state.Identity.DisplayName, "Player One")
+	}
+}
+
 func TestParsePluginOutput_EmptyInput(t *testing.T) {
 	runner := &WazeroRunner{}
 

@@ -473,4 +473,7 @@ message SaveIdentity {
   // Game-specific display metadata. e.g. {"class": "Paladin", "level": 89}
   // Uses Struct to preserve value types (numbers, strings, bools).
   google.protobuf.Struct extra = 2;
+  // Mutable display label, updated in place on every push. `name` remains
+  // the immutable identity key.
+  string display_name = 3;
 }

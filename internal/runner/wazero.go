@@ -251,9 +251,10 @@ func (wr *WazeroRunner) parsePluginOutput(
 			}
 			result = &daemon.GameState{
 				Identity: daemon.Identity{
-					SaveName: msg.Identity.SaveName,
-					GameID:   msg.Identity.GameID,
-					Extra:    msg.Identity.Extra,
+					SaveName:    msg.Identity.SaveName,
+					GameID:      msg.Identity.GameID,
+					Extra:       msg.Identity.Extra,
+					DisplayName: msg.Identity.DisplayName,
 				},
 				Summary:  msg.Summary,
 				Sections: msg.Sections,
@@ -296,7 +297,8 @@ type pluginLine struct {
 }
 
 type pluginIdentity struct {
-	SaveName string         `json:"saveName,omitempty"`
-	GameID   string         `json:"gameId"`
-	Extra    map[string]any `json:"extra,omitempty"`
+	SaveName    string         `json:"saveName,omitempty"`
+	GameID      string         `json:"gameId"`
+	Extra       map[string]any `json:"extra,omitempty"`
+	DisplayName string         `json:"displayName,omitempty"`
 }
