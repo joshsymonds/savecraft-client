@@ -21,6 +21,43 @@ func TestBuildAuth(t *testing.T) {
 	}
 }
 
+// TestBuildIdentityEmptyState guards the stable-identity contract: the save
+// key is the constant "player" (MTGA is one save per source, so identity can
+// never fork across log rotations), and a boot-only Player.log (no login
+// event — neither DisplayName nor PlayerID) yields an empty displayName. The
+// worker treats an empty displayName as "no update", so the plugin must not
+// paper over the gap with a literal placeholder that could overwrite a
+// previously-learned real screen name.
+func TestBuildIdentityEmptyState(t *testing.T) {
+	saveName, displayName := buildIdentity(&GameState{})
+	if saveName != "player" {
+		t.Errorf("expected constant saveName \"player\", got %q", saveName)
+	}
+	if displayName != "" {
+		t.Errorf("expected empty displayName for boot-only log, got %q", displayName)
+	}
+}
+
+func TestBuildIdentityPrefersDisplayName(t *testing.T) {
+	saveName, displayName := buildIdentity(&GameState{DisplayName: "Aure Silvershield", PlayerID: "47BADBEB1045E08A"})
+	if saveName != "player" {
+		t.Errorf("expected constant saveName \"player\", got %q", saveName)
+	}
+	if displayName != "Aure Silvershield" {
+		t.Errorf("expected screen name to win, got %q", displayName)
+	}
+}
+
+func TestBuildIdentityFallsBackToPlayerID(t *testing.T) {
+	saveName, displayName := buildIdentity(&GameState{PlayerID: "47BADBEB1045E08A"})
+	if saveName != "player" {
+		t.Errorf("expected constant saveName \"player\", got %q", saveName)
+	}
+	if displayName != "47BADBEB1045E08A" {
+		t.Errorf("expected PlayerID fallback, got %q", displayName)
+	}
+}
+
 func TestBuildStartHookDecks(t *testing.T) {
 	hookJSON := `{
 		"Decks": {

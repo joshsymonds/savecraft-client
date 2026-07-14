@@ -34,6 +34,11 @@ const pluginUpdateInterval = 24 * time.Hour
 const selfUpdateInterval = 6 * time.Hour
 const heartbeatInterval = 30 * time.Second
 
+// unknownSaveName is the identity substituted by resolveIdentity when a
+// parse yields an empty saveName ("identity unknown") and no prior name has
+// been seen for the file path.
+const unknownSaveName = "Unknown Player"
+
 // --- Domain types ---
 
 // GameState is the structured output from parsing a save file.
@@ -267,10 +272,39 @@ type Daemon struct {
 	pluginReloadCh <-chan string
 
 	// lastPushedSectionHashes caches per-section SHA-256 hashes of the last
-	// successfully pushed GameSection proto bytes, keyed by file path then
-	// section name. On re-parse, only sections whose hash changed are included
-	// in the PushSave. If no sections changed, the push is skipped entirely.
-	lastPushedSectionHashes map[string]map[string][32]byte
+	// successfully pushed GameSection proto bytes, keyed by file path. Each
+	// entry also records the save identity (saveName) the hashes belong to.
+	// On re-parse, only sections whose hash changed are included in the
+	// PushSave. If no sections changed, the push is skipped entirely.
+	//
+	// The cache is scoped to save identity, not just file path, because the
+	// server routes pushes by (gameID, saveName) rather than by file path.
+	// A single file can parse to different save identities across
+	// consecutive reads (e.g. MTGA log rotation, where a boot-only log
+	// parses to the fallback name "Unknown Player" and the next session log
+	// parses back to the real player name). If the cache were keyed by file
+	// path alone, a delta would be computed against a different save's
+	// content, so the push would carry only sections that happen to differ
+	// between the two saves — the server would then create/update a save
+	// from that partial payload, permanently missing every section whose
+	// hash happened to match. When the current parse's saveName differs
+	// from the cached one (or there is no cached entry), the cache is
+	// treated as cold: the push includes all sections, and the cache is
+	// re-seeded under the new identity.
+	lastPushedSectionHashes map[string]*sectionHashCache
+
+	// lastKnownSaveNames caches the most recently observed non-empty save
+	// identity name for each file path, keyed by file path. The plugin
+	// contract treats an empty identity.saveName as "identity unknown" (for
+	// example a boot-only MTGA Player.log with no login event yet), not as
+	// "no identity" — every real save, including game-scoped saves like a
+	// D2R shared stash, carries a non-empty conventional name. resolveIdentity
+	// substitutes the last-known name for the path so a boot-only re-parse
+	// deltas against the same save (via lastPushedSectionHashes) instead of
+	// forking a new save under the "Unknown Player" fallback. Only names
+	// produced by a parse's own saveName are recorded here — a substituted
+	// or fallback name must never overwrite a real remembered name.
+	lastKnownSaveNames map[string]string
 
 	// hasAnnounced is set after the first announceOnline completes.
 	// On subsequent calls (reconnects), discovery and scan messages are
@@ -294,6 +328,14 @@ type Daemon struct {
 type linkCodeResult struct {
 	Code      string
 	ExpiresAt time.Time
+}
+
+// sectionHashCache holds the per-section SHA-256 hashes from the last
+// successful push for a file path, along with the save identity (saveName)
+// those hashes were computed under. See lastPushedSectionHashes.
+type sectionHashCache struct {
+	saveName string
+	hashes   map[string][32]byte
 }
 
 // New creates a Daemon with the given dependencies.
@@ -327,7 +369,8 @@ func New(
 		configDir:               defaultConfigDir(),
 		pendingLinkCode:         make(chan linkCodeResult, 1),
 		pluginUpdateResetCh:     make(chan struct{}, 1),
-		lastPushedSectionHashes: make(map[string]map[string][32]byte),
+		lastPushedSectionHashes: make(map[string]*sectionHashCache),
+		lastKnownSaveNames:      make(map[string]string),
 	}
 }
 
@@ -1132,6 +1175,11 @@ func (d *Daemon) parseAndPush(
 		return
 	}
 
+	// Resolve the save identity once, before anything downstream consumes
+	// it, so ParseCompleted and the push (and the delta cache it consults)
+	// all agree on the same name. See resolveIdentity.
+	state.Identity = d.resolveIdentity(fullPath, state.Identity)
+
 	if !quiet {
 		d.log.InfoContext(
 			ctx,
@@ -1152,6 +1200,28 @@ func (d *Daemon) parseAndPush(
 	}
 
 	d.pushState(ctx, gameID, fullPath, state)
+}
+
+// resolveIdentity substitutes a sticky save name when the parse yielded an
+// empty saveName. The plugin contract treats empty as "identity unknown"
+// (e.g. a boot-only MTGA Player.log with no login event yet) — every real
+// save, including game-scoped saves, carries a non-empty conventional name.
+// The daemon prefers the most recently seen non-empty saveName for this
+// file path, falling back to unknownSaveName only if none exists.
+// lastKnownSaveNames is updated only when the parse itself produced a
+// non-empty saveName, so a substituted or fallback name can never overwrite
+// a real remembered name.
+func (d *Daemon) resolveIdentity(filePath string, identity Identity) Identity {
+	if identity.SaveName != "" {
+		d.lastKnownSaveNames[filePath] = identity.SaveName
+		return identity
+	}
+	if known, ok := d.lastKnownSaveNames[filePath]; ok {
+		identity.SaveName = known
+	} else {
+		identity.SaveName = unknownSaveName
+	}
+	return identity
 }
 
 func (d *Daemon) pushState(
@@ -1200,7 +1270,7 @@ func (d *Daemon) pushState(
 		return strings.Compare(a.Name, b.Name)
 	})
 
-	changed, newHashes := d.filterChangedSections(ctx, gameID, filePath, sections)
+	changed, newHashes := d.filterChangedSections(ctx, gameID, filePath, state.Identity.SaveName, sections)
 	if len(changed) == 0 {
 		d.log.DebugContext(ctx, "save data unchanged, skipping push",
 			slog.String("game_id", gameID),
@@ -1244,16 +1314,22 @@ func (d *Daemon) pushState(
 		d.log.WarnContext(ctx, "failed to send message", slog.String("error", sendErr.Error()))
 		return
 	}
-	d.lastPushedSectionHashes[filePath] = newHashes
+	d.lastPushedSectionHashes[filePath] = &sectionHashCache{saveName: state.Identity.SaveName, hashes: newHashes}
 }
 
 // filterChangedSections hashes each section individually and returns only those
-// whose content differs from the last successful push for this file path.
+// whose content differs from the last successful push for this file path under
+// the same save identity. If the cached entry belongs to a different saveName
+// (or there is no cached entry), the cache is treated as cold and every section
+// is reported as changed — see lastPushedSectionHashes for why.
 func (d *Daemon) filterChangedSections(
-	ctx context.Context, gameID, filePath string, sections []*pb.GameSection,
+	ctx context.Context, gameID, filePath, saveName string, sections []*pb.GameSection,
 ) ([]*pb.GameSection, map[string][32]byte) {
 	opts := proto.MarshalOptions{Deterministic: true}
-	prevHashes := d.lastPushedSectionHashes[filePath]
+	var prevHashes map[string][32]byte
+	if cached := d.lastPushedSectionHashes[filePath]; cached != nil && cached.saveName == saveName {
+		prevHashes = cached.hashes
+	}
 	newHashes := make(map[string][32]byte, len(sections))
 	var changed []*pb.GameSection
 
@@ -1739,11 +1815,20 @@ func (d *Daemon) unwatchGame(ctx context.Context, savePath string) {
 		}
 	}
 
-	// Evict cached section hashes for files in unwatched directories.
+	// Evict cached section hashes and sticky save names for files in
+	// unwatched directories.
 	for filePath := range d.lastPushedSectionHashes {
 		for _, dir := range dirs {
 			if strings.HasPrefix(filePath, dir+"/") || strings.HasPrefix(filePath, dir+"\\") {
 				delete(d.lastPushedSectionHashes, filePath)
+				break
+			}
+		}
+	}
+	for filePath := range d.lastKnownSaveNames {
+		for _, dir := range dirs {
+			if strings.HasPrefix(filePath, dir+"/") || strings.HasPrefix(filePath, dir+"\\") {
+				delete(d.lastKnownSaveNames, filePath)
 				break
 			}
 		}
