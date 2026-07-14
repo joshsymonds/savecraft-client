@@ -3003,11 +3003,11 @@ func TestParseAndPush_HashUpdatedOnlyAfterSuccessfulPush(t *testing.T) {
 		if len(d.lastPushedSectionHashes) != 1 {
 			t.Fatalf("lastPushedSectionHashes has %d entries, want 1", len(d.lastPushedSectionHashes))
 		}
-		sectionHashes, ok := d.lastPushedSectionHashes["/saves/d2r/Hammerdin.d2s"]
+		cached, ok := d.lastPushedSectionHashes["/saves/d2r/Hammerdin.d2s"]
 		if !ok {
 			t.Fatal("lastPushedSectionHashes missing entry for /saves/d2r/Hammerdin.d2s")
 		}
-		if len(sectionHashes) == 0 {
+		if len(cached.hashes) == 0 {
 			t.Error("section hashes should not be empty")
 		}
 	})
@@ -3107,6 +3107,132 @@ func TestParseAndPush_OnlyChangedSectionsSent(t *testing.T) {
 		if !wantNames[n] {
 			t.Errorf("unexpected section name in AllSectionNames: %q", n)
 		}
+	}
+}
+
+// TestParseAndPush_CrossIdentityDelta_FullPushOnIdentityChange guards against
+// the delta cache being computed across a save-identity change on the same
+// file path. In production, MTGA log rotation causes a boot-only log to
+// parse to the fallback identity "Unknown Player", and the very next parse
+// of the same path (once the real session log is written) to parse back to
+// the actual player name. If the cache is scoped to file path alone, the
+// second parse's sections are diffed against the first identity's hashes;
+// any section whose content happens to match is dropped from the push, and
+// the server creates/updates a save from that partial payload — permanently
+// missing every section that was hash-stable across the identity change.
+func TestParseAndPush_CrossIdentityDelta_FullPushOnIdentityChange(t *testing.T) {
+	ws := newFakeWSClient()
+
+	sections := map[string]Section{
+		"decks":    {Description: "Deck lists", Data: jsontext.Value(`{"count":80}`)},
+		"rank":     {Description: "Rank info", Data: jsontext.Value(`{"class":"Gold"}`)},
+		"game_log": {Description: "Game log", Data: jsontext.Value(`{"games":1}`)},
+	}
+	stateA := &GameState{
+		Identity: Identity{SaveName: "Player A", GameID: "magic"},
+		Summary:  "Player A, Gold 4",
+		Sections: sections,
+	}
+	// Same section content as stateA, but a different save identity —
+	// simulates log rotation parsing the same file to a different player.
+	stateB := &GameState{
+		Identity: Identity{SaveName: "Player B", GameID: "magic"},
+		Summary:  "Player B, Gold 4",
+		Sections: sections,
+	}
+
+	runner := &fakeRunner{results: map[string]*GameState{"magic": stateA}}
+	cfg := Config{
+		SourceID: "test-source",
+		Version:  "0.1.0",
+		Games: map[string]GameConfig{
+			"magic": {SavePath: "/saves/mtga", FileExtensions: []string{".log"}, Enabled: true},
+		},
+	}
+	fsys := &fakeFS{files: map[string][]byte{"/saves/mtga/Player.log": []byte("data")}}
+
+	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+
+	// First parse — identity "Player A" — full push.
+	d.parseAndPush(context.Background(), "magic", "/saves/mtga/Player.log", "Player.log", nil, false)
+
+	push1 := ws.sentProto("pushSave", 0)
+	if push1 == nil {
+		t.Fatal("first push not sent")
+	}
+	if got := len(push1.GetPushSave().Sections); got != 3 {
+		t.Fatalf("first push: got %d sections, want 3", got)
+	}
+
+	// Same file path, plugin now reports a different save identity with
+	// byte-identical section content.
+	runner.mu.Lock()
+	runner.results["magic"] = stateB
+	runner.mu.Unlock()
+
+	d.parseAndPush(context.Background(), "magic", "/saves/mtga/Player.log", "Player.log", nil, false)
+
+	push2 := ws.sentProto("pushSave", 1)
+	if push2 == nil {
+		t.Fatal("second push not sent (cross-identity parse must not be treated as a no-op)")
+	}
+	ps2 := push2.GetPushSave()
+	if got := len(ps2.Sections); got != 3 {
+		t.Errorf("second push (identity changed A->B): got %d sections, want 3 "+
+			"(full push — delta cache must be cold across a save-identity change)", got)
+	}
+}
+
+// TestParseAndPush_IdentityFlap_RescopesCacheOnReturn covers the case where
+// identity flaps back to a previously-seen value (A -> B -> A). The third
+// push must again be a full push: the cache was re-scoped to B by the
+// second parse, so the stale A hashes must not be reused even though A was
+// seen before.
+func TestParseAndPush_IdentityFlap_RescopesCacheOnReturn(t *testing.T) {
+	ws := newFakeWSClient()
+
+	sections := map[string]Section{
+		"decks": {Description: "Deck lists", Data: jsontext.Value(`{"count":80}`)},
+		"rank":  {Description: "Rank info", Data: jsontext.Value(`{"class":"Gold"}`)},
+	}
+	stateA := &GameState{Identity: Identity{SaveName: "Player A", GameID: "magic"}, Summary: "A", Sections: sections}
+	stateB := &GameState{Identity: Identity{SaveName: "Player B", GameID: "magic"}, Summary: "B", Sections: sections}
+
+	runner := &fakeRunner{results: map[string]*GameState{"magic": stateA}}
+	cfg := Config{
+		SourceID: "test-source",
+		Version:  "0.1.0",
+		Games: map[string]GameConfig{
+			"magic": {SavePath: "/saves/mtga", FileExtensions: []string{".log"}, Enabled: true},
+		},
+	}
+	fsys := &fakeFS{files: map[string][]byte{"/saves/mtga/Player.log": []byte("data")}}
+
+	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+
+	// A: full push.
+	d.parseAndPush(context.Background(), "magic", "/saves/mtga/Player.log", "Player.log", nil, false)
+
+	// B: identity changed, cache must be cold, full push.
+	runner.mu.Lock()
+	runner.results["magic"] = stateB
+	runner.mu.Unlock()
+	d.parseAndPush(context.Background(), "magic", "/saves/mtga/Player.log", "Player.log", nil, false)
+
+	// Back to A with unchanged content — the cache was re-scoped to B in
+	// between, so this must be a full push again, not a delta or a skip
+	// against the stale A hashes.
+	runner.mu.Lock()
+	runner.results["magic"] = stateA
+	runner.mu.Unlock()
+	d.parseAndPush(context.Background(), "magic", "/saves/mtga/Player.log", "Player.log", nil, false)
+
+	push3 := ws.sentProto("pushSave", 2)
+	if push3 == nil {
+		t.Fatal("third push not sent (identity flap back to A must not be treated as a no-op)")
+	}
+	if got := len(push3.GetPushSave().Sections); got != 2 {
+		t.Errorf("third push (identity flapped A->B->A): got %d sections, want 2 (full push)", got)
 	}
 }
 

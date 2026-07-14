@@ -266,10 +266,26 @@ type Daemon struct {
 	pluginReloadCh <-chan string
 
 	// lastPushedSectionHashes caches per-section SHA-256 hashes of the last
-	// successfully pushed GameSection proto bytes, keyed by file path then
-	// section name. On re-parse, only sections whose hash changed are included
-	// in the PushSave. If no sections changed, the push is skipped entirely.
-	lastPushedSectionHashes map[string]map[string][32]byte
+	// successfully pushed GameSection proto bytes, keyed by file path. Each
+	// entry also records the save identity (saveName) the hashes belong to.
+	// On re-parse, only sections whose hash changed are included in the
+	// PushSave. If no sections changed, the push is skipped entirely.
+	//
+	// The cache is scoped to save identity, not just file path, because the
+	// server routes pushes by (gameID, saveName) rather than by file path.
+	// A single file can parse to different save identities across
+	// consecutive reads (e.g. MTGA log rotation, where a boot-only log
+	// parses to the fallback name "Unknown Player" and the next session log
+	// parses back to the real player name). If the cache were keyed by file
+	// path alone, a delta would be computed against a different save's
+	// content, so the push would carry only sections that happen to differ
+	// between the two saves — the server would then create/update a save
+	// from that partial payload, permanently missing every section whose
+	// hash happened to match. When the current parse's saveName differs
+	// from the cached one (or there is no cached entry), the cache is
+	// treated as cold: the push includes all sections, and the cache is
+	// re-seeded under the new identity.
+	lastPushedSectionHashes map[string]*sectionHashCache
 
 	// hasAnnounced is set after the first announceOnline completes.
 	// On subsequent calls (reconnects), discovery and scan messages are
@@ -293,6 +309,14 @@ type Daemon struct {
 type linkCodeResult struct {
 	Code      string
 	ExpiresAt time.Time
+}
+
+// sectionHashCache holds the per-section SHA-256 hashes from the last
+// successful push for a file path, along with the save identity (saveName)
+// those hashes were computed under. See lastPushedSectionHashes.
+type sectionHashCache struct {
+	saveName string
+	hashes   map[string][32]byte
 }
 
 // New creates a Daemon with the given dependencies.
@@ -326,7 +350,7 @@ func New(
 		configDir:               defaultConfigDir(),
 		pendingLinkCode:         make(chan linkCodeResult, 1),
 		pluginUpdateResetCh:     make(chan struct{}, 1),
-		lastPushedSectionHashes: make(map[string]map[string][32]byte),
+		lastPushedSectionHashes: make(map[string]*sectionHashCache),
 	}
 }
 
@@ -1199,7 +1223,7 @@ func (d *Daemon) pushState(
 		return strings.Compare(a.Name, b.Name)
 	})
 
-	changed, newHashes := d.filterChangedSections(ctx, gameID, filePath, sections)
+	changed, newHashes := d.filterChangedSections(ctx, gameID, filePath, state.Identity.SaveName, sections)
 	if len(changed) == 0 {
 		d.log.DebugContext(ctx, "save data unchanged, skipping push",
 			slog.String("game_id", gameID),
@@ -1243,16 +1267,22 @@ func (d *Daemon) pushState(
 		d.log.WarnContext(ctx, "failed to send message", slog.String("error", sendErr.Error()))
 		return
 	}
-	d.lastPushedSectionHashes[filePath] = newHashes
+	d.lastPushedSectionHashes[filePath] = &sectionHashCache{saveName: state.Identity.SaveName, hashes: newHashes}
 }
 
 // filterChangedSections hashes each section individually and returns only those
-// whose content differs from the last successful push for this file path.
+// whose content differs from the last successful push for this file path under
+// the same save identity. If the cached entry belongs to a different saveName
+// (or there is no cached entry), the cache is treated as cold and every section
+// is reported as changed — see lastPushedSectionHashes for why.
 func (d *Daemon) filterChangedSections(
-	ctx context.Context, gameID, filePath string, sections []*pb.GameSection,
+	ctx context.Context, gameID, filePath, saveName string, sections []*pb.GameSection,
 ) ([]*pb.GameSection, map[string][32]byte) {
 	opts := proto.MarshalOptions{Deterministic: true}
-	prevHashes := d.lastPushedSectionHashes[filePath]
+	var prevHashes map[string][32]byte
+	if cached := d.lastPushedSectionHashes[filePath]; cached != nil && cached.saveName == saveName {
+		prevHashes = cached.hashes
+	}
 	newHashes := make(map[string][32]byte, len(sections))
 	var changed []*pb.GameSection
 
