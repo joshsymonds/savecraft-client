@@ -498,10 +498,15 @@ func d2rRunner() *fakeRunner {
 	return &fakeRunner{results: map[string]*GameState{"d2r": newD2RState()}}
 }
 
+// newStashState returns a fixture matching the real d2r plugin's shape for a
+// game-scoped save (plugins/d2r/parser/main.go:64): the .d2i shared stash
+// has no per-player identity, but it is represented by a non-empty
+// conventional name derived from the stash kind, not by an empty saveName.
 func newStashState() *GameState {
 	return &GameState{
 		Identity: Identity{
-			GameID: "d2r",
+			SaveName: "Shared Stash (Softcore)",
+			GameID:   "d2r",
 		},
 		Summary: "Shared Stash (Softcore), 60 items, 0 gold",
 		Sections: map[string]Section{
@@ -512,14 +517,24 @@ func newStashState() *GameState {
 
 // --- Tests: game-scoped identity ---
 
-func TestGameScopedIdentity_OmitsSaveName(t *testing.T) {
+// TestGameScopedIdentity_NonEmptyNamePassesThrough guards the plugin
+// contract: a game-scoped save (no per-player identity) is represented by a
+// non-empty conventional name, never an empty saveName. An earlier version
+// of this test asserted the opposite — that an empty saveName should
+// marshal through unmodified for "game-scoped" saves — but that shape was
+// stale: the server unconditionally rejects any push with an empty
+// saveName (worker/src/hub.ts:1016-1019, "pushSave missing identity or
+// gameId"), and no real plugin ever emits one — the real d2r plugin always
+// derives a name from the stash kind (plugins/d2r/parser/main.go:64). Empty
+// saveName now means "identity unknown" and is substituted by the daemon;
+// see TestParseAndPush_EmptySaveNameFallsBackToUnknownPlayer.
+func TestGameScopedIdentity_NonEmptyNamePassesThrough(t *testing.T) {
 	state := newStashState()
 	data, err := json.Marshal(state)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	// saveName should not appear in JSON when empty.
 	var raw map[string]json.RawMessage
 	if unmarshalErr := json.Unmarshal(data, &raw); unmarshalErr != nil {
 		t.Fatalf("unmarshal: %v", unmarshalErr)
@@ -528,8 +543,8 @@ func TestGameScopedIdentity_OmitsSaveName(t *testing.T) {
 	if unmarshalErr := json.Unmarshal(raw["identity"], &identity); unmarshalErr != nil {
 		t.Fatalf("unmarshal identity: %v", unmarshalErr)
 	}
-	if _, hasCharName := identity["saveName"]; hasCharName {
-		t.Error("game-scoped identity should not have saveName key")
+	if string(identity["saveName"]) != `"Shared Stash (Softcore)"` {
+		t.Errorf("saveName = %s, want %q", identity["saveName"], "Shared Stash (Softcore)")
 	}
 	if string(identity["gameId"]) != `"d2r"` {
 		t.Errorf("gameId = %s, want \"d2r\"", identity["gameId"])
@@ -558,7 +573,8 @@ func TestParseAndPush_GameScopedSave(t *testing.T) {
 		t.Error("missing pushSave")
 	}
 
-	// Identity in parseCompleted should have empty name for game-scoped saves.
+	// The game-scoped name is non-empty, so it passes through unmodified —
+	// the daemon's identity-unknown substitution must not touch it.
 	msg := ws.sentProto("parseCompleted", 0)
 	if msg == nil {
 		t.Fatal("missing parseCompleted")
@@ -567,8 +583,8 @@ func TestParseAndPush_GameScopedSave(t *testing.T) {
 	if pc.Identity == nil {
 		t.Fatal("parseCompleted missing identity")
 	}
-	if pc.Identity.Name != "" {
-		t.Error("game-scoped parseCompleted should not have saveName")
+	if pc.Identity.Name != "Shared Stash (Softcore)" {
+		t.Errorf("parseCompleted saveName = %q, want %q", pc.Identity.Name, "Shared Stash (Softcore)")
 	}
 
 	pushMsg := ws.sentProto("pushSave", 0)
@@ -576,8 +592,8 @@ func TestParseAndPush_GameScopedSave(t *testing.T) {
 		t.Fatal("missing pushSave")
 	}
 	ps := pushMsg.GetPushSave()
-	if ps.Identity.Name != "" {
-		t.Errorf("pushed saveName = %q, want empty", ps.Identity.Name)
+	if ps.Identity.Name != "Shared Stash (Softcore)" {
+		t.Errorf("pushed saveName = %q, want %q", ps.Identity.Name, "Shared Stash (Softcore)")
 	}
 	if ps.GameId != "d2r" {
 		t.Errorf("pushed gameId = %q, want d2r", ps.GameId)
@@ -3233,6 +3249,211 @@ func TestParseAndPush_IdentityFlap_RescopesCacheOnReturn(t *testing.T) {
 	}
 	if got := len(push3.GetPushSave().Sections); got != 2 {
 		t.Errorf("third push (identity flapped A->B->A): got %d sections, want 2 (full push)", got)
+	}
+}
+
+// TestParseAndPush_StickyIdentity_EmptySaveNameDeltasAgainstLastKnownName
+// guards the daemon-side half of the identity-stickiness fix: MTGA's
+// Player.log sometimes has no login event yet (a boot-only log after a
+// client restart), so the plugin emits an empty saveName ("identity
+// unknown" — see plugins/magic/parser.resolveSaveName). The daemon must
+// substitute the last-known name for the file path BEFORE the
+// identity-scoped delta cache (filterChangedSections) is consulted, so the
+// boot-only re-parse deltas against the same save instead of forking a new
+// "Unknown Player" save.
+func TestParseAndPush_StickyIdentity_EmptySaveNameDeltasAgainstLastKnownName(t *testing.T) {
+	ws := newFakeWSClient()
+
+	named := &GameState{
+		Identity: Identity{SaveName: "Player A", GameID: "magic"},
+		Summary:  "Player A, Gold 4",
+		Sections: map[string]Section{
+			"decks": {Description: "Deck lists", Data: jsontext.Value(`{"count":80}`)},
+			"rank":  {Description: "Rank info", Data: jsontext.Value(`{"class":"Gold"}`)},
+		},
+	}
+
+	runner := &fakeRunner{results: map[string]*GameState{"magic": named}}
+	cfg := Config{
+		SourceID: "test-source",
+		Version:  "0.1.0",
+		Games: map[string]GameConfig{
+			"magic": {SavePath: "/saves/mtga", FileExtensions: []string{".log"}, Enabled: true},
+		},
+	}
+	fsys := &fakeFS{files: map[string][]byte{"/saves/mtga/Player.log": []byte("data")}}
+
+	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+
+	// First parse — named identity — full push.
+	d.parseAndPush(context.Background(), "magic", "/saves/mtga/Player.log", "Player.log", nil, false)
+	push1 := ws.sentProto("pushSave", 0)
+	if push1 == nil {
+		t.Fatal("first push not sent")
+	}
+	if got := len(push1.GetPushSave().Sections); got != 2 {
+		t.Fatalf("first push: got %d sections, want 2", got)
+	}
+
+	// Boot-only re-parse of the same path: empty saveName, one section changed.
+	runner.mu.Lock()
+	runner.results["magic"] = &GameState{
+		Identity: Identity{SaveName: "", GameID: "magic"},
+		Summary:  "Player A, Platinum 1",
+		Sections: map[string]Section{
+			"decks": {Description: "Deck lists", Data: jsontext.Value(`{"count":80}`)},
+			"rank":  {Description: "Rank info", Data: jsontext.Value(`{"class":"Platinum"}`)}, // changed
+		},
+	}
+	runner.mu.Unlock()
+
+	d.parseAndPush(context.Background(), "magic", "/saves/mtga/Player.log", "Player.log", nil, false)
+
+	push2 := ws.sentProto("pushSave", 1)
+	if push2 == nil {
+		t.Fatal("second push not sent")
+	}
+	ps2 := push2.GetPushSave()
+	if ps2.Identity.Name != "Player A" {
+		t.Errorf("second push saveName = %q, want %q (sticky substitution)", ps2.Identity.Name, "Player A")
+	}
+	if got := len(ps2.Sections); got != 1 {
+		t.Fatalf("second push: got %d sections, want 1 (delta against the same save, not a fork)", got)
+	}
+	if ps2.Sections[0].Name != "rank" {
+		t.Errorf("second push changed section = %q, want %q", ps2.Sections[0].Name, "rank")
+	}
+}
+
+// TestParseAndPush_EmptySaveNameFallsBackToUnknownPlayer covers the case
+// where the daemon has never seen a name for a file path (e.g. the very
+// first Player.log parse happens to be boot-only). With no sticky name to
+// substitute, the daemon falls back to "Unknown Player" — the literal the
+// plugin used to emit itself, now owned by the daemon.
+func TestParseAndPush_EmptySaveNameFallsBackToUnknownPlayer(t *testing.T) {
+	ws := newFakeWSClient()
+	state := &GameState{
+		Identity: Identity{SaveName: "", GameID: "magic"},
+		Summary:  "MTG Arena Player",
+		Sections: map[string]Section{
+			"decks": {Description: "Deck lists", Data: jsontext.Value(`{"count":80}`)},
+		},
+	}
+	runner := &fakeRunner{results: map[string]*GameState{"magic": state}}
+	cfg := Config{
+		SourceID: "test-source",
+		Version:  "0.1.0",
+		Games: map[string]GameConfig{
+			"magic": {SavePath: "/saves/mtga", FileExtensions: []string{".log"}, Enabled: true},
+		},
+	}
+	fsys := &fakeFS{files: map[string][]byte{"/saves/mtga/Player.log": []byte("data")}}
+
+	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+	d.parseAndPush(context.Background(), "magic", "/saves/mtga/Player.log", "Player.log", nil, false)
+
+	push := ws.sentProto("pushSave", 0)
+	if push == nil {
+		t.Fatal("push not sent")
+	}
+	if got := push.GetPushSave().Identity.Name; got != "Unknown Player" {
+		t.Errorf("pushed saveName = %q, want %q", got, "Unknown Player")
+	}
+	pc := ws.sentProto("parseCompleted", 0)
+	if pc == nil {
+		t.Fatal("parseCompleted not sent")
+	}
+	if got := pc.GetParseCompleted().Identity.Name; got != "Unknown Player" {
+		t.Errorf("parseCompleted saveName = %q, want %q (must match the push, resolved once)", got, "Unknown Player")
+	}
+}
+
+// TestParseAndPush_StickyIdentity_UpdatesAfterNamedParseReturns covers the
+// (no name) -> "Unknown Player" -> named -> (no name) sequence. Once a named
+// parse returns for a path previously stuck on the "Unknown Player"
+// fallback, the remembered name must update, so a later boot-only re-parse
+// substitutes the real name rather than replaying the stale fallback.
+func TestParseAndPush_StickyIdentity_UpdatesAfterNamedParseReturns(t *testing.T) {
+	ws := newFakeWSClient()
+
+	emptyState := &GameState{
+		Identity: Identity{SaveName: "", GameID: "magic"},
+		Summary:  "MTG Arena Player",
+		Sections: map[string]Section{
+			"decks": {Description: "Deck lists", Data: jsontext.Value(`{"count":80}`)},
+		},
+	}
+	namedState := &GameState{
+		Identity: Identity{SaveName: "Player A", GameID: "magic"},
+		Summary:  "Player A",
+		Sections: map[string]Section{
+			"decks": {Description: "Deck lists", Data: jsontext.Value(`{"count":80}`)},
+		},
+	}
+
+	runner := &fakeRunner{results: map[string]*GameState{"magic": emptyState}}
+	cfg := Config{
+		SourceID: "test-source",
+		Version:  "0.1.0",
+		Games: map[string]GameConfig{
+			"magic": {SavePath: "/saves/mtga", FileExtensions: []string{".log"}, Enabled: true},
+		},
+	}
+	fsys := &fakeFS{files: map[string][]byte{"/saves/mtga/Player.log": []byte("data")}}
+
+	d := New(cfg, fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+
+	// First parse: no prior name — falls back to "Unknown Player".
+	d.parseAndPush(context.Background(), "magic", "/saves/mtga/Player.log", "Player.log", nil, false)
+	push1 := ws.sentProto("pushSave", 0)
+	if push1 == nil || push1.GetPushSave().Identity.Name != "Unknown Player" {
+		t.Fatalf("first push saveName = %v, want %q", push1, "Unknown Player")
+	}
+
+	// Second parse: real identity resolves — full push (identity change,
+	// wave 1 behavior), and the resolved name becomes the new sticky name.
+	runner.mu.Lock()
+	runner.results["magic"] = namedState
+	runner.mu.Unlock()
+	d.parseAndPush(context.Background(), "magic", "/saves/mtga/Player.log", "Player.log", nil, false)
+	push2 := ws.sentProto("pushSave", 1)
+	if push2 == nil {
+		t.Fatal("second push not sent")
+	}
+	if got := push2.GetPushSave().Identity.Name; got != "Player A" {
+		t.Fatalf("second push saveName = %q, want %q", got, "Player A")
+	}
+	if got := len(push2.GetPushSave().Sections); got != 1 {
+		t.Fatalf("second push: got %d sections, want 1 (full push on identity change)", got)
+	}
+
+	// Third parse: boot-only re-parse (empty saveName again) with one
+	// changed section. Must substitute "Player A" — the most recently seen
+	// real name — NOT the stale "Unknown Player" fallback from the first
+	// parse. Substituting the stale fallback would mismatch the cache's
+	// saveName ("Player A"), forcing a spurious full push under the wrong
+	// identity instead of this delta.
+	runner.mu.Lock()
+	runner.results["magic"] = &GameState{
+		Identity: Identity{SaveName: "", GameID: "magic"},
+		Summary:  "Player A",
+		Sections: map[string]Section{
+			"decks": {Description: "Deck lists", Data: jsontext.Value(`{"count":81}`)}, // changed
+		},
+	}
+	runner.mu.Unlock()
+	d.parseAndPush(context.Background(), "magic", "/saves/mtga/Player.log", "Player.log", nil, false)
+	push3 := ws.sentProto("pushSave", 2)
+	if push3 == nil {
+		t.Fatal("third push not sent")
+	}
+	ps3 := push3.GetPushSave()
+	if ps3.Identity.Name != "Player A" {
+		t.Errorf("third push saveName = %q, want %q (sticky name must update after the named parse)",
+			ps3.Identity.Name, "Player A")
+	}
+	if got := len(ps3.Sections); got != 1 {
+		t.Errorf("third push: got %d sections, want 1 (delta — cache must stay warm under Player A)", got)
 	}
 }
 

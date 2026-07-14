@@ -21,6 +21,33 @@ func TestBuildAuth(t *testing.T) {
 	}
 }
 
+// TestResolveSaveNameEmptyIdentity guards the plugin contract: an empty
+// identity.saveName means "identity unknown" to the daemon, which substitutes
+// a sticky name for the file path. A boot-only Player.log (no login event)
+// leaves both DisplayName and PlayerID empty, and the parser must emit ""
+// rather than a literal "Unknown Player" — that fallback now lives in the
+// daemon, which only uses it when it has never seen a name for the path.
+func TestResolveSaveNameEmptyIdentity(t *testing.T) {
+	gs := &GameState{}
+	if got := resolveSaveName(gs); got != "" {
+		t.Errorf("expected empty saveName for boot-only log, got %q", got)
+	}
+}
+
+func TestResolveSaveNamePrefersDisplayName(t *testing.T) {
+	gs := &GameState{DisplayName: "Aure Silvershield", PlayerID: "47BADBEB1045E08A"}
+	if got := resolveSaveName(gs); got != "Aure Silvershield" {
+		t.Errorf("expected DisplayName to win, got %q", got)
+	}
+}
+
+func TestResolveSaveNameFallsBackToPlayerID(t *testing.T) {
+	gs := &GameState{PlayerID: "47BADBEB1045E08A"}
+	if got := resolveSaveName(gs); got != "47BADBEB1045E08A" {
+		t.Errorf("expected PlayerID fallback, got %q", got)
+	}
+}
+
 func TestBuildStartHookDecks(t *testing.T) {
 	hookJSON := `{
 		"Decks": {

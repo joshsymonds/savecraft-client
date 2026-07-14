@@ -21,13 +21,7 @@ func main() {
 	sections := buildOutputSections(gs)
 
 	// Build identity and summary.
-	saveName := gs.DisplayName
-	if saveName == "" {
-		saveName = gs.PlayerID
-	}
-	if saveName == "" {
-		saveName = "Unknown Player"
-	}
+	saveName := resolveSaveName(gs)
 
 	summary := buildSummary(gs)
 
@@ -209,6 +203,19 @@ func maxTurnNumber(turns []TurnLog) int {
 		}
 	}
 	return highest
+}
+
+// resolveSaveName derives the save identity name from the parsed game state.
+// An empty result means "identity unknown" to the daemon: a boot-only
+// Player.log (client restart with no login event yet) carries neither a
+// DisplayName nor a PlayerID. The daemon substitutes a sticky name for the
+// file path in that case, so the parser must not paper over the gap with a
+// literal fallback here.
+func resolveSaveName(gs *GameState) string {
+	if gs.DisplayName != "" {
+		return gs.DisplayName
+	}
+	return gs.PlayerID
 }
 
 func buildSummary(gs *GameState) string {

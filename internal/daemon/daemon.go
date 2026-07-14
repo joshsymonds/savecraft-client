@@ -34,6 +34,11 @@ const pluginUpdateInterval = 24 * time.Hour
 const selfUpdateInterval = 6 * time.Hour
 const heartbeatInterval = 30 * time.Second
 
+// unknownSaveName is the identity substituted by resolveIdentity when a
+// parse yields an empty saveName ("identity unknown") and no prior name has
+// been seen for the file path.
+const unknownSaveName = "Unknown Player"
+
 // --- Domain types ---
 
 // GameState is the structured output from parsing a save file.
@@ -287,6 +292,19 @@ type Daemon struct {
 	// re-seeded under the new identity.
 	lastPushedSectionHashes map[string]*sectionHashCache
 
+	// lastKnownSaveNames caches the most recently observed non-empty save
+	// identity name for each file path, keyed by file path. The plugin
+	// contract treats an empty identity.saveName as "identity unknown" (for
+	// example a boot-only MTGA Player.log with no login event yet), not as
+	// "no identity" — every real save, including game-scoped saves like a
+	// D2R shared stash, carries a non-empty conventional name. resolveIdentity
+	// substitutes the last-known name for the path so a boot-only re-parse
+	// deltas against the same save (via lastPushedSectionHashes) instead of
+	// forking a new save under the "Unknown Player" fallback. Only names
+	// produced by a parse's own saveName are recorded here — a substituted
+	// or fallback name must never overwrite a real remembered name.
+	lastKnownSaveNames map[string]string
+
 	// hasAnnounced is set after the first announceOnline completes.
 	// On subsequent calls (reconnects), discovery and scan messages are
 	// suppressed when nothing has changed.
@@ -351,6 +369,7 @@ func New(
 		pendingLinkCode:         make(chan linkCodeResult, 1),
 		pluginUpdateResetCh:     make(chan struct{}, 1),
 		lastPushedSectionHashes: make(map[string]*sectionHashCache),
+		lastKnownSaveNames:      make(map[string]string),
 	}
 }
 
@@ -1155,6 +1174,11 @@ func (d *Daemon) parseAndPush(
 		return
 	}
 
+	// Resolve the save identity once, before anything downstream consumes
+	// it, so ParseCompleted and the push (and the delta cache it consults)
+	// all agree on the same name. See resolveIdentity.
+	state.Identity = d.resolveIdentity(fullPath, state.Identity)
+
 	if !quiet {
 		d.log.InfoContext(
 			ctx,
@@ -1175,6 +1199,28 @@ func (d *Daemon) parseAndPush(
 	}
 
 	d.pushState(ctx, gameID, fullPath, state)
+}
+
+// resolveIdentity substitutes a sticky save name when the parse yielded an
+// empty saveName. The plugin contract treats empty as "identity unknown"
+// (e.g. a boot-only MTGA Player.log with no login event yet) — every real
+// save, including game-scoped saves, carries a non-empty conventional name.
+// The daemon prefers the most recently seen non-empty saveName for this
+// file path, falling back to unknownSaveName only if none exists.
+// lastKnownSaveNames is updated only when the parse itself produced a
+// non-empty saveName, so a substituted or fallback name can never overwrite
+// a real remembered name.
+func (d *Daemon) resolveIdentity(filePath string, identity Identity) Identity {
+	if identity.SaveName != "" {
+		d.lastKnownSaveNames[filePath] = identity.SaveName
+		return identity
+	}
+	if known, ok := d.lastKnownSaveNames[filePath]; ok {
+		identity.SaveName = known
+	} else {
+		identity.SaveName = unknownSaveName
+	}
+	return identity
 }
 
 func (d *Daemon) pushState(
@@ -1768,11 +1814,20 @@ func (d *Daemon) unwatchGame(ctx context.Context, savePath string) {
 		}
 	}
 
-	// Evict cached section hashes for files in unwatched directories.
+	// Evict cached section hashes and sticky save names for files in
+	// unwatched directories.
 	for filePath := range d.lastPushedSectionHashes {
 		for _, dir := range dirs {
 			if strings.HasPrefix(filePath, dir+"/") || strings.HasPrefix(filePath, dir+"\\") {
 				delete(d.lastPushedSectionHashes, filePath)
+				break
+			}
+		}
+	}
+	for filePath := range d.lastKnownSaveNames {
+		for _, dir := range dirs {
+			if strings.HasPrefix(filePath, dir+"/") || strings.HasPrefix(filePath, dir+"\\") {
+				delete(d.lastKnownSaveNames, filePath)
 				break
 			}
 		}
