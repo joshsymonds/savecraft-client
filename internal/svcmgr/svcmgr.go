@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -67,7 +68,11 @@ func Run(run RunFunc) error {
 // Interactive reports whether stderr is connected to a terminal.
 // Use this to decide whether to print human-readable messages.
 func Interactive() bool {
-	return term.IsTerminal(int(os.Stderr.Fd()))
+	fd := os.Stderr.Fd()
+	if fd > math.MaxInt {
+		return false
+	}
+	return term.IsTerminal(int(fd))
 }
 
 // UninstallPaths holds all filesystem paths to remove during uninstall.

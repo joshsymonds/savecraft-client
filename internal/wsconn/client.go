@@ -105,10 +105,8 @@ func (c *Client) IsConnected() bool {
 // loop even mid-reconnect — without depending on catching the live connection
 // pointer at the right instant.
 func (c *Client) Start(ctx context.Context) {
-	ctx, cancel := context.WithCancel(ctx)
-
 	c.mu.Lock()
-	c.cancel = cancel
+	ctx, c.cancel = context.WithCancel(ctx)
 	c.mu.Unlock()
 
 	c.wg.Go(func() { c.connectLoop(ctx) })
