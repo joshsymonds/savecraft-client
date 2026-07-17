@@ -15,10 +15,12 @@ is proprietary and developed elsewhere.
 
 ## Local data flow
 
-The daemon runs locally. It reads save, log, or mod-export files only from save
-directories selected by the user, then runs the matching parser locally in a
-WASM sandbox. The tray communicates with the daemon over localhost. The
-Factorio and RimWorld integrations run inside their respective games.
+The daemon runs locally. For each game, the client suggests a per-OS default
+save location, which the user confirms or overrides. The daemon enumerates
+candidate save, log, or mod-export files under configured paths and parses file
+contents locally in a WASM sandbox only for games the user has enrolled with a
+configured save path. The tray communicates with the daemon over localhost.
+The Factorio and RimWorld integrations run inside their respective games.
 
 Raw save files stay on the user's machine. The client sends parsed game state
 and operational messages to the hosted service. The exact wire egress schema is
