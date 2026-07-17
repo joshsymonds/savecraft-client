@@ -6,12 +6,10 @@ on:
     tags: ["install-v*"]
     paths:
       - 'install/**'
-      - 'scripts/**'
       - '.github/workflows/deploy-install.yml'
   pull_request:
     paths:
       - 'install/**'
-      - 'scripts/**'
       - '.github/workflows/deploy-install.yml'
   workflow_dispatch:
 
@@ -83,13 +81,17 @@ jobs:
           DETECTED_ENV: ${{ steps.version.outputs.environment }}
         run: |
           if [ "$DETECTED_ENV" = "production" ]; then
-            echo "is_production=true" >> "$GITHUB_OUTPUT"
-            echo "wrangler_env=production" >> "$GITHUB_OUTPUT"
-            echo "r2_bucket=savecraft-install" >> "$GITHUB_OUTPUT"
+            {
+              echo "is_production=true"
+              echo "wrangler_env=production"
+              echo "r2_bucket=savecraft-install"
+            } >> "$GITHUB_OUTPUT"
           else
-            echo "is_production=false" >> "$GITHUB_OUTPUT"
-            echo "wrangler_env=staging" >> "$GITHUB_OUTPUT"
-            echo "r2_bucket=savecraft-install-staging" >> "$GITHUB_OUTPUT"
+            {
+              echo "is_production=false"
+              echo "wrangler_env=staging"
+              echo "r2_bucket=savecraft-install-staging"
+            } >> "$GITHUB_OUTPUT"
           fi
 
   upload:
@@ -195,14 +197,14 @@ jobs:
           TAG: ${{ github.ref_name }}
           PREV_TAG: ${{ steps.prev.outputs.tag }}
         run: |
-          notes_flag=""
+          notes_args=()
           if [ -n "$PREV_TAG" ]; then
-            notes_flag="--notes-start-tag $PREV_TAG"
+            notes_args=(--notes-start-tag "$PREV_TAG")
           fi
           gh release create "$TAG" \
             --title "$TAG" \
             --generate-notes \
-            $notes_flag
+            "${notes_args[@]}"
 
       - name: Notify Discord (release)
         if: success()
@@ -215,6 +217,6 @@ jobs:
           jq -n \
             --arg tag "$TAG" \
             --arg body "$body" \
-            --arg url "https://github.com/joshsymonds/savecraft.gg/releases/tag/$TAG" \
+            --arg url "https://github.com/joshsymonds/savecraft-client/releases/tag/$TAG" \
             '{embeds: [{title: ("Install " + $tag + " deployed"), description: $body, url: $url, color: 5793266}]}' \
             | curl -s -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" -d @-

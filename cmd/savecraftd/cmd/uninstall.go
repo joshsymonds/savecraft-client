@@ -16,10 +16,10 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/joshsymonds/savecraft.gg/internal/envfile"
-	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
-	pb "github.com/joshsymonds/savecraft.gg/internal/proto/savecraft/v1"
-	"github.com/joshsymonds/savecraft.gg/internal/svcmgr"
+	"github.com/joshsymonds/savecraft-client/internal/envfile"
+	"github.com/joshsymonds/savecraft-client/internal/pluginmgr"
+	pb "github.com/joshsymonds/savecraft-client/internal/proto/savecraft/v1"
+	"github.com/joshsymonds/savecraft-client/internal/svcmgr"
 )
 
 func buildUninstallCommand(cfg svcmgr.Config, appName string) *cobra.Command {
@@ -62,8 +62,8 @@ func deregisterSource(appName string) {
 		return
 	}
 
-	serverURL := vars["SAVECRAFT_SERVER_URL"]
-	authToken := vars["SAVECRAFT_AUTH_TOKEN"]
+	serverURL := vars[envServerURL]
+	authToken := vars[envAuthToken]
 	if serverURL == "" || authToken == "" {
 		return
 	}

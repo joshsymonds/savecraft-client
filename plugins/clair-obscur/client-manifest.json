@@ -1,0 +1,42 @@
+{
+  "game_id": "clair-obscur",
+  "sources": [
+    "wasm"
+  ],
+  "icon": "icon.png",
+  "name": "Clair Obscur: Expedition 33",
+  "description": "Parses Clair Obscur: Expedition 33 save files — character builds, party, inventory, progression",
+  "channel": "alpha",
+  "coverage": "partial",
+  "file_extensions": [
+    ".sav"
+  ],
+  "file_patterns": [
+    "EXPEDITION_*"
+  ],
+  "exclude_dirs": [
+    "Backup"
+  ],
+  "homepage": "https://savecraft.gg/plugins/clair-obscur",
+  "limitations": [
+    "No damage formula calculations (formulas not publicly documented)",
+    "Inventory items not categorized by type (no type tags in save data)"
+  ],
+  "attribution": {
+    "sources": [
+      "kepler"
+    ]
+  },
+  "author": {
+    "name": "Josh Symonds",
+    "github": "joshsymonds"
+  },
+  "default_paths": {
+    "windows": "%LOCALAPPDATA%/Sandfall/Saved/SaveGames/*",
+    "linux": "~/.local/share/Steam/steamapps/compatdata/1903340/pfx/drive_c/users/steamuser/AppData/Local/Sandfall/Saved/SaveGames/*",
+    "darwin": "~/Library/Application Support/Epic/Sandfall/Saved/SaveGames/*"
+  },
+  "version": "dev",
+  "sha256": "a43788afa8000680cff93e673d92d7b99d53c8aa22e33ff9886ae6383d3631e1",
+  "url": "plugins/clair-obscur/parser.wasm"
+}

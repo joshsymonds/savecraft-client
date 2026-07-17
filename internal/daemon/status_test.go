@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	pb "github.com/joshsymonds/savecraft.gg/internal/proto/savecraft/v1"
+	pb "github.com/joshsymonds/savecraft-client/internal/proto/savecraft/v1"
 )
 
 func TestStatus_ReturnsSnapshot(t *testing.T) {

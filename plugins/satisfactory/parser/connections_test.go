@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/joshsymonds/savecraft.gg/plugins/satisfactory/sav"
+	"github.com/joshsymonds/savecraft-client/plugins/satisfactory/sav"
 )
 
 func TestActorOf(t *testing.T) {

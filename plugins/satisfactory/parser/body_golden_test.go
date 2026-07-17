@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/joshsymonds/savecraft.gg/plugins/satisfactory/sav"
+	"github.com/joshsymonds/savecraft-client/plugins/satisfactory/sav"
 )
 
 func openFixture(t *testing.T, name string) (io.Reader, func()) {

@@ -5,32 +5,3 @@ build-parser:
 
 test:
     go test -v ./...
-
-# Import card data from local MTGA game database to D1 + regenerate arena_cards_gen.go.
-# Requires: Raw_CardDatabase at .reference/mtga-carddb/Raw_CardDatabase.mtga
-# Copy from MTGA install: MTGA_Data/Downloads/Raw/Raw_CardDatabase_*.mtga
-# Requires: CLOUDFLARE_API_TOKEN env var (loaded by direnv from .envrc.local)
-fetch-carddb d1_id cf_account="cc0a94bb7aff760efd48b49ce983fe97":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    db="../../.reference/mtga-carddb/Raw_CardDatabase.mtga"
-    if [ ! -f "$db" ]; then
-        echo "MTGA card database not found at $db" >&2
-        echo "Copy Raw_CardDatabase_*.mtga from your MTGA install:" >&2
-        echo "  MTGA_Data/Downloads/Raw/Raw_CardDatabase_*.mtga" >&2
-        echo "To: .reference/mtga-carddb/Raw_CardDatabase.mtga" >&2
-        exit 1
-    fi
-    go run ./tools/mtga-carddb --card-db "$db" \
-        --d1-database-id="{{d1_id}}" --cf-account-id="{{cf_account}}" \
-        --cf-api-token="$CLOUDFLARE_API_TOKEN"
-
-# Download Scryfall Oracle Cards for D1 card search population
-fetch-scryfall:
-    go run ./tools/scryfall-fetch
-
-# Download 17Lands public datasets and generate draft ratings data
-fetch-17lands:
-    go run ./tools/17lands-fetch
-
-# Full pipeline is now in the root Justfile: just update-mtga staging|production

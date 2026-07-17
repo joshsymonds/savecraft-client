@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/joshsymonds/savecraft.gg/plugins/satisfactory/sav"
+	"github.com/joshsymonds/savecraft-client/plugins/satisfactory/sav"
 )
 
 const minerClass = "/Game/FactoryGame/Buildable/Factory/MinerMk1/Build_MinerMk1.Build_MinerMk1_C"

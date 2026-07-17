@@ -26,7 +26,7 @@ BASE="$(cd "$(dirname "$0")/../../.." && pwd)"
 PLUGIN="$BASE/plugins/stellaris"
 GAME="$BASE/stellaris_screenshot.jpg"
 CLAUDE="$BASE/stellaris1.jpg"
-ICON="$BASE/web/static/icon-192.png"
+ICON="$BASE/assets/icon.png"
 OUTPUT="$PLUGIN/mod/thumbnail.png"
 WORK="$(mktemp -d)"
 

@@ -1,0 +1,38 @@
+{
+  "game_id": "factorio",
+  "sources": [
+    "wasm",
+    "mod"
+  ],
+  "icon": "icon.png",
+  "name": "Factorio",
+  "description": "Lua mod exports game state to JSON; daemon watches script-output and pushes structured save data",
+  "channel": "alpha",
+  "coverage": "partial",
+  "file_extensions": [
+    ".json"
+  ],
+  "homepage": "https://savecraft.gg/plugins/factorio",
+  "limitations": [
+    "Requires the Savecraft Export mod installed in Factorio",
+    "Modded recipes and items not yet reflected in reference modules — vanilla data only",
+    "Space Age content (planets, platforms, quality) tracked in sections but reference modules are base-game only"
+  ],
+  "attribution": {
+    "sources": [
+      "wube"
+    ]
+  },
+  "author": {
+    "name": "Josh Symonds",
+    "github": "joshsymonds"
+  },
+  "default_paths": {
+    "windows": "%APPDATA%/Factorio/script-output/savecraft",
+    "linux": "~/.factorio/script-output/savecraft",
+    "darwin": "~/Library/Application Support/factorio/script-output/savecraft"
+  },
+  "version": "dev",
+  "sha256": "6a83be0347c08c0b93d7d83ff5440435ebae7a68cb0488406d5100656915a428",
+  "url": "plugins/factorio/parser.wasm"
+}

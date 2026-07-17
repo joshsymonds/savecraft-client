@@ -10,7 +10,6 @@ import (
 	"encoding/json/jsontext"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"log/slog"
 	"maps"
@@ -26,8 +25,8 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
-	pb "github.com/joshsymonds/savecraft.gg/internal/proto/savecraft/v1"
+	"github.com/joshsymonds/savecraft-client/internal/pluginmgr"
+	pb "github.com/joshsymonds/savecraft-client/internal/proto/savecraft/v1"
 )
 
 const pluginUpdateInterval = 24 * time.Hour
@@ -38,6 +37,8 @@ const heartbeatInterval = 30 * time.Second
 // parse yields an empty saveName ("identity unknown") and no prior name has
 // been seen for the file path.
 const unknownSaveName = "Unknown Player"
+
+const pluginDownloadFailedMessage = "plugin download failed"
 
 // --- Domain types ---
 
@@ -351,7 +352,7 @@ func New(
 	log *slog.Logger,
 ) *Daemon {
 	if log == nil {
-		log = slog.New(slog.NewTextHandler(io.Discard, nil))
+		log = slog.New(slog.DiscardHandler)
 	}
 	return &Daemon{
 		cfg:                     cfg,
@@ -789,7 +790,7 @@ func (d *Daemon) ensurePluginReady(
 	if ensureErr := d.plugins.EnsurePlugin(ctx, gameID); ensureErr != nil {
 		d.log.ErrorContext(
 			ctx,
-			"plugin download failed",
+			pluginDownloadFailedMessage,
 			slog.String("game_id", gameID),
 			slog.String("error", ensureErr.Error()),
 		)
@@ -1414,7 +1415,7 @@ func (d *Daemon) handlePluginAvailable(ctx context.Context, msg *pb.PluginAvaila
 		d.sendMessage(ctx, &pb.Message{
 			Payload: &pb.Message_PluginDownloadFailed{PluginDownloadFailed: &pb.PluginDownloadFailed{
 				GameId:  msg.GameId,
-				Message: "plugin download failed",
+				Message: pluginDownloadFailedMessage,
 			}},
 		})
 		return
@@ -1723,7 +1724,7 @@ func (d *Daemon) handleConfigUpdate(
 				d.mu.Lock()
 				delete(d.cfg.Games, gameID)
 				d.mu.Unlock()
-				results[gameID] = configGameResult{Error: "plugin download failed", ResolvedPath: resolvedPath}
+				results[gameID] = configGameResult{Error: pluginDownloadFailedMessage, ResolvedPath: resolvedPath}
 				continue
 			}
 			d.scanGame(ctx, gameID, gameCfg, false)
@@ -1742,7 +1743,7 @@ func (d *Daemon) handleConfigUpdate(
 				d.mu.Lock()
 				delete(d.cfg.Games, gameID)
 				d.mu.Unlock()
-				results[gameID] = configGameResult{Error: "plugin download failed", ResolvedPath: resolvedPath}
+				results[gameID] = configGameResult{Error: pluginDownloadFailedMessage, ResolvedPath: resolvedPath}
 				continue
 			}
 			d.scanGame(ctx, gameID, gameCfg, false)

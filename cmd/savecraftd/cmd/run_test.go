@@ -6,15 +6,15 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/joshsymonds/savecraft.gg/internal/envfile"
+	"github.com/joshsymonds/savecraft-client/internal/envfile"
 )
 
 func TestLoadConfig_UsesServerURLDefault(t *testing.T) {
 	// Unset SAVECRAFT_SERVER_URL so loadConfig falls back to default.
-	t.Setenv("SAVECRAFT_SERVER_URL", "")
-	os.Unsetenv("SAVECRAFT_SERVER_URL")
+	t.Setenv(envServerURL, "")
+	os.Unsetenv(envServerURL)
 
-	t.Setenv("SAVECRAFT_AUTH_TOKEN", "test-token")
+	t.Setenv(envAuthToken, "test-token")
 
 	cfg, err := loadConfig("https://staging-api.savecraft.gg", "https://staging-install.savecraft.gg")
 	if err != nil {
@@ -30,9 +30,9 @@ func TestLoadConfig_UsesServerURLDefault(t *testing.T) {
 }
 
 func TestLoadConfig_EnvVarOverridesDefault(t *testing.T) {
-	t.Setenv("SAVECRAFT_SERVER_URL", "https://custom.savecraft.gg")
+	t.Setenv(envServerURL, "https://custom.savecraft.gg")
 	t.Setenv("SAVECRAFT_INSTALL_URL", "https://custom-install.savecraft.gg")
-	t.Setenv("SAVECRAFT_AUTH_TOKEN", "test-token")
+	t.Setenv(envAuthToken, "test-token")
 
 	cfg, err := loadConfig("https://staging-api.savecraft.gg", "https://staging-install.savecraft.gg")
 	if err != nil {
@@ -52,20 +52,20 @@ func TestLoadConfig_EnvFileOverridesDefault(t *testing.T) {
 	envPath := filepath.Join(dir, "env")
 
 	if err := envfile.Write(envPath, map[string]string{
-		"SAVECRAFT_SERVER_URL":  "https://from-file.savecraft.gg",
+		envServerURL:            "https://from-file.savecraft.gg",
 		"SAVECRAFT_INSTALL_URL": "https://install-from-file.savecraft.gg",
-		"SAVECRAFT_AUTH_TOKEN":  "file-token",
+		envAuthToken:            "file-token",
 	}); err != nil {
 		t.Fatalf("write env file: %v", err)
 	}
 
 	// Ensure env vars are unset so env file takes effect.
-	t.Setenv("SAVECRAFT_SERVER_URL", "")
-	os.Unsetenv("SAVECRAFT_SERVER_URL")
+	t.Setenv(envServerURL, "")
+	os.Unsetenv(envServerURL)
 	t.Setenv("SAVECRAFT_INSTALL_URL", "")
 	os.Unsetenv("SAVECRAFT_INSTALL_URL")
-	t.Setenv("SAVECRAFT_AUTH_TOKEN", "")
-	os.Unsetenv("SAVECRAFT_AUTH_TOKEN")
+	t.Setenv(envAuthToken, "")
+	os.Unsetenv(envAuthToken)
 
 	loadEnvFileDefaultsFromPath(envPath)
 
@@ -83,9 +83,9 @@ func TestLoadConfig_EnvFileOverridesDefault(t *testing.T) {
 }
 
 func TestLoadConfig_FailsWithNoServerURL(t *testing.T) {
-	t.Setenv("SAVECRAFT_SERVER_URL", "")
-	os.Unsetenv("SAVECRAFT_SERVER_URL")
-	t.Setenv("SAVECRAFT_AUTH_TOKEN", "test-token")
+	t.Setenv(envServerURL, "")
+	os.Unsetenv(envServerURL)
+	t.Setenv(envAuthToken, "test-token")
 
 	_, err := loadConfig("", "https://install.savecraft.gg")
 	if err == nil {
@@ -94,8 +94,8 @@ func TestLoadConfig_FailsWithNoServerURL(t *testing.T) {
 }
 
 func TestLoadConfig_FailsWithNoInstallURL(t *testing.T) {
-	t.Setenv("SAVECRAFT_SERVER_URL", "https://api.savecraft.gg")
-	t.Setenv("SAVECRAFT_AUTH_TOKEN", "test-token")
+	t.Setenv(envServerURL, "https://api.savecraft.gg")
+	t.Setenv(envAuthToken, "test-token")
 	t.Setenv("SAVECRAFT_INSTALL_URL", "")
 	os.Unsetenv("SAVECRAFT_INSTALL_URL")
 
@@ -106,8 +106,8 @@ func TestLoadConfig_FailsWithNoInstallURL(t *testing.T) {
 }
 
 func TestLoadConfig_InstallURLFallsBackToDefault(t *testing.T) {
-	t.Setenv("SAVECRAFT_SERVER_URL", "https://api.savecraft.gg")
-	t.Setenv("SAVECRAFT_AUTH_TOKEN", "test-token")
+	t.Setenv(envServerURL, "https://api.savecraft.gg")
+	t.Setenv(envAuthToken, "test-token")
 	t.Setenv("SAVECRAFT_INSTALL_URL", "")
 	os.Unsetenv("SAVECRAFT_INSTALL_URL")
 
@@ -122,9 +122,9 @@ func TestLoadConfig_InstallURLFallsBackToDefault(t *testing.T) {
 }
 
 func TestLoadConfig_AcceptsMissingAuthToken(t *testing.T) {
-	t.Setenv("SAVECRAFT_SERVER_URL", "https://api.savecraft.gg")
-	t.Setenv("SAVECRAFT_AUTH_TOKEN", "")
-	os.Unsetenv("SAVECRAFT_AUTH_TOKEN")
+	t.Setenv(envServerURL, "https://api.savecraft.gg")
+	t.Setenv(envAuthToken, "")
+	os.Unsetenv(envAuthToken)
 
 	cfg, err := loadConfig("https://api.savecraft.gg", "https://install.savecraft.gg")
 	if err != nil {
@@ -194,8 +194,8 @@ func TestRequireSecureURL(t *testing.T) {
 }
 
 func TestLoadConfig_RejectsPlaintextServerURL(t *testing.T) {
-	t.Setenv("SAVECRAFT_SERVER_URL", "http://api.savecraft.gg")
-	t.Setenv("SAVECRAFT_AUTH_TOKEN", "test-token")
+	t.Setenv(envServerURL, "http://api.savecraft.gg")
+	t.Setenv(envAuthToken, "test-token")
 	t.Setenv("SAVECRAFT_DEV", "")
 	os.Unsetenv("SAVECRAFT_DEV")
 
@@ -206,9 +206,9 @@ func TestLoadConfig_RejectsPlaintextServerURL(t *testing.T) {
 }
 
 func TestLoadConfig_RejectsPlaintextInstallURL(t *testing.T) {
-	t.Setenv("SAVECRAFT_SERVER_URL", "https://api.savecraft.gg")
+	t.Setenv(envServerURL, "https://api.savecraft.gg")
 	t.Setenv("SAVECRAFT_INSTALL_URL", "http://install.savecraft.gg")
-	t.Setenv("SAVECRAFT_AUTH_TOKEN", "test-token")
+	t.Setenv(envAuthToken, "test-token")
 	t.Setenv("SAVECRAFT_DEV", "")
 	os.Unsetenv("SAVECRAFT_DEV")
 
@@ -219,9 +219,9 @@ func TestLoadConfig_RejectsPlaintextInstallURL(t *testing.T) {
 }
 
 func TestLoadConfig_AllowsLoopbackPlaintextInDevMode(t *testing.T) {
-	t.Setenv("SAVECRAFT_SERVER_URL", "http://localhost:8787")
+	t.Setenv(envServerURL, "http://localhost:8787")
 	t.Setenv("SAVECRAFT_INSTALL_URL", "http://127.0.0.1:8788")
-	t.Setenv("SAVECRAFT_AUTH_TOKEN", "test-token")
+	t.Setenv(envAuthToken, "test-token")
 	t.Setenv("SAVECRAFT_DEV", "1")
 
 	cfg, err := loadConfig("https://api.savecraft.gg", "https://install.savecraft.gg")

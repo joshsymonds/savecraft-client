@@ -4,7 +4,7 @@ package main
 import (
 	"os"
 
-	"github.com/joshsymonds/savecraft.gg/cmd/savecraftd/cmd"
+	"github.com/joshsymonds/savecraft-client/cmd/savecraftd/cmd"
 )
 
 var version = "dev"

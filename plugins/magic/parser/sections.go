@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/joshsymonds/savecraft.gg/plugins/magic/parser/data"
+	"github.com/joshsymonds/savecraft-client/plugins/magic/parser/data"
 )
 
 var inventoryInfoKey = []byte("InventoryInfo")

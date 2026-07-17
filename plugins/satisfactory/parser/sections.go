@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/joshsymonds/savecraft.gg/plugins/satisfactory/sav"
+	"github.com/joshsymonds/savecraft-client/plugins/satisfactory/sav"
 )
 
 // saveState accumulates the decoded objects the section builders need.

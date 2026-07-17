@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/joshsymonds/savecraft.gg/plugins/satisfactory/sav"
+	"github.com/joshsymonds/savecraft-client/plugins/satisfactory/sav"
 )
 
 func testHeader() *sav.Header {

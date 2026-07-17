@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/joshsymonds/savecraft.gg/internal/daemon"
-	"github.com/joshsymonds/savecraft.gg/internal/signing"
+	"github.com/joshsymonds/savecraft-client/internal/daemon"
+	"github.com/joshsymonds/savecraft-client/internal/signing"
 )
 
 // signedManifestServer serves /daemon/manifest.json and a detached

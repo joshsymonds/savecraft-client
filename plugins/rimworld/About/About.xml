@@ -52,6 +52,6 @@ RimWorld 1.5 and 1.6, all DLCs. Safe to add or remove mid-save. One Harmony patc
 Sends structured game state to Savecraft's server for your AI to read. No save files, no filesystem paths, no personal data. Open source.
 
 https://savecraft.gg
-https://github.com/joshsymonds/savecraft.gg
+https://github.com/joshsymonds/savecraft-client
 https://discord.gg/YnC8stpEmF</description>
 </ModMetaData>

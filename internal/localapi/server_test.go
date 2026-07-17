@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -302,7 +301,7 @@ func TestHandleRestart_CallsCallback(t *testing.T) {
 }
 
 func TestHandleRestart_Error(t *testing.T) {
-	srv := NewServer("localhost:0", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	srv := NewServer("localhost:0", slog.New(slog.DiscardHandler))
 	srv.SetRestartFunc(func() error {
 		return fmt.Errorf("powershell: access denied")
 	})

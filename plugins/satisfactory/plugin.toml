@@ -30,56 +30,6 @@ sources = ["coffeestain"]
 name = "Josh Symonds"
 github = "joshsymonds"
 
-[reference.modules.recipe_lookup]
-name = "Recipe & Item Lookup"
-description = "Look up any Satisfactory item, recipe, or production building by name. Returns exact ingredients, products, per-minute rates at 100% clock, craft duration, which buildings run it, alternate-recipe flags, and milestone unlock tiers. Covers the build/craft cost of everything that has a recipe — including equipment (chainsaw, jetpack, rebar gun), vehicles (Truck, Tractor, Explorer), trains (Locomotive, Freight Car), and ammunition — not just factory machines. Use proactively for ANY question about what makes what, ratios, build/craft costs, or building stats — prevents hallucinated recipe data."
-requires_save = false
-
-[reference.modules.production_planner]
-name = "Production Planner"
-description = "Plan a full Satisfactory production chain: target item and rate per minute returns machine counts per recipe, raw ore/fluid requirements, byproducts, and total power draw. Pass save_id to plan with the player's actual unlocked alternate recipes, existing machine capacity, and the session's Game Mode economy multipliers (1.2 parts cost / power consumption) applied automatically. Use for any 'how do I make N per minute of X' or factory scaling question."
-requires_save = false
-
-[reference.modules.production_planner.section_mappings]
-progression = "progression"
-production_summary = "production_summary"
-game_overview = "game_overview"
-
-[reference.modules.milestone_navigator]
-name = "Milestone Navigator"
-description = "Navigate Satisfactory tiers and milestones: exact costs and recipe unlocks per milestone, full tier listings, and — with save_id — every remaining milestone to a target tier with cumulative item costs based on what the player already purchased. Use for 'what do I need for Tier N' and unlock-path questions."
-requires_save = false
-
-[reference.modules.milestone_navigator.section_mappings]
-progression = "progression"
-
-[reference.modules.power_calculator]
-name = "Power Calculator"
-description = "Size Satisfactory generator farms: target megawatts returns generator counts per type, fuel consumption per minute for every accepted fuel, supplemental water rates, and nuclear waste output. Use for any power planning or 'how many generators / how much fuel' question."
-requires_save = false
-
-[reference.modules.space_elevator]
-name = "Space Elevator"
-description = "Satisfactory Project Assembly phase requirements: the exact parts and quantities each of the 5 phases needs, the recipe that makes each part, and the tiers each phase unlocks. Pass save_id to see the player's current phase, every remaining phase with cumulative parts, and the session's Space Parts Cost Multiplier applied automatically. Use for 'what does the space elevator need', endgame planning, and 'what's left to finish the game'."
-requires_save = false
-
-[reference.modules.space_elevator.section_mappings]
-progression = "progression"
-game_overview = "game_overview"
-
-[reference.modules.hard_drive_tiers]
-name = "Hard Drive Tiers"
-description = "Which Satisfactory alternate recipes (the random unlocks from hard drives at the MAM) are worth taking, re-derived by linear optimization for the current patch. Every recipe carries two tiers — effort (fewer/simpler buildings) and resources (less raw extraction) — with the modeled whole-factory improvement and per-metric deltas as evidence. Pass save_id to flag which alternates the player has unlocked and recommend the highest-value ones they haven't. Use for 'is this alternate worth it', 'which hard drive recipes should I prioritize', and 'best alternate for X'."
-requires_save = false
-
-[reference.modules.hard_drive_tiers.section_mappings]
-progression = "progression"
-
-[reference.modules.building_reference]
-name = "Building Reference"
-description = "The game's own reference card for any Satisfactory building, straight from the shipped game data: the in-game description verbatim plus footprint/dimensions, build cost, power draw, conveyor/pipe throughput, storage capacity, and unlock tier. Covers every buildable — machines, generators, belts, pipes, foundations, blueprint designers, and the Dimensional Depot. Look up one building by name, or list a category (production, extraction, power, logistics, structure, special). Use PROACTIVELY whenever the player asks how a building works, what it does, its size/footprint, build cost, or stats — building facts drift between patches, so prefer this over memory. Covers only placeable buildings — for the cost of vehicles, trains, equipment, or ammunition use recipe_lookup instead. Works with no save connected."
-requires_save = false
-
 [default_paths]
 windows = "%LOCALAPPDATA%/FactoryGame/Saved/SaveGames/*"
 linux = "~/.local/share/Steam/steamapps/compatdata/526870/pfx/drive_c/users/steamuser/AppData/Local/FactoryGame/Saved/SaveGames/*"

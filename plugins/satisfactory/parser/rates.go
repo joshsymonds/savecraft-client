@@ -2,7 +2,7 @@ package main
 
 // Per-minute flow rates for a machine running a recipe, computed deterministically
 // from the recipe's craft duration. The formula mirrors the reference layer's
-// perMinute (reference/lookup.go): amount × 60 / DurationSec, then scaled by the
+// perMinute uses amount × 60 / DurationSec, then scales by the
 // machine's clock. Rates are in the recipe's own Amount units per minute (fluids
 // stay ×1000-scaled; display-side normalization is the caller's concern).
 

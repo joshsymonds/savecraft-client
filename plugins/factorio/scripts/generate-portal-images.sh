@@ -9,7 +9,7 @@
 set -e
 
 BASE="$(cd "$(dirname "$0")/../../.." && pwd)"
-ICON="$BASE/web/static/icon-512.png"
+ICON="$BASE/assets/icon.png"
 MOD="$BASE/plugins/factorio/mod"
 WORK="$(mktemp -d)"
 

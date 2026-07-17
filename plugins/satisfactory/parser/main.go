@@ -13,7 +13,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/joshsymonds/savecraft.gg/plugins/satisfactory/sav"
+	"github.com/joshsymonds/savecraft-client/plugins/satisfactory/sav"
 )
 
 // stderr is the unstructured debug log sink (captured by the daemon).

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/joshsymonds/savecraft.gg/internal/localapi"
+	"github.com/joshsymonds/savecraft-client/internal/localapi"
 )
 
 func TestUpdatePluginsCommand(t *testing.T) {

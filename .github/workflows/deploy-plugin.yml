@@ -9,10 +9,11 @@ on:
       - 'plugins/**/*.go'
       - 'plugins/**/*.rs'
       - 'plugins/**/Cargo.toml'
+      - 'plugins/*/Justfile'
       - 'plugins/*/icon.*'
-      - 'reference/src/**'
-      - 'reference/test/**'
-      - 'reference/wrangler.toml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'cmd/plugin-registry/**'
       - '.github/workflows/deploy-plugin.yml'
   pull_request:
     paths:
@@ -20,10 +21,11 @@ on:
       - 'plugins/**/*.go'
       - 'plugins/**/*.rs'
       - 'plugins/**/Cargo.toml'
+      - 'plugins/*/Justfile'
       - 'plugins/*/icon.*'
-      - 'reference/src/**'
-      - 'reference/test/**'
-      - 'reference/wrangler.toml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'cmd/plugin-registry/**'
       - '.github/workflows/deploy-plugin.yml'
   workflow_dispatch:
     inputs:
@@ -38,7 +40,6 @@ concurrency:
 
 permissions:
   contents: write
-  actions: write
 
 env:
   GOEXPERIMENT: jsonv2
@@ -89,10 +90,6 @@ jobs:
             echo "Plugins to check: ${changed}"
           fi
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
       - name: Build plugins
         if: steps.changed.outputs.plugins != ''
         env:
@@ -103,32 +100,22 @@ jobs:
             just build-plugin "$game_id"
           done
 
-      - name: Verify manifest.json is up to date
+      - name: Verify client-manifest.json is up to date
         if: steps.changed.outputs.plugins != ''
         env:
           CHANGED_PLUGINS: ${{ steps.changed.outputs.plugins }}
         run: |
           for game_id in $CHANGED_PLUGINS; do
-            echo "==> Checking manifest: ${game_id}"
-            go run ./cmd/plugin-manifest/ --version dev "plugins/${game_id}"
+            echo "==> Checking client manifest: ${game_id}"
+            go run ./cmd/plugin-registry/ --version dev "plugins/${game_id}"
           done
           # Ignore sha256 lines — WASM binaries aren't reproducible across
           # environments (Rust/Go compiler, OS, linker). The deploy step
           # regenerates the manifest from freshly-built binaries anyway.
-          if ! git diff --exit-code -I '"sha256":' plugins/*/manifest.json; then
+          if ! git diff --exit-code -I '"sha256":' plugins/*/client-manifest.json; then
             echo ""
-            echo "ERROR: manifest.json is out of date (ignoring sha256). Run 'just plugin-manifest <game> dev' and commit the result."
+            echo "ERROR: client-manifest.json is out of date (ignoring sha256). Run 'just plugin-registry <game> dev' and commit the result."
             exit 1
-          fi
-
-      - name: Test reference Worker infrastructure
-        if: steps.changed.outputs.plugins != ''
-        run: |
-          # Only test if at least one plugin produced a reference.wasm
-          if ls plugins/*/reference.wasm 1>/dev/null 2>&1; then
-            cd reference && npm ci && just test
-          else
-            echo "No reference.wasm found, skipping reference worker tests"
           fi
 
   deploy:
@@ -169,13 +156,17 @@ jobs:
           DETECTED_ENV: ${{ steps.version.outputs.environment }}
         run: |
           if [ "$DETECTED_ENV" = "production" ]; then
-            echo "is_production=true" >> "$GITHUB_OUTPUT"
-            echo "r2_bucket=savecraft-plugins" >> "$GITHUB_OUTPUT"
-            echo "server_url=https://api.savecraft.gg" >> "$GITHUB_OUTPUT"
+            {
+              echo "is_production=true"
+              echo "r2_bucket=savecraft-plugins"
+              echo "server_url=https://api.savecraft.gg"
+            } >> "$GITHUB_OUTPUT"
           else
-            echo "is_production=false" >> "$GITHUB_OUTPUT"
-            echo "r2_bucket=savecraft-plugins-staging" >> "$GITHUB_OUTPUT"
-            echo "server_url=https://staging-api.savecraft.gg" >> "$GITHUB_OUTPUT"
+            {
+              echo "is_production=false"
+              echo "r2_bucket=savecraft-plugins-staging"
+              echo "server_url=https://staging-api.savecraft.gg"
+            } >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/setup-go@v5
@@ -208,7 +199,6 @@ jobs:
           TAG_GAME_ID: ${{ steps.parse.outputs.game_id }}
           R2_BUCKET: ${{ steps.config.outputs.r2_bucket }}
           VERSION: ${{ steps.version.outputs.version }}
-          IS_PRODUCTION: ${{ steps.config.outputs.is_production }}
         run: |
           # Production: deploy only the tagged game. Staging: deploy all.
           if [ -n "$TAG_GAME_ID" ]; then
@@ -217,24 +207,13 @@ jobs:
             deploy_plugins="$ALL_PLUGINS"
           fi
 
-          if [ "$IS_PRODUCTION" = "true" ]; then
-            dispatch_ns="savecraft-reference-plugins"
-          else
-            dispatch_ns="savecraft-reference-plugins-staging"
-          fi
-
-          # Pre-install reference Worker dependencies (used by plugins with reference.wasm)
-          if [ -d reference ]; then
-            cd reference && npm ci && cd ..
-          fi
-
           for game_id in $deploy_plugins; do
             echo "==> Processing plugin: ${game_id} v${VERSION}"
             pids=()
 
-            # Generate manifest (works for both WASM and API plugins)
+            # Generate the client-only descriptor.
             just build-plugin "$game_id"
-            go run ./cmd/plugin-manifest/ --version "$VERSION" "plugins/${game_id}"
+            go run ./cmd/plugin-registry/ --version "$VERSION" "plugins/${game_id}"
 
             # Detect plugin source types from plugin.toml (sources is an array)
             plugin_sources=$(grep '^sources *=' "plugins/${game_id}/plugin.toml" | sed 's/.*\[//;s/\].*//;s/"//g;s/,/ /g')
@@ -258,26 +237,12 @@ jobs:
               pids+=($!)
             fi
 
-            # Any plugin with reference.wasm: sign, upload, deploy to WfP
-            ref_file="plugins/${game_id}/reference.wasm"
-            if [ -f "$ref_file" ]; then
-              go run ./cmd/savecraft-sign/ "$ref_file" /tmp/signing_key.priv
-              wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/reference.wasm" --file "$ref_file" --remote &
-              pids+=($!)
-              wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/reference.wasm.sig" --file "${ref_file}.sig" --remote &
-              pids+=($!)
-
-              # Deploy reference Worker to WfP dispatch namespace
-              cp "$ref_file" reference/reference.wasm
-              cd reference && npx wrangler deploy --name "${game_id}-reference" --dispatch-namespace "$dispatch_ns" && cd ..
-              echo "    Deployed ${game_id}-reference to ${dispatch_ns}"
-            fi
-
-            # Upload manifest + detached signature over its literal bytes
-            go run ./cmd/savecraft-sign/ "plugins/${game_id}/manifest.json" /tmp/signing_key.priv
-            wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/manifest.json" --file "plugins/${game_id}/manifest.json" --remote &
+            # Upload the client descriptor + detached signature over its literal bytes.
+            client_manifest="plugins/${game_id}/client-manifest.json"
+            go run ./cmd/savecraft-sign/ "$client_manifest" /tmp/signing_key.priv
+            wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/client-manifest.json" --file "$client_manifest" --remote &
             pids+=($!)
-            wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/manifest.json.sig" --file "plugins/${game_id}/manifest.json.sig" --remote &
+            wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/client-manifest.json.sig" --file "${client_manifest}.sig" --remote &
             pids+=($!)
 
             # Wait for all R2 uploads to finish
@@ -294,9 +259,9 @@ jobs:
           ALL_PLUGINS: ${{ needs.test.outputs.plugins }}
         run: |
           # Conclusion job: rebuild the WHOLE aggregate from each plugin's
-          # CURRENT published per-plugin manifest in R2 (the same source the
-          # Worker reads — NOT a rebuild-all), so a partial deploy still
-          # produces a complete, consistent manifest. Every URL points at the
+          # CURRENT published client descriptor in R2 (not a rebuild-all), so
+          # a partial deploy still produces a complete, consistent manifest.
+          # Every URL points at the
           # server origin (the Worker serves both the binaries and this signed
           # aggregate verbatim from R2 — all plugin delivery on one origin).
           # Sign the literal bytes; the daemon verifies this against the
@@ -304,19 +269,16 @@ jobs:
           mkdir -p dist
           agg='{"plugins":{}}'
           for game_id in $ALL_PLUGINS; do
-            if ! wrangler r2 object get "${R2_BUCKET}/plugins/${game_id}/manifest.json" \
+            if ! wrangler r2 object get "${R2_BUCKET}/plugins/${game_id}/client-manifest.json" \
                 --file "dist/${game_id}.json" --remote 2>/dev/null; then
-              echo "::warning::no published manifest for ${game_id}; excluded from aggregate"
+              echo "::warning::no published client manifest for ${game_id}; excluded from aggregate"
               continue
             fi
             base="${SERVER_URL}/plugins/${game_id}"
             entry="$(jq -c --arg base "$base" '
-              . + {url: ($base + "/parser.wasm")}
+              . + (if .url then {url: ($base + "/parser.wasm")} else {} end)
               + (if (.icon == "icon.png" or .icon == "icon.svg")
                    then {icon_url: ($base + "/" + .icon)} else {} end)
-              + (if .reference
-                   then {reference: (.reference + {url: ($base + "/reference.wasm")})}
-                   else {} end)
             ' "dist/${game_id}.json")"
             agg="$(jq -c --arg id "$game_id" --argjson e "$entry" \
               '.plugins[$id] = $e' <<<"$agg")"
@@ -329,11 +291,6 @@ jobs:
             --file dist/plugins-manifest.json --remote
           wrangler r2 object put "${R2_BUCKET}/plugins/manifest.json.sig" \
             --file dist/plugins-manifest.json.sig --remote
-
-      - name: Trigger worker redeploy
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run deploy-cloud.yml
 
       - name: Clean up signing key
         if: always()
@@ -381,14 +338,14 @@ jobs:
           TAG: ${{ github.ref_name }}
           PREV_TAG: ${{ steps.prev.outputs.tag }}
         run: |
-          notes_flag=""
+          notes_args=()
           if [ -n "$PREV_TAG" ]; then
-            notes_flag="--notes-start-tag $PREV_TAG"
+            notes_args=(--notes-start-tag "$PREV_TAG")
           fi
           gh release create "$TAG" \
             --title "$TAG" \
             --generate-notes \
-            $notes_flag
+            "${notes_args[@]}"
 
       - name: Notify Discord (release)
         if: success() && steps.config.outputs.is_production == 'true'

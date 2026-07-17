@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/joshsymonds/savecraft.gg/plugins/d2r/d2s"
+	"github.com/joshsymonds/savecraft-client/plugins/d2r/d2s"
 )
 
 func loadAtmus(t *testing.T) *d2s.D2S {

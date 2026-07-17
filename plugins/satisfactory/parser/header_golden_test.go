@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/joshsymonds/savecraft.gg/plugins/satisfactory/sav"
+	"github.com/joshsymonds/savecraft-client/plugins/satisfactory/sav"
 )
 
 // Golden tests against real save files. Ground truth is documented in

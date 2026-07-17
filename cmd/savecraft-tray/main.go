@@ -12,7 +12,12 @@ import (
 
 	"fyne.io/systray"
 
-	"github.com/joshsymonds/savecraft.gg/internal/localapi"
+	"github.com/joshsymonds/savecraft-client/internal/localapi"
+)
+
+const (
+	linkCodeFlag = "--link-code"
+	linkURLFlag  = "--link-url"
 )
 
 // iconBytes is set per-platform: .ico on Windows, .png elsewhere.
@@ -78,14 +83,14 @@ func parseLinkFlags() (code, url string) {
 func parseLinkArgs(args []string) (code, url string) {
 	for i, arg := range args {
 		switch {
-		case arg == "--link-code" && i+1 < len(args):
+		case arg == linkCodeFlag && i+1 < len(args):
 			code = args[i+1]
-		case strings.HasPrefix(arg, "--link-code="):
-			code = strings.TrimPrefix(arg, "--link-code=")
-		case arg == "--link-url" && i+1 < len(args):
+		case strings.HasPrefix(arg, linkCodeFlag+"="):
+			code = strings.TrimPrefix(arg, linkCodeFlag+"=")
+		case arg == linkURLFlag && i+1 < len(args):
 			url = args[i+1]
-		case strings.HasPrefix(arg, "--link-url="):
-			url = strings.TrimPrefix(arg, "--link-url=")
+		case strings.HasPrefix(arg, linkURLFlag+"="):
+			url = strings.TrimPrefix(arg, linkURLFlag+"=")
 		}
 	}
 

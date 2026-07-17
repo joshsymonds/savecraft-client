@@ -26,7 +26,7 @@ BASE="$(cd "$(dirname "$0")/../../.." && pwd)"
 PLUGIN="$BASE/plugins/rimworld"
 COLONY="$BASE/colony_screenshot.jpg"
 CLAUDE="$BASE/fangbourne.png"
-ICON="$BASE/web/static/icon-192.png"
+ICON="$BASE/assets/icon.png"
 OUTPUT="$PLUGIN/About/Preview.png"
 WORK="$(mktemp -d)"
 

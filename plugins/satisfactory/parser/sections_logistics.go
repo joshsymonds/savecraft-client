@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/joshsymonds/savecraft.gg/plugins/satisfactory/sav"
+	"github.com/joshsymonds/savecraft-client/plugins/satisfactory/sav"
 )
 
 // logisticsKind classifies storage/transport classes (probed on a 650-hour

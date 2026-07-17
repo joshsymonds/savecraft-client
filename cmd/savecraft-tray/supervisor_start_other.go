@@ -5,7 +5,7 @@ package main
 import (
 	"log/slog"
 
-	"github.com/joshsymonds/savecraft.gg/internal/svcmgr"
+	"github.com/joshsymonds/savecraft-client/internal/svcmgr"
 )
 
 // buildStartDaemonFunc returns a function that starts the daemon via the

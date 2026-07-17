@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/joshsymonds/savecraft.gg/internal/signing"
+	"github.com/joshsymonds/savecraft-client/internal/signing"
 )
 
 const manifestJSON = `{

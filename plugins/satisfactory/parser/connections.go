@@ -3,7 +3,7 @@ package main
 import (
 	"strings"
 
-	"github.com/joshsymonds/savecraft.gg/plugins/satisfactory/sav"
+	"github.com/joshsymonds/savecraft-client/plugins/satisfactory/sav"
 )
 
 // connEdge is one logistics link between two actors, captured from a

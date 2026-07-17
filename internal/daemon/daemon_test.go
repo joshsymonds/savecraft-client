@@ -22,12 +22,12 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
-	pb "github.com/joshsymonds/savecraft.gg/internal/proto/savecraft/v1"
+	"github.com/joshsymonds/savecraft-client/internal/pluginmgr"
+	pb "github.com/joshsymonds/savecraft-client/internal/proto/savecraft/v1"
 )
 
 func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 // --- Fakes ---
@@ -522,9 +522,8 @@ func newStashState() *GameState {
 // non-empty conventional name, never an empty saveName. An earlier version
 // of this test asserted the opposite — that an empty saveName should
 // marshal through unmodified for "game-scoped" saves — but that shape was
-// stale: the server unconditionally rejects any push with an empty
-// saveName (worker/src/hub.ts:1016-1019, "pushSave missing identity or
-// gameId"), and no real plugin ever emits one — the real d2r plugin always
+// stale: the wire contract requires a non-empty saveName and gameId, and no
+// real plugin emits that shape — the real d2r plugin always
 // derives a name from the stash kind (plugins/d2r/parser/main.go:64). Empty
 // saveName now means "identity unknown" and is substituted by the daemon;
 // see TestParseAndPush_EmptySaveNameFallsBackToUnknownPlayer.

@@ -1,0 +1,34 @@
+{
+  "game_id": "sdv",
+  "sources": [
+    "wasm"
+  ],
+  "icon": "icon.png",
+  "name": "Stardew Valley",
+  "description": "Parses Stardew Valley 1.6 save files into structured game state",
+  "channel": "beta",
+  "coverage": "partial",
+  "file_extensions": [],
+  "homepage": "https://savecraft.gg/plugins/sdv",
+  "limitations": [
+    "Only Stardew Valley 1.6+ saves supported",
+    "Directory-based save discovery requires daemon enhancement (pending)"
+  ],
+  "attribution": {
+    "sources": [
+      "concernedape"
+    ]
+  },
+  "author": {
+    "name": "Josh Symonds",
+    "github": "joshsymonds"
+  },
+  "default_paths": {
+    "windows": "%APPDATA%/StardewValley/Saves",
+    "linux": "~/.config/StardewValley/Saves",
+    "darwin": "~/.config/StardewValley/Saves"
+  },
+  "version": "dev",
+  "sha256": "bc4a4f22400b4eaa0168c518bdee9ab4e7bd9d621fc9de754cee07d53d8bbffc",
+  "url": "plugins/sdv/parser.wasm"
+}

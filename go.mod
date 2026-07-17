@@ -1,4 +1,4 @@
-module github.com/joshsymonds/savecraft.gg
+module github.com/joshsymonds/savecraft-client
 
 go 1.26.0
 
@@ -13,10 +13,6 @@ require (
 	golang.org/x/term v0.40.0
 	google.golang.org/protobuf v1.36.11
 )
-
-require github.com/mattn/go-sqlite3 v1.14.37
-
-require golang.org/x/text v0.36.0
 
 require (
 	github.com/godbus/dbus/v5 v5.1.0 // indirect

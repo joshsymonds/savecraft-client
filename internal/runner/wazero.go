@@ -18,8 +18,8 @@ import (
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	"github.com/tetratelabs/wazero/sys"
 
-	"github.com/joshsymonds/savecraft.gg/internal/daemon"
-	"github.com/joshsymonds/savecraft.gg/internal/signing"
+	"github.com/joshsymonds/savecraft-client/internal/daemon"
+	"github.com/joshsymonds/savecraft-client/internal/signing"
 )
 
 const maxResultSize = 2 * 1024 * 1024 // 2MB

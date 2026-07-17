@@ -1,0 +1,36 @@
+{
+  "game_id": "d2r",
+  "sources": [
+    "wasm"
+  ],
+  "icon": "icon.png",
+  "name": "Diablo II: Resurrected",
+  "description": "Parses .d2s character saves and .d2i shared stash from Reign of the Warlock (v105)",
+  "channel": "beta",
+  "coverage": "partial",
+  "file_extensions": [
+    ".d2s",
+    ".d2i"
+  ],
+  "homepage": "https://savecraft.gg/plugins/d2r",
+  "limitations": [
+    "Only Reign of the Warlock (v105) saves — classic LoD not supported"
+  ],
+  "attribution": {
+    "sources": [
+      "blizzard"
+    ]
+  },
+  "author": {
+    "name": "Josh Symonds",
+    "github": "joshsymonds"
+  },
+  "default_paths": {
+    "windows": "%SAVED_GAMES%/Diablo II Resurrected",
+    "linux": "~/.steam/steam/steamapps/compatdata/2536520/pfx/drive_c/users/steamuser/Saved Games/Diablo II Resurrected",
+    "darwin": "~/Library/Application Support/Diablo II Resurrected"
+  },
+  "version": "dev",
+  "sha256": "1e7218cdeec92a824e57cb0e5e2da7a0e380b09cdf695edcb55cefc6612f8243",
+  "url": "plugins/d2r/parser.wasm"
+}

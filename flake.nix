@@ -1,5 +1,5 @@
 {
-  description = "Savecraft — game save parser + MCP server";
+  description = "Savecraft local game-save client";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -23,38 +23,9 @@
   } @ inputs: let
     forEachSystem = nixpkgs.lib.genAttrs ["x86_64-linux" "aarch64-linux" "aarch64-darwin" "x86_64-darwin"];
   in {
-    nixosModules.magic-data-refresh = import ./nix/magic-data-refresh.nix;
-    nixosModules.pob-server = import ./nix/pob-server.nix;
-
     packages = forEachSystem (system: let
       pkgs = nixpkgs.legacyPackages.${system};
     in {
-      pob-server = pkgs.buildGoModule {
-        pname = "pob-server";
-        version = "0.1.0";
-        src = builtins.path {
-          name = "savecraft-src";
-          path = ./.;
-          filter = path: type:
-            let rel = pkgs.lib.removePrefix (toString ./.) (toString path);
-            in (type == "directory" && !pkgs.lib.hasPrefix "/vendor" rel)
-              || pkgs.lib.hasPrefix "/go.mod" rel
-              || pkgs.lib.hasPrefix "/go.sum" rel
-              || pkgs.lib.hasPrefix "/cmd/pob-server" rel
-              || pkgs.lib.hasPrefix "/internal" rel
-              # pob-server's poe2 import tests share the adapter's GGG
-              # character fixtures rather than duplicating them.
-              || pkgs.lib.hasPrefix "/plugins/poe2/testdata" rel;
-        };
-        subPackages = ["cmd/pob-server"];
-        vendorHash = "sha256-QXcXRR/AnEIW0nejzdpG2lXYYhUBs9wHTWBWl5QkdfM=";
-        postInstall = ''
-          mkdir -p $out/share/pob-server
-          cp cmd/pob-server/wrapper.lua $out/share/pob-server/
-        '';
-        meta.mainProgram = "pob-server";
-      };
-
       savecraftd = pkgs.buildGoModule {
         pname = "savecraftd";
         version = "0.1.0";

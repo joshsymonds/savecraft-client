@@ -4,7 +4,6 @@ package wsconn
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -72,7 +71,7 @@ func New(serverURL, token string, opts ...Option) *Client {
 	client := &Client{
 		serverURL:      serverURL,
 		token:          token,
-		log:            slog.New(slog.NewTextHandler(io.Discard, nil)),
+		log:            slog.New(slog.DiscardHandler),
 		messages:       make(chan []byte, 64),
 		connected:      make(chan struct{}, 1),
 		forceReconnect: make(chan struct{}, 1),
@@ -106,7 +105,6 @@ func (c *Client) IsConnected() bool {
 // loop even mid-reconnect — without depending on catching the live connection
 // pointer at the right instant.
 func (c *Client) Start(ctx context.Context) {
-	//nolint:gosec // G118: cancel is stored in c.cancel and called in Close.
 	ctx, cancel := context.WithCancel(ctx)
 
 	c.mu.Lock()

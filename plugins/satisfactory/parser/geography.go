@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/joshsymonds/savecraft.gg/plugins/satisfactory/sav"
+	"github.com/joshsymonds/savecraft-client/plugins/satisfactory/sav"
 )
 
 // mapMarker is a player-placed map marker: a name and a world position. These

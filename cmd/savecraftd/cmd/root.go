@@ -9,8 +9,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/joshsymonds/savecraft.gg/internal/localapi"
-	"github.com/joshsymonds/savecraft.gg/internal/svcmgr"
+	"github.com/joshsymonds/savecraft-client/internal/localapi"
+	"github.com/joshsymonds/savecraft-client/internal/svcmgr"
+)
+
+const (
+	serviceDisplayName = "Savecraft Daemon"
+	serviceDescription = "Syncs game saves to the cloud via Savecraft"
+	envAuthToken       = "SAVECRAFT_AUTH_TOKEN"
+	envServerURL       = "SAVECRAFT_SERVER_URL"
 )
 
 // Execute builds the command tree and runs the root command.
@@ -34,8 +41,8 @@ func Execute(version, serverURL, installURL, appName, statusPort, frontendURL st
 
 	svcCfg := svcmgr.Config{
 		Name:        appName + "-daemon",
-		DisplayName: "Savecraft Daemon",
-		Description: "Syncs game saves to the cloud via Savecraft",
+		DisplayName: serviceDisplayName,
+		Description: serviceDescription,
 		AppName:     appName,
 	}
 

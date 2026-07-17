@@ -5,7 +5,7 @@ import (
 	"math"
 	"sort"
 
-	"github.com/joshsymonds/savecraft.gg/plugins/gvas"
+	"github.com/joshsymonds/savecraft-client/plugins/gvas"
 )
 
 // buildAllSections constructs all save sections from the parsed GVAS save.

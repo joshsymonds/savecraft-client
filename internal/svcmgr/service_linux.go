@@ -99,7 +99,7 @@ func serviceStop(cfg Config, run commandRunner) error {
 }
 
 func serviceRestart(cfg Config, run commandRunner) error {
-	return systemctlRun(run, "restart", cfg.Name+".service")
+	return systemctlRun(run, actionRestart, cfg.Name+".service")
 }
 
 func systemctlRun(run commandRunner, args ...string) error {

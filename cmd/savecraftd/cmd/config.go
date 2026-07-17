@@ -15,16 +15,16 @@ import (
 	"github.com/coder/websocket"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/joshsymonds/savecraft.gg/internal/daemon"
-	"github.com/joshsymonds/savecraft.gg/internal/envfile"
-	"github.com/joshsymonds/savecraft.gg/internal/osfs"
-	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
-	pb "github.com/joshsymonds/savecraft.gg/internal/proto/savecraft/v1"
-	"github.com/joshsymonds/savecraft.gg/internal/runner"
-	"github.com/joshsymonds/savecraft.gg/internal/selfupdate"
-	"github.com/joshsymonds/savecraft.gg/internal/signing"
-	"github.com/joshsymonds/savecraft.gg/internal/watcher"
-	"github.com/joshsymonds/savecraft.gg/internal/wsconn"
+	"github.com/joshsymonds/savecraft-client/internal/daemon"
+	"github.com/joshsymonds/savecraft-client/internal/envfile"
+	"github.com/joshsymonds/savecraft-client/internal/osfs"
+	"github.com/joshsymonds/savecraft-client/internal/pluginmgr"
+	pb "github.com/joshsymonds/savecraft-client/internal/proto/savecraft/v1"
+	"github.com/joshsymonds/savecraft-client/internal/runner"
+	"github.com/joshsymonds/savecraft-client/internal/selfupdate"
+	"github.com/joshsymonds/savecraft-client/internal/signing"
+	"github.com/joshsymonds/savecraft-client/internal/watcher"
+	"github.com/joshsymonds/savecraft-client/internal/wsconn"
 )
 
 type subsystems struct {
@@ -152,7 +152,7 @@ func requireSecureURL(rawURL string, devMode bool) error {
 }
 
 func loadConfig(serverURLDefault, installURLDefault string) (*appConfig, error) {
-	serverURL := os.Getenv("SAVECRAFT_SERVER_URL")
+	serverURL := os.Getenv(envServerURL)
 	if serverURL == "" {
 		serverURL = serverURLDefault
 	}
@@ -179,7 +179,7 @@ func loadConfig(serverURLDefault, installURLDefault string) (*appConfig, error) 
 		return nil, fmt.Errorf("SAVECRAFT_INSTALL_URL: %w", err)
 	}
 
-	authToken := os.Getenv("SAVECRAFT_AUTH_TOKEN")
+	authToken := os.Getenv(envAuthToken)
 
 	sourceID := os.Getenv("SAVECRAFT_SOURCE_ID")
 	if sourceID == "" {
@@ -242,9 +242,9 @@ func autoRegister(ctx context.Context, cfg *appConfig, envPath string) (*registe
 
 	// Persist credentials.
 	if writeErr := envfile.Write(envPath, map[string]string{
-		"SAVECRAFT_AUTH_TOKEN":  result.Token,
+		envAuthToken:            result.Token,
 		"SAVECRAFT_SOURCE_UUID": result.SourceUUID,
-		"SAVECRAFT_SERVER_URL":  cfg.ServerURL,
+		envServerURL:            cfg.ServerURL,
 	}); writeErr != nil {
 		return nil, false, fmt.Errorf("persist credentials: %w", writeErr)
 	}

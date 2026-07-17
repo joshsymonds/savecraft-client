@@ -4,7 +4,7 @@ import (
 	"maps"
 	"testing"
 
-	"github.com/joshsymonds/savecraft.gg/plugins/satisfactory/sav"
+	"github.com/joshsymonds/savecraft-client/plugins/satisfactory/sav"
 )
 
 // Three screw constructors in one group — producing, blocked, starved — must

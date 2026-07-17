@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/joshsymonds/savecraft.gg/internal/signing"
+	"github.com/joshsymonds/savecraft-client/internal/signing"
 )
 
 func main() {

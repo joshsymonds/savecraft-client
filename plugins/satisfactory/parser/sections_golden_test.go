@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/joshsymonds/savecraft.gg/plugins/satisfactory/sav"
+	"github.com/joshsymonds/savecraft-client/plugins/satisfactory/sav"
 )
 
 // parseFixtureSections runs the full pipeline (Open -> Extract -> sections)

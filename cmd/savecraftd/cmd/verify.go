@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/joshsymonds/savecraft.gg/internal/envfile"
+	"github.com/joshsymonds/savecraft-client/internal/envfile"
 )
 
 func buildVerifyCommand(appName, serverURLDefault string) *cobra.Command {
@@ -31,7 +31,7 @@ the daemon's env file, falling back to the compiled-in default.`,
 				if err != nil {
 					return fmt.Errorf("read env file: %w", err)
 				}
-				serverURL = vars["SAVECRAFT_SERVER_URL"]
+				serverURL = vars[envServerURL]
 			}
 			if serverURL == "" {
 				serverURL = serverURLDefault
@@ -51,7 +51,7 @@ func runVerifyWithPath(cmd *cobra.Command, serverURL string, envPath string) err
 		return fmt.Errorf("read env file: %w", err)
 	}
 
-	token := vars["SAVECRAFT_AUTH_TOKEN"]
+	token := vars[envAuthToken]
 	if token == "" {
 		return fmt.Errorf("no auth token found in %s", envPath)
 	}

@@ -1,0 +1,46 @@
+{
+  "game_id": "satisfactory",
+  "sources": [
+    "wasm"
+  ],
+  "icon": "icon.png",
+  "name": "Satisfactory",
+  "description": "Parses .sav save files: factory machines, production, power, storage, trains, progression",
+  "channel": "alpha",
+  "coverage": "partial",
+  "file_extensions": [
+    ".sav"
+  ],
+  "exclude_dirs": [
+    "SaveGames_backup",
+    "ServerLocalCache"
+  ],
+  "homepage": "https://savecraft.gg/plugins/satisfactory",
+  "limitations": [
+    "Saves from game versions 1.0 through 1.2 only (save versions 46-60); newer game versions are rejected until their format is verified",
+    "Per-base item flow rates (production, consumption, net, in-base buffer) are computed deterministically in flow_balance from recipe durations and machine clock/somersloop; extractor (mining) output rates still depend on node purity, which is not in the save, so mined items are flagged rawSupplied rather than rated",
+    "Machine status is inferred from measured productivity and inventory: 'balanced' (at capacity), 'input_limited'/'output_limited' (below capacity, split by which buffer is the constraint, with limitingInput naming the short item), 'blocked_downstream'/'starved_upstream', 'unconfigured' (no recipe), and 'idle' when the cause is undetermined. The save has no power-outage flag, so an idle machine is never asserted to be unpowered; a power-corroborated status is not yet implemented",
+    "Production lines cover belt/pipe-connected machines only; machines with no connection are reported via unconnectedMachines. Train/drone/truck routing between terminals is not reconstructed — stations, ports, sinks, and storage appear as line boundaries by building type, not by player-given station name",
+    "Geography bases are proximity clusters of machines, not belt-connectivity groups (see production_lines for connected groups)",
+    "Resource node types and purities require static map reference data; the geography section infers a node's resource from its extractor's output but cannot report purity",
+    "Modded buildings and machines added after game 1.2 are not extracted",
+    "Blueprint designer contents are not parsed"
+  ],
+  "attribution": {
+    "sources": [
+      "coffeestain"
+    ]
+  },
+  "author": {
+    "name": "Josh Symonds",
+    "github": "joshsymonds"
+  },
+  "default_paths": {
+    "windows": "%LOCALAPPDATA%/FactoryGame/Saved/SaveGames/*",
+    "linux": "~/.local/share/Steam/steamapps/compatdata/526870/pfx/drive_c/users/steamuser/AppData/Local/FactoryGame/Saved/SaveGames/*",
+    "darwin": ""
+  },
+  "version": "dev",
+  "sha256": "16f00919f792b59d41d4c235f9bbbc594a9bed8b5d4d6598470933d9c01ac44e",
+  "url": "plugins/satisfactory/parser.wasm"
+}

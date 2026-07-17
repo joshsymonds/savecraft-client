@@ -1,182 +1,58 @@
-<p align="center">
-  <img src="assets/icon.png" width="180" alt="Savecraft" />
-</p>
+# Savecraft Client
 
-<h1 align="center">Savecraft</h1>
+Savecraft connects local game state to the hosted Savecraft product. This
+repository contains every component Savecraft distributes to or installs on a
+user's machine:
 
-<p align="center">
-  <strong>Real game data for your AI assistant, on every supported game.</strong>
-</p>
+- the `savecraftd` daemon and system-tray client;
+- the installer, service integration, self-updater, and Windows MSI sources;
+- the wazero-based WASM plugin runtime and all bundled save-file parser plugins;
+- the Factorio Lua mod and RimWorld C# mod.
 
-<p align="center">
-  <a href="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-cloud.yml"><img src="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-cloud.yml/badge.svg" alt="Cloud Deploy" /></a>
-  <a href="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-daemon.yml"><img src="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-daemon.yml/badge.svg" alt="Daemon Deploy" /></a>
-  <a href="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-plugin.yml"><img src="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-plugin.yml/badge.svg" alt="Plugin Deploy" /></a>
-  <a href="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-install.yml"><img src="https://github.com/joshsymonds/savecraft.gg/actions/workflows/deploy-install.yml/badge.svg" alt="Install Deploy" /></a>
-  <a href="https://github.com/joshsymonds/savecraft.gg/actions/workflows/test-windows.yml"><img src="https://github.com/joshsymonds/savecraft.gg/actions/workflows/test-windows.yml/badge.svg" alt="Windows Tests" /></a>
-</p>
+The sole hosted exception in this repository is [`install/worker`](install/worker/),
+which distributes client installers and updates. The hosted Savecraft product
+is proprietary and developed elsewhere.
 
-<p align="center">
-  <video src="https://github.com/user-attachments/assets/a44e59dd-b622-413f-a27a-6670cf51d74a" />
-</p>
+## Local data flow
 
-Savecraft gives Claude, ChatGPT, and Gemini real game data via [MCP](https://modelcontextprotocol.io/) on every supported game (Magic, Path of Exile, Factorio, RimWorld, Stellaris, Diablo II, and more): rules, items, builds, economy, the moment you add a game. Add a game and Savecraft connects it the right way for that game -- you never pick the plumbing. Account games (Path of Exile, World of Warcraft) connect through the game's own read-only sign-in. Save-file games are parsed by a local daemon on the machine you play on, so your AI sees your actual characters, gear, and run progress.
+The daemon runs locally. It reads save, log, or mod-export files only from save
+directories selected by the user, then runs the matching parser locally in a
+WASM sandbox. The tray communicates with the daemon over localhost. The
+Factorio and RimWorld integrations run inside their respective games.
 
----
+Raw save files stay on the user's machine. The client sends parsed game state
+and operational messages to the hosted service. The exact wire egress schema is
+[`proto/savecraft/v1/protocol.proto`](proto/savecraft/v1/protocol.proto).
 
-## Quick Start
+## Repository layout
 
-**1. Connect your AI**
-
-**ChatGPT:** install the [Savecraft app](https://chatgpt.com/apps/savecraft/asdk_app_69bf076444388191b92e9c482184b44c) -- one click from the OpenAI app directory.
-
-**Claude:** sign in at [my.savecraft.gg](https://my.savecraft.gg) to get your MCP connector URL, then add it to Claude's connector settings.
-
-**2. Add a game**
-
-At [my.savecraft.gg](https://my.savecraft.gg) you add a game; Savecraft connects it the way that game works. There is one verb -- add a game -- and no install to start.
-
-- **Reference is instant.** Every supported game answers rules, items, builds, and economy questions the moment it's added: no account, no install, no saves.
-- **Account games** (Path of Exile -- a GGG-approved connection -- and World of Warcraft) sign in through the game's own provider, read-only. Your AI reads your live characters with nothing installed.
-- **Save-file games** (Diablo II, RimWorld, Stellaris, Stardew Valley, and more) are read by the Savecraft daemon on the machine you play on. The save files never leave your device -- only parsed state is sent. Install it where you play:
-
-  Linux / Steam Deck:
-  ```bash
-  curl -sSL https://install.savecraft.gg | bash
-  ```
-
-  Windows / Mac: download from [install.savecraft.gg](https://install.savecraft.gg)
-
-  It auto-detects supported games and starts syncing. Then ask your AI about your character, your build, or your last run -- it already has the data.
-
-- **Moddable games** (Factorio) push state from a Savecraft mod instead; adding the game points you to it.
-
-## How It Works
-
-Reference data is served straight from the cloud, and account games reach it through the game's server-side OAuth -- neither needs anything on your machine. The diagram below is the **save-file** path: how a local game's saves become structured data your AI can read.
-
-```
-  ┌─────────────────────┐            ┌───────────────────────────┐
-  │  Gaming Device      │   HTTPS    │  Cloudflare               │
-  │                     │  ───────>  │                           │
-  │  savecraftd         │   push     │  Push API ──> R2 Storage  │
-  │  - fs watcher       │            │                           │
-  │  - WASM plugin      │  <──────>  │  SourceHub DO (WebSocket) │
-  │    runtime (wazero) │    WS      │                           │
-  └─────────────────────┘            │  MCP Server ──> AI Tools  │
-                                     └───────────────────────────┘
-  ┌─────────────────────┐                       │
-  │  Claude / ChatGPT / │   <──── MCP ──────────┘
-  │  Gemini             │
-  └─────────────────────┘
-```
-
-1. **Daemon watches** your save files. Detects changes via fsnotify with debounce + hash dedup.
-2. **WASM plugins parse** saves into structured JSON. Sandboxed via wazero - plugins can't touch your filesystem or network. Ed25519 signed.
-3. **AI reads your state** through MCP tools. Section-level granularity - the AI fetches only what it needs to answer your question.
-
-## MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `list_games` | All games with saves, note titles, and reference modules with parameter schemas |
-| `get_save` | Summary, overview, sections, and notes for a save |
-| `get_section` | Section data from D1 |
-| `refresh_save` | Request fresh data (daemon-backed or API-backed) |
-| `search_saves` | Full-text search across all saves and notes |
-| `get_note` | Full content of a user-attached note |
-| `create_note` / `update_note` / `delete_note` | Manage notes via AI conversation |
-| `query_reference` | Execute reference data computations (drop rates, build math) |
-
-## Supported Games
-
-Plugins are sandboxed WASM binaries that parse save files. They read raw bytes on stdin, emit structured JSON on stdout, and cannot access your filesystem or network. Each plugin is Ed25519 signed and verified before loading. Plugins can optionally ship a `reference.wasm` for server-side computation: drop calculators, gift databases, crop planners - deployed via Workers for Platforms.
-
-| Game | Format | Reference Modules | Status | Author |
-|------|--------|-------------------|--------|--------|
-| [Clair Obscur: Expedition 33](plugins/clair-obscur/) | Save file (WASM) | -- | Beta | [@joshsymonds](https://github.com/joshsymonds) |
-| [Diablo II: Resurrected](plugins/d2r/) | `.d2s` / `.d2i` binary | Drop Calculator | Beta | [@joshsymonds](https://github.com/joshsymonds) |
-| [Factorio](plugins/factorio/) | [Factorio Mod Portal](https://mods.factorio.com/mod/savecraft) + WASM | Recipe Lookup, Ratio Calculator, Oil Balancer, Tech Tree, Blueprint Analyzer, Evolution Tracker, Power Calculator, Production Flow | Alpha | [@joshsymonds](https://github.com/joshsymonds) |
-| [Magic: The Gathering Arena](plugins/magic/) | `Player.log` | Card Search, Rules Search, Draft Advisor, Play Advisor, Card Stats, Deckbuilding, Collection Diff, Match Stats, Sideboard Analysis, Mana Base | Beta | [@joshsymonds](https://github.com/joshsymonds) |
-| [Path of Exile](plugins/poe/) | [GGG account (approved app)](https://savecraft.gg/poe) or pobb.in/pastebin URL | Build Planner (headless Path of Building), Gem Search, Passive Tree Search, Unique Search, Mod Search, Economy Prices | Beta | [@joshsymonds](https://github.com/joshsymonds) |
-| [RimWorld](plugins/rimworld/) | [Steam Workshop mod](https://steamcommunity.com/sharedfiles/filedetails/?id=3693580596) | Surgery Calculator, Crop Optimizer, Combat Calculator, Material Lookup, Drug Analyzer, Raid Estimator, Gene Builder, Research Navigator | Beta | [@joshsymonds](https://github.com/joshsymonds) |
-| [Stardew Valley](plugins/sdv/) | XML save directory | Gift Preferences, Crop Planner | Beta | [@joshsymonds](https://github.com/joshsymonds) |
-| [Stellaris](plugins/stellaris/) | [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3702302465) + `.sav` (Clausewitz/Rust) | Tech Search, Tech Path, Building Search, Component Search, Tradition Search, Trait Search, Civic Search, Edict Search, Job Search | Alpha | [@joshsymonds](https://github.com/joshsymonds) |
-| [World of Warcraft](plugins/wow/) | Battle.net API | -- | Beta | [@joshsymonds](https://github.com/joshsymonds) |
-
-See [`docs/games.md`](docs/games.md) for detailed descriptions of each game's sections and reference modules.
-
-**Planned save-file parsers:** Victoria 3 (Clausewitz/Rust), CK3/HOI4 (Clausewitz), Baldur's Gate 3 (.lsv), Elden Ring (.sl2), Civilization VI, Bethesda games (.ess)
-
-**Planned API adapters** (no daemon required): Path of Exile 2 (GGG API), FFXIV
-
-**Planned mod integrations:** Minecraft, Terraria (mod-as-device: mod pushes directly, no daemon)
-
-Want to add a game? See the [plugin development guide](docs/plugin-development.md).
-
-## Project Structure
-
-```
-savecraft.gg/
-├── cmd/savecraftd/       # Daemon entrypoint
-├── internal/
-│   ├── daemon/           # Orchestrator, domain types, interfaces
-│   ├── runner/           # WASM plugin execution (wazero)
-│   ├── watcher/          # Filesystem watcher (fsnotify + debounce)
-│   ├── wsconn/           # WebSocket client (reconnecting)
-│   ├── pluginmgr/        # Plugin download, verification, caching
-│   ├── selfupdate/       # Daemon self-update mechanism
-│   └── signing/          # Ed25519 plugin signature verification
-├── worker/               # Cloudflare Worker + Durable Object (TypeScript)
-├── reference/            # Reference Worker - WASI shim for server-side plugin computation (WfP)
-├── web/                  # SvelteKit frontend
-├── plugins/              # WASM plugin sources (parser + optional reference per game)
-├── proto/                # Protobuf protocol definitions
-├── install/              # Platform installers + systemd units
-├── assets/               # Brand assets
-└── docs/                 # Architecture docs
+```text
+cmd/                 daemon, tray, signing, and registry commands
+internal/            daemon, updater, plugin runtime, and client libraries
+proto/               client/server wire protocol
+plugins/             bundled parsers and in-game mods
+libs/                 shared parser libraries
+install/              installers, service assets, MSI, and distribution Worker
+docs/                 client architecture and plugin development
 ```
 
 ## Development
 
-Requires nix devenv + direnv. `direnv allow` activates the environment on `cd`.
+The Nix devenv supplies Go, Rust, WASI, buf/protoc, Node.js, and Wrangler.
 
 ```bash
-just --list          # Show all targets
-just test            # Run all tests (Go + Worker)
-just check           # Lint, generate, test everything
-just proto           # Regenerate Go + TypeScript from protobuf
-just dev-worker      # Start Worker dev server (Miniflare)
+direnv allow
+just test-go
+just lint-go
+just build-plugin d2r
+just proto
 ```
 
-See [`docs/overview.md`](docs/overview.md) for the system architecture, or browse `docs/` for component-specific documentation.
-
-## Tech Stack
-
-| Component | Technology |
-|-----------|-----------|
-| Daemon | Go, wazero (WASM runtime), fsnotify, nhooyr.io/websocket |
-| Cloud | Cloudflare Workers, Durable Objects, R2, D1 (SQLite/FTS5) |
-| Auth | Clerk (OAuth, JWT, magic links) |
-| Frontend | SvelteKit, TypeScript |
-| Plugins | Go or Rust compiled to WASI Preview 1, ndjson stdout contract |
-| Protocol | Protobuf (buf codegen to Go + TypeScript) |
-| Build | just, nix devenv + direnv |
-
-## Security
-
-- **WASM sandboxed:** Plugins cannot access filesystem, network, or environment. stdin in, JSON out.
-- **Ed25519 signed:** Every plugin binary is cryptographically signed. Tampered = refused.
-- **Read-only daemon:** Cannot modify your saves. Kernel-enforced on Linux via systemd sandboxing.
-- **No filesystem exposure:** AI sees structured JSON, never your local paths or files.
-- **Private R2:** No public bucket access. The Worker mediates all reads/writes, scoped to the authenticated user.
+See [the daemon documentation](docs/daemon.md) and
+[plugin development guide](docs/plugin-development.md) for details.
 
 ## License
 
-[Apache License 2.0](LICENSE)
-
----
-
-<p align="center">
-  <sub>savecraft.gg - by <a href="https://joshsymonds.com">@joshsymonds</a> · <a href="https://savecraft.gg/privacy">Privacy Policy</a></sub>
-</p>
+This repository is licensed under the [Apache License 2.0](LICENSE). Existing
+Apache-licensed releases remain available under, and continue to be governed
+by, the terms under which they were released.

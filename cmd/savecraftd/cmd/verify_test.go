@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/joshsymonds/savecraft.gg/internal/envfile"
+	"github.com/joshsymonds/savecraft-client/internal/envfile"
 )
 
 func TestRunVerifyWithPath(t *testing.T) {
@@ -38,7 +38,7 @@ func TestRunVerifyWithPath(t *testing.T) {
 		envPath := filepath.Join(dir, "env")
 
 		if err := envfile.Write(envPath, map[string]string{
-			"SAVECRAFT_AUTH_TOKEN": "sav_good",
+			envAuthToken: "sav_good",
 		}); err != nil {
 			t.Fatalf("write env: %v", err)
 		}
@@ -71,7 +71,7 @@ func TestRunVerifyWithPath(t *testing.T) {
 		envPath := filepath.Join(dir, "env")
 
 		if err := envfile.Write(envPath, map[string]string{
-			"SAVECRAFT_AUTH_TOKEN": "sav_bad",
+			envAuthToken: "sav_bad",
 		}); err != nil {
 			t.Fatalf("write env: %v", err)
 		}
@@ -100,7 +100,7 @@ func TestRunVerifyWithPath(t *testing.T) {
 		envPath := filepath.Join(dir, "env")
 
 		if err := envfile.Write(envPath, map[string]string{
-			"SAVECRAFT_SERVER_URL": "https://example.com",
+			envServerURL: "https://example.com",
 		}); err != nil {
 			t.Fatalf("write env: %v", err)
 		}
@@ -159,7 +159,7 @@ func TestRunVerifyWithPath(t *testing.T) {
 		envPath := filepath.Join(dir, "env")
 
 		if err := envfile.Write(envPath, map[string]string{
-			"SAVECRAFT_AUTH_TOKEN": "sav_good",
+			envAuthToken: "sav_good",
 		}); err != nil {
 			t.Fatalf("write env: %v", err)
 		}
@@ -197,8 +197,8 @@ func TestRunVerifyWithPath(t *testing.T) {
 		dir := t.TempDir()
 		envPath := filepath.Join(dir, "env")
 		if err := envfile.Write(envPath, map[string]string{
-			"SAVECRAFT_AUTH_TOKEN": "sav_env",
-			"SAVECRAFT_SERVER_URL": srv.URL,
+			envAuthToken: "sav_env",
+			envServerURL: srv.URL,
 		}); err != nil {
 			t.Fatalf("write env: %v", err)
 		}
@@ -208,7 +208,7 @@ func TestRunVerifyWithPath(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read env: %v", err)
 		}
-		serverURL := vars["SAVECRAFT_SERVER_URL"]
+		serverURL := vars[envServerURL]
 		if serverURL == "" {
 			t.Fatal("expected SAVECRAFT_SERVER_URL in env file")
 		}
@@ -235,7 +235,7 @@ func TestRunVerifyWithPath(t *testing.T) {
 		dir := t.TempDir()
 		envPath := filepath.Join(dir, "env")
 		if err := envfile.Write(envPath, map[string]string{
-			"SAVECRAFT_AUTH_TOKEN": "sav_test",
+			envAuthToken: "sav_test",
 		}); err != nil {
 			t.Fatalf("write env: %v", err)
 		}
@@ -244,7 +244,7 @@ func TestRunVerifyWithPath(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read env: %v", err)
 		}
-		serverURL := vars["SAVECRAFT_SERVER_URL"]
+		serverURL := vars[envServerURL]
 		if serverURL == "" {
 			serverURL = "https://api.savecraft.gg"
 		}
@@ -261,7 +261,7 @@ func TestRunVerifyWithPath(t *testing.T) {
 		envPath := filepath.Join(dir, "env")
 
 		if err := envfile.Write(envPath, map[string]string{
-			"SAVECRAFT_AUTH_TOKEN": "sav_good",
+			envAuthToken: "sav_good",
 		}); err != nil {
 			t.Fatalf("write env: %v", err)
 		}

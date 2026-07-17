@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/joshsymonds/savecraft.gg/plugins/satisfactory/sav"
+	"github.com/joshsymonds/savecraft-client/plugins/satisfactory/sav"
 )
 
 // Factory building classes live under /Buildable/Factory/<dir>/Build_*. The

@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/joshsymonds/savecraft.gg/internal/signing"
+	"github.com/joshsymonds/savecraft-client/internal/signing"
 )
 
 // RequirePinnedHTTPS enforces that rawURL is an https URL whose host exactly

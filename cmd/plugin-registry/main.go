@@ -37,10 +37,15 @@ type pluginTOML struct {
 	WorkshopURL    string   `toml:"workshop_url"    json:"workshop_url,omitempty"`
 	Limitations    []string `toml:"limitations"     json:"limitations"`
 
-	Author       authorInfo    `toml:"author"        json:"author"`
-	DefaultPaths defaultPaths  `toml:"default_paths" json:"default_paths"`
-	Reference    referenceTOML `toml:"reference"     json:"-"`
-	AdapterTOML  adapterTOML   `toml:"adapter"       json:"-"`
+	Attribution  attributionInfo `toml:"attribution"   json:"attribution,omitzero"`
+	Author       authorInfo      `toml:"author"        json:"author"`
+	DefaultPaths defaultPaths    `toml:"default_paths" json:"default_paths"`
+	Reference    referenceTOML   `toml:"reference"     json:"-"`
+	AdapterTOML  adapterTOML     `toml:"adapter"       json:"-"`
+}
+
+type attributionInfo struct {
+	Sources []string `toml:"sources" json:"sources"`
 }
 
 type adapterTOML struct {

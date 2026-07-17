@@ -12,7 +12,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/joshsymonds/savecraft.gg/plugins/d2r/d2s"
+	"github.com/joshsymonds/savecraft-client/plugins/d2r/d2s"
 )
 
 func main() {

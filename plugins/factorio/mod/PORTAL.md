@@ -58,4 +58,4 @@ Factorio 2.0 and Space Age. Safe to add or remove mid-save. Works alongside othe
 
 Sends structured game state to Savecraft's server for your AI to read. No save files, no filesystem paths, no personal data. Open source.
 
-[Website](https://savecraft.gg) | [Source](https://github.com/joshsymonds/savecraft.gg) | [Discord](https://discord.gg/YnC8stpEmF)
+[Website](https://savecraft.gg) | [Source](https://github.com/joshsymonds/savecraft-client) | [Discord](https://discord.gg/YnC8stpEmF)

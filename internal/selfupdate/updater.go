@@ -14,10 +14,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/joshsymonds/savecraft.gg/internal/daemon"
-	"github.com/joshsymonds/savecraft.gg/internal/manifest"
-	"github.com/joshsymonds/savecraft.gg/internal/signing"
-	"github.com/joshsymonds/savecraft.gg/internal/version"
+	"github.com/joshsymonds/savecraft-client/internal/daemon"
+	"github.com/joshsymonds/savecraft-client/internal/manifest"
+	"github.com/joshsymonds/savecraft-client/internal/signing"
+	"github.com/joshsymonds/savecraft-client/internal/version"
 )
 
 const defaultUpdateTimeout = 120 * time.Second

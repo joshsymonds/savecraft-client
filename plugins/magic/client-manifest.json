@@ -1,0 +1,42 @@
+{
+  "game_id": "magic",
+  "sources": [
+    "wasm"
+  ],
+  "icon": "icon.png",
+  "name": "Magic: The Gathering",
+  "description": "Parses Player.log for decks, match history, per-game turn-by-turn play logs, draft picks, rank, and currencies (gold, gems, wildcards, boosters). Constructed coaching: personal match stats, sideboard analysis, deck evaluation. Gameplay analysis: per-turn play advice, mana efficiency, card timing, attack decisions, mulligan evaluation.",
+  "channel": "beta",
+  "coverage": "partial",
+  "file_extensions": [],
+  "file_patterns": [
+    "Player.log",
+    "Player-prev.log"
+  ],
+  "homepage": "https://savecraft.gg/plugins/magic",
+  "limitations": [
+    "Requires 'Detailed Logs' enabled in MTGA settings",
+    "Card collection / ownership data is NOT available — Magic Arena does not log the player's owned cards to Player.log. Questions like 'what lands do I own?' cannot be answered from save data. For general card lookups (rules, printings, sets, mana costs), use the card_search reference module without a save context.",
+    "Log clears on game restart — only current session data available",
+    "Card names require Scryfall data update after new set releases"
+  ],
+  "attribution": {
+    "sources": [
+      "wotc",
+      "scryfall",
+      "17lands"
+    ]
+  },
+  "author": {
+    "name": "Josh Symonds",
+    "github": "joshsymonds"
+  },
+  "default_paths": {
+    "windows": "%LOCALAPPDATA_LOW%/Wizards Of The Coast/MTGA",
+    "linux": "~/.local/share/Steam/steamapps/compatdata/2141910/pfx/drive_c/users/steamuser/AppData/LocalLow/Wizards Of The Coast/MTGA",
+    "darwin": "~/Library/Logs/Wizards of the Coast/MTGA"
+  },
+  "version": "dev",
+  "sha256": "283491e9c93b27e84c040a694e6557ce820e5e13641583835a3faa412e463650",
+  "url": "plugins/magic/parser.wasm"
+}

@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/joshsymonds/savecraft.gg/internal/signing"
-	"github.com/joshsymonds/savecraft.gg/internal/version"
+	"github.com/joshsymonds/savecraft-client/internal/signing"
+	"github.com/joshsymonds/savecraft-client/internal/version"
 )
 
 // PluginLoader compiles and registers a WASM plugin for a given game.

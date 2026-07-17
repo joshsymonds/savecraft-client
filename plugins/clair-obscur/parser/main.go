@@ -10,7 +10,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/joshsymonds/savecraft.gg/plugins/gvas"
+	"github.com/joshsymonds/savecraft-client/plugins/gvas"
 )
 
 func main() {

@@ -33,6 +33,9 @@ homepage = "https://example.com/echo"
 workshop_url = "https://example.com/echo/workshop"
 limitations = ["Test limitation"]
 
+[attribution]
+sources = ["publisher", "community"]
+
 [author]
 name = "Test Author"
 github = "test-author"
@@ -81,6 +84,12 @@ regions = ["us"]
   "limitations": [
     "Test limitation"
   ],
+  "attribution": {
+    "sources": [
+      "publisher",
+      "community"
+    ]
+  },
   "author": {
     "name": "Test Author",
     "github": "test-author"

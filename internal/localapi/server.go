@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"sync"
 	"time"
 )
+
+const usePostError = "use POST"
 
 // Server is the daemon's local HTTP API server.
 // It serves boot status, link info, logs, and control endpoints on localhost.
@@ -37,7 +38,7 @@ type Server struct {
 // Pass nil logger for no-op logging.
 func NewServer(addr string, logger *slog.Logger) *Server {
 	if logger == nil {
-		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+		logger = slog.New(slog.DiscardHandler)
 	}
 
 	server := &Server{
@@ -198,7 +199,7 @@ func (s *Server) SetPendingVersionFunc(fn func() string) {
 func (s *Server) handleUpdatePlugins(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
-		s.writeJSON(w, http.StatusMethodNotAllowed, UpdatePluginsResponse{Error: "use POST"})
+		s.writeJSON(w, http.StatusMethodNotAllowed, UpdatePluginsResponse{Error: usePostError})
 
 		return
 	}
@@ -215,7 +216,7 @@ func (s *Server) handleUpdatePlugins(w http.ResponseWriter, r *http.Request) {
 
 	updated, err := fn(r.Context())
 	if err != nil {
-		s.logger.Error("update plugins failed", slog.String("error", err.Error()))
+		s.logger.ErrorContext(r.Context(), "update plugins failed", slog.String("error", err.Error()))
 		s.writeJSON(w, http.StatusInternalServerError, UpdatePluginsResponse{Error: "plugin update failed"})
 
 		return
@@ -231,7 +232,7 @@ func (s *Server) handleUpdatePlugins(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRepair(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
-		s.writeJSON(w, http.StatusMethodNotAllowed, OKResponse{Error: "use POST"})
+		s.writeJSON(w, http.StatusMethodNotAllowed, OKResponse{Error: usePostError})
 
 		return
 	}
@@ -315,7 +316,7 @@ func (s *Server) handleLogs(w http.ResponseWriter, _ *http.Request) {
 func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
-		s.writeJSON(w, http.StatusMethodNotAllowed, OKResponse{Error: "use POST"})
+		s.writeJSON(w, http.StatusMethodNotAllowed, OKResponse{Error: usePostError})
 
 		return
 	}
@@ -339,7 +340,7 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
-		s.writeJSON(w, http.StatusMethodNotAllowed, OKResponse{Error: "use POST"})
+		s.writeJSON(w, http.StatusMethodNotAllowed, OKResponse{Error: usePostError})
 
 		return
 	}
@@ -355,7 +356,7 @@ func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := restartFn(); err != nil {
-		s.logger.Error("restart failed", slog.String("error", err.Error()))
+		s.logger.ErrorContext(r.Context(), "restart failed", slog.String("error", err.Error()))
 		s.writeJSON(w, http.StatusInternalServerError, OKResponse{Error: "restart failed"})
 
 		return

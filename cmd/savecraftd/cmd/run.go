@@ -11,13 +11,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/joshsymonds/savecraft.gg/internal/daemon"
-	"github.com/joshsymonds/savecraft.gg/internal/envfile"
-	"github.com/joshsymonds/savecraft.gg/internal/localapi"
-	"github.com/joshsymonds/savecraft.gg/internal/pluginmgr"
-	"github.com/joshsymonds/savecraft.gg/internal/power"
-	"github.com/joshsymonds/savecraft.gg/internal/selfupdate"
-	"github.com/joshsymonds/savecraft.gg/internal/svcmgr"
+	"github.com/joshsymonds/savecraft-client/internal/daemon"
+	"github.com/joshsymonds/savecraft-client/internal/envfile"
+	"github.com/joshsymonds/savecraft-client/internal/localapi"
+	"github.com/joshsymonds/savecraft-client/internal/pluginmgr"
+	"github.com/joshsymonds/savecraft-client/internal/power"
+	"github.com/joshsymonds/savecraft-client/internal/selfupdate"
+	"github.com/joshsymonds/savecraft-client/internal/svcmgr"
 )
 
 const osWindows = "windows"
@@ -40,8 +40,8 @@ func runDaemon(version, serverURLDefault, installURLDefault, appName, statusPort
 
 	svcCfg := svcmgr.Config{
 		Name:        appName + "-daemon",
-		DisplayName: "Savecraft Daemon",
-		Description: "Syncs game saves to the cloud via Savecraft",
+		DisplayName: serviceDisplayName,
+		Description: serviceDescription,
 		AppName:     appName,
 	}
 
@@ -78,7 +78,7 @@ func runDaemonLoop(
 		shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutCancel()
 		if shutdownErr := api.Shutdown(shutCtx); shutdownErr != nil {
-			logger.Error("local API server shutdown failed", slog.String("error", shutdownErr.Error()))
+			logger.ErrorContext(shutCtx, "local API server shutdown failed", slog.String("error", shutdownErr.Error()))
 		}
 	}()
 
@@ -204,7 +204,7 @@ func runDaemonSubsystems(
 			select {
 			case reloadCh <- gameID:
 			default:
-				logger.Warn("plugin reload channel full, skipping", slog.String("game_id", gameID))
+				logger.WarnContext(ctx, "plugin reload channel full, skipping", slog.String("game_id", gameID))
 			}
 		}, pluginmgr.WithWatcherLogger(logger))
 		if pwErr != nil {

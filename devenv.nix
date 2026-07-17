@@ -1,18 +1,5 @@
 { pkgs, ... }:
 
-let
-  # Pinned Path of Building source — same revision the production NixOS
-  # module uses (nix/pob-server.nix). Tests in cmd/pob-server/ that spawn
-  # real wrapper.lua read POB_DIR; this gives every dev shell a working
-  # setup with no per-test cloning, and guarantees dev/CI/prod parity on
-  # the PoB revision.
-  pobSrc = import ./nix/pob-source.nix { inherit pkgs; };
-  # Pinned PathOfBuilding-PoE2 source — same revision the production
-  # NixOS module uses (nix/pob-server.nix). Tests in cmd/pob-server/ that
-  # spawn a real wrapper.lua against the PoE2 pool read POB2_DIR; mirrors
-  # pobSrc above so dev/CI/prod can never drift on the PoE2 revision.
-  pob2Src = import ./nix/pob2-source.nix { inherit pkgs; };
-in
 {
   dotenv.enable = true;
 
@@ -40,7 +27,7 @@ in
     pkgs.buf            # buf CLI (lint, generate, breaking)
     pkgs.protobuf       # protoc + well-known types
 
-    # Cloudflare Worker + web UI
+    # Client distribution Worker
     pkgs.nodejs_22
     pkgs.nodePackages.npm
     pkgs.nodePackages.wrangler
@@ -53,10 +40,6 @@ in
 
     # Build tooling
     pkgs.just           # command runner (Justfile)
-    pkgs.luajit         # PoB headless wrapper + tree-data extractor
-    pkgs.zlib           # PoB Inflate/Deflate via LuaJIT FFI (POB_ZLIB_PATH)
-    pkgs.curl           # bulk-card download in scryfall-fetch (Cloudflare bot management
-                        # JA3-blocks Go's net/http on data.scryfall.io)
 
     # Shell linting
     pkgs.shellcheck     # static analysis for bash/sh
@@ -100,22 +83,5 @@ in
     export NIX_SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
     export NODE_EXTRA_CA_CERTS=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
 
-    # PoB calc engine path — consumed by pob-server at runtime AND by the
-    # Go integration tests in cmd/pob-server/ that spawn real wrapper.lua.
-    # Mirrors nix/pob-server.nix's systemd unit. POB_ZLIB_PATH backs PoB's
-    # FFI Inflate/Deflate (HeadlessWrapper stubs them otherwise, breaking
-    # build-code import + Timeless Jewel LUTs). Shared by both games —
-    # wrapper.lua's zlib FFI binding is game-agnostic.
-    export POB_DIR=${pobSrc}/src
-    export POB_ZLIB_PATH=${pkgs.zlib}/lib/libz.so
-
-    # PathOfBuilding-PoE2 calc engine path — same role as POB_DIR above,
-    # for the PoE2 process pool (POB_GAME=poe2). No separate zlib path:
-    # wrapper.lua's POB_ZLIB_PATH lookup is not game-specific.
-    export POB2_DIR=${pob2Src}/src
   '';
-
-  processes.web.exec = "cd web && npm run dev";
-  processes.site.exec = "cd site && npm run dev";
-  processes.storybook.exec = "cd web && npm run storybook";
 }

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/joshsymonds/savecraft.gg/internal/daemon"
+	"github.com/joshsymonds/savecraft-client/internal/daemon"
 )
 
 // Verify OSFS implements daemon.FS at compile time.

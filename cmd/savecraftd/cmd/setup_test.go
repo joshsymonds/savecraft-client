@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/joshsymonds/savecraft.gg/internal/localapi"
+	"github.com/joshsymonds/savecraft-client/internal/localapi"
 )
 
 func newWorkingSetupDeps() setupDeps {
@@ -328,8 +328,8 @@ func TestSetupRemovesStaleCredentials(t *testing.T) {
 		t.Errorf("expected new env written to /specific/env/path, got %q", writtenPath)
 	}
 
-	if writtenVars["SAVECRAFT_AUTH_TOKEN"] != "sct_test123" {
-		t.Errorf("expected token sct_test123, got %q", writtenVars["SAVECRAFT_AUTH_TOKEN"])
+	if writtenVars[envAuthToken] != "sct_test123" {
+		t.Errorf("expected token sct_test123, got %q", writtenVars[envAuthToken])
 	}
 
 	if writtenVars["SAVECRAFT_SOURCE_UUID"] != "source_test123" {

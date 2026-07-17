@@ -14,6 +14,8 @@ import (
 	"golang.org/x/term"
 )
 
+const actionRestart = "restart"
+
 // Config holds the service identity used for OS registration.
 type Config struct {
 	Name        string // OS service name, e.g. "savecraft-daemon".
@@ -65,7 +67,6 @@ func Run(run RunFunc) error {
 // Interactive reports whether stderr is connected to a terminal.
 // Use this to decide whether to print human-readable messages.
 func Interactive() bool {
-	//nolint:gosec // G115: fd fits in int on all supported platforms.
 	return term.IsTerminal(int(os.Stderr.Fd()))
 }
 
@@ -142,7 +143,7 @@ func control(cfg Config, action string, run commandRunner) error {
 		return serviceStart(cfg, run)
 	case "stop":
 		return serviceStop(cfg, run)
-	case "restart":
+	case actionRestart:
 		return serviceRestart(cfg, run)
 	default:
 		return fmt.Errorf("unknown service action: %s", action)

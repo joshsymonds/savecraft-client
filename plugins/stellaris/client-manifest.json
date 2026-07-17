@@ -1,0 +1,38 @@
+{
+  "game_id": "stellaris",
+  "sources": [
+    "wasm"
+  ],
+  "icon": "icon.png",
+  "name": "Stellaris",
+  "description": "Parses Stellaris save files (.sav) — empire overview, economy, technology, military, diplomacy, and more",
+  "channel": "beta",
+  "coverage": "partial",
+  "file_extensions": [
+    ".sav"
+  ],
+  "homepage": "https://savecraft.gg/plugins/stellaris",
+  "workshop_url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3702302465",
+  "limitations": [
+    "Binary (ironman) saves not yet tested — text saves only",
+    "Planet section shows summary stats, not full district/building breakdown",
+    "Name resolution for wars and fleets uses raw IDs, not localized names"
+  ],
+  "attribution": {
+    "sources": [
+      "paradox"
+    ]
+  },
+  "author": {
+    "name": "Josh Symonds",
+    "github": "joshsymonds"
+  },
+  "default_paths": {
+    "windows": "%DOCUMENTS%/Paradox Interactive/Stellaris/save games/*",
+    "linux": "~/.local/share/Paradox Interactive/Stellaris/save games/*",
+    "darwin": "~/Documents/Paradox Interactive/Stellaris/save games/*"
+  },
+  "version": "dev",
+  "sha256": "5de97944c63d7bf76dfa8e5ab6f47f33f14463caf7d51a0b6599095795eafca5",
+  "url": "plugins/stellaris/parser.wasm"
+}

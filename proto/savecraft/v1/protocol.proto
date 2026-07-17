@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package savecraft.v1;
 
-option go_package = "github.com/joshsymonds/savecraft.gg/internal/proto";
+option go_package = "github.com/joshsymonds/savecraft-client/internal/proto";
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/struct.proto";

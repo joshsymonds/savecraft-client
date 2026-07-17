@@ -11,7 +11,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
-	"github.com/joshsymonds/savecraft.gg/internal/daemon"
+	"github.com/joshsymonds/savecraft-client/internal/daemon"
 )
 
 const defaultDebounce = 500 * time.Millisecond

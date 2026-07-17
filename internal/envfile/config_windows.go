@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/joshsymonds/savecraft.gg/internal/appname"
+	"github.com/joshsymonds/savecraft-client/internal/appname"
 )
 
 // ConfigDir returns the Windows configuration directory for the given app.

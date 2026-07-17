@@ -3,7 +3,6 @@ package pluginmgr
 import (
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -58,7 +57,7 @@ func NewPluginWatcher(
 		localDir: localDir,
 		callback: callback,
 		debounce: defaultWatcherDebounce,
-		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		logger:   slog.New(slog.DiscardHandler),
 		timers:   make(map[string]*time.Timer),
 		done:     make(chan struct{}),
 	}

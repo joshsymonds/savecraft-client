@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/joshsymonds/savecraft.gg/internal/manifest"
+	"github.com/joshsymonds/savecraft-client/internal/manifest"
 )
 
 const (

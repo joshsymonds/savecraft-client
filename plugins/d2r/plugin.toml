@@ -23,9 +23,3 @@ github = "joshsymonds"
 windows = "%SAVED_GAMES%/Diablo II Resurrected"
 linux = "~/.steam/steam/steamapps/compatdata/2536520/pfx/drive_c/users/steamuser/Saved Games/Diablo II Resurrected"
 darwin = "~/Library/Application Support/Diablo II Resurrected"
-
-[reference.modules.drop_calc]
-name = "Drop Calculator"
-description = "Compute drop probabilities for any item from any farmable source, accounting for Magic Find, player count, and treasure class mechanics."
-requires_save = false
-

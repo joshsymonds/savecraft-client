@@ -11,7 +11,7 @@ import (
 
 	"fyne.io/systray"
 
-	"github.com/joshsymonds/savecraft.gg/internal/localapi"
+	"github.com/joshsymonds/savecraft-client/internal/localapi"
 )
 
 const pollInterval = 3 * time.Second

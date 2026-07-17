@@ -78,111 +78,120 @@ namespace Savecraft.V1 {
             "ZXJTb3VyY2VIAEIJCgdwYXlsb2FkIoEBCg5SZWxheWVkTWVzc2FnZRIRCglz",
             "b3VyY2VfaWQYASABKAkSNAoQc2VydmVyX3RpbWVzdGFtcBgCIAEoCzIaLmdv",
             "b2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASJgoHbWVzc2FnZRgDIAEoCzIVLnNh",
-            "dmVjcmFmdC52MS5NZXNzYWdlIpIBCgxTb3VyY2VPbmxpbmUSDwoHdmVyc2lv",
+            "dmVjcmFmdC52MS5NZXNzYWdlIqIBCgxTb3VyY2VPbmxpbmUSDwoHdmVyc2lv",
             "bhgCIAEoCRItCgl0aW1lc3RhbXAYAyABKAsyGi5nb29nbGUucHJvdG9idWYu",
             "VGltZXN0YW1wEhAKCHBsYXRmb3JtGAQgASgJEgoKAm9zGAUgASgJEgwKBGFy",
-            "Y2gYBiABKAkSEAoIaG9zdG5hbWUYByABKAlKBAgBEAIiRAoNU291cmNlT2Zm",
-            "bGluZRItCgl0aW1lc3RhbXAYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGlt",
-            "ZXN0YW1wSgQIARACIhEKD1NvdXJjZUhlYXJ0YmVhdCIsCgtTY2FuU3RhcnRl",
-            "ZBIPCgdnYW1lX2lkGAEgASgJEgwKBHBhdGgYAiABKAkiVwoNU2NhbkNvbXBs",
-            "ZXRlZBIPCgdnYW1lX2lkGAEgASgJEgwKBHBhdGgYAiABKAkSEwoLZmlsZXNf",
-            "Zm91bmQYAyABKAUSEgoKZmlsZV9uYW1lcxgEIAMoCSJBCgxHYW1lRGV0ZWN0",
-            "ZWQSDwoHZ2FtZV9pZBgBIAEoCRIMCgRwYXRoGAIgASgJEhIKCnNhdmVfY291",
-            "bnQYAyABKAUiNgoMR2FtZU5vdEZvdW5kEg8KB2dhbWVfaWQYASABKAkSFQoN",
-            "cGF0aHNfY2hlY2tlZBgCIAMoCSJCCghXYXRjaGluZxIPCgdnYW1lX2lkGAEg",
-            "ASgJEgwKBHBhdGgYAiABKAkSFwoPZmlsZXNfbW9uaXRvcmVkGAMgASgFIj4K",
-            "D0dhbWVzRGlzY292ZXJlZBIrCgVnYW1lcxgBIAMoCzIcLnNhdmVjcmFmdC52",
-            "MS5EaXNjb3ZlcmVkR2FtZSJqCg5EaXNjb3ZlcmVkR2FtZRIPCgdnYW1lX2lk",
-            "GAEgASgJEgwKBG5hbWUYAiABKAkSDAoEcGF0aBgDIAEoCRISCgpmaWxlX2Nv",
-            "dW50GAQgASgFEhcKD2ZpbGVfZXh0ZW5zaW9ucxgFIAMoCSIyCgxQYXJzZVN0",
-            "YXJ0ZWQSDwoHZ2FtZV9pZBgBIAEoCRIRCglmaWxlX25hbWUYAiABKAkiQwoM",
-            "UGx1Z2luU3RhdHVzEg8KB2dhbWVfaWQYASABKAkSEQoJZmlsZV9uYW1lGAIg",
-            "ASgJEg8KB21lc3NhZ2UYAyABKAkinwEKDlBhcnNlQ29tcGxldGVkEg8KB2dh",
-            "bWVfaWQYASABKAkSEQoJZmlsZV9uYW1lGAIgASgJEiwKCGlkZW50aXR5GAMg",
-            "ASgLMhouc2F2ZWNyYWZ0LnYxLlNhdmVJZGVudGl0eRIPCgdzdW1tYXJ5GAQg",
-            "ASgJEhYKDnNlY3Rpb25zX2NvdW50GAUgASgFEhIKCnNpemVfYnl0ZXMYBiAB",
-            "KAMidAoLUGFyc2VGYWlsZWQSDwoHZ2FtZV9pZBgBIAEoCRIRCglmaWxlX25h",
-            "bWUYAiABKAkSMAoKZXJyb3JfdHlwZRgDIAEoDjIcLnNhdmVjcmFmdC52MS5Q",
-            "YXJzZUVycm9yVHlwZRIPCgdtZXNzYWdlGAQgASgJIkMKC1B1c2hTdGFydGVk",
-            "Eg8KB2dhbWVfaWQYASABKAkSDwoHc3VtbWFyeRgCIAEoCRISCgpzaXplX2J5",
-            "dGVzGAMgASgDIqQBCg1QdXNoQ29tcGxldGVkEg8KB2dhbWVfaWQYASABKAkS",
-            "EQoJc2F2ZV91dWlkGAIgASgJEg8KB3N1bW1hcnkYAyABKAkSGwoTc25hcHNo",
-            "b3Rfc2l6ZV9ieXRlcxgEIAEoAxITCgtkdXJhdGlvbl9tcxgFIAEoBRIsCghp",
-            "ZGVudGl0eRgGIAEoCzIaLnNhdmVjcmFmdC52MS5TYXZlSWRlbnRpdHkiQgoK",
-            "UHVzaEZhaWxlZBIPCgdnYW1lX2lkGAEgASgJEg8KB21lc3NhZ2UYAiABKAkS",
-            "EgoKd2lsbF9yZXRyeRgDIAEoCCIxCg1QbHVnaW5VcGRhdGVkEg8KB2dhbWVf",
-            "aWQYASABKAkSDwoHdmVyc2lvbhgCIAEoCSIqChdQbHVnaW5VcGRhdGVDaGVj",
-            "a0ZhaWxlZBIPCgdtZXNzYWdlGAEgASgJIjgKFFBsdWdpbkRvd25sb2FkRmFp",
-            "bGVkEg8KB2dhbWVfaWQYASABKAkSDwoHbWVzc2FnZRgCIAEoCSKMAQoMQ29u",
-            "ZmlnVXBkYXRlEjQKBWdhbWVzGAEgAygLMiUuc2F2ZWNyYWZ0LnYxLkNvbmZp",
-            "Z1VwZGF0ZS5HYW1lc0VudHJ5GkYKCkdhbWVzRW50cnkSCwoDa2V5GAEgASgJ",
-            "EicKBXZhbHVlGAIgASgLMhguc2F2ZWNyYWZ0LnYxLkdhbWVDb25maWc6AjgB",
-            "IkkKCkdhbWVDb25maWcSEQoJc2F2ZV9wYXRoGAEgASgJEg8KB2VuYWJsZWQY",
-            "AiABKAgSFwoPZmlsZV9leHRlbnNpb25zGAMgAygJIpgBCgxDb25maWdSZXN1",
-            "bHQSOAoHcmVzdWx0cxgBIAMoCzInLnNhdmVjcmFmdC52MS5Db25maWdSZXN1",
-            "bHQuUmVzdWx0c0VudHJ5Gk4KDFJlc3VsdHNFbnRyeRILCgNrZXkYASABKAkS",
-            "LQoFdmFsdWUYAiABKAsyHi5zYXZlY3JhZnQudjEuR2FtZUNvbmZpZ1Jlc3Vs",
-            "dDoCOAEiSQoQR2FtZUNvbmZpZ1Jlc3VsdBIPCgdzdWNjZXNzGAEgASgIEg0K",
-            "BWVycm9yGAIgASgJEhUKDXJlc29sdmVkX3BhdGgYAyABKAkiHQoKUmVzY2Fu",
-            "R2FtZRIPCgdnYW1lX2lkGAEgASgJIkAKD1BsdWdpbkF2YWlsYWJsZRIPCgdn",
-            "YW1lX2lkGAEgASgJEg8KB3ZlcnNpb24YAiABKAkSCwoDdXJsGAMgASgJIg8K",
-            "DURpc2NvdmVyR2FtZXMiOAoLU291cmNlU3RhdGUSKQoHc291cmNlcxgBIAMo",
-            "CzIYLnNhdmVjcmFmdC52MS5Tb3VyY2VJbmZvIogCCgpTb3VyY2VJbmZvEhEK",
-            "CXNvdXJjZV9pZBgBIAEoCRIOCgZvbmxpbmUYAiABKAgSLQoJbGFzdF9zZWVu",
-            "GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIlCgVnYW1lcxgE",
-            "IAMoCzIWLnNhdmVjcmFmdC52MS5HYW1lSW5mbxITCgtzb3VyY2Vfa2luZBgF",
-            "IAEoCRIQCghob3N0bmFtZRgGIAEoCRISCgpjYW5fcmVzY2FuGAcgASgIEhoK",
-            "EmNhbl9yZWNlaXZlX2NvbmZpZxgIIAEoCBIQCghwbGF0Zm9ybRgJIAEoCRIK",
-            "CgJvcxgKIAEoCRIMCgRhcmNoGAsgASgJIsQBCghHYW1lSW5mbxIPCgdnYW1l",
-            "X2lkGAEgASgJEhEKCWdhbWVfbmFtZRgCIAEoCRIsCgZzdGF0dXMYAyABKA4y",
-            "HC5zYXZlY3JhZnQudjEuR2FtZVN0YXR1c0VudW0SJQoFc2F2ZXMYBCADKAsy",
-            "Fi5zYXZlY3JhZnQudjEuU2F2ZUluZm8SMQoNbGFzdF9hY3Rpdml0eRgFIAEo",
-            "CzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDAoEcGF0aBgGIAEoCSKO",
-            "AQoIU2F2ZUluZm8SEQoJc2F2ZV91dWlkGAEgASgJEiwKCGlkZW50aXR5GAIg",
-            "ASgLMhouc2F2ZWNyYWZ0LnYxLlNhdmVJZGVudGl0eRIPCgdzdW1tYXJ5GAMg",
-            "ASgJEjAKDGxhc3RfdXBkYXRlZBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5U",
-            "aW1lc3RhbXAiKQoIVGVzdFBhdGgSDwoHZ2FtZV9pZBgBIAEoCRIMCgRwYXRo",
-            "GAIgASgJImcKDlRlc3RQYXRoUmVzdWx0Eg8KB2dhbWVfaWQYASABKAkSDAoE",
-            "cGF0aBgCIAEoCRINCgV2YWxpZBgDIAEoCBITCgtmaWxlc19mb3VuZBgEIAEo",
-            "BRISCgpmaWxlX25hbWVzGAUgAygJIlwKFVNvdXJjZVVwZGF0ZUF2YWlsYWJs",
-            "ZRIPCgd2ZXJzaW9uGAEgASgJEgsKA3VybBgCIAEoCRIVCg1zaWduYXR1cmVf",
-            "dXJsGAMgASgJEg4KBnNoYTI1NhgEIAEoCSImChNTb3VyY2VVcGRhdGVTdGFy",
-            "dGVkEg8KB3ZlcnNpb24YASABKAkiNgoSU291cmNlVXBkYXRlRmFpbGVkEg8K",
-            "B3ZlcnNpb24YASABKAkSDwoHbWVzc2FnZRgCIAEoCSI2CghSZWdpc3RlchIQ",
-            "Cghob3N0bmFtZRgBIAEoCRIKCgJvcxgCIAEoCRIMCgRhcmNoGAMgASgJIogB",
-            "Cg5SZWdpc3RlclJlc3VsdBITCgtzb3VyY2VfdXVpZBgBIAEoCRIUCgxzb3Vy",
-            "Y2VfdG9rZW4YAiABKAkSEQoJbGlua19jb2RlGAMgASgJEjgKFGxpbmtfY29k",
-            "ZV9leHBpcmVzX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFt",
-            "cCJXCgtHYW1lU2VjdGlvbhIMCgRuYW1lGAEgASgJEhMKC2Rlc2NyaXB0aW9u",
-            "GAIgASgJEiUKBGRhdGEYAyABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0",
-            "IrYBCghQdXNoU2F2ZRIsCghpZGVudGl0eRgBIAEoCzIaLnNhdmVjcmFmdC52",
-            "MS5TYXZlSWRlbnRpdHkSDwoHc3VtbWFyeRgCIAEoCRIrCghzZWN0aW9ucxgD",
-            "IAMoCzIZLnNhdmVjcmFmdC52MS5HYW1lU2VjdGlvbhItCglwYXJzZWRfYXQY",
-            "BCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEg8KB2dhbWVfaWQY",
-            "BSABKAkiWwoOUHVzaFNhdmVSZXN1bHQSEQoJc2F2ZV91dWlkGAEgASgJEjYK",
-            "EnNuYXBzaG90X3RpbWVzdGFtcBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5U",
-            "aW1lc3RhbXAiEQoPUmVmcmVzaExpbmtDb2RlIloKFVJlZnJlc2hMaW5rQ29k",
-            "ZVJlc3VsdBIRCglsaW5rX2NvZGUYASABKAkSLgoKZXhwaXJlc19hdBgCIAEo",
-            "CzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiIQoMU291cmNlTGlua2Vk",
-            "EhEKCXVzZXJfdXVpZBgBIAEoCSIOCgxVbmxpbmtTb3VyY2UiEgoQRGVyZWdp",
-            "c3RlclNvdXJjZSJECgxTYXZlSWRlbnRpdHkSDAoEbmFtZRgBIAEoCRImCgVl",
-            "eHRyYRgCIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QqoQEKDlBhcnNl",
-            "RXJyb3JUeXBlEiAKHFBBUlNFX0VSUk9SX1RZUEVfVU5TUEVDSUZJRUQQABIo",
-            "CiRQQVJTRV9FUlJPUl9UWVBFX1VOU1VQUE9SVEVEX1ZFUlNJT04QARIhCh1Q",
-            "QVJTRV9FUlJPUl9UWVBFX0NPUlJVUFRfRklMRRACEiAKHFBBUlNFX0VSUk9S",
-            "X1RZUEVfUEFSU0VfRVJST1IQAyrNAQoOR2FtZVN0YXR1c0VudW0SIAocR0FN",
-            "RV9TVEFUVVNfRU5VTV9VTlNQRUNJRklFRBAAEh0KGUdBTUVfU1RBVFVTX0VO",
-            "VU1fREVURUNURUQQARIdChlHQU1FX1NUQVRVU19FTlVNX1dBVENISU5HEAIS",
-            "GgoWR0FNRV9TVEFUVVNfRU5VTV9FUlJPUhADEh4KGkdBTUVfU1RBVFVTX0VO",
-            "VU1fTk9UX0ZPVU5EEAQSHwobR0FNRV9TVEFUVVNfRU5VTV9BQ1RJVkFUSU5H",
-            "EAVCNFoyZ2l0aHViLmNvbS9qb3Noc3ltb25kcy9zYXZlY3JhZnQuZ2cvaW50",
-            "ZXJuYWwvcHJvdG9iBnByb3RvMw=="));
+            "Y2gYBiABKAkSEAoIaG9zdG5hbWUYByABKAkSDgoGZGV2aWNlGAggASgJSgQI",
+            "ARACIkQKDVNvdXJjZU9mZmxpbmUSLQoJdGltZXN0YW1wGAIgASgLMhouZ29v",
+            "Z2xlLnByb3RvYnVmLlRpbWVzdGFtcEoECAEQAiIRCg9Tb3VyY2VIZWFydGJl",
+            "YXQiLAoLU2NhblN0YXJ0ZWQSDwoHZ2FtZV9pZBgBIAEoCRIMCgRwYXRoGAIg",
+            "ASgJIlcKDVNjYW5Db21wbGV0ZWQSDwoHZ2FtZV9pZBgBIAEoCRIMCgRwYXRo",
+            "GAIgASgJEhMKC2ZpbGVzX2ZvdW5kGAMgASgFEhIKCmZpbGVfbmFtZXMYBCAD",
+            "KAkiQQoMR2FtZURldGVjdGVkEg8KB2dhbWVfaWQYASABKAkSDAoEcGF0aBgC",
+            "IAEoCRISCgpzYXZlX2NvdW50GAMgASgFIjYKDEdhbWVOb3RGb3VuZBIPCgdn",
+            "YW1lX2lkGAEgASgJEhUKDXBhdGhzX2NoZWNrZWQYAiADKAkiQgoIV2F0Y2hp",
+            "bmcSDwoHZ2FtZV9pZBgBIAEoCRIMCgRwYXRoGAIgASgJEhcKD2ZpbGVzX21v",
+            "bml0b3JlZBgDIAEoBSI+Cg9HYW1lc0Rpc2NvdmVyZWQSKwoFZ2FtZXMYASAD",
+            "KAsyHC5zYXZlY3JhZnQudjEuRGlzY292ZXJlZEdhbWUilwEKDkRpc2NvdmVy",
+            "ZWRHYW1lEg8KB2dhbWVfaWQYASABKAkSDAoEbmFtZRgCIAEoCRIMCgRwYXRo",
+            "GAMgASgJEhIKCmZpbGVfY291bnQYBCABKAUSFwoPZmlsZV9leHRlbnNpb25z",
+            "GAUgAygJEhUKDWZpbGVfcGF0dGVybnMYBiADKAkSFAoMZXhjbHVkZV9kaXJz",
+            "GAcgAygJIjIKDFBhcnNlU3RhcnRlZBIPCgdnYW1lX2lkGAEgASgJEhEKCWZp",
+            "bGVfbmFtZRgCIAEoCSJDCgxQbHVnaW5TdGF0dXMSDwoHZ2FtZV9pZBgBIAEo",
+            "CRIRCglmaWxlX25hbWUYAiABKAkSDwoHbWVzc2FnZRgDIAEoCSKfAQoOUGFy",
+            "c2VDb21wbGV0ZWQSDwoHZ2FtZV9pZBgBIAEoCRIRCglmaWxlX25hbWUYAiAB",
+            "KAkSLAoIaWRlbnRpdHkYAyABKAsyGi5zYXZlY3JhZnQudjEuU2F2ZUlkZW50",
+            "aXR5Eg8KB3N1bW1hcnkYBCABKAkSFgoOc2VjdGlvbnNfY291bnQYBSABKAUS",
+            "EgoKc2l6ZV9ieXRlcxgGIAEoAyJ0CgtQYXJzZUZhaWxlZBIPCgdnYW1lX2lk",
+            "GAEgASgJEhEKCWZpbGVfbmFtZRgCIAEoCRIwCgplcnJvcl90eXBlGAMgASgO",
+            "Mhwuc2F2ZWNyYWZ0LnYxLlBhcnNlRXJyb3JUeXBlEg8KB21lc3NhZ2UYBCAB",
+            "KAkiQwoLUHVzaFN0YXJ0ZWQSDwoHZ2FtZV9pZBgBIAEoCRIPCgdzdW1tYXJ5",
+            "GAIgASgJEhIKCnNpemVfYnl0ZXMYAyABKAMipAEKDVB1c2hDb21wbGV0ZWQS",
+            "DwoHZ2FtZV9pZBgBIAEoCRIRCglzYXZlX3V1aWQYAiABKAkSDwoHc3VtbWFy",
+            "eRgDIAEoCRIbChNzbmFwc2hvdF9zaXplX2J5dGVzGAQgASgDEhMKC2R1cmF0",
+            "aW9uX21zGAUgASgFEiwKCGlkZW50aXR5GAYgASgLMhouc2F2ZWNyYWZ0LnYx",
+            "LlNhdmVJZGVudGl0eSJCCgpQdXNoRmFpbGVkEg8KB2dhbWVfaWQYASABKAkS",
+            "DwoHbWVzc2FnZRgCIAEoCRISCgp3aWxsX3JldHJ5GAMgASgIIjEKDVBsdWdp",
+            "blVwZGF0ZWQSDwoHZ2FtZV9pZBgBIAEoCRIPCgd2ZXJzaW9uGAIgASgJIioK",
+            "F1BsdWdpblVwZGF0ZUNoZWNrRmFpbGVkEg8KB21lc3NhZ2UYASABKAkiOAoU",
+            "UGx1Z2luRG93bmxvYWRGYWlsZWQSDwoHZ2FtZV9pZBgBIAEoCRIPCgdtZXNz",
+            "YWdlGAIgASgJIowBCgxDb25maWdVcGRhdGUSNAoFZ2FtZXMYASADKAsyJS5z",
+            "YXZlY3JhZnQudjEuQ29uZmlnVXBkYXRlLkdhbWVzRW50cnkaRgoKR2FtZXNF",
+            "bnRyeRILCgNrZXkYASABKAkSJwoFdmFsdWUYAiABKAsyGC5zYXZlY3JhZnQu",
+            "djEuR2FtZUNvbmZpZzoCOAEijQEKCkdhbWVDb25maWcSEQoJc2F2ZV9wYXRo",
+            "GAEgASgJEg8KB2VuYWJsZWQYAiABKAgSFwoPZmlsZV9leHRlbnNpb25zGAMg",
+            "AygJEhUKDWZpbGVfcGF0dGVybnMYBCADKAkSFAoMZXhjbHVkZV9kaXJzGAUg",
+            "AygJEhUKDWV4Y2x1ZGVfc2F2ZXMYBiADKAkimAEKDENvbmZpZ1Jlc3VsdBI4",
+            "CgdyZXN1bHRzGAEgAygLMicuc2F2ZWNyYWZ0LnYxLkNvbmZpZ1Jlc3VsdC5S",
+            "ZXN1bHRzRW50cnkaTgoMUmVzdWx0c0VudHJ5EgsKA2tleRgBIAEoCRItCgV2",
+            "YWx1ZRgCIAEoCzIeLnNhdmVjcmFmdC52MS5HYW1lQ29uZmlnUmVzdWx0OgI4",
+            "ASJJChBHYW1lQ29uZmlnUmVzdWx0Eg8KB3N1Y2Nlc3MYASABKAgSDQoFZXJy",
+            "b3IYAiABKAkSFQoNcmVzb2x2ZWRfcGF0aBgDIAEoCSIdCgpSZXNjYW5HYW1l",
+            "Eg8KB2dhbWVfaWQYASABKAkiQAoPUGx1Z2luQXZhaWxhYmxlEg8KB2dhbWVf",
+            "aWQYASABKAkSDwoHdmVyc2lvbhgCIAEoCRILCgN1cmwYAyABKAkiDwoNRGlz",
+            "Y292ZXJHYW1lcyI4CgtTb3VyY2VTdGF0ZRIpCgdzb3VyY2VzGAEgAygLMhgu",
+            "c2F2ZWNyYWZ0LnYxLlNvdXJjZUluZm8imAIKClNvdXJjZUluZm8SEQoJc291",
+            "cmNlX2lkGAEgASgJEg4KBm9ubGluZRgCIAEoCBItCglsYXN0X3NlZW4YAyAB",
+            "KAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEiUKBWdhbWVzGAQgAygL",
+            "MhYuc2F2ZWNyYWZ0LnYxLkdhbWVJbmZvEhMKC3NvdXJjZV9raW5kGAUgASgJ",
+            "EhAKCGhvc3RuYW1lGAYgASgJEhIKCmNhbl9yZXNjYW4YByABKAgSGgoSY2Fu",
+            "X3JlY2VpdmVfY29uZmlnGAggASgIEhAKCHBsYXRmb3JtGAkgASgJEgoKAm9z",
+            "GAogASgJEgwKBGFyY2gYCyABKAkSDgoGZGV2aWNlGAwgASgJItMBCghHYW1l",
+            "SW5mbxIPCgdnYW1lX2lkGAEgASgJEhEKCWdhbWVfbmFtZRgCIAEoCRIsCgZz",
+            "dGF0dXMYAyABKA4yHC5zYXZlY3JhZnQudjEuR2FtZVN0YXR1c0VudW0SJQoF",
+            "c2F2ZXMYBCADKAsyFi5zYXZlY3JhZnQudjEuU2F2ZUluZm8SMQoNbGFzdF9h",
+            "Y3Rpdml0eRgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDAoE",
+            "cGF0aBgGIAEoCRINCgVlcnJvchgHIAEoCSKOAQoIU2F2ZUluZm8SEQoJc2F2",
+            "ZV91dWlkGAEgASgJEiwKCGlkZW50aXR5GAIgASgLMhouc2F2ZWNyYWZ0LnYx",
+            "LlNhdmVJZGVudGl0eRIPCgdzdW1tYXJ5GAMgASgJEjAKDGxhc3RfdXBkYXRl",
+            "ZBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiKQoIVGVzdFBh",
+            "dGgSDwoHZ2FtZV9pZBgBIAEoCRIMCgRwYXRoGAIgASgJImcKDlRlc3RQYXRo",
+            "UmVzdWx0Eg8KB2dhbWVfaWQYASABKAkSDAoEcGF0aBgCIAEoCRINCgV2YWxp",
+            "ZBgDIAEoCBITCgtmaWxlc19mb3VuZBgEIAEoBRISCgpmaWxlX25hbWVzGAUg",
+            "AygJIlwKFVNvdXJjZVVwZGF0ZUF2YWlsYWJsZRIPCgd2ZXJzaW9uGAEgASgJ",
+            "EgsKA3VybBgCIAEoCRIVCg1zaWduYXR1cmVfdXJsGAMgASgJEg4KBnNoYTI1",
+            "NhgEIAEoCSImChNTb3VyY2VVcGRhdGVTdGFydGVkEg8KB3ZlcnNpb24YASAB",
+            "KAkiNgoSU291cmNlVXBkYXRlRmFpbGVkEg8KB3ZlcnNpb24YASABKAkSDwoH",
+            "bWVzc2FnZRgCIAEoCSJGCghSZWdpc3RlchIQCghob3N0bmFtZRgBIAEoCRIK",
+            "CgJvcxgCIAEoCRIMCgRhcmNoGAMgASgJEg4KBmRldmljZRgEIAEoCSKIAQoO",
+            "UmVnaXN0ZXJSZXN1bHQSEwoLc291cmNlX3V1aWQYASABKAkSFAoMc291cmNl",
+            "X3Rva2VuGAIgASgJEhEKCWxpbmtfY29kZRgDIAEoCRI4ChRsaW5rX2NvZGVf",
+            "ZXhwaXJlc19hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAi",
+            "VwoLR2FtZVNlY3Rpb24SDAoEbmFtZRgBIAEoCRITCgtkZXNjcmlwdGlvbhgC",
+            "IAEoCRIlCgRkYXRhGAMgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdCLR",
+            "AQoIUHVzaFNhdmUSLAoIaWRlbnRpdHkYASABKAsyGi5zYXZlY3JhZnQudjEu",
+            "U2F2ZUlkZW50aXR5Eg8KB3N1bW1hcnkYAiABKAkSKwoIc2VjdGlvbnMYAyAD",
+            "KAsyGS5zYXZlY3JhZnQudjEuR2FtZVNlY3Rpb24SLQoJcGFyc2VkX2F0GAQg",
+            "ASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIPCgdnYW1lX2lkGAUg",
+            "ASgJEhkKEWFsbF9zZWN0aW9uX25hbWVzGAYgAygJIpgBCg5QdXNoU2F2ZVJl",
+            "c3VsdBIRCglzYXZlX3V1aWQYASABKAkSNgoSc25hcHNob3RfdGltZXN0YW1w",
+            "GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIqCgVlcnJvchgD",
+            "IAEoDjIbLnNhdmVjcmFmdC52MS5QdXNoU2F2ZUVycm9yEg8KB2dhbWVfaWQY",
+            "BCABKAkiEQoPUmVmcmVzaExpbmtDb2RlIloKFVJlZnJlc2hMaW5rQ29kZVJl",
+            "c3VsdBIRCglsaW5rX2NvZGUYASABKAkSLgoKZXhwaXJlc19hdBgCIAEoCzIa",
+            "Lmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiIQoMU291cmNlTGlua2VkEhEK",
+            "CXVzZXJfdXVpZBgBIAEoCSIOCgxVbmxpbmtTb3VyY2UiEgoQRGVyZWdpc3Rl",
+            "clNvdXJjZSJaCgxTYXZlSWRlbnRpdHkSDAoEbmFtZRgBIAEoCRImCgVleHRy",
+            "YRgCIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSFAoMZGlzcGxheV9u",
+            "YW1lGAMgASgJKqEBCg5QYXJzZUVycm9yVHlwZRIgChxQQVJTRV9FUlJPUl9U",
+            "WVBFX1VOU1BFQ0lGSUVEEAASKAokUEFSU0VfRVJST1JfVFlQRV9VTlNVUFBP",
+            "UlRFRF9WRVJTSU9OEAESIQodUEFSU0VfRVJST1JfVFlQRV9DT1JSVVBUX0ZJ",
+            "TEUQAhIgChxQQVJTRV9FUlJPUl9UWVBFX1BBUlNFX0VSUk9SEAMqzQEKDkdh",
+            "bWVTdGF0dXNFbnVtEiAKHEdBTUVfU1RBVFVTX0VOVU1fVU5TUEVDSUZJRUQQ",
+            "ABIdChlHQU1FX1NUQVRVU19FTlVNX0RFVEVDVEVEEAESHQoZR0FNRV9TVEFU",
+            "VVNfRU5VTV9XQVRDSElORxACEhoKFkdBTUVfU1RBVFVTX0VOVU1fRVJST1IQ",
+            "AxIeChpHQU1FX1NUQVRVU19FTlVNX05PVF9GT1VORBAEEh8KG0dBTUVfU1RB",
+            "VFVTX0VOVU1fQUNUSVZBVElORxAFKnQKDVB1c2hTYXZlRXJyb3ISHwobUFVT",
+            "SF9TQVZFX0VSUk9SX1VOU1BFQ0lGSUVEEAASIAocUFVTSF9TQVZFX0VSUk9S",
+            "X0dBTUVfUkVNT1ZFRBABEiAKHFBVU0hfU0FWRV9FUlJPUl9TQVZFX1JFTU9W",
+            "RUQQAkI4WjZnaXRodWIuY29tL2pvc2hzeW1vbmRzL3NhdmVjcmFmdC1jbGll",
+            "bnQvaW50ZXJuYWwvcHJvdG9iBnByb3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.TimestampReflection.Descriptor, global::Google.Protobuf.WellKnownTypes.StructReflection.Descriptor, },
-          new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Savecraft.V1.ParseErrorType), typeof(global::Savecraft.V1.GameStatusEnum), }, null, new pbr::GeneratedClrTypeInfo[] {
+          new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Savecraft.V1.ParseErrorType), typeof(global::Savecraft.V1.GameStatusEnum), typeof(global::Savecraft.V1.PushSaveError), }, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.Message), global::Savecraft.V1.Message.Parser, new[]{ "SourceOnline", "SourceOffline", "SourceHeartbeat", "ScanStarted", "ScanCompleted", "GameDetected", "GameNotFound", "Watching", "GamesDiscovered", "ParseStarted", "PluginStatus", "ParseCompleted", "ParseFailed", "PushStarted", "PushCompleted", "PushFailed", "PluginUpdated", "SourceUpdateAvailable", "SourceUpdateStarted", "SourceUpdateFailed", "PluginUpdateCheckFailed", "PluginDownloadFailed", "ConfigUpdate", "RescanGame", "PluginAvailable", "DiscoverGames", "ConfigResult", "SourceState", "TestPath", "TestPathResult", "Register", "RegisterResult", "PushSave", "PushSaveResult", "RefreshLinkCode", "RefreshLinkCodeResult", "SourceLinked", "UnlinkSource", "DeregisterSource" }, new[]{ "Payload" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.RelayedMessage), global::Savecraft.V1.RelayedMessage.Parser, new[]{ "SourceId", "ServerTimestamp", "Message" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SourceOnline), global::Savecraft.V1.SourceOnline.Parser, new[]{ "Version", "Timestamp", "Platform", "Os", "Arch", "Hostname" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SourceOnline), global::Savecraft.V1.SourceOnline.Parser, new[]{ "Version", "Timestamp", "Platform", "Os", "Arch", "Hostname", "Device" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SourceOffline), global::Savecraft.V1.SourceOffline.Parser, new[]{ "Timestamp" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SourceHeartbeat), global::Savecraft.V1.SourceHeartbeat.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.ScanStarted), global::Savecraft.V1.ScanStarted.Parser, new[]{ "GameId", "Path" }, null, null, null, null),
@@ -191,7 +200,7 @@ namespace Savecraft.V1 {
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.GameNotFound), global::Savecraft.V1.GameNotFound.Parser, new[]{ "GameId", "PathsChecked" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.Watching), global::Savecraft.V1.Watching.Parser, new[]{ "GameId", "Path", "FilesMonitored" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.GamesDiscovered), global::Savecraft.V1.GamesDiscovered.Parser, new[]{ "Games" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.DiscoveredGame), global::Savecraft.V1.DiscoveredGame.Parser, new[]{ "GameId", "Name", "Path", "FileCount", "FileExtensions" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.DiscoveredGame), global::Savecraft.V1.DiscoveredGame.Parser, new[]{ "GameId", "Name", "Path", "FileCount", "FileExtensions", "FilePatterns", "ExcludeDirs" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.ParseStarted), global::Savecraft.V1.ParseStarted.Parser, new[]{ "GameId", "FileName" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.PluginStatus), global::Savecraft.V1.PluginStatus.Parser, new[]{ "GameId", "FileName", "Message" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.ParseCompleted), global::Savecraft.V1.ParseCompleted.Parser, new[]{ "GameId", "FileName", "Identity", "Summary", "SectionsCount", "SizeBytes" }, null, null, null, null),
@@ -203,32 +212,32 @@ namespace Savecraft.V1 {
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.PluginUpdateCheckFailed), global::Savecraft.V1.PluginUpdateCheckFailed.Parser, new[]{ "Message" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.PluginDownloadFailed), global::Savecraft.V1.PluginDownloadFailed.Parser, new[]{ "GameId", "Message" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.ConfigUpdate), global::Savecraft.V1.ConfigUpdate.Parser, new[]{ "Games" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.GameConfig), global::Savecraft.V1.GameConfig.Parser, new[]{ "SavePath", "Enabled", "FileExtensions" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.GameConfig), global::Savecraft.V1.GameConfig.Parser, new[]{ "SavePath", "Enabled", "FileExtensions", "FilePatterns", "ExcludeDirs", "ExcludeSaves" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.ConfigResult), global::Savecraft.V1.ConfigResult.Parser, new[]{ "Results" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.GameConfigResult), global::Savecraft.V1.GameConfigResult.Parser, new[]{ "Success", "Error", "ResolvedPath" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.RescanGame), global::Savecraft.V1.RescanGame.Parser, new[]{ "GameId" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.PluginAvailable), global::Savecraft.V1.PluginAvailable.Parser, new[]{ "GameId", "Version", "Url" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.DiscoverGames), global::Savecraft.V1.DiscoverGames.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SourceState), global::Savecraft.V1.SourceState.Parser, new[]{ "Sources" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SourceInfo), global::Savecraft.V1.SourceInfo.Parser, new[]{ "SourceId", "Online", "LastSeen", "Games", "SourceKind", "Hostname", "CanRescan", "CanReceiveConfig", "Platform", "Os", "Arch" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.GameInfo), global::Savecraft.V1.GameInfo.Parser, new[]{ "GameId", "GameName", "Status", "Saves", "LastActivity", "Path" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SourceInfo), global::Savecraft.V1.SourceInfo.Parser, new[]{ "SourceId", "Online", "LastSeen", "Games", "SourceKind", "Hostname", "CanRescan", "CanReceiveConfig", "Platform", "Os", "Arch", "Device" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.GameInfo), global::Savecraft.V1.GameInfo.Parser, new[]{ "GameId", "GameName", "Status", "Saves", "LastActivity", "Path", "Error" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SaveInfo), global::Savecraft.V1.SaveInfo.Parser, new[]{ "SaveUuid", "Identity", "Summary", "LastUpdated" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.TestPath), global::Savecraft.V1.TestPath.Parser, new[]{ "GameId", "Path" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.TestPathResult), global::Savecraft.V1.TestPathResult.Parser, new[]{ "GameId", "Path", "Valid", "FilesFound", "FileNames" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SourceUpdateAvailable), global::Savecraft.V1.SourceUpdateAvailable.Parser, new[]{ "Version", "Url", "SignatureUrl", "Sha256" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SourceUpdateStarted), global::Savecraft.V1.SourceUpdateStarted.Parser, new[]{ "Version" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SourceUpdateFailed), global::Savecraft.V1.SourceUpdateFailed.Parser, new[]{ "Version", "Message" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.Register), global::Savecraft.V1.Register.Parser, new[]{ "Hostname", "Os", "Arch" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.Register), global::Savecraft.V1.Register.Parser, new[]{ "Hostname", "Os", "Arch", "Device" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.RegisterResult), global::Savecraft.V1.RegisterResult.Parser, new[]{ "SourceUuid", "SourceToken", "LinkCode", "LinkCodeExpiresAt" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.GameSection), global::Savecraft.V1.GameSection.Parser, new[]{ "Name", "Description", "Data" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.PushSave), global::Savecraft.V1.PushSave.Parser, new[]{ "Identity", "Summary", "Sections", "ParsedAt", "GameId" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.PushSaveResult), global::Savecraft.V1.PushSaveResult.Parser, new[]{ "SaveUuid", "SnapshotTimestamp" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.PushSave), global::Savecraft.V1.PushSave.Parser, new[]{ "Identity", "Summary", "Sections", "ParsedAt", "GameId", "AllSectionNames" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.PushSaveResult), global::Savecraft.V1.PushSaveResult.Parser, new[]{ "SaveUuid", "SnapshotTimestamp", "Error", "GameId" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.RefreshLinkCode), global::Savecraft.V1.RefreshLinkCode.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.RefreshLinkCodeResult), global::Savecraft.V1.RefreshLinkCodeResult.Parser, new[]{ "LinkCode", "ExpiresAt" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SourceLinked), global::Savecraft.V1.SourceLinked.Parser, new[]{ "UserUuid" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.UnlinkSource), global::Savecraft.V1.UnlinkSource.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.DeregisterSource), global::Savecraft.V1.DeregisterSource.Parser, null, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SaveIdentity), global::Savecraft.V1.SaveIdentity.Parser, new[]{ "Name", "Extra" }, null, null, null, null)
+            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SaveIdentity), global::Savecraft.V1.SaveIdentity.Parser, new[]{ "Name", "Extra", "DisplayName" }, null, null, null, null)
           }));
     }
     #endregion
@@ -249,6 +258,15 @@ namespace Savecraft.V1 {
     [pbr::OriginalName("GAME_STATUS_ENUM_ERROR")] Error = 3,
     [pbr::OriginalName("GAME_STATUS_ENUM_NOT_FOUND")] NotFound = 4,
     [pbr::OriginalName("GAME_STATUS_ENUM_ACTIVATING")] Activating = 5,
+  }
+
+  /// <summary>
+  /// Why a PushSave was rejected by the server.
+  /// </summary>
+  public enum PushSaveError {
+    [pbr::OriginalName("PUSH_SAVE_ERROR_UNSPECIFIED")] Unspecified = 0,
+    [pbr::OriginalName("PUSH_SAVE_ERROR_GAME_REMOVED")] GameRemoved = 1,
+    [pbr::OriginalName("PUSH_SAVE_ERROR_SAVE_REMOVED")] SaveRemoved = 2,
   }
 
   #endregion
@@ -2896,6 +2914,7 @@ namespace Savecraft.V1 {
       os_ = other.os_;
       arch_ = other.arch_;
       hostname_ = other.hostname_;
+      device_ = other.device_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -2977,6 +2996,18 @@ namespace Savecraft.V1 {
       }
     }
 
+    /// <summary>Field number for the "device" field.</summary>
+    public const int DeviceFieldNumber = 8;
+    private string device_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Device {
+      get { return device_; }
+      set {
+        device_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -2998,6 +3029,7 @@ namespace Savecraft.V1 {
       if (Os != other.Os) return false;
       if (Arch != other.Arch) return false;
       if (Hostname != other.Hostname) return false;
+      if (Device != other.Device) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -3011,6 +3043,7 @@ namespace Savecraft.V1 {
       if (Os.Length != 0) hash ^= Os.GetHashCode();
       if (Arch.Length != 0) hash ^= Arch.GetHashCode();
       if (Hostname.Length != 0) hash ^= Hostname.GetHashCode();
+      if (Device.Length != 0) hash ^= Device.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -3053,6 +3086,10 @@ namespace Savecraft.V1 {
         output.WriteRawTag(58);
         output.WriteString(Hostname);
       }
+      if (Device.Length != 0) {
+        output.WriteRawTag(66);
+        output.WriteString(Device);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -3087,6 +3124,10 @@ namespace Savecraft.V1 {
         output.WriteRawTag(58);
         output.WriteString(Hostname);
       }
+      if (Device.Length != 0) {
+        output.WriteRawTag(66);
+        output.WriteString(Device);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -3114,6 +3155,9 @@ namespace Savecraft.V1 {
       }
       if (Hostname.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Hostname);
+      }
+      if (Device.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Device);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -3147,6 +3191,9 @@ namespace Savecraft.V1 {
       }
       if (other.Hostname.Length != 0) {
         Hostname = other.Hostname;
+      }
+      if (other.Device.Length != 0) {
+        Device = other.Device;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -3194,6 +3241,10 @@ namespace Savecraft.V1 {
             Hostname = input.ReadString();
             break;
           }
+          case 66: {
+            Device = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -3238,6 +3289,10 @@ namespace Savecraft.V1 {
           }
           case 58: {
             Hostname = input.ReadString();
+            break;
+          }
+          case 66: {
+            Device = input.ReadString();
             break;
           }
         }
@@ -5168,6 +5223,8 @@ namespace Savecraft.V1 {
       path_ = other.path_;
       fileCount_ = other.fileCount_;
       fileExtensions_ = other.fileExtensions_.Clone();
+      filePatterns_ = other.filePatterns_.Clone();
+      excludeDirs_ = other.excludeDirs_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -5236,6 +5293,28 @@ namespace Savecraft.V1 {
       get { return fileExtensions_; }
     }
 
+    /// <summary>Field number for the "file_patterns" field.</summary>
+    public const int FilePatternsFieldNumber = 6;
+    private static readonly pb::FieldCodec<string> _repeated_filePatterns_codec
+        = pb::FieldCodec.ForString(50);
+    private readonly pbc::RepeatedField<string> filePatterns_ = new pbc::RepeatedField<string>();
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public pbc::RepeatedField<string> FilePatterns {
+      get { return filePatterns_; }
+    }
+
+    /// <summary>Field number for the "exclude_dirs" field.</summary>
+    public const int ExcludeDirsFieldNumber = 7;
+    private static readonly pb::FieldCodec<string> _repeated_excludeDirs_codec
+        = pb::FieldCodec.ForString(58);
+    private readonly pbc::RepeatedField<string> excludeDirs_ = new pbc::RepeatedField<string>();
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public pbc::RepeatedField<string> ExcludeDirs {
+      get { return excludeDirs_; }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -5256,6 +5335,8 @@ namespace Savecraft.V1 {
       if (Path != other.Path) return false;
       if (FileCount != other.FileCount) return false;
       if(!fileExtensions_.Equals(other.fileExtensions_)) return false;
+      if(!filePatterns_.Equals(other.filePatterns_)) return false;
+      if(!excludeDirs_.Equals(other.excludeDirs_)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -5268,6 +5349,8 @@ namespace Savecraft.V1 {
       if (Path.Length != 0) hash ^= Path.GetHashCode();
       if (FileCount != 0) hash ^= FileCount.GetHashCode();
       hash ^= fileExtensions_.GetHashCode();
+      hash ^= filePatterns_.GetHashCode();
+      hash ^= excludeDirs_.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -5303,6 +5386,8 @@ namespace Savecraft.V1 {
         output.WriteInt32(FileCount);
       }
       fileExtensions_.WriteTo(output, _repeated_fileExtensions_codec);
+      filePatterns_.WriteTo(output, _repeated_filePatterns_codec);
+      excludeDirs_.WriteTo(output, _repeated_excludeDirs_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -5330,6 +5415,8 @@ namespace Savecraft.V1 {
         output.WriteInt32(FileCount);
       }
       fileExtensions_.WriteTo(ref output, _repeated_fileExtensions_codec);
+      filePatterns_.WriteTo(ref output, _repeated_filePatterns_codec);
+      excludeDirs_.WriteTo(ref output, _repeated_excludeDirs_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -5353,6 +5440,8 @@ namespace Savecraft.V1 {
         size += 1 + pb::CodedOutputStream.ComputeInt32Size(FileCount);
       }
       size += fileExtensions_.CalculateSize(_repeated_fileExtensions_codec);
+      size += filePatterns_.CalculateSize(_repeated_filePatterns_codec);
+      size += excludeDirs_.CalculateSize(_repeated_excludeDirs_codec);
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -5378,6 +5467,8 @@ namespace Savecraft.V1 {
         FileCount = other.FileCount;
       }
       fileExtensions_.Add(other.fileExtensions_);
+      filePatterns_.Add(other.filePatterns_);
+      excludeDirs_.Add(other.excludeDirs_);
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
@@ -5417,6 +5508,14 @@ namespace Savecraft.V1 {
             fileExtensions_.AddEntriesFrom(input, _repeated_fileExtensions_codec);
             break;
           }
+          case 50: {
+            filePatterns_.AddEntriesFrom(input, _repeated_filePatterns_codec);
+            break;
+          }
+          case 58: {
+            excludeDirs_.AddEntriesFrom(input, _repeated_excludeDirs_codec);
+            break;
+          }
         }
       }
     #endif
@@ -5454,6 +5553,14 @@ namespace Savecraft.V1 {
           }
           case 42: {
             fileExtensions_.AddEntriesFrom(ref input, _repeated_fileExtensions_codec);
+            break;
+          }
+          case 50: {
+            filePatterns_.AddEntriesFrom(ref input, _repeated_filePatterns_codec);
+            break;
+          }
+          case 58: {
+            excludeDirs_.AddEntriesFrom(ref input, _repeated_excludeDirs_codec);
             break;
           }
         }
@@ -8534,6 +8641,9 @@ namespace Savecraft.V1 {
       savePath_ = other.savePath_;
       enabled_ = other.enabled_;
       fileExtensions_ = other.fileExtensions_.Clone();
+      filePatterns_ = other.filePatterns_.Clone();
+      excludeDirs_ = other.excludeDirs_.Clone();
+      excludeSaves_ = other.excludeSaves_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -8578,6 +8688,39 @@ namespace Savecraft.V1 {
       get { return fileExtensions_; }
     }
 
+    /// <summary>Field number for the "file_patterns" field.</summary>
+    public const int FilePatternsFieldNumber = 4;
+    private static readonly pb::FieldCodec<string> _repeated_filePatterns_codec
+        = pb::FieldCodec.ForString(34);
+    private readonly pbc::RepeatedField<string> filePatterns_ = new pbc::RepeatedField<string>();
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public pbc::RepeatedField<string> FilePatterns {
+      get { return filePatterns_; }
+    }
+
+    /// <summary>Field number for the "exclude_dirs" field.</summary>
+    public const int ExcludeDirsFieldNumber = 5;
+    private static readonly pb::FieldCodec<string> _repeated_excludeDirs_codec
+        = pb::FieldCodec.ForString(42);
+    private readonly pbc::RepeatedField<string> excludeDirs_ = new pbc::RepeatedField<string>();
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public pbc::RepeatedField<string> ExcludeDirs {
+      get { return excludeDirs_; }
+    }
+
+    /// <summary>Field number for the "exclude_saves" field.</summary>
+    public const int ExcludeSavesFieldNumber = 6;
+    private static readonly pb::FieldCodec<string> _repeated_excludeSaves_codec
+        = pb::FieldCodec.ForString(50);
+    private readonly pbc::RepeatedField<string> excludeSaves_ = new pbc::RepeatedField<string>();
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public pbc::RepeatedField<string> ExcludeSaves {
+      get { return excludeSaves_; }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -8596,6 +8739,9 @@ namespace Savecraft.V1 {
       if (SavePath != other.SavePath) return false;
       if (Enabled != other.Enabled) return false;
       if(!fileExtensions_.Equals(other.fileExtensions_)) return false;
+      if(!filePatterns_.Equals(other.filePatterns_)) return false;
+      if(!excludeDirs_.Equals(other.excludeDirs_)) return false;
+      if(!excludeSaves_.Equals(other.excludeSaves_)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -8606,6 +8752,9 @@ namespace Savecraft.V1 {
       if (SavePath.Length != 0) hash ^= SavePath.GetHashCode();
       if (Enabled != false) hash ^= Enabled.GetHashCode();
       hash ^= fileExtensions_.GetHashCode();
+      hash ^= filePatterns_.GetHashCode();
+      hash ^= excludeDirs_.GetHashCode();
+      hash ^= excludeSaves_.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -8633,6 +8782,9 @@ namespace Savecraft.V1 {
         output.WriteBool(Enabled);
       }
       fileExtensions_.WriteTo(output, _repeated_fileExtensions_codec);
+      filePatterns_.WriteTo(output, _repeated_filePatterns_codec);
+      excludeDirs_.WriteTo(output, _repeated_excludeDirs_codec);
+      excludeSaves_.WriteTo(output, _repeated_excludeSaves_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -8652,6 +8804,9 @@ namespace Savecraft.V1 {
         output.WriteBool(Enabled);
       }
       fileExtensions_.WriteTo(ref output, _repeated_fileExtensions_codec);
+      filePatterns_.WriteTo(ref output, _repeated_filePatterns_codec);
+      excludeDirs_.WriteTo(ref output, _repeated_excludeDirs_codec);
+      excludeSaves_.WriteTo(ref output, _repeated_excludeSaves_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -8669,6 +8824,9 @@ namespace Savecraft.V1 {
         size += 1 + 1;
       }
       size += fileExtensions_.CalculateSize(_repeated_fileExtensions_codec);
+      size += filePatterns_.CalculateSize(_repeated_filePatterns_codec);
+      size += excludeDirs_.CalculateSize(_repeated_excludeDirs_codec);
+      size += excludeSaves_.CalculateSize(_repeated_excludeSaves_codec);
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -8688,6 +8846,9 @@ namespace Savecraft.V1 {
         Enabled = other.Enabled;
       }
       fileExtensions_.Add(other.fileExtensions_);
+      filePatterns_.Add(other.filePatterns_);
+      excludeDirs_.Add(other.excludeDirs_);
+      excludeSaves_.Add(other.excludeSaves_);
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
@@ -8719,6 +8880,18 @@ namespace Savecraft.V1 {
             fileExtensions_.AddEntriesFrom(input, _repeated_fileExtensions_codec);
             break;
           }
+          case 34: {
+            filePatterns_.AddEntriesFrom(input, _repeated_filePatterns_codec);
+            break;
+          }
+          case 42: {
+            excludeDirs_.AddEntriesFrom(input, _repeated_excludeDirs_codec);
+            break;
+          }
+          case 50: {
+            excludeSaves_.AddEntriesFrom(input, _repeated_excludeSaves_codec);
+            break;
+          }
         }
       }
     #endif
@@ -8748,6 +8921,18 @@ namespace Savecraft.V1 {
           }
           case 26: {
             fileExtensions_.AddEntriesFrom(ref input, _repeated_fileExtensions_codec);
+            break;
+          }
+          case 34: {
+            filePatterns_.AddEntriesFrom(ref input, _repeated_filePatterns_codec);
+            break;
+          }
+          case 42: {
+            excludeDirs_.AddEntriesFrom(ref input, _repeated_excludeDirs_codec);
+            break;
+          }
+          case 50: {
+            excludeSaves_.AddEntriesFrom(ref input, _repeated_excludeSaves_codec);
             break;
           }
         }
@@ -10102,6 +10287,7 @@ namespace Savecraft.V1 {
       platform_ = other.platform_;
       os_ = other.os_;
       arch_ = other.arch_;
+      device_ = other.device_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -10242,6 +10428,18 @@ namespace Savecraft.V1 {
       }
     }
 
+    /// <summary>Field number for the "device" field.</summary>
+    public const int DeviceFieldNumber = 12;
+    private string device_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Device {
+      get { return device_; }
+      set {
+        device_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -10268,6 +10466,7 @@ namespace Savecraft.V1 {
       if (Platform != other.Platform) return false;
       if (Os != other.Os) return false;
       if (Arch != other.Arch) return false;
+      if (Device != other.Device) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -10286,6 +10485,7 @@ namespace Savecraft.V1 {
       if (Platform.Length != 0) hash ^= Platform.GetHashCode();
       if (Os.Length != 0) hash ^= Os.GetHashCode();
       if (Arch.Length != 0) hash ^= Arch.GetHashCode();
+      if (Device.Length != 0) hash ^= Device.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -10345,6 +10545,10 @@ namespace Savecraft.V1 {
         output.WriteRawTag(90);
         output.WriteString(Arch);
       }
+      if (Device.Length != 0) {
+        output.WriteRawTag(98);
+        output.WriteString(Device);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -10396,6 +10600,10 @@ namespace Savecraft.V1 {
         output.WriteRawTag(90);
         output.WriteString(Arch);
       }
+      if (Device.Length != 0) {
+        output.WriteRawTag(98);
+        output.WriteString(Device);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -10436,6 +10644,9 @@ namespace Savecraft.V1 {
       }
       if (Arch.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Arch);
+      }
+      if (Device.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Device);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -10482,6 +10693,9 @@ namespace Savecraft.V1 {
       }
       if (other.Arch.Length != 0) {
         Arch = other.Arch;
+      }
+      if (other.Device.Length != 0) {
+        Device = other.Device;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -10547,6 +10761,10 @@ namespace Savecraft.V1 {
           }
           case 90: {
             Arch = input.ReadString();
+            break;
+          }
+          case 98: {
+            Device = input.ReadString();
             break;
           }
         }
@@ -10615,6 +10833,10 @@ namespace Savecraft.V1 {
             Arch = input.ReadString();
             break;
           }
+          case 98: {
+            Device = input.ReadString();
+            break;
+          }
         }
       }
     }
@@ -10663,6 +10885,7 @@ namespace Savecraft.V1 {
       saves_ = other.saves_.Clone();
       lastActivity_ = other.lastActivity_ != null ? other.lastActivity_.Clone() : null;
       path_ = other.path_;
+      error_ = other.error_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -10743,6 +10966,21 @@ namespace Savecraft.V1 {
       }
     }
 
+    /// <summary>Field number for the "error" field.</summary>
+    public const int ErrorFieldNumber = 7;
+    private string error_ = "";
+    /// <summary>
+    /// Human-readable error message when status is ERROR (e.g. "token_expired: Battle.net token expired").
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Error {
+      get { return error_; }
+      set {
+        error_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -10764,6 +11002,7 @@ namespace Savecraft.V1 {
       if(!saves_.Equals(other.saves_)) return false;
       if (!object.Equals(LastActivity, other.LastActivity)) return false;
       if (Path != other.Path) return false;
+      if (Error != other.Error) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -10777,6 +11016,7 @@ namespace Savecraft.V1 {
       hash ^= saves_.GetHashCode();
       if (lastActivity_ != null) hash ^= LastActivity.GetHashCode();
       if (Path.Length != 0) hash ^= Path.GetHashCode();
+      if (Error.Length != 0) hash ^= Error.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -10816,6 +11056,10 @@ namespace Savecraft.V1 {
         output.WriteRawTag(50);
         output.WriteString(Path);
       }
+      if (Error.Length != 0) {
+        output.WriteRawTag(58);
+        output.WriteString(Error);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -10847,6 +11091,10 @@ namespace Savecraft.V1 {
         output.WriteRawTag(50);
         output.WriteString(Path);
       }
+      if (Error.Length != 0) {
+        output.WriteRawTag(58);
+        output.WriteString(Error);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -10872,6 +11120,9 @@ namespace Savecraft.V1 {
       }
       if (Path.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Path);
+      }
+      if (Error.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Error);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -10903,6 +11154,9 @@ namespace Savecraft.V1 {
       }
       if (other.Path.Length != 0) {
         Path = other.Path;
+      }
+      if (other.Error.Length != 0) {
+        Error = other.Error;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -10950,6 +11204,10 @@ namespace Savecraft.V1 {
             Path = input.ReadString();
             break;
           }
+          case 58: {
+            Error = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -10994,6 +11252,10 @@ namespace Savecraft.V1 {
           }
           case 50: {
             Path = input.ReadString();
+            break;
+          }
+          case 58: {
+            Error = input.ReadString();
             break;
           }
         }
@@ -12698,6 +12960,7 @@ namespace Savecraft.V1 {
       hostname_ = other.hostname_;
       os_ = other.os_;
       arch_ = other.arch_;
+      device_ = other.device_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -12743,6 +13006,18 @@ namespace Savecraft.V1 {
       }
     }
 
+    /// <summary>Field number for the "device" field.</summary>
+    public const int DeviceFieldNumber = 4;
+    private string device_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Device {
+      get { return device_; }
+      set {
+        device_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -12761,6 +13036,7 @@ namespace Savecraft.V1 {
       if (Hostname != other.Hostname) return false;
       if (Os != other.Os) return false;
       if (Arch != other.Arch) return false;
+      if (Device != other.Device) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -12771,6 +13047,7 @@ namespace Savecraft.V1 {
       if (Hostname.Length != 0) hash ^= Hostname.GetHashCode();
       if (Os.Length != 0) hash ^= Os.GetHashCode();
       if (Arch.Length != 0) hash ^= Arch.GetHashCode();
+      if (Device.Length != 0) hash ^= Device.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -12801,6 +13078,10 @@ namespace Savecraft.V1 {
         output.WriteRawTag(26);
         output.WriteString(Arch);
       }
+      if (Device.Length != 0) {
+        output.WriteRawTag(34);
+        output.WriteString(Device);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -12823,6 +13104,10 @@ namespace Savecraft.V1 {
         output.WriteRawTag(26);
         output.WriteString(Arch);
       }
+      if (Device.Length != 0) {
+        output.WriteRawTag(34);
+        output.WriteString(Device);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -12841,6 +13126,9 @@ namespace Savecraft.V1 {
       }
       if (Arch.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Arch);
+      }
+      if (Device.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Device);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -12862,6 +13150,9 @@ namespace Savecraft.V1 {
       }
       if (other.Arch.Length != 0) {
         Arch = other.Arch;
+      }
+      if (other.Device.Length != 0) {
+        Device = other.Device;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -12894,6 +13185,10 @@ namespace Savecraft.V1 {
             Arch = input.ReadString();
             break;
           }
+          case 34: {
+            Device = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -12923,6 +13218,10 @@ namespace Savecraft.V1 {
           }
           case 26: {
             Arch = input.ReadString();
+            break;
+          }
+          case 34: {
+            Device = input.ReadString();
             break;
           }
         }
@@ -13581,6 +13880,7 @@ namespace Savecraft.V1 {
       sections_ = other.sections_.Clone();
       parsedAt_ = other.parsedAt_ != null ? other.parsedAt_.Clone() : null;
       gameId_ = other.gameId_;
+      allSectionNames_ = other.allSectionNames_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -13649,6 +13949,23 @@ namespace Savecraft.V1 {
       }
     }
 
+    /// <summary>Field number for the "all_section_names" field.</summary>
+    public const int AllSectionNamesFieldNumber = 6;
+    private static readonly pb::FieldCodec<string> _repeated_allSectionNames_codec
+        = pb::FieldCodec.ForString(50);
+    private readonly pbc::RepeatedField<string> allSectionNames_ = new pbc::RepeatedField<string>();
+    /// <summary>
+    /// Complete list of section names the plugin currently produces.
+    /// Sections stored in D1 whose names are not in this list are deleted
+    /// (the plugin stopped emitting them). When empty, no deletion occurs
+    /// — this preserves backwards compatibility with older daemons.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public pbc::RepeatedField<string> AllSectionNames {
+      get { return allSectionNames_; }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -13669,6 +13986,7 @@ namespace Savecraft.V1 {
       if(!sections_.Equals(other.sections_)) return false;
       if (!object.Equals(ParsedAt, other.ParsedAt)) return false;
       if (GameId != other.GameId) return false;
+      if(!allSectionNames_.Equals(other.allSectionNames_)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -13681,6 +13999,7 @@ namespace Savecraft.V1 {
       hash ^= sections_.GetHashCode();
       if (parsedAt_ != null) hash ^= ParsedAt.GetHashCode();
       if (GameId.Length != 0) hash ^= GameId.GetHashCode();
+      hash ^= allSectionNames_.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -13716,6 +14035,7 @@ namespace Savecraft.V1 {
         output.WriteRawTag(42);
         output.WriteString(GameId);
       }
+      allSectionNames_.WriteTo(output, _repeated_allSectionNames_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -13743,6 +14063,7 @@ namespace Savecraft.V1 {
         output.WriteRawTag(42);
         output.WriteString(GameId);
       }
+      allSectionNames_.WriteTo(ref output, _repeated_allSectionNames_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -13766,6 +14087,7 @@ namespace Savecraft.V1 {
       if (GameId.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(GameId);
       }
+      size += allSectionNames_.CalculateSize(_repeated_allSectionNames_codec);
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -13797,6 +14119,7 @@ namespace Savecraft.V1 {
       if (other.GameId.Length != 0) {
         GameId = other.GameId;
       }
+      allSectionNames_.Add(other.allSectionNames_);
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
@@ -13840,6 +14163,10 @@ namespace Savecraft.V1 {
           }
           case 42: {
             GameId = input.ReadString();
+            break;
+          }
+          case 50: {
+            allSectionNames_.AddEntriesFrom(input, _repeated_allSectionNames_codec);
             break;
           }
         }
@@ -13887,6 +14214,10 @@ namespace Savecraft.V1 {
             GameId = input.ReadString();
             break;
           }
+          case 50: {
+            allSectionNames_.AddEntriesFrom(ref input, _repeated_allSectionNames_codec);
+            break;
+          }
         }
       }
     }
@@ -13896,6 +14227,7 @@ namespace Savecraft.V1 {
 
   /// <summary>
   /// Server response to PushSave with the resolved save UUID.
+  /// If error is set, the push was rejected and save_uuid/snapshot_timestamp are empty.
   /// </summary>
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
   public sealed partial class PushSaveResult : pb::IMessage<PushSaveResult>
@@ -13934,6 +14266,8 @@ namespace Savecraft.V1 {
     public PushSaveResult(PushSaveResult other) : this() {
       saveUuid_ = other.saveUuid_;
       snapshotTimestamp_ = other.snapshotTimestamp_ != null ? other.snapshotTimestamp_.Clone() : null;
+      error_ = other.error_;
+      gameId_ = other.gameId_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -13967,6 +14301,30 @@ namespace Savecraft.V1 {
       }
     }
 
+    /// <summary>Field number for the "error" field.</summary>
+    public const int ErrorFieldNumber = 3;
+    private global::Savecraft.V1.PushSaveError error_ = global::Savecraft.V1.PushSaveError.Unspecified;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::Savecraft.V1.PushSaveError Error {
+      get { return error_; }
+      set {
+        error_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "game_id" field.</summary>
+    public const int GameIdFieldNumber = 4;
+    private string gameId_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string GameId {
+      get { return gameId_; }
+      set {
+        gameId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -13984,6 +14342,8 @@ namespace Savecraft.V1 {
       }
       if (SaveUuid != other.SaveUuid) return false;
       if (!object.Equals(SnapshotTimestamp, other.SnapshotTimestamp)) return false;
+      if (Error != other.Error) return false;
+      if (GameId != other.GameId) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -13993,6 +14353,8 @@ namespace Savecraft.V1 {
       int hash = 1;
       if (SaveUuid.Length != 0) hash ^= SaveUuid.GetHashCode();
       if (snapshotTimestamp_ != null) hash ^= SnapshotTimestamp.GetHashCode();
+      if (Error != global::Savecraft.V1.PushSaveError.Unspecified) hash ^= Error.GetHashCode();
+      if (GameId.Length != 0) hash ^= GameId.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -14019,6 +14381,14 @@ namespace Savecraft.V1 {
         output.WriteRawTag(18);
         output.WriteMessage(SnapshotTimestamp);
       }
+      if (Error != global::Savecraft.V1.PushSaveError.Unspecified) {
+        output.WriteRawTag(24);
+        output.WriteEnum((int) Error);
+      }
+      if (GameId.Length != 0) {
+        output.WriteRawTag(34);
+        output.WriteString(GameId);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -14037,6 +14407,14 @@ namespace Savecraft.V1 {
         output.WriteRawTag(18);
         output.WriteMessage(SnapshotTimestamp);
       }
+      if (Error != global::Savecraft.V1.PushSaveError.Unspecified) {
+        output.WriteRawTag(24);
+        output.WriteEnum((int) Error);
+      }
+      if (GameId.Length != 0) {
+        output.WriteRawTag(34);
+        output.WriteString(GameId);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -14052,6 +14430,12 @@ namespace Savecraft.V1 {
       }
       if (snapshotTimestamp_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(SnapshotTimestamp);
+      }
+      if (Error != global::Savecraft.V1.PushSaveError.Unspecified) {
+        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Error);
+      }
+      if (GameId.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(GameId);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -14073,6 +14457,12 @@ namespace Savecraft.V1 {
           SnapshotTimestamp = new global::Google.Protobuf.WellKnownTypes.Timestamp();
         }
         SnapshotTimestamp.MergeFrom(other.SnapshotTimestamp);
+      }
+      if (other.Error != global::Savecraft.V1.PushSaveError.Unspecified) {
+        Error = other.Error;
+      }
+      if (other.GameId.Length != 0) {
+        GameId = other.GameId;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -14104,6 +14494,14 @@ namespace Savecraft.V1 {
             input.ReadMessage(SnapshotTimestamp);
             break;
           }
+          case 24: {
+            Error = (global::Savecraft.V1.PushSaveError) input.ReadEnum();
+            break;
+          }
+          case 34: {
+            GameId = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -14132,6 +14530,14 @@ namespace Savecraft.V1 {
               SnapshotTimestamp = new global::Google.Protobuf.WellKnownTypes.Timestamp();
             }
             input.ReadMessage(SnapshotTimestamp);
+            break;
+          }
+          case 24: {
+            Error = (global::Savecraft.V1.PushSaveError) input.ReadEnum();
+            break;
+          }
+          case 34: {
+            GameId = input.ReadString();
             break;
           }
         }
@@ -15123,6 +15529,7 @@ namespace Savecraft.V1 {
     public SaveIdentity(SaveIdentity other) : this() {
       name_ = other.name_;
       extra_ = other.extra_ != null ? other.extra_.Clone() : null;
+      displayName_ = other.displayName_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -15160,6 +15567,22 @@ namespace Savecraft.V1 {
       }
     }
 
+    /// <summary>Field number for the "display_name" field.</summary>
+    public const int DisplayNameFieldNumber = 3;
+    private string displayName_ = "";
+    /// <summary>
+    /// Mutable display label, updated in place on every push. `name` remains
+    /// the immutable identity key.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string DisplayName {
+      get { return displayName_; }
+      set {
+        displayName_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -15177,6 +15600,7 @@ namespace Savecraft.V1 {
       }
       if (Name != other.Name) return false;
       if (!object.Equals(Extra, other.Extra)) return false;
+      if (DisplayName != other.DisplayName) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -15186,6 +15610,7 @@ namespace Savecraft.V1 {
       int hash = 1;
       if (Name.Length != 0) hash ^= Name.GetHashCode();
       if (extra_ != null) hash ^= Extra.GetHashCode();
+      if (DisplayName.Length != 0) hash ^= DisplayName.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -15212,6 +15637,10 @@ namespace Savecraft.V1 {
         output.WriteRawTag(18);
         output.WriteMessage(Extra);
       }
+      if (DisplayName.Length != 0) {
+        output.WriteRawTag(26);
+        output.WriteString(DisplayName);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -15230,6 +15659,10 @@ namespace Savecraft.V1 {
         output.WriteRawTag(18);
         output.WriteMessage(Extra);
       }
+      if (DisplayName.Length != 0) {
+        output.WriteRawTag(26);
+        output.WriteString(DisplayName);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -15245,6 +15678,9 @@ namespace Savecraft.V1 {
       }
       if (extra_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(Extra);
+      }
+      if (DisplayName.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(DisplayName);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -15266,6 +15702,9 @@ namespace Savecraft.V1 {
           Extra = new global::Google.Protobuf.WellKnownTypes.Struct();
         }
         Extra.MergeFrom(other.Extra);
+      }
+      if (other.DisplayName.Length != 0) {
+        DisplayName = other.DisplayName;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -15297,6 +15736,10 @@ namespace Savecraft.V1 {
             input.ReadMessage(Extra);
             break;
           }
+          case 26: {
+            DisplayName = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -15325,6 +15768,10 @@ namespace Savecraft.V1 {
               Extra = new global::Google.Protobuf.WellKnownTypes.Struct();
             }
             input.ReadMessage(Extra);
+            break;
+          }
+          case 26: {
+            DisplayName = input.ReadString();
             break;
           }
         }

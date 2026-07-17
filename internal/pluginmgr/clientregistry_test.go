@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/joshsymonds/savecraft.gg/internal/manifest"
-	"github.com/joshsymonds/savecraft.gg/internal/signing"
+	"github.com/joshsymonds/savecraft-client/internal/manifest"
+	"github.com/joshsymonds/savecraft-client/internal/signing"
 )
 
 type clientRegistryManifest struct {

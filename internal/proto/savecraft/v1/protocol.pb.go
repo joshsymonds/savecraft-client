@@ -4107,7 +4107,7 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\rPushSaveError\x12\x1f\n" +
 	"\x1bPUSH_SAVE_ERROR_UNSPECIFIED\x10\x00\x12 \n" +
 	"\x1cPUSH_SAVE_ERROR_GAME_REMOVED\x10\x01\x12 \n" +
-	"\x1cPUSH_SAVE_ERROR_SAVE_REMOVED\x10\x02B4Z2github.com/joshsymonds/savecraft.gg/internal/protob\x06proto3"
+	"\x1cPUSH_SAVE_ERROR_SAVE_REMOVED\x10\x02B8Z6github.com/joshsymonds/savecraft-client/internal/protob\x06proto3"
 
 var (
 	file_savecraft_v1_protocol_proto_rawDescOnce sync.Once

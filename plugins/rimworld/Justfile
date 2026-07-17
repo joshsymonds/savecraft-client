@@ -1,6 +1,5 @@
 build:
     dotnet build SavecraftRimWorld/SavecraftRimWorld.csproj -c Release
-    GOOS=wasip1 GOARCH=wasm go build -o reference.wasm ./reference
 
 clean:
     dotnet clean SavecraftRimWorld/SavecraftRimWorld.csproj
@@ -9,7 +8,7 @@ clean:
 restore:
     dotnet restore SavecraftRimWorld/SavecraftRimWorld.csproj
 
-# Generate C# protobuf types from the monorepo proto definition
+# Generate C# protobuf types from the repository protocol definition.
 proto:
     protoc \
         --proto_path=../../proto \

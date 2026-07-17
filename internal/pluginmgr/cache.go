@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/joshsymonds/savecraft.gg/internal/appname"
+	"github.com/joshsymonds/savecraft-client/internal/appname"
 )
 
 // Cache manages local plugin storage on disk.

@@ -4,7 +4,7 @@
 
 ---
 
-**TL;DR:** Savecraft collects the minimum data needed to connect your game saves to AI assistants. We store your email address, your game save data (which you push to us), and notes you create. We log MCP tool calls (what the AI asked for, not what you said to it) to improve the service. We do not use third-party analytics, do not track you across sites, do not sell your data, and do not see your conversations with AI assistants. Our code is [open source](https://github.com/joshsymonds/savecraft) — you can verify all of this yourself.
+**TL;DR:** Savecraft collects the minimum data needed to connect your game saves to AI assistants. We store your email address, your game save data (which you push to us), and notes you create. We log MCP tool calls (what the AI asked for, not what you said to it) to improve the service. We do not use third-party analytics, do not track you across sites, do not sell your data, and do not see your conversations with AI assistants. The [local client](https://github.com/joshsymonds/savecraft-client) — the code that reads your files — is open and inspectable. The hosted service is proprietary.
 
 ---
 
@@ -17,7 +17,7 @@ Savecraft is operated by Josh Symonds ("we," "us," "our").
 
 Savecraft is a gaming companion tool that parses your game save files and serves structured game state data to AI assistants (Claude, ChatGPT, Gemini) via the Model Context Protocol (MCP). It consists of a local daemon that runs on your gaming device, a cloud service that stores and serves your data, and a web interface for managing your devices and settings.
 
-This policy applies to the hosted service at **savecraft.gg** and the Savecraft daemon software. If you self-host Savecraft from our open-source repository, your deployment is governed by your own privacy practices, not this policy.
+This policy applies to the hosted service at **savecraft.gg** and the Savecraft daemon software. Modified clients that we do not distribute are governed by their operators' privacy practices, not this policy.
 
 ## What we collect and why
 
@@ -185,7 +185,7 @@ In EU member states where the age of digital consent is higher than 13, users be
 
 Save data and notes are stored in Cloudflare's infrastructure, which provides encryption at rest and in transit. Authentication tokens are hashed (SHA-256 for device tokens; bcrypt for Clerk credentials). OAuth tokens are opaque and stored with automatic expiration. The daemon runs with minimal system permissions — on Linux/Steam Deck, kernel-enforced sandboxing (via systemd) restricts it to read-only access to save file directories and write access only to its own configuration. WASM plugins that parse save files are sandboxed and cannot access the filesystem, network, or environment variables.
 
-Our source code is publicly available. You can inspect exactly what data the daemon collects, how plugins parse saves, and how the server handles requests.
+The [local client source](https://github.com/joshsymonds/savecraft-client) is publicly available. You can inspect exactly what data the daemon reads and sends and how plugins parse saves. The hosted service is proprietary.
 
 ## Changes to this policy
 

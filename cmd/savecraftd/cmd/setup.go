@@ -13,9 +13,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/joshsymonds/savecraft.gg/internal/envfile"
-	"github.com/joshsymonds/savecraft.gg/internal/localapi"
-	"github.com/joshsymonds/savecraft.gg/internal/svcmgr"
+	"github.com/joshsymonds/savecraft-client/internal/envfile"
+	"github.com/joshsymonds/savecraft-client/internal/localapi"
+	"github.com/joshsymonds/savecraft-client/internal/svcmgr"
 )
 
 // setupDeps holds injectable dependencies for the setup command.
@@ -75,7 +75,7 @@ from stale state automatically.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			loadEnvFileDefaults(appName)
 
-			resolvedServerURL := os.Getenv("SAVECRAFT_SERVER_URL")
+			resolvedServerURL := os.Getenv(envServerURL)
 			if resolvedServerURL == "" {
 				resolvedServerURL = serverURL
 			}
@@ -100,8 +100,8 @@ from stale state automatically.`,
 
 			svcCfg := svcmgr.Config{
 				Name:        appName + "-daemon",
-				DisplayName: "Savecraft Daemon",
-				Description: "Syncs game saves to the cloud via Savecraft",
+				DisplayName: serviceDisplayName,
+				Description: serviceDescription,
 				AppName:     appName,
 			}
 
@@ -113,7 +113,7 @@ from stale state automatically.`,
 				statusPort:  statusPort,
 				frontendURL: frontendURL,
 				envPath:     envfile.EnvFilePath(appName),
-				authToken:   os.Getenv("SAVECRAFT_AUTH_TOKEN"),
+				authToken:   os.Getenv(envAuthToken),
 				hostname:    hostname,
 				trayPath:    trayPath,
 				output:      cmd.ErrOrStderr(),
@@ -241,9 +241,9 @@ func setupRegister(
 	}
 
 	if writeErr := deps.writeEnv(cfg.envPath, map[string]string{
-		"SAVECRAFT_AUTH_TOKEN":  result.Token,
+		envAuthToken:            result.Token,
 		"SAVECRAFT_SOURCE_UUID": result.SourceUUID,
-		"SAVECRAFT_SERVER_URL":  cfg.serverURL,
+		envServerURL:            cfg.serverURL,
 	}); writeErr != nil {
 		return nil, fmt.Errorf("save credentials: %w", writeErr)
 	}

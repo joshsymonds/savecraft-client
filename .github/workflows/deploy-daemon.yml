@@ -8,7 +8,14 @@ on:
       - 'cmd/**'
       - 'internal/**'
       - 'proto/**'
+      - 'plugins/rimworld/Justfile'
+      - 'plugins/rimworld/SavecraftRimWorld/Proto/Protocol.cs'
       - 'install/windows/**'
+      - 'buf.gen.yaml'
+      - 'buf.yaml'
+      - 'devenv.nix'
+      - 'flake.nix'
+      - 'flake.lock'
       - 'go.mod'
       - 'go.sum'
       - '.github/workflows/deploy-daemon.yml'
@@ -17,7 +24,14 @@ on:
       - 'cmd/**'
       - 'internal/**'
       - 'proto/**'
+      - 'plugins/rimworld/Justfile'
+      - 'plugins/rimworld/SavecraftRimWorld/Proto/Protocol.cs'
       - 'install/windows/**'
+      - 'buf.gen.yaml'
+      - 'buf.yaml'
+      - 'devenv.nix'
+      - 'flake.nix'
+      - 'flake.lock'
       - 'go.mod'
       - 'go.sum'
       - '.github/workflows/deploy-daemon.yml'
@@ -40,6 +54,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v31
 
       - uses: actions/setup-go@v5
         with:
@@ -85,6 +101,11 @@ jobs:
           just proto
           git diff --exit-code || (echo "Generated proto code is stale — run 'just proto' locally" && exit 1)
 
+      - name: Check generated RimWorld proto
+        run: |
+          nix develop --impure --accept-flake-config --command bash -c 'cd plugins/rimworld && just proto'
+          git diff --exit-code -- plugins/rimworld/SavecraftRimWorld/Proto/Protocol.cs || (echo "Generated RimWorld proto code is stale — run 'cd plugins/rimworld && just proto' in the devenv" && exit 1)
+
   environment:
     name: Detect environment
     if: github.event_name == 'push'
@@ -114,21 +135,25 @@ jobs:
           DETECTED_ENV: ${{ steps.version.outputs.environment }}
         run: |
           if [ "$DETECTED_ENV" = "production" ]; then
-            echo "is_production=true" >> "$GITHUB_OUTPUT"
-            echo "install_url=https://install.savecraft.gg" >> "$GITHUB_OUTPUT"
-            echo "server_url=https://api.savecraft.gg" >> "$GITHUB_OUTPUT"
-            echo "r2_bucket=savecraft-install" >> "$GITHUB_OUTPUT"
-            echo "app_name=savecraft" >> "$GITHUB_OUTPUT"
-            echo "status_port=9182" >> "$GITHUB_OUTPUT"
-            echo "frontend_url=https://my.savecraft.gg" >> "$GITHUB_OUTPUT"
+            {
+              echo "is_production=true"
+              echo "install_url=https://install.savecraft.gg"
+              echo "server_url=https://api.savecraft.gg"
+              echo "r2_bucket=savecraft-install"
+              echo "app_name=savecraft"
+              echo "status_port=9182"
+              echo "frontend_url=https://my.savecraft.gg"
+            } >> "$GITHUB_OUTPUT"
           else
-            echo "is_production=false" >> "$GITHUB_OUTPUT"
-            echo "install_url=https://staging-install.savecraft.gg" >> "$GITHUB_OUTPUT"
-            echo "server_url=https://staging-api.savecraft.gg" >> "$GITHUB_OUTPUT"
-            echo "r2_bucket=savecraft-install-staging" >> "$GITHUB_OUTPUT"
-            echo "app_name=savecraft-staging" >> "$GITHUB_OUTPUT"
-            echo "status_port=9183" >> "$GITHUB_OUTPUT"
-            echo "frontend_url=https://staging-my.savecraft.gg" >> "$GITHUB_OUTPUT"
+            {
+              echo "is_production=false"
+              echo "install_url=https://staging-install.savecraft.gg"
+              echo "server_url=https://staging-api.savecraft.gg"
+              echo "r2_bucket=savecraft-install-staging"
+              echo "app_name=savecraft-staging"
+              echo "status_port=9183"
+              echo "frontend_url=https://staging-my.savecraft.gg"
+            } >> "$GITHUB_OUTPUT"
           fi
 
   build:
@@ -491,14 +516,14 @@ jobs:
           PREV_TAG: ${{ steps.prev.outputs.tag }}
           APP_NAME: ${{ needs.environment.outputs.app_name }}
         run: |
-          notes_flag=""
+          notes_args=()
           if [ -n "$PREV_TAG" ]; then
-            notes_flag="--notes-start-tag $PREV_TAG"
+            notes_args=(--notes-start-tag "$PREV_TAG")
           fi
           gh release create "$TAG" \
             --title "$TAG" \
             --generate-notes \
-            $notes_flag \
+            "${notes_args[@]}" \
             dist/"${APP_NAME}"-daemon-* \
             dist/"${APP_NAME}"-tray-* \
             dist/"${APP_NAME}".msi \
@@ -515,6 +540,6 @@ jobs:
           jq -n \
             --arg tag "$TAG" \
             --arg body "$body" \
-            --arg url "https://github.com/joshsymonds/savecraft.gg/releases/tag/$TAG" \
+            --arg url "https://github.com/joshsymonds/savecraft-client/releases/tag/$TAG" \
             '{embeds: [{title: ("Daemon " + $tag + " released"), description: $body, url: $url, color: 5793266}]}' \
             | curl -s -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" -d @-
