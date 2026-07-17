@@ -1,0 +1,11 @@
+allowUnfree: true
+inputs:
+  nixpkgs:
+    # Pinned so toolchains resolve reproducibly. Move deliberately via
+    # `devenv update`, not by hand-editing.
+    url: github:NixOS/nixpkgs/e8273b29fe1390ec8d4603f2477357555291432e
+  git-hooks:
+    url: github:cachix/git-hooks.nix
+    inputs:
+      nixpkgs:
+        follows: nixpkgs

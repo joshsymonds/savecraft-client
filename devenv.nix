@@ -28,9 +28,8 @@
     pkgs.protobuf       # protoc + well-known types
 
     # Client distribution Worker
-    pkgs.nodejs_22
-    pkgs.nodePackages.npm
-    pkgs.nodePackages.wrangler
+    pkgs.nodejs_22 # includes npm in this Nixpkgs revision
+    pkgs.wrangler
 
     # Rust (Clausewitz/Paradox plugins)
     pkgs.rustup
@@ -72,7 +71,7 @@
     fi
 
     # Use nix-patched workerd binary for miniflare/vitest (NixOS can't run npm's dynamically linked workerd)
-    export MINIFLARE_WORKERD_PATH="$(find ${pkgs.nodePackages.wrangler}/lib -name workerd -path '*/workerd-linux-64/bin/workerd' | head -1)"
+    export MINIFLARE_WORKERD_PATH="$(find ${pkgs.wrangler} -path '*workerd-linux-64/bin/workerd' 2>/dev/null | sort | tail -1)"
 
     # Workerd does outbound HTTPS during tests (Clerk OAuth, fetch() in DOs)
     # and can't find the system trust store on NixOS without a hint. Point
