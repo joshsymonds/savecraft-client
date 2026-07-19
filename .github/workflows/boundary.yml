@@ -1,0 +1,44 @@
+name: Public Boundary
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: install/worker/package-lock.json
+
+      - name: Install Worker dependencies
+        run: npm ci
+        working-directory: install/worker
+
+      - uses: taiki-e/install-action@a3324fb0eb94b8230ec968c3389c1b7929fc2f3b # v2
+        with:
+          tool: just
+
+      - name: Check public boundary
+        run: just public-boundary
+
+      - name: Run full gate
+        run: nix develop path:. --no-pure-eval --command just check

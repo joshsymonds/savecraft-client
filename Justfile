@@ -157,13 +157,13 @@ build-msi version="1.0.0" app_name="savecraft":
         install/windows/savecraft.wxs
 
 lint-sh:
-    shellcheck install/install.sh install/test/run-test.sh
+    shellcheck install/install.sh install/test/run-test.sh scripts/check-public-boundary.sh scripts/check-public-boundary.test.sh
 
 fmt-sh:
-    shfmt -w -i 4 -bn -ci install/install.sh install/test/run-test.sh
+    shfmt -w -i 4 -bn -ci install/install.sh install/test/run-test.sh scripts/check-public-boundary.sh scripts/check-public-boundary.test.sh
 
 fmt-sh-check:
-    shfmt -d -i 4 -bn -ci install/install.sh install/test/run-test.sh
+    shfmt -d -i 4 -bn -ci install/install.sh install/test/run-test.sh scripts/check-public-boundary.sh scripts/check-public-boundary.test.sh
 
 test-install-worker:
     cd install/worker && npm test
@@ -182,8 +182,13 @@ test:
     just test-go
     just test-install-worker
 
+public-boundary:
+    bash scripts/check-public-boundary.test.sh
+    bash scripts/check-public-boundary.sh
+
 check:
     just proto-lint
     just proto
     just lint
     just test
+    just public-boundary
