@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 readonly default_since="341b1650afb53023d2fff2dac3242eab88c58f3f"
 
 usage() {
@@ -72,9 +73,11 @@ paths_file="$tmp_dir/paths"
 index_file="$tmp_dir/index"
 tree_file="$tmp_dir/tree"
 commits_file="$tmp_dir/commits"
-blob_file="$tmp_dir/blob"
 link_file="$tmp_dir/link"
 diff_file="$tmp_dir/diff"
+batch_requests_file="$tmp_dir/batch-requests"
+batch_output_dir="$tmp_dir/batch-output"
+batch_error_file="$tmp_dir/batch-error"
 
 declare -A blob_surface=()
 declare -A blob_path=()
@@ -142,6 +145,13 @@ zero_object_id() {
 valid_tree_mode() {
     case $1 in
         000000 | 100644 | 100755 | 120000 | 160000) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+valid_anchor_tree_mode() {
+    case $1 in
+        100644 | 100755 | 120000 | 160000) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -268,7 +278,7 @@ while IFS= read -r -d '' entry; do
     [[ -n $mode && -n $type && -n $object && -z ${extra-} ]] \
         || die_scan "malformed tree mode/type/object metadata in anchor commit"
     [[ -n $path ]] || die_scan "malformed tree path in anchor commit"
-    valid_tree_mode "$mode" \
+    valid_anchor_tree_mode "$mode" \
         || die_scan "malformed tree mode/type/object metadata in anchor commit"
     valid_object_id "$object" \
         || die_scan "malformed tree mode/type/object metadata in anchor commit"
@@ -335,34 +345,18 @@ while IFS= read -r commit; do
 done <"$commits_file"
 
 if ((${#blob_surface[@]} > 0)); then
-    coproc BOUNDARY_CAT_FILE { git -C "$repo" cat-file --batch; }
-    batch_in=${BOUNDARY_CAT_FILE[1]}
-    batch_out=${BOUNDARY_CAT_FILE[0]}
-    batch_pid=$BOUNDARY_CAT_FILE_PID
+    printf '%s\n' "${!blob_surface[@]}" >"$batch_requests_file"
+    if ! node "$script_dir/read-git-batch.mjs" "$repo" "$batch_requests_file" \
+        "$batch_output_dir" 2>"$batch_error_file"; then
+        batch_error=$(<"$batch_error_file")
+        [[ -n $batch_error ]] || batch_error="Git failed while reading batch objects"
+        die_scan "$batch_error"
+    fi
     while IFS= read -r object; do
         key=${object,,}
-        printf '%s\n' "$object" >&"$batch_in" \
-            || die_scan "Git failed while requesting object: $object"
-        IFS= read -r response <&"$batch_out" \
-            || die_scan "Git returned malformed batch response for object: $object"
-        read -r response_object response_type response_size response_extra <<<"$response"
-        [[ $response_object == "$object" && -z ${response_extra-} ]] \
-            || die_scan "Git returned a malformed batch object response"
-        [[ $response_type == blob ]] || die_scan "Git returned non-blob object: $object"
-        [[ $response_size =~ ^[0-9]+$ ]] || die_scan "Git returned malformed blob size: $object"
-        if ! dd bs=1 count="$response_size" status=none <&"$batch_out" >"$blob_file"; then
-            die_scan "Git failed while reading batch object: $object"
-        fi
-        IFS= read -r -N 1 trailer <&"$batch_out" \
-            || die_scan "Git returned truncated batch object: $object"
-        [[ $trailer == $'\n' ]] || die_scan "Git returned malformed batch object terminator"
+        blob_file="$batch_output_dir/$key"
         scan_content "${blob_surface[$key]}" "${blob_path[$key]}" "$blob_file"
-    done < <(printf '%s\n' "${!blob_surface[@]}")
-    exec {batch_in}>&-
-    exec {batch_out}<&-
-    if ! wait "$batch_pid"; then
-        die_scan "Git failed while reading batch objects"
-    fi
+    done <"$batch_requests_file"
 fi
 
 if ((violations > 0)); then

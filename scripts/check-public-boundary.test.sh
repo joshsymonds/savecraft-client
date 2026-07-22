@@ -3,6 +3,7 @@ set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 checker="${script_dir}/check-public-boundary.sh"
+helper="${script_dir}/read-git-batch.mjs"
 
 product="save""craft"
 retired_identity="${product}-com""panion"
@@ -81,6 +82,9 @@ run_check() {
                 BOUNDARY_FAIL_REV_LIST="${BOUNDARY_FAIL_REV_LIST-}" \
                 BOUNDARY_MALFORM_LS_TREE="${BOUNDARY_MALFORM_LS_TREE-}" \
                 BOUNDARY_MALFORM_DIFF_TREE="${BOUNDARY_MALFORM_DIFF_TREE-}" \
+                BOUNDARY_LS_TREE_OBJECT="${BOUNDARY_LS_TREE_OBJECT-}" \
+                BOUNDARY_MALFORM_BATCH="${BOUNDARY_MALFORM_BATCH-}" \
+                BOUNDARY_CHUNK_LOG="${BOUNDARY_CHUNK_LOG-}" \
                 PATH="$CHECK_GIT_PATH" \
                 bash "$checker" --since "$since" "$repo" 2>&1
         )
@@ -132,6 +136,31 @@ expect_closed() {
     fi
     [[ "$CHECK_OUTPUT" == *"ERROR: ${diagnostic}"* ]] \
         || fail "$name: missing ERROR diagnostic ${diagnostic}: $CHECK_OUTPUT"
+    pass "$name"
+}
+
+expect_helper_closed() {
+    local name=$1
+    local mode=$2
+    local diagnostic=$3
+    local object=1111111111111111111111111111111111111111
+    local requests="${tmp_root}/helper-${mode}.requests"
+    local output="${tmp_root}/helper-${mode}.output"
+    printf '%s\n' "$object" >"$requests"
+    mkdir -p "$output"
+    set +e
+    CHECK_OUTPUT=$(
+        BOUNDARY_MALFORM_BATCH="$mode" BOUNDARY_REAL_GIT="$real_git" \
+            PATH="$git_wrapper_dir:${PATH}" timeout 10s \
+            node "$helper" "$batch_probe_repo" "$requests" "$output" 2>&1
+    )
+    CHECK_STATUS=$?
+    set -e
+    ((CHECK_STATUS == 1)) || fail "$name: expected helper status 1, got $CHECK_STATUS: $CHECK_OUTPUT"
+    [[ "$CHECK_OUTPUT" == *"$diagnostic"* ]] \
+        || fail "$name: missing helper diagnostic ${diagnostic}: $CHECK_OUTPUT"
+    [[ "$CHECK_OUTPUT" != *"Error:"* && "$CHECK_OUTPUT" != *"Unhandled"* ]] \
+        || fail "$name: helper emitted an unhandled stack/rejection: $CHECK_OUTPUT"
     pass "$name"
 }
 
@@ -455,8 +484,44 @@ fi
 if [[ ${args[command_index]-} == ls-tree && -n ${BOUNDARY_MALFORM_LS_TREE-} ]]; then
     case $BOUNDARY_MALFORM_LS_TREE in
     empty-path) printf "%b" "100644 blob 0000000000000000000000000000000000000000\t\0" ;;
+    zero-mode) printf "%b" "000000 blob ${BOUNDARY_LS_TREE_OBJECT}\tREADME.md\0" ;;
     *) printf "%b" "100644 commit 0000000000000000000000000000000000000000\tREADME.md\0" ;;
     esac
+    exit 0
+fi
+if [[ ${args[command_index]-} == cat-file && -n ${BOUNDARY_MALFORM_BATCH-} ]]; then
+    if [[ $BOUNDARY_MALFORM_BATCH == early-parser-failure-backpressure ]]; then
+        printf '%s\n' 'not-a-batch-header'
+        exec sleep 60
+    fi
+    if [[ $BOUNDARY_MALFORM_BATCH == nonzero-exit ]]; then
+        "$BOUNDARY_REAL_GIT" "$@"
+        exit 73
+    fi
+    while IFS= read -r object; do
+        case $BOUNDARY_MALFORM_BATCH in
+        malformed-header) printf '%s\n' 'not-a-batch-header' ;;
+        malformed-object) printf '%s blob 1 extra\nx\n' "$object" ;;
+        mismatched-object)
+            other=$(printf '%*s' "${#object}" '' | tr ' ' 2)
+            [[ $other == "$object" ]] && other=$(printf '%*s' "${#object}" '' | tr ' ' 3)
+            printf '%s blob 0\n\n' "$other"
+            ;;
+        non-blob) printf '%s commit 0\n\n' "$object" ;;
+        invalid-size) printf '%s blob nope\n' "$object" ;;
+        overflow-size) printf '%s blob 18446744073709551616\n\n' "$object" ;;
+        nul-header) printf '%s\0 blob 0\n\n' "$object" ;;
+        truncated-body) printf '%s blob 4\nab\n' "$object" ;;
+        bad-terminator) printf '%s blob 2\nabX' "$object" ;;
+        nul-terminator) printf '%s blob 0\n\0\n' "$object" ;;
+        extra-output)
+            printf '%s blob 0\n\nX' "$object"
+            exec sleep 60
+            ;;
+        esac
+        cat >/dev/null
+        break
+    done
     exit 0
 fi
 if [[ ${args[command_index]-} == diff-tree && -n ${BOUNDARY_MALFORM_DIFF_TREE-} ]]; then
@@ -484,6 +549,11 @@ BOUNDARY_FAIL_REV_LIST=1 CHECK_GIT_PATH="${git_wrapper_dir}:${PATH}" expect_clos
 # must carry its required leading colon.
 BOUNDARY_MALFORM_LS_TREE=1 CHECK_GIT_PATH="${git_wrapper_dir}:${PATH}" expect_closed \
     "malformed successful ls-tree output" "$clean_repo" "$clean_anchor" \
+    "malformed tree mode/type/object metadata in anchor commit"
+zero_mode_oid=$(git -C "$clean_repo" rev-parse "$clean_anchor:README.md")
+BOUNDARY_MALFORM_LS_TREE=zero-mode BOUNDARY_LS_TREE_OBJECT="$zero_mode_oid" \
+    CHECK_GIT_PATH="${git_wrapper_dir}:${PATH}" expect_closed \
+    "zero mode successful ls-tree output" "$clean_repo" "$clean_anchor" \
     "malformed tree mode/type/object metadata in anchor commit"
 BOUNDARY_MALFORM_DIFF_TREE=1 CHECK_GIT_PATH="${git_wrapper_dir}:${PATH}" expect_closed \
     "malformed successful diff-tree output" "$clean_repo" "$clean_anchor" \
@@ -651,12 +721,18 @@ expect_violation "committed rename into and out of private root" "$committed_his
 new_repo batch_probe
 batch_probe_repo=$REPLY
 printf '%s\n' "clean" >"$batch_probe_repo/anchor.txt"
+: >"$batch_probe_repo/empty.txt"
 commit_all "$batch_probe_repo" "clean anchor"
 batch_probe_anchor=$(git -C "$batch_probe_repo" rev-parse HEAD)
 for batch_index in 1 2 3; do
     printf '%s\n' "same blob" >"$batch_probe_repo/file-${batch_index}.txt"
     commit_all "$batch_probe_repo" "repeated blob ${batch_index}"
 done
+dd if=/dev/zero of="$batch_probe_repo/large.bin" bs=65536 count=1 status=none
+printf '\177' >>"$batch_probe_repo/large.bin"
+commit_all "$batch_probe_repo" "large binary blob"
+printf '%s\n' "following distinct blob" >"$batch_probe_repo/following.txt"
+commit_all "$batch_probe_repo" "following distinct blob"
 batch_log="$tmp_root/batch-cat-file.log"
 batch_requests="$tmp_root/batch-cat-file-requests.log"
 : >"$batch_log"
@@ -677,5 +753,149 @@ repeat_requests=$(grep -Fxc -- "$repeat_oid" "$batch_requests" || true)
 ((repeat_requests == 1)) \
     || fail "expected repeated blob OID ${repeat_oid} exactly once, got ${repeat_requests}: $(<"$batch_requests")"
 pass "single-pass deduplicated cat-file history scan"
+
+# Batch protocol failures fail closed, while normal requests remain delegated to Git.
+for batch_failure in malformed-header malformed-object mismatched-object non-blob invalid-size \
+    overflow-size nul-header truncated-body bad-terminator nul-terminator nonzero-exit; do
+    batch_diagnostic="Git returned a malformed batch response"
+    case $batch_failure in
+        mismatched-object) batch_diagnostic="Git returned a malformed batch object response" ;;
+        non-blob) batch_diagnostic="Git returned non-blob object" ;;
+        invalid-size) batch_diagnostic="Git returned malformed blob size" ;;
+        overflow-size | truncated-body) batch_diagnostic="Git returned truncated batch object" ;;
+        nul-terminator | bad-terminator) batch_diagnostic="Git returned malformed batch object terminator" ;;
+        nonzero-exit) batch_diagnostic="Git failed while reading batch objects" ;;
+    esac
+    BOUNDARY_MALFORM_BATCH="$batch_failure" CHECK_GIT_PATH="${git_wrapper_dir}:${PATH}" \
+        expect_closed "batch ${batch_failure}" "$batch_probe_repo" "$batch_probe_anchor" \
+        "$batch_diagnostic"
+done
+
+# Parser-specific malformed fixtures use one explicit request and complete
+# remainder bytes, so removing the target validation cannot produce a false pass.
+expect_helper_closed "helper mismatched object" mismatched-object \
+    "Git returned a malformed batch object response"
+expect_helper_closed "helper malformed header" malformed-header \
+    "Git returned a malformed batch response"
+expect_helper_closed "helper malformed extra-field response" malformed-object \
+    "Git returned a malformed batch response"
+expect_helper_closed "helper NUL header" nul-header \
+    "Git returned a malformed batch response"
+expect_helper_closed "helper non-blob response" non-blob \
+    "Git returned non-blob object"
+expect_helper_closed "helper invalid-size response" invalid-size \
+    "Git returned malformed blob size"
+expect_helper_closed "helper overflow size" overflow-size \
+    "Git returned truncated batch object"
+expect_helper_closed "helper truncated body" truncated-body \
+    "Git returned truncated batch object"
+expect_helper_closed "helper printable terminator" bad-terminator \
+    "Git returned malformed batch object terminator"
+expect_helper_closed "helper NUL terminator" nul-terminator \
+    "Git returned malformed batch object terminator"
+
+# A retained byte must be rejected before waiting for another child pull, even
+# when the child remains alive after writing the complete empty response.
+expect_helper_closed "helper buffered extra output" extra-output \
+    "Git returned unexpected extra batch output"
+
+# Parser rejection must remain structured while the writer is blocked by a
+# child that never consumes its large request stream.
+backpressure_requests="$tmp_root/helper-early-parser-backpressure.requests"
+for backpressure_index in $(seq 1 200000); do
+    printf '%040d\n' "$backpressure_index" >>"$backpressure_requests"
+done
+set +e
+CHECK_OUTPUT=$(
+    BOUNDARY_MALFORM_BATCH=early-parser-failure-backpressure \
+        BOUNDARY_REAL_GIT="$real_git" PATH="$git_wrapper_dir:${PATH}" timeout 10s \
+        node "$helper" "$batch_probe_repo" "$backpressure_requests" \
+        "$tmp_root/helper-early-parser-backpressure.output" 2>&1
+)
+CHECK_STATUS=$?
+set -e
+((CHECK_STATUS == 1)) || fail "helper early parser backpressure: expected status 1, got $CHECK_STATUS: $CHECK_OUTPUT"
+[[ "$CHECK_OUTPUT" == *"Git returned a malformed batch response"* ]] \
+    || fail "helper early parser backpressure: missing malformed response diagnostic: $CHECK_OUTPUT"
+[[ "$CHECK_OUTPUT" != *"Error:"* && "$CHECK_OUTPUT" != *"Unhandled"* && "$CHECK_OUTPUT" != *"timeout"* ]] \
+    || fail "helper early parser backpressure: unhandled rejection, timeout, or stack: $CHECK_OUTPUT"
+pass "helper early parser failure under writer backpressure"
+
+# Payload reads are bounded to 64 KiB chunks and preserve the following record.
+chunk_log="$tmp_root/batch-chunks.log"
+: >"$chunk_log"
+BOUNDARY_CHUNK_LOG="$chunk_log" CHECK_GIT_PATH="${git_wrapper_dir}:${PATH}" \
+    run_check "$batch_probe_repo" "$batch_probe_anchor"
+((CHECK_STATUS == 0)) || fail "bounded payload probe failed: $CHECK_OUTPUT"
+grep -Eq -- '(^| )65536($| )' "$chunk_log" \
+    || fail "missing 65536-byte batch chunk: $(<"$chunk_log")"
+grep -Eq -- '(^| )1($| )' "$chunk_log" \
+    || fail "missing one-byte batch remainder: $(<"$chunk_log")"
+if awk '$NF > 65536 { found = 1 } END { exit !found }' "$chunk_log"; then
+    fail "batch payload reader exceeded 65536-byte chunks: $(<"$chunk_log")"
+fi
+large_oid=$(git -C "$batch_probe_repo" hash-object "$batch_probe_repo/large.bin")
+following_oid=$(git -C "$batch_probe_repo" hash-object "$batch_probe_repo/following.txt")
+grep -Fqx -- "$large_oid" "$batch_requests" \
+    || fail "large binary blob was not requested"
+grep -Fqx -- "$following_oid" "$batch_requests" \
+    || fail "following blob was not requested"
+pass "bounded exact-length batch payload reads"
+
+# The helper itself must preserve record framing when a 65,537-byte object is
+# followed by another request in an explicitly ordered request file.
+ordered_requests="$tmp_root/ordered-batch.requests"
+ordered_output="$tmp_root/ordered-batch.output"
+ordered_chunk_log="$tmp_root/ordered-batch.chunks"
+ordered_request_log="$tmp_root/ordered-batch.requests.log"
+printf '%s\n%s\n' "$large_oid" "$following_oid" >"$ordered_requests"
+: >"$ordered_chunk_log"
+: >"$ordered_request_log"
+set +e
+CHECK_OUTPUT=$(
+    BOUNDARY_CAT_REQUESTS="$ordered_request_log" \
+        BOUNDARY_CHUNK_LOG="$ordered_chunk_log" BOUNDARY_REAL_GIT="$real_git" \
+        PATH="$git_wrapper_dir:${PATH}" node "$helper" "$batch_probe_repo" \
+        "$ordered_requests" "$ordered_output" 2>&1
+)
+CHECK_STATUS=$?
+set -e
+((CHECK_STATUS == 0)) || fail "ordered helper framing probe failed: $CHECK_OUTPUT"
+[[ "$(sed -n '1p' "$ordered_request_log")" == "$large_oid" &&
+"$(sed -n '2p' "$ordered_request_log")" == "$following_oid" ]] \
+    || fail "helper did not receive large then following request order: $(<"$ordered_request_log")"
+grep -Fqx -- "$large_oid 65536" "$ordered_chunk_log" \
+    || fail "missing large-object 65536-byte chunk: $(<"$ordered_chunk_log")"
+grep -Fqx -- "$large_oid 1" "$ordered_chunk_log" \
+    || fail "missing large-object one-byte remainder: $(<"$ordered_chunk_log")"
+if awk '$2 > 65536 { found = 1 } END { exit !found }' "$ordered_chunk_log"; then
+    fail "ordered helper emitted a chunk over 65536 bytes: $(<"$ordered_chunk_log")"
+fi
+cmp -s "$batch_probe_repo/large.bin" "$ordered_output/$large_oid" \
+    || fail "ordered helper large payload differs from source"
+cmp -s "$batch_probe_repo/following.txt" "$ordered_output/$following_oid" \
+    || fail "ordered helper following payload was not extracted after large object"
+pass "ordered large-then-following batch framing"
+
+# Opening an output path that is already a directory must map to a controlled
+# batch-object diagnostic rather than an unhandled stream error.
+write_failure_requests="$tmp_root/write-failure.requests"
+write_failure_output="$tmp_root/write-failure.output"
+mkdir -p "$write_failure_output/$following_oid"
+printf '%s\n' "$following_oid" >"$write_failure_requests"
+set +e
+CHECK_OUTPUT=$(
+    BOUNDARY_REAL_GIT="$real_git" PATH="$git_wrapper_dir:${PATH}" timeout 10s \
+        node "$helper" "$batch_probe_repo" "$write_failure_requests" \
+        "$write_failure_output" 2>&1
+)
+CHECK_STATUS=$?
+set -e
+((CHECK_STATUS == 1)) || fail "helper write failure: expected status 1, got $CHECK_STATUS: $CHECK_OUTPUT"
+[[ "$CHECK_OUTPUT" == *"Git failed while reading batch object"* ]] \
+    || fail "helper write failure: missing controlled diagnostic: $CHECK_OUTPUT"
+[[ "$CHECK_OUTPUT" != *"Error:"* && "$CHECK_OUTPUT" != *"Unhandled"* ]] \
+    || fail "helper write failure: unhandled stack/rejection: $CHECK_OUTPUT"
+pass "controlled batch output-file failure"
 
 echo "PASS: ${tests_run} public-boundary fixture cases"
