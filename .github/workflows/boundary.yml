@@ -37,8 +37,5 @@ jobs:
         with:
           tool: just
 
-      - name: Check public boundary
-        run: just public-boundary
-
       - name: Run full gate
         run: nix develop path:. --no-pure-eval --command just check

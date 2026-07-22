@@ -76,7 +76,12 @@ run_check() {
     set +e
     if [[ -n ${CHECK_GIT_PATH-} ]]; then
         CHECK_OUTPUT=$(
-            BOUNDARY_REAL_GIT="$real_git" PATH="$CHECK_GIT_PATH" \
+            BOUNDARY_REAL_GIT="$real_git" BOUNDARY_CAT_FILE="${BOUNDARY_CAT_FILE-}" \
+                BOUNDARY_CAT_REQUESTS="${BOUNDARY_CAT_REQUESTS-}" \
+                BOUNDARY_FAIL_REV_LIST="${BOUNDARY_FAIL_REV_LIST-}" \
+                BOUNDARY_MALFORM_LS_TREE="${BOUNDARY_MALFORM_LS_TREE-}" \
+                BOUNDARY_MALFORM_DIFF_TREE="${BOUNDARY_MALFORM_DIFF_TREE-}" \
+                PATH="$CHECK_GIT_PATH" \
                 bash "$checker" --since "$since" "$repo" 2>&1
         )
     else
@@ -422,32 +427,79 @@ expect_closed "non-ancestral anchor" "$bad_anchor_repo" "$unrelated" \
 # Unexpected Git failures are distinguished from boundary violations and fail closed.
 git_wrapper_dir="$tmp_root/git-wrapper"
 mkdir -p "$git_wrapper_dir"
-printf '%s\n' \
-    '#!/usr/bin/env bash' \
-    'set -euo pipefail' \
-    'args=("$@")' \
-    'command_index=0' \
-    "while ((command_index < \${#args[@]})); do" \
-    "    case \${args[command_index]} in" \
-    '    -C|-c|--git-dir|--work-tree|--namespace)' \
-    "        command_index=\$((command_index + 2))" \
-    '        ;;' \
-    '    --*)' \
-    "        command_index=\$((command_index + 1))" \
-    '        ;;' \
-    '    *)' \
-    '        break' \
-    '        ;;' \
-    '    esac' \
-    'done' \
-    "if [[ \${args[command_index]-} == rev-list ]]; then" \
-    '    echo "forced rev-list failure" >&2' \
-    '    exit 73' \
-    'fi' \
-    "exec \"\$BOUNDARY_REAL_GIT\" \"\$@\"" >"$git_wrapper_dir/git"
+cat >"$git_wrapper_dir/git" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+args=("$@")
+command_index=0
+while ((command_index < ${#args[@]})); do
+    case ${args[command_index]} in
+    -C|-c|--git-dir|--work-tree|--namespace)
+        command_index=$((command_index + 2))
+        ;;
+    --*)
+        command_index=$((command_index + 1))
+        ;;
+    *)
+        break
+        ;;
+    esac
+done
+if [[ ${args[command_index]-} == cat-file && -n ${BOUNDARY_CAT_FILE-} ]]; then
+    printf "%s\n" "${args[*]}" >>"$BOUNDARY_CAT_FILE"
+fi
+if [[ ${args[command_index]-} == cat-file && -n ${BOUNDARY_CAT_REQUESTS-} ]]; then
+    tee -a "$BOUNDARY_CAT_REQUESTS" | "$BOUNDARY_REAL_GIT" "$@"
+    exit ${PIPESTATUS[1]}
+fi
+if [[ ${args[command_index]-} == ls-tree && -n ${BOUNDARY_MALFORM_LS_TREE-} ]]; then
+    case $BOUNDARY_MALFORM_LS_TREE in
+    empty-path) printf "%b" "100644 blob 0000000000000000000000000000000000000000\t\0" ;;
+    *) printf "%b" "100644 commit 0000000000000000000000000000000000000000\tREADME.md\0" ;;
+    esac
+    exit 0
+fi
+if [[ ${args[command_index]-} == diff-tree && -n ${BOUNDARY_MALFORM_DIFF_TREE-} ]]; then
+    zero_object=$(printf "%040d" 0)
+    case $BOUNDARY_MALFORM_DIFF_TREE in
+    null-object) printf "%b" ":100644 100644 0000000000000000000000000000000000000000 0000000000000000000000000000000000000000 M\0README.md\0" ;;
+    empty-path) printf "%b" ":000000 000000 0000000000000000000000000000000000000000 0000000000000000000000000000000000000000 A\0\0" ;;
+    unsupported-status) printf "%b" ":000000 000000 $zero_object $zero_object R100\0README.md\0" ;;
+    *) printf "%b" "100644 100644 0000000000000000000000000000000000000000 0000000000000000000000000000000000000000 M\0README.md\0" ;;
+    esac
+    exit 0
+fi
+if [[ ${args[command_index]-} == rev-list && -n ${BOUNDARY_FAIL_REV_LIST-} ]]; then
+    echo "forced rev-list failure" >&2
+    exit 73
+fi
+exec "$BOUNDARY_REAL_GIT" "$@"
+EOF
 chmod +x "$git_wrapper_dir/git"
-CHECK_GIT_PATH="${git_wrapper_dir}:${PATH}" expect_closed \
+BOUNDARY_FAIL_REV_LIST=1 CHECK_GIT_PATH="${git_wrapper_dir}:${PATH}" expect_closed \
     "rev-list failure" "$bad_anchor_repo" "HEAD" "Git failed while enumerating history"
+
+# Successful Git output must still be validated.  A malformed ls-tree record
+# cannot be treated as a harmless empty tree entry, and a raw diff-tree record
+# must carry its required leading colon.
+BOUNDARY_MALFORM_LS_TREE=1 CHECK_GIT_PATH="${git_wrapper_dir}:${PATH}" expect_closed \
+    "malformed successful ls-tree output" "$clean_repo" "$clean_anchor" \
+    "malformed tree mode/type/object metadata in anchor commit"
+BOUNDARY_MALFORM_DIFF_TREE=1 CHECK_GIT_PATH="${git_wrapper_dir}:${PATH}" expect_closed \
+    "malformed successful diff-tree output" "$clean_repo" "$clean_anchor" \
+    "malformed diff metadata in commit"
+BOUNDARY_MALFORM_LS_TREE=empty-path CHECK_GIT_PATH="${git_wrapper_dir}:${PATH}" expect_closed \
+    "empty successful ls-tree path" "$clean_repo" "$clean_anchor" \
+    "malformed tree path in anchor commit"
+BOUNDARY_MALFORM_DIFF_TREE=null-object CHECK_GIT_PATH="${git_wrapper_dir}:${PATH}" expect_closed \
+    "nonzero-mode null diff object" "$clean_repo" "$clean_anchor" \
+    "inconsistent old null object in commit"
+BOUNDARY_MALFORM_DIFF_TREE=empty-path CHECK_GIT_PATH="${git_wrapper_dir}:${PATH}" expect_closed \
+    "empty successful diff-tree path" "$clean_repo" "$clean_anchor" \
+    "malformed diff path in commit"
+BOUNDARY_MALFORM_DIFF_TREE=unsupported-status CHECK_GIT_PATH="${git_wrapper_dir}:${PATH}" expect_closed \
+    "unsupported diff status" "$clean_repo" "$clean_anchor" \
+    "unsupported diff status in commit"
 
 # Quoted diagnostics preserve spaces and embedded newlines in NUL-delimited paths.
 new_repo unusual_paths
@@ -509,7 +561,9 @@ check_recipe=$(awk '
     found && /^[^[:space:]#].*:$/ { exit }
     found { print }
 ' "$justfile")
-[[ "$check_recipe" == *"just public-boundary"* ]] || fail "check recipe omits public-boundary"
+check_boundary_invocations=$(grep -Fc -- "just public-boundary" <<<"$check_recipe" || true)
+((check_boundary_invocations == 1)) \
+    || fail "check recipe invokes public-boundary ${check_boundary_invocations} times"
 for recipe in lint-sh fmt-sh fmt-sh-check; do
     recipe_body=$(awk -v header="${recipe}:" '
         $0 == header { found = 1; next }
@@ -522,7 +576,7 @@ for recipe in lint-sh fmt-sh fmt-sh-check; do
 done
 pass "Justfile boundary wiring"
 
-# The dedicated workflow is always on and exercises both the focused and full gates.
+# The dedicated workflow is always on and exercises the full gate once.
 workflow="${script_dir}/../.github/workflows/boundary.yml"
 [[ -f "$workflow" ]] || fail "boundary workflow is missing"
 grep -Eq '^  pull_request:([[:space:]]*\{\})?$' "$workflow" || fail "workflow omits pull requests"
@@ -548,9 +602,80 @@ grep -Eq '^[[:space:]]+tool: just$' "$workflow" || fail "workflow just action om
 just_action_line=$(awk -v needle="$just_action" 'index($0, needle) { print NR; exit }' "$workflow")
 first_just_line=$(awk '/run:.*[[:space:]]just([[:space:]]|$)/ { print NR; exit }' "$workflow")
 ((just_action_line < first_just_line)) || fail "workflow invokes just before provisioning it"
-grep -Fq 'run: just public-boundary' "$workflow" || fail "workflow omits the explicit boundary gate"
+if grep -Fq 'run: just public-boundary' "$workflow"; then
+    fail "workflow invokes the boundary gate redundantly"
+fi
 grep -Fq 'run: nix develop path:. --no-pure-eval --command just check' "$workflow" \
     || fail "workflow omits the full Nix gate"
+workflow_check_invocations=$(grep -Fc 'run: nix develop path:. --no-pure-eval --command just check' "$workflow")
+((workflow_check_invocations == 1)) \
+    || fail "workflow invokes the full gate ${workflow_check_invocations} times"
 pass "always-on boundary workflow"
+
+# Committed post-anchor paths remain in scope after the worktree is clean,
+# including spaces, embedded newlines, and a rename into/out of a private root.
+new_repo committed_history_paths
+committed_history_repo=$REPLY
+printf '%s\n' "clean" >"$committed_history_repo/README.md"
+commit_all "$committed_history_repo" "clean anchor"
+committed_history_anchor=$(git -C "$committed_history_repo" rev-parse HEAD)
+mkdir -p "$committed_history_repo/$private_root"
+history_space_path="${private_root}/committed secret.txt"
+printf '%s\n' "secret" >"$committed_history_repo/$history_space_path"
+commit_all "$committed_history_repo" "post-anchor path with spaces"
+git -C "$committed_history_repo" rm -q -- "$history_space_path"
+commit_all "$committed_history_repo" "remove path with spaces"
+mkdir -p "$committed_history_repo/$private_root"
+history_newline_path="${private_root}/committed line"$'\n'"break.txt"
+printf '%s\n' "secret" >"$committed_history_repo/$history_newline_path"
+commit_all "$committed_history_repo" "post-anchor path with newline"
+git -C "$committed_history_repo" rm -q -- "$history_newline_path"
+commit_all "$committed_history_repo" "remove path with newline"
+printf '%s\n' "rename source" >"$committed_history_repo/public-source.txt"
+commit_all "$committed_history_repo" "rename source"
+mkdir -p "$committed_history_repo/$private_root"
+git -C "$committed_history_repo" mv public-source.txt "$private_root/renamed-secret.txt"
+commit_all "$committed_history_repo" "rename into private root"
+git -C "$committed_history_repo" mv "$private_root/renamed-secret.txt" public-destination.txt
+commit_all "$committed_history_repo" "rename out of private root"
+[[ -z $(git -C "$committed_history_repo" status --porcelain) ]] \
+    || fail "committed history fixture worktree is not clean"
+expect_violation "committed historical path with spaces" "$committed_history_repo" \
+    "$committed_history_anchor" "private-root" "committed\\ secret.txt"
+expect_violation "committed historical path with newline" "$committed_history_repo" \
+    "$committed_history_anchor" "private-root" "committed line"
+expect_violation "committed rename into and out of private root" "$committed_history_repo" \
+    "$committed_history_anchor" "private-root" "renamed-secret.txt"
+
+# History scans must use one batch cat-file process and deduplicate repeated blob objects.
+new_repo batch_probe
+batch_probe_repo=$REPLY
+printf '%s\n' "clean" >"$batch_probe_repo/anchor.txt"
+commit_all "$batch_probe_repo" "clean anchor"
+batch_probe_anchor=$(git -C "$batch_probe_repo" rev-parse HEAD)
+for batch_index in 1 2 3; do
+    printf '%s\n' "same blob" >"$batch_probe_repo/file-${batch_index}.txt"
+    commit_all "$batch_probe_repo" "repeated blob ${batch_index}"
+done
+batch_log="$tmp_root/batch-cat-file.log"
+batch_requests="$tmp_root/batch-cat-file-requests.log"
+: >"$batch_log"
+: >"$batch_requests"
+CHECK_GIT_PATH="$git_wrapper_dir:${PATH}" BOUNDARY_CAT_FILE="$batch_log" \
+    BOUNDARY_CAT_REQUESTS="$batch_requests" \
+    run_check "$batch_probe_repo" "$batch_probe_anchor"
+((CHECK_STATUS == 0)) || fail "batch scanner probe failed: $CHECK_OUTPUT"
+batch_invocations=$(wc -l <"$batch_log")
+((batch_invocations == 1)) || fail "expected one cat-file process, got ${batch_invocations}: $(<"$batch_log")"
+grep -Fq -- 'cat-file --batch' "$batch_log" \
+    || fail "boundary scanner did not use cat-file --batch"
+if grep -Fq -- 'cat-file blob' "$batch_log"; then
+    fail "boundary scanner still launches one cat-file process per blob"
+fi
+repeat_oid=$(git -C "$batch_probe_repo" hash-object "$batch_probe_repo/file-1.txt")
+repeat_requests=$(grep -Fxc -- "$repeat_oid" "$batch_requests" || true)
+((repeat_requests == 1)) \
+    || fail "expected repeated blob OID ${repeat_oid} exactly once, got ${repeat_requests}: $(<"$batch_requests")"
+pass "single-pass deduplicated cat-file history scan"
 
 echo "PASS: ${tests_run} public-boundary fixture cases"

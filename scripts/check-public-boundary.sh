@@ -74,6 +74,10 @@ tree_file="$tmp_dir/tree"
 commits_file="$tmp_dir/commits"
 blob_file="$tmp_dir/blob"
 link_file="$tmp_dir/link"
+diff_file="$tmp_dir/diff"
+
+declare -A blob_surface=()
+declare -A blob_path=()
 
 product="save""craft"
 retired_identity="${product}-com""panion"
@@ -109,6 +113,37 @@ scan_path() {
             return
         fi
     done
+}
+
+queue_blob() {
+    local surface=$1
+    local path=$2
+    local object=$3
+    local key
+
+    [[ $object =~ ^[0-9a-fA-F]{40}$ || $object =~ ^[0-9a-fA-F]{64}$ ]] \
+        || die_scan "malformed Git object identifier: $object"
+    [[ -n ${object//0/} ]] || die_scan "zero Git object identifier for blob: $path"
+    key=${object,,}
+    if [[ -z ${blob_surface[$key]+seen} ]]; then
+        blob_surface[$key]=$surface
+        blob_path[$key]=$path
+    fi
+}
+
+valid_object_id() {
+    [[ $1 =~ ^[0-9a-fA-F]{40}$ || $1 =~ ^[0-9a-fA-F]{64}$ ]]
+}
+
+zero_object_id() {
+    [[ -z ${1//0/} ]]
+}
+
+valid_tree_mode() {
+    case $1 in
+        000000 | 100644 | 100755 | 120000 | 160000) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 contains_private_module() {
@@ -210,10 +245,7 @@ while IFS= read -r -d '' entry; do
     [[ $stage == 0 ]] || die_scan "unmerged index entry prevents a complete scan"
     scan_path "index" "$path"
     if [[ $mode != 160000 ]]; then
-        if ! git -C "$repo" cat-file blob "$object" >"$blob_file"; then
-            die_scan "Git failed while reading index object: $object"
-        fi
-        scan_content "index" "$path" "$blob_file"
+        queue_blob "index" "$path" "$object"
     fi
 done <"$index_file"
 
@@ -222,30 +254,116 @@ if ! git -C "$repo" rev-list "${anchor}..${head}" >>"$commits_file"; then
     die_scan "Git failed while enumerating history"
 fi
 
-while IFS= read -r commit; do
-    [[ $commit =~ ^[0-9a-fA-F]{40,64}$ ]] || die_scan "Git returned a malformed commit identifier"
-    if ! git -C "$repo" ls-tree -r -z --full-tree "$commit" >"$tree_file"; then
-        die_scan "Git failed while listing commit tree: $commit"
+# Scan the anchor tree completely, then inspect only changed paths and objects
+# in each reachable commit. This retains deleted paths and side-branch history
+# without rescanning unchanged trees.
+if ! git -C "$repo" ls-tree -r -z --full-tree "$anchor" >"$tree_file"; then
+    die_scan "Git failed while listing anchor tree: $anchor"
+fi
+while IFS= read -r -d '' entry; do
+    [[ $entry == *$'\t'* ]] || die_scan "malformed tree entry in anchor commit"
+    metadata=${entry%%$'\t'*}
+    path=${entry#*$'\t'}
+    read -r mode type object extra <<<"$metadata"
+    [[ -n $mode && -n $type && -n $object && -z ${extra-} ]] \
+        || die_scan "malformed tree mode/type/object metadata in anchor commit"
+    [[ -n $path ]] || die_scan "malformed tree path in anchor commit"
+    valid_tree_mode "$mode" \
+        || die_scan "malformed tree mode/type/object metadata in anchor commit"
+    valid_object_id "$object" \
+        || die_scan "malformed tree mode/type/object metadata in anchor commit"
+    scan_path "history commit=$anchor" "$path"
+    if [[ $type == blob && $mode != 160000 ]]; then
+        zero_object_id "$object" \
+            && die_scan "malformed tree mode/type/object metadata in anchor commit"
+        queue_blob "history commit=$anchor" "$path" "$object"
+    elif [[ $type == commit && $mode == 160000 ]]; then
+        zero_object_id "$object" \
+            && die_scan "malformed tree mode/type/object metadata in anchor commit"
+    else
+        die_scan "malformed tree mode/type/object metadata in anchor commit"
     fi
-    while IFS= read -r -d '' entry; do
-        [[ $entry == *$'\t'* ]] || die_scan "malformed tree entry in commit $commit"
-        metadata=${entry%%$'\t'*}
-        path=${entry#*$'\t'}
-        read -r mode type object extra <<<"$metadata"
-        [[ -n $mode && -n $type && -n $object && -z ${extra-} ]] \
-            || die_scan "malformed tree metadata in commit $commit"
+done <"$tree_file"
+
+while IFS= read -r commit; do
+    [[ $commit =~ ^[0-9a-fA-F]{40}$ || $commit =~ ^[0-9a-fA-F]{64}$ ]] \
+        || die_scan "Git returned a malformed commit identifier"
+    [[ $commit == "$anchor" ]] && continue
+    if ! git -C "$repo" diff-tree --root -r -m --no-renames -z --no-commit-id "$commit" -- >"$diff_file"; then
+        die_scan "Git failed while listing changed paths: $commit"
+    fi
+    exec 4<"$diff_file"
+    while IFS= read -r -d '' metadata <&4; do
+        IFS= read -r -d '' path <&4 || die_scan "malformed diff path in commit $commit"
+        [[ ${metadata:0:1} == : ]] || die_scan "malformed diff metadata in commit $commit"
+        read -r old_mode new_mode old_object new_object status extra <<<"${metadata:1}"
+        [[ -n $old_mode && -n $new_mode && -n $old_object && -n $new_object &&
+            -n $status && -z ${extra-} ]] \
+            || die_scan "malformed diff metadata in commit $commit"
+        [[ -n $path ]] || die_scan "malformed diff path in commit $commit"
+        if ! valid_tree_mode "$old_mode" || ! valid_tree_mode "$new_mode"; then
+            die_scan "malformed diff mode in commit $commit"
+        fi
+        valid_object_id "$old_object" || die_scan "malformed old object in commit $commit"
+        valid_object_id "$new_object" || die_scan "malformed new object in commit $commit"
+        [[ ${#old_object} -eq ${#new_object} ]] \
+            || die_scan "mismatched object identifier width in commit $commit"
+        old_null=0
+        new_null=0
+        zero_object_id "$old_object" && old_null=1
+        zero_object_id "$new_object" && new_null=1
+        (((old_mode == 0 && old_null == 1) || (old_mode != 0 && old_null == 0))) \
+            || die_scan "inconsistent old null object in commit $commit"
+        (((new_mode == 0 && new_null == 1) || (new_mode != 0 && new_null == 0))) \
+            || die_scan "inconsistent new null object in commit $commit"
+        case $status in
+            A) ((old_null == 1 && new_null == 0)) || die_scan "invalid add status in commit $commit" ;;
+            D) ((old_null == 0 && new_null == 1)) || die_scan "invalid delete status in commit $commit" ;;
+            M | T | U | X | B) ((old_null == 0 && new_null == 0)) || die_scan "invalid $status status in commit $commit" ;;
+            *) die_scan "unsupported diff status in commit $commit: $status" ;;
+        esac
         surface="history commit=$commit"
         scan_path "$surface" "$path"
-        if [[ $type == blob ]]; then
-            if ! git -C "$repo" cat-file blob "$object" >"$blob_file"; then
-                die_scan "Git failed while reading object $object from commit $commit"
-            fi
-            scan_content "$surface" "$path" "$blob_file"
-        elif [[ $type != commit ]]; then
-            die_scan "unexpected tree object type $type in commit $commit"
+        if [[ $old_mode != 000000 && $old_mode != 160000 ]]; then
+            queue_blob "$surface" "$path" "$old_object"
         fi
-    done <"$tree_file"
+        if [[ $new_mode != 000000 && $new_mode != 160000 ]]; then
+            queue_blob "$surface" "$path" "$new_object"
+        fi
+    done
+    exec 4<&-
 done <"$commits_file"
+
+if ((${#blob_surface[@]} > 0)); then
+    coproc BOUNDARY_CAT_FILE { git -C "$repo" cat-file --batch; }
+    batch_in=${BOUNDARY_CAT_FILE[1]}
+    batch_out=${BOUNDARY_CAT_FILE[0]}
+    batch_pid=$BOUNDARY_CAT_FILE_PID
+    while IFS= read -r object; do
+        key=${object,,}
+        printf '%s\n' "$object" >&"$batch_in" \
+            || die_scan "Git failed while requesting object: $object"
+        IFS= read -r response <&"$batch_out" \
+            || die_scan "Git returned malformed batch response for object: $object"
+        read -r response_object response_type response_size response_extra <<<"$response"
+        [[ $response_object == "$object" && -z ${response_extra-} ]] \
+            || die_scan "Git returned a malformed batch object response"
+        [[ $response_type == blob ]] || die_scan "Git returned non-blob object: $object"
+        [[ $response_size =~ ^[0-9]+$ ]] || die_scan "Git returned malformed blob size: $object"
+        if ! dd bs=1 count="$response_size" status=none <&"$batch_out" >"$blob_file"; then
+            die_scan "Git failed while reading batch object: $object"
+        fi
+        IFS= read -r -N 1 trailer <&"$batch_out" \
+            || die_scan "Git returned truncated batch object: $object"
+        [[ $trailer == $'\n' ]] || die_scan "Git returned malformed batch object terminator"
+        scan_content "${blob_surface[$key]}" "${blob_path[$key]}" "$blob_file"
+    done < <(printf '%s\n' "${!blob_surface[@]}")
+    exec {batch_in}>&-
+    exec {batch_out}<&-
+    if ! wait "$batch_pid"; then
+        die_scan "Git failed while reading batch objects"
+    fi
+fi
 
 if ((violations > 0)); then
     echo "FAIL: public boundary found $violations violation(s)" >&2
