@@ -15,6 +15,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -1920,9 +1921,22 @@ func (d *Daemon) filterSaveFiles(
 	return names
 }
 
-// matchesPattern checks if filename matches any of the given glob patterns.
+// matchesPattern checks if filename matches any pattern. Patterns use glob
+// semantics by default; a pattern prefixed with "regex:" is matched as a
+// regular expression instead.
 func matchesPattern(name string, patterns []string) bool {
 	for _, pat := range patterns {
+		if strings.HasPrefix(pat, "regex:") {
+			re, err := regexp.Compile(strings.TrimPrefix(pat, "regex:"))
+			if err != nil {
+				slog.Default().Warn("invalid regex file pattern", "pattern", pat, "error", err)
+				continue
+			}
+			if re.MatchString(name) {
+				return true
+			}
+			continue
+		}
 		matched, err := filepath.Match(pat, name)
 		if err != nil {
 			continue // malformed pattern — skip

@@ -487,6 +487,37 @@ func d2rConfig() Config {
 	}
 }
 
+func TestFilterSaveFiles_RegexStardewLayout(t *testing.T) {
+	entries := []fs.DirEntry{
+		&fakeDirEntry{name: "Farmer_123456789"},
+		&fakeDirEntry{name: "Farmer_123456789_old"},
+		&fakeDirEntry{name: "SaveGameInfo"},
+		&fakeDirEntry{name: "steam_autocloud.vdf"},
+	}
+	d := &Daemon{}
+	got := d.filterSaveFiles(entries, nil, []string{"regex:^.+_[0-9]+$"}, nil)
+	if !slices.Equal(got, []string{"Farmer_123456789"}) {
+		t.Errorf("filterSaveFiles = %v, want [Farmer_123456789]", got)
+	}
+}
+
+func TestHandleFileEvent_RegexPatternGuard(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := d2rRunner()
+	d := New(Config{Games: map[string]GameConfig{
+		"d2r": {FilePatterns: []string{"regex:^.+_[0-9]+$"}, Enabled: true},
+	}}, &fakeFS{}, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+	d.watchedDirs["/saves/d2r"] = "d2r"
+	d.handleFileEvent(context.Background(), FileEvent{
+		Path: "/saves/d2r/Farmer_123456789_old",
+		Op:   FileModify,
+		Data: []byte("old"),
+	})
+	if len(runner.calls) != 0 {
+		t.Fatal("pattern guard allowed non-canonical save")
+	}
+}
+
 func d2rFS() *fakeFS {
 	return &fakeFS{
 		dirs:  map[string][]string{"/saves/d2r": {"Hammerdin.d2s", "readme.txt"}},

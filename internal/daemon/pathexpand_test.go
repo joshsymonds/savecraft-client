@@ -398,6 +398,30 @@ func TestMatchesPattern(t *testing.T) {
 	}
 }
 
+func TestMatchesPattern_Regex(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{"Farmer_123456789", true},
+		{"Farmer_123456789_old", false},
+		{"SaveGameInfo", false},
+		{"steam_autocloud.vdf", false},
+		{"[", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := matchesPattern(tt.name, []string{"regex:^.+_[0-9]+$"})
+			if got != tt.want {
+				t.Errorf("matchesPattern(%q, regex) = %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+	if matchesPattern("anything", []string{"regex:["}) {
+		t.Error("invalid regex should not match")
+	}
+}
+
 // TestFilterSaveFiles_EmptyExtensionsWithPatterns covers the pattern-only
 // plugin config shape (e.g. magic, wow, poe, sdv): file_extensions=[] with
 // file_patterns=["Player.log", ...]. An empty extensions list must mean
