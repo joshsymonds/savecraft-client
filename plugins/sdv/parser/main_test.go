@@ -7,6 +7,42 @@ import (
 	"testing"
 )
 
+func TestBuildIdentity(t *testing.T) {
+	data, err := os.ReadFile("../testdata/TestSave")
+	if err != nil {
+		t.Fatalf("reading test fixture: %v", err)
+	}
+	save, err := parseSave(data)
+	if err != nil {
+		t.Fatalf("parseSave: %v", err)
+	}
+
+	saveName, displayName := buildIdentity("/Saves/Test_123/Test_123", save)
+	if saveName != "Test_123" {
+		t.Errorf("saveName = %q, want %q", saveName, "Test_123")
+	}
+	if displayName != "Test (Test)" {
+		t.Errorf("displayName = %q, want %q", displayName, "Test (Test)")
+	}
+}
+
+func TestBuildIdentityDistinguishesCanonicalFilenames(t *testing.T) {
+	data, err := os.ReadFile("../testdata/TestSave")
+	if err != nil {
+		t.Fatalf("reading test fixture: %v", err)
+	}
+	save, err := parseSave(data)
+	if err != nil {
+		t.Fatalf("parseSave: %v", err)
+	}
+
+	first, _ := buildIdentity("/Saves/Test_123/Test_123", save)
+	second, _ := buildIdentity("/Saves/Test_456/Test_456", save)
+	if first == second {
+		t.Fatalf("saveNames = %q and %q, want distinct canonical filenames", first, second)
+	}
+}
+
 func TestParseTestSave(t *testing.T) {
 	data, err := os.ReadFile("../testdata/TestSave")
 	if err != nil {

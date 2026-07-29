@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -36,18 +37,24 @@ func main() {
 
 	sections := buildSections(save)
 	summary := buildSummary(save, sections)
+	saveName, displayName := buildIdentity(os.Args[1], save)
 
 	if err := enc.Encode(map[string]any{
 		"type": "result",
 		"identity": map[string]any{
-			"saveName": save.Player.Name,
-			"gameId":   "sdv",
+			"saveName":    saveName,
+			"gameId":      "sdv",
+			"displayName": displayName,
 		},
 		"summary":  summary,
 		"sections": sections,
 	}); err != nil {
 		os.Exit(1)
 	}
+}
+
+func buildIdentity(filePath string, save *SaveGame) (saveName, displayName string) {
+	return filepath.Base(filePath), fmt.Sprintf("%s (%s)", save.Player.Name, save.Player.FarmName)
 }
 
 // SaveGame is the root XML element of a Stardew Valley save file.
