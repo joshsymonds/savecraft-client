@@ -40,6 +40,12 @@ const unknownSaveName = "Unknown Player"
 
 const pluginDownloadFailedMessage = "plugin download failed"
 
+const (
+	pluginErrorTypeUnsupportedVersion = "unsupported_version"
+	pluginErrorTypeCorruptFile        = "corrupt_file"
+	pluginErrorTypeParseError         = "parse_error"
+)
+
 // --- Domain types ---
 
 // GameState is the structured output from parsing a save file.
@@ -1965,8 +1971,16 @@ func (d *Daemon) sendCompressed(data []byte) error {
 }
 
 // toParseErrorType converts a string error type to the proto enum.
-func toParseErrorType(s string) pb.ParseErrorType {
-	if v, ok := pb.ParseErrorType_value[s]; ok {
+func toParseErrorType(errorType string) pb.ParseErrorType {
+	switch errorType {
+	case pluginErrorTypeUnsupportedVersion:
+		return pb.ParseErrorType_PARSE_ERROR_TYPE_UNSUPPORTED_VERSION
+	case pluginErrorTypeCorruptFile:
+		return pb.ParseErrorType_PARSE_ERROR_TYPE_CORRUPT_FILE
+	case pluginErrorTypeParseError:
+		return pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR
+	}
+	if v, ok := pb.ParseErrorType_value[errorType]; ok {
 		return pb.ParseErrorType(v)
 	}
 	return pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR

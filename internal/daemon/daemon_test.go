@@ -840,6 +840,53 @@ func TestHandleFileEvent_IgnoresUnwatchedDir(t *testing.T) {
 
 // --- Tests: parseAndPush ---
 
+func TestToParseErrorType(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  pb.ParseErrorType
+	}{
+		{
+			name:  "unsupported version",
+			input: "unsupported_version",
+			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_UNSUPPORTED_VERSION,
+		},
+		{
+			name:  "corrupt file",
+			input: "corrupt_file",
+			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_CORRUPT_FILE,
+		},
+		{
+			name:  "parse error",
+			input: "parse_error",
+			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR,
+		},
+		{
+			name:  "read error",
+			input: "read_error",
+			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR,
+		},
+		{
+			name:  "unknown",
+			input: "anything_else",
+			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR,
+		},
+		{
+			name:  "enum name",
+			input: "PARSE_ERROR_TYPE_CORRUPT_FILE",
+			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_CORRUPT_FILE,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := toParseErrorType(tt.input); got != tt.want {
+				t.Errorf("toParseErrorType(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseAndPush_PluginError(t *testing.T) {
 	ws := newFakeWSClient()
 	runner := &fakeRunner{
@@ -868,9 +915,8 @@ func TestParseAndPush_PluginError(t *testing.T) {
 		t.Fatal("missing parseFailed")
 	}
 	failed := msg.GetParseFailed()
-	// "corrupt_file" doesn't match proto enum names, so toParseErrorType falls back to PARSE_ERROR.
-	if failed.ErrorType != pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR {
-		t.Errorf("parseFailed errorType = %v, want PARSE_ERROR_TYPE_PARSE_ERROR", failed.ErrorType)
+	if failed.ErrorType != pb.ParseErrorType_PARSE_ERROR_TYPE_CORRUPT_FILE {
+		t.Errorf("parseFailed errorType = %v, want PARSE_ERROR_TYPE_CORRUPT_FILE", failed.ErrorType)
 	}
 }
 
