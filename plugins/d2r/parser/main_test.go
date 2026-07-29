@@ -1,11 +1,62 @@
 package main
 
 import (
+	"encoding/binary"
+	"fmt"
 	"os"
 	"testing"
 
 	"github.com/joshsymonds/savecraft-client/plugins/d2r/d2s"
 )
+
+func TestStashLabel(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		realm byte
+		kind  uint32
+		want  string
+	}{
+		{"RotW hardcore", d2s.RealmRotW, 0, "Shared Stash (Hardcore)"},
+		{"RotW softcore", d2s.RealmRotW, 1, "Shared Stash (Softcore)"},
+		{"legacy hardcore", d2s.RealmClassic, 0, "Shared Stash (Legacy Hardcore)"},
+		{"legacy softcore", d2s.RealmLoD, 1, "Shared Stash (Legacy Softcore)"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			version := uint32(0x60)
+			if tt.realm == d2s.RealmLoD {
+				version = 0x61
+			} else if tt.realm == d2s.RealmRotW {
+				version = 0x69
+			}
+			stash := &d2s.SharedStash{Kind: tt.kind, Version: version}
+			if got := stashLabel(stash); got != tt.want {
+				t.Errorf("stashLabel() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestModernAndLegacyStashLabelsAreDistinct(t *testing.T) {
+	modern := loadStash(t)
+	legacyData := make([]byte, 64)
+	binary.LittleEndian.PutUint32(legacyData[0:4], 0xAA55AA55)
+	binary.LittleEndian.PutUint32(legacyData[4:8], 1)
+	binary.LittleEndian.PutUint32(legacyData[8:12], 0x60)
+	binary.LittleEndian.PutUint32(legacyData[16:20], 64)
+	legacy, err := d2s.ParseStash(legacyData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := stashLabel(modern), "Shared Stash (Softcore)"; got != want {
+		t.Errorf("modern label = %q, want %q", got, want)
+	}
+	if got, want := stashLabel(legacy), "Shared Stash (Legacy Softcore)"; got != want {
+		t.Errorf("legacy label = %q, want %q", got, want)
+	}
+	if stashLabel(modern) == stashLabel(legacy) {
+		t.Fatal("modern and legacy labels collide")
+	}
+}
 
 func loadAtmus(t *testing.T) *d2s.D2S {
 	t.Helper()
@@ -524,9 +575,8 @@ func TestBuildStashSummary(t *testing.T) {
 	if summary == "" {
 		t.Error("empty summary")
 	}
-	// Kind 2 = RotW softcore (maps to Softcore label since kind != 0).
-	if got := summary; got != "Shared Stash (Softcore), 60 items, 50000 gold" {
-		t.Logf("stash summary = %q (verify manually if gold/count changed)", got)
+	if got, want := summary, fmt.Sprintf("%s, 60 items, %d gold", stashLabel(stash), stash.Gold); got != want {
+		t.Errorf("stash summary = %q, want %q", got, want)
 	}
 }
 

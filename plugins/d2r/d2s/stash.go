@@ -14,6 +14,11 @@ type SharedStash struct {
 	Tabs    []StashTab
 }
 
+// Realm infers the realm from the stash's kind and version.
+func (s *SharedStash) Realm() byte {
+	return realmFromKind(s.Kind, s.Version)
+}
+
 // StashTab represents one tab/page in the shared stash.
 type StashTab struct {
 	Type  byte // 0=normal, 1=advanced stash (RotW), 2=metadata (RotW)
