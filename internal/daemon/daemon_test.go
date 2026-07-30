@@ -213,6 +213,7 @@ type fakeWSClient struct {
 	isConnected   bool
 	manualConnect bool  // if true, Start does not auto-signal the first connection
 	sendErr       error // if non-nil, Send returns this error
+	failNextSend  error // if non-nil, one Send returns this error
 	mu            sync.Mutex
 }
 
@@ -248,6 +249,11 @@ func (ws *fakeWSClient) signalConnected() {
 func (ws *fakeWSClient) Send(msg []byte) error {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
+	if ws.failNextSend != nil {
+		err := ws.failNextSend
+		ws.failNextSend = nil
+		return err
+	}
 	if ws.sendErr != nil {
 		return ws.sendErr
 	}
@@ -255,6 +261,87 @@ func (ws *fakeWSClient) Send(msg []byte) error {
 	copy(cp, msg)
 	ws.sent = append(ws.sent, cp)
 	return nil
+}
+
+func TestParseAndPush_ParseFailureDeduplication(t *testing.T) {
+	const path = "/saves/d2r/bad.d2s"
+	newDaemon := func(ws *fakeWSClient, runner *fakeRunner) *Daemon {
+		return New(d2rConfig(), &fakeFS{}, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+	}
+	runFailure := func(d *Daemon, data []byte) {
+		d.parseAndPush(context.Background(), "d2r", path, "bad.d2s", data, false)
+	}
+
+	t.Run("identical repetition", func(t *testing.T) {
+		ws := newFakeWSClient()
+		r := &fakeRunner{errors: map[string]error{"d2r": errors.New("bad")}}
+		d := newDaemon(ws, r)
+		runFailure(d, []byte("same"))
+		runFailure(d, []byte("same"))
+		if got := countEventType(ws, "parseFailed"); got != 1 {
+			t.Fatalf("parseFailed count = %d, want 1", got)
+		}
+	})
+
+	t.Run("content change", func(t *testing.T) {
+		ws := newFakeWSClient()
+		r := &fakeRunner{errors: map[string]error{"d2r": errors.New("bad")}}
+		d := newDaemon(ws, r)
+		runFailure(d, []byte("one"))
+		runFailure(d, []byte("two"))
+		if got := countEventType(ws, "parseFailed"); got != 2 {
+			t.Fatalf("parseFailed count = %d, want 2", got)
+		}
+	})
+
+	t.Run("error change", func(t *testing.T) {
+		ws := newFakeWSClient()
+		r := &fakeRunner{errors: map[string]error{"d2r": errors.New("first")}}
+		d := newDaemon(ws, r)
+		runFailure(d, []byte("same"))
+		r.errors["d2r"] = errors.New("second")
+		runFailure(d, []byte("same"))
+		if got := countEventType(ws, "parseFailed"); got != 2 {
+			t.Fatalf("parseFailed count = %d, want 2", got)
+		}
+	})
+
+	t.Run("failure success failure", func(t *testing.T) {
+		ws := newFakeWSClient()
+		r := &fakeRunner{errors: map[string]error{"d2r": errors.New("bad")}, results: map[string]*GameState{"d2r": {}}}
+		d := newDaemon(ws, r)
+		runFailure(d, []byte("same"))
+		delete(r.errors, "d2r")
+		runFailure(d, []byte("same"))
+		r.errors["d2r"] = errors.New("bad")
+		runFailure(d, []byte("same"))
+		if got := countEventType(ws, "parseFailed"); got != 2 {
+			t.Fatalf("parseFailed count = %d, want 2", got)
+		}
+	})
+
+	t.Run("restart", func(t *testing.T) {
+		ws := newFakeWSClient()
+		r := &fakeRunner{errors: map[string]error{"d2r": errors.New("bad")}}
+		d := newDaemon(ws, r)
+		runFailure(d, []byte("same"))
+		runFailure(newDaemon(ws, r), []byte("same"))
+		if got := countEventType(ws, "parseFailed"); got != 2 {
+			t.Fatalf("parseFailed count = %d, want 2", got)
+		}
+	})
+
+	t.Run("failed delivery retries", func(t *testing.T) {
+		ws := newFakeWSClient()
+		ws.failNextSend = errors.New("offline")
+		r := &fakeRunner{errors: map[string]error{"d2r": errors.New("bad")}}
+		d := newDaemon(ws, r)
+		runFailure(d, []byte("same"))
+		runFailure(d, []byte("same"))
+		if got := countEventType(ws, "parseFailed"); got != 1 {
+			t.Fatalf("parseFailed count = %d, want 1 after retry", got)
+		}
+	})
 }
 
 func (ws *fakeWSClient) Messages() <-chan []byte    { return ws.messages }

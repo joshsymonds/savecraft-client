@@ -314,6 +314,10 @@ type Daemon struct {
 	// or fallback name must never overwrite a real remembered name.
 	lastKnownSaveNames map[string]string
 
+	// parseFailures remembers failures that were successfully delivered, keyed
+	// by path, so unchanged failures do not repeat on rescans.
+	parseFailures map[string]parseFailure
+
 	// hasAnnounced is set after the first announceOnline completes.
 	// On subsequent calls (reconnects), discovery and scan messages are
 	// suppressed when nothing has changed.
@@ -344,6 +348,12 @@ type linkCodeResult struct {
 type sectionHashCache struct {
 	saveName string
 	hashes   map[string][32]byte
+}
+
+type parseFailure struct {
+	contentHash [32]byte
+	errorType   pb.ParseErrorType
+	message     string
 }
 
 // New creates a Daemon with the given dependencies.
@@ -379,6 +389,7 @@ func New(
 		pluginUpdateResetCh:     make(chan struct{}, 1),
 		lastPushedSectionHashes: make(map[string]*sectionHashCache),
 		lastKnownSaveNames:      make(map[string]string),
+		parseFailures:           make(map[string]parseFailure),
 	}
 }
 
@@ -1162,26 +1173,10 @@ func (d *Daemon) parseAndPush(
 
 	state, err := d.runner.Run(ctx, gameID, fileName, saveBytes, onStatus)
 	if err != nil {
-		errorType := "PARSE_ERROR_TYPE_PARSE_ERROR"
-		if pluginErr, ok := errors.AsType[*PluginError](err); ok {
-			errorType = pluginErr.Type
-		}
-		d.log.ErrorContext(
-			ctx,
-			"plugin parse failed",
-			slog.String("game_id", gameID),
-			slog.String("file_name", fileName),
-			slog.String("error_type", errorType),
-			slog.String("error", err.Error()),
-		)
-		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ParseFailed{ParseFailed: &pb.ParseFailed{
-			GameId:    gameID,
-			FileName:  fileName,
-			ErrorType: toParseErrorType(errorType),
-			Message:   err.Error(),
-		}}})
+		d.handleParseFailure(ctx, gameID, fullPath, fileName, saveBytes, err)
 		return
 	}
+	delete(d.parseFailures, fullPath)
 
 	// Resolve the save identity once, before anything downstream consumes
 	// it, so ParseCompleted and the push (and the delta cache it consults)
@@ -1208,6 +1203,46 @@ func (d *Daemon) parseAndPush(
 	}
 
 	d.pushState(ctx, gameID, fullPath, state)
+}
+
+func (d *Daemon) handleParseFailure(
+	ctx context.Context,
+	gameID, fullPath, fileName string,
+	saveBytes []byte,
+	err error,
+) {
+	errorType := "PARSE_ERROR_TYPE_PARSE_ERROR"
+	if pluginErr, ok := errors.AsType[*PluginError](err); ok {
+		errorType = pluginErr.Type
+	}
+	failure := parseFailure{
+		contentHash: sha256.Sum256(saveBytes),
+		errorType:   toParseErrorType(errorType),
+		message:     err.Error(),
+	}
+	if previous, ok := d.parseFailures[fullPath]; ok && previous == failure {
+		d.log.DebugContext(
+			ctx,
+			"suppressed repeated plugin parse failure",
+			slog.String("game_id", gameID),
+			slog.String("file_name", fileName),
+		)
+		return
+	}
+	d.log.ErrorContext(
+		ctx,
+		"plugin parse failed",
+		slog.String("game_id", gameID),
+		slog.String("file_name", fileName),
+		slog.String("error_type", errorType),
+		slog.String("error", err.Error()),
+	)
+	msg := &pb.Message{Payload: &pb.Message_ParseFailed{ParseFailed: &pb.ParseFailed{
+		GameId: gameID, FileName: fileName, ErrorType: failure.errorType, Message: err.Error(),
+	}}}
+	if sendErr := d.sendMessageReturningError(ctx, msg); sendErr == nil {
+		d.parseFailures[fullPath] = failure
+	}
 }
 
 // resolveIdentity substitutes a sticky save name when the parse yielded an
@@ -1958,14 +1993,18 @@ func matchesExtension(ext string, extensions []string) bool {
 }
 
 func (d *Daemon) sendMessage(ctx context.Context, msg *pb.Message) {
+	if err := d.sendMessageReturningError(ctx, msg); err != nil {
+		d.log.WarnContext(ctx, "failed to send message", slog.String("error", err.Error()))
+	}
+}
+
+func (d *Daemon) sendMessageReturningError(ctx context.Context, msg *pb.Message) error {
 	data, err := proto.Marshal(msg)
 	if err != nil {
 		d.log.ErrorContext(ctx, "failed to marshal proto message", slog.String("error", err.Error()))
-		return
+		return fmt.Errorf("marshal proto message: %w", err)
 	}
-	if sendErr := d.sendCompressed(data); sendErr != nil {
-		d.log.WarnContext(ctx, "failed to send message", slog.String("error", sendErr.Error()))
-	}
+	return d.sendCompressed(data)
 }
 
 // sendCompressed gzip-compresses data and sends it over the WebSocket.
