@@ -82,7 +82,7 @@ func runDaemonLoop(
 		}
 	}()
 
-	cfg, err := loadConfig(serverURLDefault, installURLDefault)
+	cfg, err := loadConfig(serverURLDefault, installURLDefault, version)
 	if err != nil {
 		api.SetError(err.Error())
 

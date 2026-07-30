@@ -151,7 +151,7 @@ func requireSecureURL(rawURL string, devMode bool) error {
 	}
 }
 
-func loadConfig(serverURLDefault, installURLDefault string) (*appConfig, error) {
+func loadConfig(serverURLDefault, installURLDefault, version string) (*appConfig, error) {
 	serverURL := os.Getenv(envServerURL)
 	if serverURL == "" {
 		serverURL = serverURLDefault
@@ -193,11 +193,6 @@ func loadConfig(serverURLDefault, installURLDefault string) (*appConfig, error) 
 
 	pluginDir := os.Getenv("SAVECRAFT_PLUGIN_DIR")
 
-	cfgVersion := os.Getenv("SAVECRAFT_VERSION")
-	if cfgVersion == "" {
-		cfgVersion = "dev"
-	}
-
 	sourceUUID := os.Getenv("SAVECRAFT_SOURCE_UUID")
 
 	return &appConfig{
@@ -210,7 +205,7 @@ func loadConfig(serverURLDefault, installURLDefault string) (*appConfig, error) 
 			AuthToken:  authToken,
 			SourceID:   sourceID,
 			SourceUUID: sourceUUID,
-			Version:    cfgVersion,
+			Version:    version,
 			Games:      make(map[string]daemon.GameConfig),
 		},
 	}, nil

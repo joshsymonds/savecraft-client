@@ -16,7 +16,7 @@ func TestLoadConfig_UsesServerURLDefault(t *testing.T) {
 
 	t.Setenv(envAuthToken, "test-token")
 
-	cfg, err := loadConfig("https://staging-api.savecraft.gg", "https://staging-install.savecraft.gg")
+	cfg, err := loadConfig("https://staging-api.savecraft.gg", "https://staging-install.savecraft.gg", "1.2.3-test")
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
@@ -27,6 +27,13 @@ func TestLoadConfig_UsesServerURLDefault(t *testing.T) {
 	if cfg.InstallURL != "https://staging-install.savecraft.gg" {
 		t.Errorf("InstallURL = %q, want https://staging-install.savecraft.gg", cfg.InstallURL)
 	}
+	// The daemon must report the build-time (ldflag) version: it is the
+	// anchor Check compares against the manifest, and the version the server
+	// sees in sourceOnline. An env-derived value here caused every production
+	// daemon to report "dev" and loop detect→anti-rollback-refuse every 6h.
+	if cfg.Daemon.Version != "1.2.3-test" {
+		t.Errorf("Daemon.Version = %q, want the ldflag version 1.2.3-test", cfg.Daemon.Version)
+	}
 }
 
 func TestLoadConfig_EnvVarOverridesDefault(t *testing.T) {
@@ -34,7 +41,7 @@ func TestLoadConfig_EnvVarOverridesDefault(t *testing.T) {
 	t.Setenv("SAVECRAFT_INSTALL_URL", "https://custom-install.savecraft.gg")
 	t.Setenv(envAuthToken, "test-token")
 
-	cfg, err := loadConfig("https://staging-api.savecraft.gg", "https://staging-install.savecraft.gg")
+	cfg, err := loadConfig("https://staging-api.savecraft.gg", "https://staging-install.savecraft.gg", "1.2.3-test")
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
@@ -69,7 +76,7 @@ func TestLoadConfig_EnvFileOverridesDefault(t *testing.T) {
 
 	loadEnvFileDefaultsFromPath(envPath)
 
-	cfg, err := loadConfig("https://staging-api.savecraft.gg", "https://staging-install.savecraft.gg")
+	cfg, err := loadConfig("https://staging-api.savecraft.gg", "https://staging-install.savecraft.gg", "1.2.3-test")
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
@@ -87,7 +94,7 @@ func TestLoadConfig_FailsWithNoServerURL(t *testing.T) {
 	os.Unsetenv(envServerURL)
 	t.Setenv(envAuthToken, "test-token")
 
-	_, err := loadConfig("", "https://install.savecraft.gg")
+	_, err := loadConfig("", "https://install.savecraft.gg", "1.2.3-test")
 	if err == nil {
 		t.Fatal("expected error when no server URL available, got nil")
 	}
@@ -99,7 +106,7 @@ func TestLoadConfig_FailsWithNoInstallURL(t *testing.T) {
 	t.Setenv("SAVECRAFT_INSTALL_URL", "")
 	os.Unsetenv("SAVECRAFT_INSTALL_URL")
 
-	_, err := loadConfig("https://api.savecraft.gg", "")
+	_, err := loadConfig("https://api.savecraft.gg", "", "1.2.3-test")
 	if err == nil {
 		t.Fatal("expected error when no install URL available, got nil")
 	}
@@ -111,7 +118,7 @@ func TestLoadConfig_InstallURLFallsBackToDefault(t *testing.T) {
 	t.Setenv("SAVECRAFT_INSTALL_URL", "")
 	os.Unsetenv("SAVECRAFT_INSTALL_URL")
 
-	cfg, err := loadConfig("", "https://install.savecraft.gg")
+	cfg, err := loadConfig("", "https://install.savecraft.gg", "1.2.3-test")
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
@@ -126,7 +133,7 @@ func TestLoadConfig_AcceptsMissingAuthToken(t *testing.T) {
 	t.Setenv(envAuthToken, "")
 	os.Unsetenv(envAuthToken)
 
-	cfg, err := loadConfig("https://api.savecraft.gg", "https://install.savecraft.gg")
+	cfg, err := loadConfig("https://api.savecraft.gg", "https://install.savecraft.gg", "1.2.3-test")
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
@@ -199,7 +206,7 @@ func TestLoadConfig_RejectsPlaintextServerURL(t *testing.T) {
 	t.Setenv("SAVECRAFT_DEV", "")
 	os.Unsetenv("SAVECRAFT_DEV")
 
-	_, err := loadConfig("https://api.savecraft.gg", "https://install.savecraft.gg")
+	_, err := loadConfig("https://api.savecraft.gg", "https://install.savecraft.gg", "1.2.3-test")
 	if err == nil {
 		t.Fatal("expected loadConfig to reject a plaintext server URL")
 	}
@@ -212,7 +219,7 @@ func TestLoadConfig_RejectsPlaintextInstallURL(t *testing.T) {
 	t.Setenv("SAVECRAFT_DEV", "")
 	os.Unsetenv("SAVECRAFT_DEV")
 
-	_, err := loadConfig("https://api.savecraft.gg", "https://install.savecraft.gg")
+	_, err := loadConfig("https://api.savecraft.gg", "https://install.savecraft.gg", "1.2.3-test")
 	if err == nil {
 		t.Fatal("expected loadConfig to reject a plaintext install URL")
 	}
@@ -224,7 +231,7 @@ func TestLoadConfig_AllowsLoopbackPlaintextInDevMode(t *testing.T) {
 	t.Setenv(envAuthToken, "test-token")
 	t.Setenv("SAVECRAFT_DEV", "1")
 
-	cfg, err := loadConfig("https://api.savecraft.gg", "https://install.savecraft.gg")
+	cfg, err := loadConfig("https://api.savecraft.gg", "https://install.savecraft.gg", "1.2.3-test")
 	if err != nil {
 		t.Fatalf("loadConfig with dev loopback: %v", err)
 	}
