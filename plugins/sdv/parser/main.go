@@ -35,11 +35,16 @@ func main() {
 
 	writeStatusf(enc, "Farm: %s, %s", save.Player.FarmName, save.Player.Name)
 
+	if err := enc.Encode(buildResult(os.Args[1], save)); err != nil {
+		os.Exit(1)
+	}
+}
+
+func buildResult(filePath string, save *SaveGame) map[string]any {
+	saveName, displayName := buildIdentity(filePath, save)
 	sections := buildSections(save)
 	summary := buildSummary(save, sections)
-	saveName, displayName := buildIdentity(os.Args[1], save)
-
-	if err := enc.Encode(map[string]any{
+	return map[string]any{
 		"type": "result",
 		"identity": map[string]any{
 			"saveName":    saveName,
@@ -48,8 +53,6 @@ func main() {
 		},
 		"summary":  summary,
 		"sections": sections,
-	}); err != nil {
-		os.Exit(1)
 	}
 }
 

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -40,6 +41,50 @@ func TestBuildIdentityDistinguishesCanonicalFilenames(t *testing.T) {
 	second, _ := buildIdentity("/Saves/Test_456/Test_456", save)
 	if first == second {
 		t.Fatalf("saveNames = %q and %q, want distinct canonical filenames", first, second)
+	}
+}
+
+func TestBuildResultEmitsIdentityFields(t *testing.T) {
+	data, err := os.ReadFile("../testdata/TestSave")
+	if err != nil {
+		t.Fatalf("reading test fixture: %v", err)
+	}
+	save, err := parseSave(data)
+	if err != nil {
+		t.Fatalf("parseSave: %v", err)
+	}
+
+	paths := []string{"/Saves/Test_123/Test_123", "/Saves/Test_456/Test_456"}
+	results := make([]map[string]any, len(paths))
+	for i, path := range paths {
+		encoded, err := json.Marshal(buildResult(path, save))
+		if err != nil {
+			t.Fatalf("marshal result %d: %v", i, err)
+		}
+		if err := json.Unmarshal(encoded, &results[i]); err != nil {
+			t.Fatalf("unmarshal result %d: %v", i, err)
+		}
+	}
+
+	for i, result := range results {
+		identity, ok := result["identity"].(map[string]any)
+		if !ok {
+			t.Fatalf("result %d identity type = %T, want object", i, result["identity"])
+		}
+		if identity["saveName"] != filepath.Base(paths[i]) {
+			t.Errorf("result %d saveName = %v, want %q", i, identity["saveName"], filepath.Base(paths[i]))
+		}
+		if identity["displayName"] != "Test (Test)" {
+			t.Errorf("result %d displayName = %v, want %q", i, identity["displayName"], "Test (Test)")
+		}
+		if identity["gameId"] != "sdv" {
+			t.Errorf("result %d gameId = %v, want %q", i, identity["gameId"], "sdv")
+		}
+	}
+	firstIdentity := results[0]["identity"].(map[string]any)
+	secondIdentity := results[1]["identity"].(map[string]any)
+	if firstIdentity["saveName"] == secondIdentity["saveName"] {
+		t.Errorf("emitted saveNames = %v and %v, want distinct canonical filenames", firstIdentity["saveName"], secondIdentity["saveName"])
 	}
 }
 
