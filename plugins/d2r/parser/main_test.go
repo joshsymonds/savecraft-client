@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"os"
 	"testing"
@@ -18,6 +20,7 @@ func TestStashLabel(t *testing.T) {
 	}{
 		{"RotW hardcore", d2s.RealmRotW, 0, "Shared Stash (Hardcore)"},
 		{"RotW softcore", d2s.RealmRotW, 1, "Shared Stash (Softcore)"},
+		{"RotW kind 2", d2s.RealmRotW, 2, "Shared Stash (Softcore)"},
 		{"legacy hardcore", d2s.RealmClassic, 0, "Shared Stash (Legacy Hardcore)"},
 		{"legacy softcore", d2s.RealmLoD, 1, "Shared Stash (Legacy Softcore)"},
 	} {
@@ -33,6 +36,52 @@ func TestStashLabel(t *testing.T) {
 				t.Errorf("stashLabel() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestHandleStashEmitsDistinctModernAndLegacyIdentities(t *testing.T) {
+	modernData, err := os.ReadFile("../testdata/ModernSharedStashSoftCoreV2.d2i")
+	if err != nil {
+		t.Fatalf("read modern stash: %v", err)
+	}
+	legacyData := make([]byte, 64)
+	binary.LittleEndian.PutUint32(legacyData[0:4], 0xAA55AA55)
+	binary.LittleEndian.PutUint32(legacyData[4:8], 1)
+	binary.LittleEndian.PutUint32(legacyData[8:12], 0x60)
+	binary.LittleEndian.PutUint32(legacyData[16:20], 64)
+
+	emittedIdentity := func(name string, data []byte) string {
+		t.Helper()
+		var output bytes.Buffer
+		handleStash(json.NewEncoder(&output), data)
+		decoder := json.NewDecoder(&output)
+		var line map[string]any
+		for decoder.More() {
+			if err := decoder.Decode(&line); err != nil {
+				t.Fatalf("decode %s output: %v", name, err)
+			}
+		}
+		identity, ok := line["identity"].(map[string]any)
+		if !ok {
+			t.Fatalf("%s output missing identity: %v", name, line)
+		}
+		saveName, ok := identity["saveName"].(string)
+		if !ok {
+			t.Fatalf("%s output missing saveName: %v", name, identity)
+		}
+		return saveName
+	}
+
+	modernName := emittedIdentity("modern", modernData)
+	legacyName := emittedIdentity("legacy", legacyData)
+	if modernName != "Shared Stash (Softcore)" {
+		t.Errorf("modern emitted saveName = %q, want Shared Stash (Softcore)", modernName)
+	}
+	if legacyName != "Shared Stash (Legacy Softcore)" {
+		t.Errorf("legacy emitted saveName = %q, want Shared Stash (Legacy Softcore)", legacyName)
+	}
+	if modernName == legacyName {
+		t.Fatal("modern and legacy emitted saveNames collide")
 	}
 }
 
