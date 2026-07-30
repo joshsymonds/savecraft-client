@@ -175,6 +175,18 @@ type fakeRunner struct {
 	mu         sync.Mutex
 }
 
+type blockingRunner struct {
+	started chan struct{}
+	release chan struct{}
+	state   *GameState
+}
+
+func (r *blockingRunner) Run(_ context.Context, _ string, _ string, _ []byte, _ func(string)) (*GameState, error) {
+	close(r.started)
+	<-r.release
+	return r.state, nil
+}
+
 type runCall struct {
 	GameID    string
 	SaveBytes []byte
@@ -336,12 +348,45 @@ func TestParseAndPush_ParseFailureDeduplication(t *testing.T) {
 		ws.failNextSend = errors.New("offline")
 		r := &fakeRunner{errors: map[string]error{"d2r": errors.New("bad")}}
 		d := newDaemon(ws, r)
-		runFailure(d, []byte("same"))
-		runFailure(d, []byte("same"))
+		d.parseAndPush(context.Background(), "d2r", path, "bad.d2s", []byte("same"), true)
+		if _, ok := d.parseFailures[path]; ok {
+			t.Fatal("failed ParseFailed delivery recorded suppression")
+		}
+		d.parseAndPush(context.Background(), "d2r", path, "bad.d2s", []byte("same"), true)
 		if got := countEventType(ws, "parseFailed"); got != 1 {
 			t.Fatalf("parseFailed count = %d, want 1 after retry", got)
 		}
 	})
+}
+
+func TestParseAndPush_DropsStalePluginGeneration(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := &blockingRunner{started: make(chan struct{}), release: make(chan struct{}), state: &GameState{
+		Identity: Identity{GameID: "d2r", SaveName: "Hero"},
+		Sections: map[string]Section{"header": {Data: jsontext.Value(`{"level":1}`)}},
+	}}
+	d := New(d2rConfig(), &fakeFS{files: map[string][]byte{
+		"/saves/Hero.d2s": []byte("save"),
+	}}, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+	d.watchedDirs = map[string]string{}
+	done := make(chan struct{})
+	go func() {
+		d.parseAndPush(context.Background(), "d2r", "/saves/Hero.d2s", "Hero.d2s", nil, true)
+		close(done)
+	}()
+	<-runner.started
+	d.pluginChanged(context.Background(), "d2r", d.cfg.Games["d2r"])
+	close(runner.release)
+	<-done
+	if got := countEventType(ws, "pushSave"); got != 0 {
+		t.Fatalf("stale pushSave count = %d, want 0", got)
+	}
+	if _, ok := d.lastPushedSectionHashes["/saves/Hero.d2s"]; ok {
+		t.Fatal("stale parse repopulated section cache")
+	}
+	if _, ok := d.parseFailures["/saves/Hero.d2s"]; ok {
+		t.Fatal("stale parse repopulated failure record")
+	}
 }
 
 func (ws *fakeWSClient) Messages() <-chan []byte    { return ws.messages }
@@ -920,6 +965,7 @@ func TestHandleFileEvent_IgnoresRemove(t *testing.T) {
 		Config{}, &fakeFS{}, newFakeWatcher(), &fakeRunner{},
 		ws, &fakePluginManager{}, nil, testLogger(),
 	)
+	d.parseFailures["/saves/d2r/Hammerdin.d2s"] = parseFailure{gameID: "d2r"}
 	d.handleFileEvent(context.Background(), FileEvent{
 		Path: "/saves/d2r/Hammerdin.d2s",
 		Op:   FileRemove,
@@ -927,6 +973,9 @@ func TestHandleFileEvent_IgnoresRemove(t *testing.T) {
 
 	if len(ws.sentEventTypes()) != 0 {
 		t.Error("should not send events for file removal")
+	}
+	if _, ok := d.parseFailures["/saves/d2r/Hammerdin.d2s"]; ok {
+		t.Fatal("file removal retained parse failure")
 	}
 }
 
@@ -2008,6 +2057,44 @@ func TestDiscoverGames_FindsGame(t *testing.T) {
 	}
 	if game.FileCount != 1 {
 		t.Errorf("fileCount = %v, want 1", game.FileCount)
+	}
+}
+
+func TestDiscoverGames_StardewGlobAndPattern(t *testing.T) {
+	root := t.TempDir()
+	saves := filepath.Join(root, "Saves")
+	gameDir := filepath.Join(saves, "Farmer_123456789")
+	fsys := &fakeFS{
+		dirs: map[string][]string{
+			saves:   {"Farmer_123456789", "steam_autocloud.vdf"},
+			gameDir: {"Farmer_123456789", "Farmer_123456789_old", "SaveGameInfo"},
+		},
+		files: map[string][]byte{
+			filepath.Join(gameDir, "Farmer_123456789"):     {},
+			filepath.Join(gameDir, "Farmer_123456789_old"): {},
+			filepath.Join(gameDir, "SaveGameInfo"):         {},
+			filepath.Join(saves, "steam_autocloud.vdf"):    {},
+		},
+	}
+	pm := &fakePluginManager{manifests: map[string]pluginmgr.PluginInfo{
+		"sdv": {
+			GameID: "sdv", Name: "Stardew Valley",
+			DefaultPaths: map[string]string{runtime.GOOS: filepath.Join(saves, "*")},
+			FilePatterns: []string{"regex:^.+_[0-9]+$"},
+		},
+	}}
+	d := New(
+		Config{Games: map[string]GameConfig{}}, fsys, newFakeWatcher(), &fakeRunner{},
+		newFakeWSClient(), pm, nil, testLogger(),
+	)
+	d.discoverGames(context.Background())
+	fakeWS, ok := d.ws.(*fakeWSClient)
+	if !ok {
+		t.Fatal("daemon websocket is not fake client")
+	}
+	games := fakeWS.sentProto("gamesDiscovered", 0).GetGamesDiscovered().Games
+	if len(games) != 1 || games[0].Path != filepath.Join(saves, "*") || games[0].FileCount != 1 {
+		t.Fatalf("discovered games = %+v, want one glob game with fileCount 1", games)
 	}
 }
 
@@ -3775,7 +3862,8 @@ func TestPluginChangeInvalidatesOnlyGameAndRepushes(t *testing.T) {
 	ws := newFakeWSClient()
 	ws.isConnected = true
 	state := &GameState{Identity: Identity{GameID: "d2r", SaveName: "Hero"}, Sections: map[string]Section{
-		"header": {Data: jsontext.Value(`{"level":1}`)},
+		"header":    {Data: jsontext.Value(`{"level":1}`)},
+		"inventory": {Data: jsontext.Value(`{"items":2}`)},
 	}}
 	runner := &fakeRunner{results: map[string]*GameState{"d2r": state}}
 	fsys := &fakeFS{
@@ -3788,6 +3876,9 @@ func TestPluginChangeInvalidatesOnlyGameAndRepushes(t *testing.T) {
 	}}, fsys, newFakeWatcher(), runner, ws, pm, nil, testLogger())
 	d.watchedDirs["/saves"] = "d2r"
 	d.pushState(context.Background(), "d2r", "/saves/Hero.d2s", state)
+	if got := countEventType(ws, "pushSave"); got != 1 {
+		t.Fatalf("initial pushSave count = %d, want 1", got)
+	}
 	d.lastPushedSectionHashes["/other/save"] = &sectionHashCache{
 		gameID: "other", saveName: "Other", hashes: map[string][32]byte{"x": {1}},
 	}
@@ -3801,6 +3892,13 @@ func TestPluginChangeInvalidatesOnlyGameAndRepushes(t *testing.T) {
 	}
 	if _, ok := d.lastPushedSectionHashes["/other/save"]; !ok {
 		t.Fatal("plugin change deleted another game's cache")
+	}
+	if got := countEventType(ws, "pushSave"); got != 2 {
+		t.Fatalf("pushSave count after plugin update = %d, want 2", got)
+	}
+	second := ws.sentProto("pushSave", 1).GetPushSave()
+	if len(second.Sections) != 2 || len(second.AllSectionNames) != 2 {
+		t.Fatalf("plugin repush sections = %d names = %d, want 2/2", len(second.Sections), len(second.AllSectionNames))
 	}
 	if _, ok := d.parseFailures["/saves/Hero.d2s"]; ok {
 		t.Fatal("plugin change retained changed game's parse failure")
@@ -3816,6 +3914,19 @@ func TestPluginChangeInvalidatesOnlyGameAndRepushes(t *testing.T) {
 	d.handlePluginAvailable(context.Background(), &pb.PluginAvailable{GameId: "d2r"})
 	if _, ok := d.lastPushedSectionHashes["/saves/Hero.d2s"]; ok {
 		t.Fatal("server-notified plugin change retained cache entry")
+	}
+}
+
+func TestUnwatchGameEvictsParseFailures(t *testing.T) {
+	d := New(
+		Config{}, &fakeFS{dirs: map[string][]string{"/saves": {"a.sav"}}},
+		newFakeWatcher(), &fakeRunner{}, newFakeWSClient(), nil, nil, testLogger(),
+	)
+	d.parseFailures["/saves/a.sav"] = parseFailure{gameID: "game"}
+	d.lastPushedSectionHashes["/saves/a.sav"] = &sectionHashCache{gameID: "game"}
+	d.unwatchGame(context.Background(), "/saves")
+	if _, ok := d.parseFailures["/saves/a.sav"]; ok {
+		t.Fatal("unwatch retained parse failure")
 	}
 }
 

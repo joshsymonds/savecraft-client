@@ -237,7 +237,8 @@ type Daemon struct {
 	restartFunc func(daemonPath, trayPath string) error
 
 	// mu protects watchedDirs, cfg.Games, and link state from concurrent access.
-	mu sync.RWMutex
+	mu                sync.RWMutex
+	pluginGenerations map[string]uint64
 
 	// Maps watched directory -> game ID.
 	watchedDirs map[string]string
@@ -318,6 +319,9 @@ type Daemon struct {
 	// by path, so unchanged failures do not repeat on rescans.
 	parseFailures map[string]parseFailure
 
+	// regexPatterns caches compiled file-pattern regular expressions.
+	regexPatterns regexPatternCache
+
 	// hasAnnounced is set after the first announceOnline completes.
 	// On subsequent calls (reconnects), discovery and scan messages are
 	// suppressed when nothing has changed.
@@ -358,6 +362,33 @@ type parseFailure struct {
 	message     string
 }
 
+type regexPatternCache struct {
+	patterns sync.Map // map[string]*cachedRegexPattern
+}
+
+type cachedRegexPattern struct {
+	once sync.Once
+	re   *regexp.Regexp
+}
+
+func (c *regexPatternCache) matches(pattern, name string) bool {
+	entry := &cachedRegexPattern{}
+	cached, _ := c.patterns.LoadOrStore(pattern, entry)
+	entry, ok := cached.(*cachedRegexPattern)
+	if !ok {
+		return false
+	}
+	entry.once.Do(func() {
+		compiled, err := regexp.Compile(strings.TrimPrefix(pattern, "regex:"))
+		if err != nil {
+			slog.Default().Warn("invalid regex file pattern", "pattern", pattern, "error", err)
+			return
+		}
+		entry.re = compiled
+	})
+	return entry.re != nil && entry.re.MatchString(name)
+}
+
 // New creates a Daemon with the given dependencies.
 // A nil logger is replaced with a no-op logger.
 func New(
@@ -392,6 +423,7 @@ func New(
 		lastPushedSectionHashes: make(map[string]*sectionHashCache),
 		lastKnownSaveNames:      make(map[string]string),
 		parseFailures:           make(map[string]parseFailure),
+		pluginGenerations:       make(map[string]uint64),
 	}
 }
 
@@ -808,6 +840,7 @@ func (d *Daemon) handlePluginReload(ctx context.Context, gameID string) {
 // reparses the game's tracked saves so the next push is a complete snapshot.
 func (d *Daemon) pluginChanged(ctx context.Context, gameID string, cfg GameConfig) {
 	d.mu.Lock()
+	d.pluginGenerations[gameID]++
 	for path, cache := range d.lastPushedSectionHashes {
 		if cache.gameID == gameID {
 			delete(d.lastPushedSectionHashes, path)
@@ -1114,6 +1147,9 @@ func (d *Daemon) collectSaveFiles(dirs, extensions, patterns, excludeSaves []str
 
 func (d *Daemon) handleFileEvent(ctx context.Context, ev FileEvent) {
 	if ev.Op == FileRemove {
+		d.mu.Lock()
+		delete(d.parseFailures, ev.Path)
+		d.mu.Unlock()
 		return
 	}
 
@@ -1140,7 +1176,7 @@ func (d *Daemon) handleFileEvent(ctx context.Context, ev FileEvent) {
 	if len(gameCfg.FileExtensions) > 0 && !matchesExtension(ext, gameCfg.FileExtensions) {
 		return
 	}
-	if len(gameCfg.FilePatterns) > 0 && !matchesPattern(fileName, gameCfg.FilePatterns) {
+	if len(gameCfg.FilePatterns) > 0 && !d.matchesPattern(fileName, gameCfg.FilePatterns) {
 		return
 	}
 	if isExcludedSave(fileName, gameCfg.ExcludeSaves) {
@@ -1159,6 +1195,9 @@ func (d *Daemon) parseAndPush(
 	ctx context.Context, gameID, fullPath, fileName string,
 	preloadedData []byte, quiet bool,
 ) {
+	d.mu.RLock()
+	generation := d.pluginGenerations[gameID]
+	d.mu.RUnlock()
 	d.log.DebugContext(ctx, "parsing save file", slog.String("game_id", gameID), slog.String("file_name", fileName))
 	if !quiet {
 		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ParseStarted{ParseStarted: &pb.ParseStarted{
@@ -1199,11 +1238,13 @@ func (d *Daemon) parseAndPush(
 
 	state, err := d.runner.Run(ctx, gameID, fileName, saveBytes, onStatus)
 	if err != nil {
-		d.handleParseFailure(ctx, gameID, fullPath, fileName, saveBytes, err)
+		d.handleParseFailure(ctx, gameID, fullPath, fileName, saveBytes, err, generation)
 		return
 	}
 	d.mu.Lock()
-	delete(d.parseFailures, fullPath)
+	if d.pluginGenerations[gameID] == generation {
+		delete(d.parseFailures, fullPath)
+	}
 	d.mu.Unlock()
 
 	// Resolve the save identity once, before anything downstream consumes
@@ -1230,7 +1271,7 @@ func (d *Daemon) parseAndPush(
 		}}})
 	}
 
-	d.pushState(ctx, gameID, fullPath, state)
+	d.pushState(ctx, gameID, fullPath, state, generation)
 }
 
 func (d *Daemon) handleParseFailure(
@@ -1238,7 +1279,18 @@ func (d *Daemon) handleParseFailure(
 	gameID, fullPath, fileName string,
 	saveBytes []byte,
 	err error,
+	generation ...uint64,
 ) {
+	gen := uint64(0)
+	if len(generation) > 0 {
+		gen = generation[0]
+	}
+	d.mu.RLock()
+	current := d.pluginGenerations[gameID]
+	d.mu.RUnlock()
+	if current != gen {
+		return
+	}
 	errorType := "PARSE_ERROR_TYPE_PARSE_ERROR"
 	if pluginErr, ok := errors.AsType[*PluginError](err); ok {
 		errorType = pluginErr.Type
@@ -1272,10 +1324,20 @@ func (d *Daemon) handleParseFailure(
 	msg := &pb.Message{Payload: &pb.Message_ParseFailed{ParseFailed: &pb.ParseFailed{
 		GameId: gameID, FileName: fileName, ErrorType: failure.errorType, Message: err.Error(),
 	}}}
+	d.mu.RLock()
+	current = d.pluginGenerations[gameID]
+	d.mu.RUnlock()
+	if current != gen {
+		return
+	}
 	if sendErr := d.sendMessageReturningError(ctx, msg); sendErr == nil {
 		d.mu.Lock()
-		d.parseFailures[fullPath] = failure
+		if d.pluginGenerations[gameID] == gen {
+			d.parseFailures[fullPath] = failure
+		}
 		d.mu.Unlock()
+	} else {
+		d.log.WarnContext(ctx, "failed to send message", slog.String("error", sendErr.Error()))
 	}
 }
 
@@ -1304,10 +1366,50 @@ func (d *Daemon) resolveIdentity(filePath string, identity Identity) Identity {
 }
 
 func (d *Daemon) pushState(
-	ctx context.Context, gameID, filePath string, state *GameState,
+	ctx context.Context, gameID, filePath string, state *GameState, generation ...uint64,
 ) {
-	sections := make([]*pb.GameSection, 0, len(state.Sections))
-	for name, section := range state.Sections {
+	gen := uint64(0)
+	if len(generation) > 0 {
+		gen = generation[0]
+	}
+	d.mu.RLock()
+	current := d.pluginGenerations[gameID]
+	d.mu.RUnlock()
+	if current != gen {
+		return
+	}
+	sections := d.protoSections(ctx, gameID, state.Sections)
+
+	// Sort sections by name for deterministic hashing (map iteration order is random).
+	slices.SortFunc(sections, func(a, b *pb.GameSection) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	changed, newHashes := d.filterChangedSections(ctx, gameID, filePath, state.Identity.SaveName, sections)
+	if len(changed) == 0 {
+		d.log.DebugContext(ctx, "save data unchanged, skipping push",
+			slog.String("game_id", gameID),
+			slog.String("file_path", filePath),
+		)
+		return
+	}
+
+	d.log.InfoContext(ctx, "pushing save data",
+		slog.String("game", d.gameName(ctx, gameID)),
+		slog.String("game_id", gameID),
+		slog.String("summary", state.Summary),
+		slog.Int("sections_changed", len(changed)),
+		slog.Int("sections_total", len(sections)),
+	)
+
+	d.sendState(ctx, gameID, filePath, state, changed, sections, newHashes, gen)
+}
+
+func (d *Daemon) protoSections(
+	ctx context.Context, gameID string, source map[string]Section,
+) []*pb.GameSection {
+	sections := make([]*pb.GameSection, 0, len(source))
+	for name, section := range source {
 		if section.Data.Kind() != '{' {
 			d.log.ErrorContext(ctx, "section data is not a JSON object, skipping",
 				slog.String("game_id", gameID),
@@ -1343,29 +1445,13 @@ func (d *Daemon) pushState(
 			Data:        dataStruct,
 		})
 	}
+	return sections
+}
 
-	// Sort sections by name for deterministic hashing (map iteration order is random).
-	slices.SortFunc(sections, func(a, b *pb.GameSection) int {
-		return strings.Compare(a.Name, b.Name)
-	})
-
-	changed, newHashes := d.filterChangedSections(ctx, gameID, filePath, state.Identity.SaveName, sections)
-	if len(changed) == 0 {
-		d.log.DebugContext(ctx, "save data unchanged, skipping push",
-			slog.String("game_id", gameID),
-			slog.String("file_path", filePath),
-		)
-		return
-	}
-
-	d.log.InfoContext(ctx, "pushing save data",
-		slog.String("game", d.gameName(ctx, gameID)),
-		slog.String("game_id", gameID),
-		slog.String("summary", state.Summary),
-		slog.Int("sections_changed", len(changed)),
-		slog.Int("sections_total", len(sections)),
-	)
-
+func (d *Daemon) sendState(
+	ctx context.Context, gameID, filePath string, state *GameState,
+	changed, sections []*pb.GameSection, newHashes map[string][32]byte, gen uint64,
+) {
 	allNames := make([]string, len(sections))
 	for i, section := range sections {
 		allNames[i] = section.Name
@@ -1389,13 +1475,21 @@ func (d *Daemon) pushState(
 		)
 		return
 	}
+	d.mu.RLock()
+	current := d.pluginGenerations[gameID]
+	d.mu.RUnlock()
+	if current != gen {
+		return
+	}
 	if sendErr := d.sendCompressed(data); sendErr != nil {
 		d.log.WarnContext(ctx, "failed to send message", slog.String("error", sendErr.Error()))
 		return
 	}
 	d.mu.Lock()
-	d.lastPushedSectionHashes[filePath] = &sectionHashCache{
-		gameID: gameID, saveName: state.Identity.SaveName, hashes: newHashes,
+	if d.pluginGenerations[gameID] == gen {
+		d.lastPushedSectionHashes[filePath] = &sectionHashCache{
+			gameID: gameID, saveName: state.Identity.SaveName, hashes: newHashes,
+		}
 	}
 	d.mu.Unlock()
 }
@@ -1907,24 +2001,7 @@ func (d *Daemon) unwatchGame(ctx context.Context, savePath string) {
 		}
 	}
 
-	// Evict cached section hashes and sticky save names for files in
-	// unwatched directories.
-	for filePath := range d.lastPushedSectionHashes {
-		for _, dir := range dirs {
-			if strings.HasPrefix(filePath, dir+"/") || strings.HasPrefix(filePath, dir+"\\") {
-				delete(d.lastPushedSectionHashes, filePath)
-				break
-			}
-		}
-	}
-	for filePath := range d.lastKnownSaveNames {
-		for _, dir := range dirs {
-			if strings.HasPrefix(filePath, dir+"/") || strings.HasPrefix(filePath, dir+"\\") {
-				delete(d.lastKnownSaveNames, filePath)
-				break
-			}
-		}
-	}
+	d.evictUnwatchedPathCaches(dirs)
 	d.mu.Unlock()
 
 	for _, dir := range toRemove {
@@ -1937,6 +2014,35 @@ func (d *Daemon) unwatchGame(ctx context.Context, savePath string) {
 			)
 		}
 	}
+}
+
+// evictUnwatchedPathCaches removes per-file state for the supplied directories.
+// d.mu must be held by the caller.
+func (d *Daemon) evictUnwatchedPathCaches(dirs []string) {
+	for filePath := range d.lastPushedSectionHashes {
+		if pathInDirectories(filePath, dirs) {
+			delete(d.lastPushedSectionHashes, filePath)
+		}
+	}
+	for filePath := range d.lastKnownSaveNames {
+		if pathInDirectories(filePath, dirs) {
+			delete(d.lastKnownSaveNames, filePath)
+		}
+	}
+	for filePath := range d.parseFailures {
+		if pathInDirectories(filePath, dirs) {
+			delete(d.parseFailures, filePath)
+		}
+	}
+}
+
+func pathInDirectories(filePath string, dirs []string) bool {
+	for _, dir := range dirs {
+		if strings.HasPrefix(filePath, dir+"/") || strings.HasPrefix(filePath, dir+"\\") {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *Daemon) handleTestPath(ctx context.Context, gameID, path string) {
@@ -1994,7 +2100,7 @@ func (d *Daemon) filterSaveFiles(
 		if len(extensions) > 0 && !matchesExtension(ext, extensions) {
 			continue
 		}
-		if len(patterns) > 0 && !matchesPattern(name, patterns) {
+		if len(patterns) > 0 && !d.matchesPattern(name, patterns) {
 			continue
 		}
 		if isExcludedSave(name, excludeSaves) {
@@ -2008,15 +2114,10 @@ func (d *Daemon) filterSaveFiles(
 // matchesPattern checks if filename matches any pattern. Patterns use glob
 // semantics by default; a pattern prefixed with "regex:" is matched as a
 // regular expression instead.
-func matchesPattern(name string, patterns []string) bool {
+func (d *Daemon) matchesPattern(name string, patterns []string) bool {
 	for _, pat := range patterns {
 		if strings.HasPrefix(pat, "regex:") {
-			re, err := regexp.Compile(strings.TrimPrefix(pat, "regex:"))
-			if err != nil {
-				slog.Default().Warn("invalid regex file pattern", "pattern", pat, "error", err)
-				continue
-			}
-			if re.MatchString(name) {
+			if d.regexPatterns.matches(pat, name) {
 				return true
 			}
 			continue
