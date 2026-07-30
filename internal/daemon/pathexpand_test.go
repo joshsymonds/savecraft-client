@@ -375,6 +375,7 @@ func TestExpandPaths(t *testing.T) {
 }
 
 func TestMatchesPattern(t *testing.T) {
+	d := &Daemon{}
 	tests := []struct {
 		name     string
 		patterns []string
@@ -390,11 +391,36 @@ func TestMatchesPattern(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := matchesPattern(tt.name, tt.patterns)
+			got := d.matchesPattern(tt.name, tt.patterns)
 			if got != tt.want {
 				t.Errorf("matchesPattern(%q, %v) = %v, want %v", tt.name, tt.patterns, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestMatchesPattern_Regex(t *testing.T) {
+	d := &Daemon{}
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{"Farmer_123456789", true},
+		{"Farmer_123456789_old", false},
+		{"SaveGameInfo", false},
+		{"steam_autocloud.vdf", false},
+		{"[", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := d.matchesPattern(tt.name, []string{"regex:^.+_[0-9]+$"})
+			if got != tt.want {
+				t.Errorf("matchesPattern(%q, regex) = %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+	if d.matchesPattern("anything", []string{"regex:["}) {
+		t.Error("invalid regex should not match")
 	}
 }
 

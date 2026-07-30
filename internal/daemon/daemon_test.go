@@ -175,6 +175,18 @@ type fakeRunner struct {
 	mu         sync.Mutex
 }
 
+type blockingRunner struct {
+	started chan struct{}
+	release chan struct{}
+	state   *GameState
+}
+
+func (r *blockingRunner) Run(_ context.Context, _ string, _ string, _ []byte, _ func(string)) (*GameState, error) {
+	close(r.started)
+	<-r.release
+	return r.state, nil
+}
+
 type runCall struct {
 	GameID    string
 	SaveBytes []byte
@@ -213,6 +225,7 @@ type fakeWSClient struct {
 	isConnected   bool
 	manualConnect bool  // if true, Start does not auto-signal the first connection
 	sendErr       error // if non-nil, Send returns this error
+	failNextSend  error // if non-nil, one Send returns this error
 	mu            sync.Mutex
 }
 
@@ -248,6 +261,11 @@ func (ws *fakeWSClient) signalConnected() {
 func (ws *fakeWSClient) Send(msg []byte) error {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
+	if ws.failNextSend != nil {
+		err := ws.failNextSend
+		ws.failNextSend = nil
+		return err
+	}
 	if ws.sendErr != nil {
 		return ws.sendErr
 	}
@@ -255,6 +273,120 @@ func (ws *fakeWSClient) Send(msg []byte) error {
 	copy(cp, msg)
 	ws.sent = append(ws.sent, cp)
 	return nil
+}
+
+func TestParseAndPush_ParseFailureDeduplication(t *testing.T) {
+	const path = "/saves/d2r/bad.d2s"
+	newDaemon := func(ws *fakeWSClient, runner *fakeRunner) *Daemon {
+		return New(d2rConfig(), &fakeFS{}, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+	}
+	runFailure := func(d *Daemon, data []byte) {
+		d.parseAndPush(context.Background(), "d2r", path, "bad.d2s", data, false)
+	}
+
+	t.Run("identical repetition", func(t *testing.T) {
+		ws := newFakeWSClient()
+		r := &fakeRunner{errors: map[string]error{"d2r": errors.New("bad")}}
+		d := newDaemon(ws, r)
+		runFailure(d, []byte("same"))
+		runFailure(d, []byte("same"))
+		if got := countEventType(ws, "parseFailed"); got != 1 {
+			t.Fatalf("parseFailed count = %d, want 1", got)
+		}
+	})
+
+	t.Run("content change", func(t *testing.T) {
+		ws := newFakeWSClient()
+		r := &fakeRunner{errors: map[string]error{"d2r": errors.New("bad")}}
+		d := newDaemon(ws, r)
+		runFailure(d, []byte("one"))
+		runFailure(d, []byte("two"))
+		if got := countEventType(ws, "parseFailed"); got != 2 {
+			t.Fatalf("parseFailed count = %d, want 2", got)
+		}
+	})
+
+	t.Run("error change", func(t *testing.T) {
+		ws := newFakeWSClient()
+		r := &fakeRunner{errors: map[string]error{"d2r": errors.New("first")}}
+		d := newDaemon(ws, r)
+		runFailure(d, []byte("same"))
+		r.errors["d2r"] = errors.New("second")
+		runFailure(d, []byte("same"))
+		if got := countEventType(ws, "parseFailed"); got != 2 {
+			t.Fatalf("parseFailed count = %d, want 2", got)
+		}
+	})
+
+	t.Run("failure success failure", func(t *testing.T) {
+		ws := newFakeWSClient()
+		r := &fakeRunner{errors: map[string]error{"d2r": errors.New("bad")}, results: map[string]*GameState{"d2r": {}}}
+		d := newDaemon(ws, r)
+		runFailure(d, []byte("same"))
+		delete(r.errors, "d2r")
+		runFailure(d, []byte("same"))
+		r.errors["d2r"] = errors.New("bad")
+		runFailure(d, []byte("same"))
+		if got := countEventType(ws, "parseFailed"); got != 2 {
+			t.Fatalf("parseFailed count = %d, want 2", got)
+		}
+	})
+
+	t.Run("restart", func(t *testing.T) {
+		ws := newFakeWSClient()
+		r := &fakeRunner{errors: map[string]error{"d2r": errors.New("bad")}}
+		d := newDaemon(ws, r)
+		runFailure(d, []byte("same"))
+		runFailure(newDaemon(ws, r), []byte("same"))
+		if got := countEventType(ws, "parseFailed"); got != 2 {
+			t.Fatalf("parseFailed count = %d, want 2", got)
+		}
+	})
+
+	t.Run("failed delivery retries", func(t *testing.T) {
+		ws := newFakeWSClient()
+		ws.failNextSend = errors.New("offline")
+		r := &fakeRunner{errors: map[string]error{"d2r": errors.New("bad")}}
+		d := newDaemon(ws, r)
+		d.parseAndPush(context.Background(), "d2r", path, "bad.d2s", []byte("same"), true)
+		if _, ok := d.parseFailures[path]; ok {
+			t.Fatal("failed ParseFailed delivery recorded suppression")
+		}
+		d.parseAndPush(context.Background(), "d2r", path, "bad.d2s", []byte("same"), true)
+		if got := countEventType(ws, "parseFailed"); got != 1 {
+			t.Fatalf("parseFailed count = %d, want 1 after retry", got)
+		}
+	})
+}
+
+func TestParseAndPush_DropsStalePluginGeneration(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := &blockingRunner{started: make(chan struct{}), release: make(chan struct{}), state: &GameState{
+		Identity: Identity{GameID: "d2r", SaveName: "Hero"},
+		Sections: map[string]Section{"header": {Data: jsontext.Value(`{"level":1}`)}},
+	}}
+	d := New(d2rConfig(), &fakeFS{files: map[string][]byte{
+		"/saves/Hero.d2s": []byte("save"),
+	}}, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+	d.watchedDirs = map[string]string{}
+	done := make(chan struct{})
+	go func() {
+		d.parseAndPush(context.Background(), "d2r", "/saves/Hero.d2s", "Hero.d2s", nil, true)
+		close(done)
+	}()
+	<-runner.started
+	d.pluginChanged(context.Background(), "d2r", d.cfg.Games["d2r"])
+	close(runner.release)
+	<-done
+	if got := countEventType(ws, "pushSave"); got != 0 {
+		t.Fatalf("stale pushSave count = %d, want 0", got)
+	}
+	if _, ok := d.lastPushedSectionHashes["/saves/Hero.d2s"]; ok {
+		t.Fatal("stale parse repopulated section cache")
+	}
+	if _, ok := d.parseFailures["/saves/Hero.d2s"]; ok {
+		t.Fatal("stale parse repopulated failure record")
+	}
 }
 
 func (ws *fakeWSClient) Messages() <-chan []byte    { return ws.messages }
@@ -484,6 +616,37 @@ func d2rConfig() Config {
 		Games: map[string]GameConfig{
 			"d2r": {SavePath: "/saves/d2r", FileExtensions: []string{".d2s"}, Enabled: true},
 		},
+	}
+}
+
+func TestFilterSaveFiles_RegexStardewLayout(t *testing.T) {
+	entries := []fs.DirEntry{
+		&fakeDirEntry{name: "Farmer_123456789"},
+		&fakeDirEntry{name: "Farmer_123456789_old"},
+		&fakeDirEntry{name: "SaveGameInfo"},
+		&fakeDirEntry{name: "steam_autocloud.vdf"},
+	}
+	d := &Daemon{}
+	got := d.filterSaveFiles(entries, nil, []string{"regex:^.+_[0-9]+$"}, nil)
+	if !slices.Equal(got, []string{"Farmer_123456789"}) {
+		t.Errorf("filterSaveFiles = %v, want [Farmer_123456789]", got)
+	}
+}
+
+func TestHandleFileEvent_RegexPatternGuard(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := d2rRunner()
+	d := New(Config{Games: map[string]GameConfig{
+		"d2r": {FilePatterns: []string{"regex:^.+_[0-9]+$"}, Enabled: true},
+	}}, &fakeFS{}, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+	d.watchedDirs["/saves/d2r"] = "d2r"
+	d.handleFileEvent(context.Background(), FileEvent{
+		Path: "/saves/d2r/Farmer_123456789_old",
+		Op:   FileModify,
+		Data: []byte("old"),
+	})
+	if len(runner.calls) != 0 {
+		t.Fatal("pattern guard allowed non-canonical save")
 	}
 }
 
@@ -802,6 +965,7 @@ func TestHandleFileEvent_IgnoresRemove(t *testing.T) {
 		Config{}, &fakeFS{}, newFakeWatcher(), &fakeRunner{},
 		ws, &fakePluginManager{}, nil, testLogger(),
 	)
+	d.parseFailures["/saves/d2r/Hammerdin.d2s"] = parseFailure{gameID: "d2r"}
 	d.handleFileEvent(context.Background(), FileEvent{
 		Path: "/saves/d2r/Hammerdin.d2s",
 		Op:   FileRemove,
@@ -809,6 +973,9 @@ func TestHandleFileEvent_IgnoresRemove(t *testing.T) {
 
 	if len(ws.sentEventTypes()) != 0 {
 		t.Error("should not send events for file removal")
+	}
+	if _, ok := d.parseFailures["/saves/d2r/Hammerdin.d2s"]; ok {
+		t.Fatal("file removal retained parse failure")
 	}
 }
 
@@ -840,6 +1007,53 @@ func TestHandleFileEvent_IgnoresUnwatchedDir(t *testing.T) {
 
 // --- Tests: parseAndPush ---
 
+func TestToParseErrorType(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  pb.ParseErrorType
+	}{
+		{
+			name:  "unsupported version",
+			input: "unsupported_version",
+			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_UNSUPPORTED_VERSION,
+		},
+		{
+			name:  "corrupt file",
+			input: "corrupt_file",
+			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_CORRUPT_FILE,
+		},
+		{
+			name:  "parse error",
+			input: "parse_error",
+			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR,
+		},
+		{
+			name:  "read error",
+			input: "read_error",
+			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR,
+		},
+		{
+			name:  "unknown",
+			input: "anything_else",
+			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR,
+		},
+		{
+			name:  "enum name",
+			input: "PARSE_ERROR_TYPE_CORRUPT_FILE",
+			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_CORRUPT_FILE,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := toParseErrorType(tt.input); got != tt.want {
+				t.Errorf("toParseErrorType(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseAndPush_PluginError(t *testing.T) {
 	ws := newFakeWSClient()
 	runner := &fakeRunner{
@@ -868,9 +1082,8 @@ func TestParseAndPush_PluginError(t *testing.T) {
 		t.Fatal("missing parseFailed")
 	}
 	failed := msg.GetParseFailed()
-	// "corrupt_file" doesn't match proto enum names, so toParseErrorType falls back to PARSE_ERROR.
-	if failed.ErrorType != pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR {
-		t.Errorf("parseFailed errorType = %v, want PARSE_ERROR_TYPE_PARSE_ERROR", failed.ErrorType)
+	if failed.ErrorType != pb.ParseErrorType_PARSE_ERROR_TYPE_CORRUPT_FILE {
+		t.Errorf("parseFailed errorType = %v, want PARSE_ERROR_TYPE_CORRUPT_FILE", failed.ErrorType)
 	}
 }
 
@@ -1844,6 +2057,94 @@ func TestDiscoverGames_FindsGame(t *testing.T) {
 	}
 	if game.FileCount != 1 {
 		t.Errorf("fileCount = %v, want 1", game.FileCount)
+	}
+}
+
+func TestDiscoverGames_StardewGlobAndPattern(t *testing.T) {
+	root := t.TempDir()
+	saves := filepath.Join(root, "Saves")
+	gameDir := filepath.Join(saves, "Farmer_123456789")
+	fsys := &fakeFS{
+		dirs: map[string][]string{
+			saves:   {"Farmer_123456789", "steam_autocloud.vdf"},
+			gameDir: {"Farmer_123456789", "Farmer_123456789_old", "SaveGameInfo"},
+		},
+		files: map[string][]byte{
+			filepath.Join(gameDir, "Farmer_123456789"):     {},
+			filepath.Join(gameDir, "Farmer_123456789_old"): {},
+			filepath.Join(gameDir, "SaveGameInfo"):         {},
+			filepath.Join(saves, "steam_autocloud.vdf"):    {},
+		},
+	}
+	pm := &fakePluginManager{manifests: map[string]pluginmgr.PluginInfo{
+		"sdv": {
+			GameID: "sdv", Name: "Stardew Valley",
+			DefaultPaths: map[string]string{runtime.GOOS: filepath.Join(saves, "*")},
+			FilePatterns: []string{"regex:^.+_[0-9]+$"},
+		},
+	}}
+	d := New(
+		Config{Games: map[string]GameConfig{}}, fsys, newFakeWatcher(), &fakeRunner{},
+		newFakeWSClient(), pm, nil, testLogger(),
+	)
+	d.discoverGames(context.Background())
+	fakeWS, ok := d.ws.(*fakeWSClient)
+	if !ok {
+		t.Fatal("daemon websocket is not fake client")
+	}
+	games := fakeWS.sentProto("gamesDiscovered", 0).GetGamesDiscovered().Games
+	if len(games) != 1 || games[0].Path != filepath.Join(saves, "*") || games[0].FileCount != 1 {
+		t.Fatalf("discovered games = %+v, want one glob game with fileCount 1", games)
+	}
+}
+
+func TestDiscoverGames_ExistingEmptyDirectory(t *testing.T) {
+	ws := newFakeWSClient()
+	fsys := &fakeFS{dirs: map[string][]string{"/saves/game": {"readme.txt"}}}
+	pm := &fakePluginManager{manifests: map[string]pluginmgr.PluginInfo{
+		"game": {
+			GameID: "game", Name: "Game",
+			DefaultPaths:   map[string]string{runtime.GOOS: "/saves/game"},
+			FileExtensions: []string{".sav"},
+		},
+	}}
+
+	d := New(Config{Games: map[string]GameConfig{}}, fsys, newFakeWatcher(), &fakeRunner{}, ws, pm, nil, testLogger())
+	d.discoverGames(context.Background())
+
+	gd := ws.sentProto("gamesDiscovered", 0).GetGamesDiscovered()
+	if len(gd.Games) != 0 {
+		t.Fatalf("games count = %d, want 0", len(gd.Games))
+	}
+}
+
+func TestDiscoverGames_EmptyFirstCandidateUsesValidSecond(t *testing.T) {
+	t.Setenv("USERPROFILE", "/Users/TestUser")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("UserHomeDir: %v", err)
+	}
+	first := home + "/Documents/Game"
+	second := "/Users/TestUser/Documents/Game"
+	ws := newFakeWSClient()
+	fsys := &fakeFS{dirs: map[string][]string{first: {"readme.txt"}, second: {"save.sav"}}}
+	pm := &fakePluginManager{manifests: map[string]pluginmgr.PluginInfo{
+		"game": {
+			GameID: "game", Name: "Game",
+			DefaultPaths:   map[string]string{runtime.GOOS: "%DOCUMENTS%/Game"},
+			FileExtensions: []string{".sav"},
+		},
+	}}
+
+	d := New(Config{Games: map[string]GameConfig{}}, fsys, newFakeWatcher(), &fakeRunner{}, ws, pm, nil, testLogger())
+	d.discoverGames(context.Background())
+
+	gd := ws.sentProto("gamesDiscovered", 0).GetGamesDiscovered()
+	if len(gd.Games) != 1 {
+		t.Fatalf("games count = %d, want 1", len(gd.Games))
+	}
+	if gd.Games[0].Path != second || gd.Games[0].FileCount != 1 {
+		t.Errorf("game = path %q, file count %d; want %q, 1", gd.Games[0].Path, gd.Games[0].FileCount, second)
 	}
 }
 
@@ -3554,6 +3855,78 @@ func TestUpdatePlugins_Success(t *testing.T) {
 		// ok
 	default:
 		t.Error("expected pluginUpdateResetCh to be signaled")
+	}
+}
+
+func TestPluginChangeInvalidatesOnlyGameAndRepushes(t *testing.T) {
+	ws := newFakeWSClient()
+	ws.isConnected = true
+	state := &GameState{Identity: Identity{GameID: "d2r", SaveName: "Hero"}, Sections: map[string]Section{
+		"header":    {Data: jsontext.Value(`{"level":1}`)},
+		"inventory": {Data: jsontext.Value(`{"items":2}`)},
+	}}
+	runner := &fakeRunner{results: map[string]*GameState{"d2r": state}}
+	fsys := &fakeFS{
+		files: map[string][]byte{"/saves/Hero.d2s": []byte("save")},
+		dirs:  map[string][]string{"/saves": {"Hero.d2s"}},
+	}
+	pm := &fakePluginManager{updateResult: []string{"d2r"}}
+	d := New(Config{Games: map[string]GameConfig{
+		"d2r": {SavePath: "/saves", FileExtensions: []string{".d2s"}},
+	}}, fsys, newFakeWatcher(), runner, ws, pm, nil, testLogger())
+	d.watchedDirs["/saves"] = "d2r"
+	d.pushState(context.Background(), "d2r", "/saves/Hero.d2s", state)
+	if got := countEventType(ws, "pushSave"); got != 1 {
+		t.Fatalf("initial pushSave count = %d, want 1", got)
+	}
+	d.lastPushedSectionHashes["/other/save"] = &sectionHashCache{
+		gameID: "other", saveName: "Other", hashes: map[string][32]byte{"x": {1}},
+	}
+	d.parseFailures["/saves/Hero.d2s"] = parseFailure{gameID: "d2r"}
+	d.parseFailures["/other/save"] = parseFailure{gameID: "other"}
+	if _, err := d.UpdatePlugins(context.Background()); err != nil {
+		t.Fatalf("UpdatePlugins() error: %v", err)
+	}
+	if _, ok := d.lastPushedSectionHashes["/saves/Hero.d2s"]; !ok {
+		t.Fatal("expected rescanned save to repopulate its cache")
+	}
+	if _, ok := d.lastPushedSectionHashes["/other/save"]; !ok {
+		t.Fatal("plugin change deleted another game's cache")
+	}
+	if got := countEventType(ws, "pushSave"); got != 2 {
+		t.Fatalf("pushSave count after plugin update = %d, want 2", got)
+	}
+	second := ws.sentProto("pushSave", 1).GetPushSave()
+	if len(second.Sections) != 2 || len(second.AllSectionNames) != 2 {
+		t.Fatalf("plugin repush sections = %d names = %d, want 2/2", len(second.Sections), len(second.AllSectionNames))
+	}
+	if _, ok := d.parseFailures["/saves/Hero.d2s"]; ok {
+		t.Fatal("plugin change retained changed game's parse failure")
+	}
+	if _, ok := d.parseFailures["/other/save"]; !ok {
+		t.Fatal("plugin change deleted another game's parse failure")
+	}
+	if len(runner.calls) != 1 {
+		t.Fatalf("rescan runner calls = %d, want 1", len(runner.calls))
+	}
+	d.lastPushedSectionHashes["/saves/Hero.d2s"] = &sectionHashCache{gameID: "d2r"}
+	delete(d.watchedDirs, "/saves")
+	d.handlePluginAvailable(context.Background(), &pb.PluginAvailable{GameId: "d2r"})
+	if _, ok := d.lastPushedSectionHashes["/saves/Hero.d2s"]; ok {
+		t.Fatal("server-notified plugin change retained cache entry")
+	}
+}
+
+func TestUnwatchGameEvictsParseFailures(t *testing.T) {
+	d := New(
+		Config{}, &fakeFS{dirs: map[string][]string{"/saves": {"a.sav"}}},
+		newFakeWatcher(), &fakeRunner{}, newFakeWSClient(), nil, nil, testLogger(),
+	)
+	d.parseFailures["/saves/a.sav"] = parseFailure{gameID: "game"}
+	d.lastPushedSectionHashes["/saves/a.sav"] = &sectionHashCache{gameID: "game"}
+	d.unwatchGame(context.Background(), "/saves")
+	if _, ok := d.parseFailures["/saves/a.sav"]; ok {
+		t.Fatal("unwatch retained parse failure")
 	}
 }
 

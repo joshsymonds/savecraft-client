@@ -53,15 +53,10 @@ func handleStash(enc *json.Encoder, data []byte) {
 	sections := buildStashSections(stash)
 	summary := buildStashSummary(stash)
 
-	kind := "Softcore"
-	if stash.Kind == 0 {
-		kind = "Hardcore"
-	}
-
 	if err := enc.Encode(map[string]any{
 		"type": "result",
 		"identity": map[string]any{
-			"saveName": fmt.Sprintf("Shared Stash (%s)", kind),
+			"saveName": stashLabel(stash),
 			"gameId":   "d2r",
 		},
 		"summary":  summary,
@@ -544,12 +539,18 @@ func buildStashSummary(stash *d2s.SharedStash) string {
 		totalItems += len(tab.Items)
 	}
 
-	kind := "Softcore"
-	if stash.Kind == 0 {
-		kind = "Hardcore"
-	}
+	return fmt.Sprintf("%s, %d items, %d gold", stashLabel(stash), totalItems, stash.Gold)
+}
 
-	return fmt.Sprintf("Shared Stash (%s), %d items, %d gold", kind, totalItems, stash.Gold)
+func stashLabel(stash *d2s.SharedStash) string {
+	mode := "Softcore"
+	if stash.Kind == 0 {
+		mode = "Hardcore"
+	}
+	if stash.Realm() != d2s.RealmRotW {
+		mode = "Legacy " + mode
+	}
+	return fmt.Sprintf("Shared Stash (%s)", mode)
 }
 
 func buildStashSections(stash *d2s.SharedStash) map[string]any {
