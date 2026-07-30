@@ -1924,6 +1924,56 @@ func TestDiscoverGames_FindsGame(t *testing.T) {
 	}
 }
 
+func TestDiscoverGames_ExistingEmptyDirectory(t *testing.T) {
+	ws := newFakeWSClient()
+	fsys := &fakeFS{dirs: map[string][]string{"/saves/game": {"readme.txt"}}}
+	pm := &fakePluginManager{manifests: map[string]pluginmgr.PluginInfo{
+		"game": {
+			GameID: "game", Name: "Game",
+			DefaultPaths:   map[string]string{runtime.GOOS: "/saves/game"},
+			FileExtensions: []string{".sav"},
+		},
+	}}
+
+	d := New(Config{Games: map[string]GameConfig{}}, fsys, newFakeWatcher(), &fakeRunner{}, ws, pm, nil, testLogger())
+	d.discoverGames(context.Background())
+
+	gd := ws.sentProto("gamesDiscovered", 0).GetGamesDiscovered()
+	if len(gd.Games) != 0 {
+		t.Fatalf("games count = %d, want 0", len(gd.Games))
+	}
+}
+
+func TestDiscoverGames_EmptyFirstCandidateUsesValidSecond(t *testing.T) {
+	t.Setenv("USERPROFILE", "/Users/TestUser")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("UserHomeDir: %v", err)
+	}
+	first := home + "/Documents/Game"
+	second := "/Users/TestUser/Documents/Game"
+	ws := newFakeWSClient()
+	fsys := &fakeFS{dirs: map[string][]string{first: {"readme.txt"}, second: {"save.sav"}}}
+	pm := &fakePluginManager{manifests: map[string]pluginmgr.PluginInfo{
+		"game": {
+			GameID: "game", Name: "Game",
+			DefaultPaths:   map[string]string{runtime.GOOS: "%DOCUMENTS%/Game"},
+			FileExtensions: []string{".sav"},
+		},
+	}}
+
+	d := New(Config{Games: map[string]GameConfig{}}, fsys, newFakeWatcher(), &fakeRunner{}, ws, pm, nil, testLogger())
+	d.discoverGames(context.Background())
+
+	gd := ws.sentProto("gamesDiscovered", 0).GetGamesDiscovered()
+	if len(gd.Games) != 1 {
+		t.Fatalf("games count = %d, want 1", len(gd.Games))
+	}
+	if gd.Games[0].Path != second || gd.Games[0].FileCount != 1 {
+		t.Errorf("game = path %q, file count %d; want %q, 1", gd.Games[0].Path, gd.Games[0].FileCount, second)
+	}
+}
+
 func TestDiscoverGames_NilPluginManager(t *testing.T) {
 	ws := newFakeWSClient()
 	cfg := Config{Games: map[string]GameConfig{}}

@@ -814,8 +814,8 @@ func (d *Daemon) ensurePluginReady(
 }
 
 // tryDiscoverCandidates expands a path template into candidates and returns
-// the first candidate that has valid directories with matching save files.
-// Returns ("", 0) if no candidate has valid saves.
+// the first candidate that has valid directories with at least one matching
+// save file. Returns ("", 0) if no candidate has matching saves.
 func (d *Daemon) tryDiscoverCandidates(
 	pathTemplate string, info pluginmgr.PluginInfo,
 ) (string, int) {
@@ -835,7 +835,7 @@ func (d *Daemon) tryDiscoverCandidates(
 			}
 			totalMatching += len(d.filterSaveFiles(entries, info.FileExtensions, info.FilePatterns, nil))
 		}
-		if anyValid {
+		if anyValid && totalMatching > 0 {
 			return expanded, totalMatching
 		}
 	}
