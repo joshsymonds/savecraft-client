@@ -30,5 +30,7 @@
     "linux": "~/.config/StardewValley/Saves/*",
     "darwin": "~/.config/StardewValley/Saves/*"
   },
-  "version": "dev"
+  "version": "dev",
+  "sha256": "6876894859c5e28f472c7af4880a9c57bad4bd1b0f838070a65e3601457dcee8",
+  "url": "plugins/sdv/parser.wasm"
 }
