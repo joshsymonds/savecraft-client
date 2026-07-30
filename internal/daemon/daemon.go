@@ -346,11 +346,13 @@ type linkCodeResult struct {
 // successful push for a file path, along with the save identity (saveName)
 // those hashes were computed under. See lastPushedSectionHashes.
 type sectionHashCache struct {
+	gameID   string
 	saveName string
 	hashes   map[string][32]byte
 }
 
 type parseFailure struct {
+	gameID      string
 	contentHash [32]byte
 	errorType   pb.ParseErrorType
 	message     string
@@ -478,7 +480,7 @@ func (d *Daemon) UpdatePlugins(ctx context.Context) ([]string, error) {
 		gameCfg, ok := d.cfg.Games[gameID]
 		d.mu.RUnlock()
 		if ok {
-			d.rescanQuiet(ctx, gameID, gameCfg)
+			d.pluginChanged(ctx, gameID, gameCfg)
 		}
 	}
 
@@ -766,6 +768,12 @@ func (d *Daemon) checkPluginUpdates(ctx context.Context) {
 		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_PluginUpdated{PluginUpdated: &pb.PluginUpdated{
 			GameId: gameID,
 		}}})
+		d.mu.RLock()
+		gameCfg, ok := d.cfg.Games[gameID]
+		d.mu.RUnlock()
+		if ok {
+			d.pluginChanged(ctx, gameID, gameCfg)
+		}
 	}
 }
 
@@ -793,7 +801,25 @@ func (d *Daemon) handlePluginReload(ctx context.Context, gameID string) {
 		return
 	}
 
-	d.rescanQuiet(ctx, gameID, gameCfg)
+	d.pluginChanged(ctx, gameID, gameCfg)
+}
+
+// pluginChanged invalidates all state derived from a changed plugin, then
+// reparses the game's tracked saves so the next push is a complete snapshot.
+func (d *Daemon) pluginChanged(ctx context.Context, gameID string, cfg GameConfig) {
+	d.mu.Lock()
+	for path, cache := range d.lastPushedSectionHashes {
+		if cache.gameID == gameID {
+			delete(d.lastPushedSectionHashes, path)
+		}
+	}
+	for path, failure := range d.parseFailures {
+		if failure.gameID == gameID {
+			delete(d.parseFailures, path)
+		}
+	}
+	d.mu.Unlock()
+	d.rescanQuiet(ctx, gameID, cfg)
 }
 
 // ensurePluginReady downloads/verifies the plugin for gameID if a
@@ -1176,7 +1202,9 @@ func (d *Daemon) parseAndPush(
 		d.handleParseFailure(ctx, gameID, fullPath, fileName, saveBytes, err)
 		return
 	}
+	d.mu.Lock()
 	delete(d.parseFailures, fullPath)
+	d.mu.Unlock()
 
 	// Resolve the save identity once, before anything downstream consumes
 	// it, so ParseCompleted and the push (and the delta cache it consults)
@@ -1216,11 +1244,15 @@ func (d *Daemon) handleParseFailure(
 		errorType = pluginErr.Type
 	}
 	failure := parseFailure{
+		gameID:      gameID,
 		contentHash: sha256.Sum256(saveBytes),
 		errorType:   toParseErrorType(errorType),
 		message:     err.Error(),
 	}
-	if previous, ok := d.parseFailures[fullPath]; ok && previous == failure {
+	d.mu.Lock()
+	previous, ok := d.parseFailures[fullPath]
+	d.mu.Unlock()
+	if ok && previous.gameID == gameID && previous == failure {
 		d.log.DebugContext(
 			ctx,
 			"suppressed repeated plugin parse failure",
@@ -1241,7 +1273,9 @@ func (d *Daemon) handleParseFailure(
 		GameId: gameID, FileName: fileName, ErrorType: failure.errorType, Message: err.Error(),
 	}}}
 	if sendErr := d.sendMessageReturningError(ctx, msg); sendErr == nil {
+		d.mu.Lock()
 		d.parseFailures[fullPath] = failure
+		d.mu.Unlock()
 	}
 }
 
@@ -1255,6 +1289,8 @@ func (d *Daemon) handleParseFailure(
 // non-empty saveName, so a substituted or fallback name can never overwrite
 // a real remembered name.
 func (d *Daemon) resolveIdentity(filePath string, identity Identity) Identity {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	if identity.SaveName != "" {
 		d.lastKnownSaveNames[filePath] = identity.SaveName
 		return identity
@@ -1357,7 +1393,11 @@ func (d *Daemon) pushState(
 		d.log.WarnContext(ctx, "failed to send message", slog.String("error", sendErr.Error()))
 		return
 	}
-	d.lastPushedSectionHashes[filePath] = &sectionHashCache{saveName: state.Identity.SaveName, hashes: newHashes}
+	d.mu.Lock()
+	d.lastPushedSectionHashes[filePath] = &sectionHashCache{
+		gameID: gameID, saveName: state.Identity.SaveName, hashes: newHashes,
+	}
+	d.mu.Unlock()
 }
 
 // filterChangedSections hashes each section individually and returns only those
@@ -1370,7 +1410,10 @@ func (d *Daemon) filterChangedSections(
 ) ([]*pb.GameSection, map[string][32]byte) {
 	opts := proto.MarshalOptions{Deterministic: true}
 	var prevHashes map[string][32]byte
-	if cached := d.lastPushedSectionHashes[filePath]; cached != nil && cached.saveName == saveName {
+	d.mu.RLock()
+	cached := d.lastPushedSectionHashes[filePath]
+	d.mu.RUnlock()
+	if cached != nil && cached.gameID == gameID && cached.saveName == saveName {
 		prevHashes = cached.hashes
 	}
 	newHashes := make(map[string][32]byte, len(sections))
@@ -1469,6 +1512,12 @@ func (d *Daemon) handlePluginAvailable(ctx context.Context, msg *pb.PluginAvaila
 			Version: msg.Version,
 		}},
 	})
+	d.mu.RLock()
+	gameCfg, ok := d.cfg.Games[msg.GameId]
+	d.mu.RUnlock()
+	if ok {
+		d.pluginChanged(ctx, msg.GameId, gameCfg)
+	}
 
 	// Reset the periodic update timer.
 	select {

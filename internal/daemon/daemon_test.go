@@ -3771,6 +3771,54 @@ func TestUpdatePlugins_Success(t *testing.T) {
 	}
 }
 
+func TestPluginChangeInvalidatesOnlyGameAndRepushes(t *testing.T) {
+	ws := newFakeWSClient()
+	ws.isConnected = true
+	state := &GameState{Identity: Identity{GameID: "d2r", SaveName: "Hero"}, Sections: map[string]Section{
+		"header": {Data: jsontext.Value(`{"level":1}`)},
+	}}
+	runner := &fakeRunner{results: map[string]*GameState{"d2r": state}}
+	fsys := &fakeFS{
+		files: map[string][]byte{"/saves/Hero.d2s": []byte("save")},
+		dirs:  map[string][]string{"/saves": {"Hero.d2s"}},
+	}
+	pm := &fakePluginManager{updateResult: []string{"d2r"}}
+	d := New(Config{Games: map[string]GameConfig{
+		"d2r": {SavePath: "/saves", FileExtensions: []string{".d2s"}},
+	}}, fsys, newFakeWatcher(), runner, ws, pm, nil, testLogger())
+	d.watchedDirs["/saves"] = "d2r"
+	d.pushState(context.Background(), "d2r", "/saves/Hero.d2s", state)
+	d.lastPushedSectionHashes["/other/save"] = &sectionHashCache{
+		gameID: "other", saveName: "Other", hashes: map[string][32]byte{"x": {1}},
+	}
+	d.parseFailures["/saves/Hero.d2s"] = parseFailure{gameID: "d2r"}
+	d.parseFailures["/other/save"] = parseFailure{gameID: "other"}
+	if _, err := d.UpdatePlugins(context.Background()); err != nil {
+		t.Fatalf("UpdatePlugins() error: %v", err)
+	}
+	if _, ok := d.lastPushedSectionHashes["/saves/Hero.d2s"]; !ok {
+		t.Fatal("expected rescanned save to repopulate its cache")
+	}
+	if _, ok := d.lastPushedSectionHashes["/other/save"]; !ok {
+		t.Fatal("plugin change deleted another game's cache")
+	}
+	if _, ok := d.parseFailures["/saves/Hero.d2s"]; ok {
+		t.Fatal("plugin change retained changed game's parse failure")
+	}
+	if _, ok := d.parseFailures["/other/save"]; !ok {
+		t.Fatal("plugin change deleted another game's parse failure")
+	}
+	if len(runner.calls) != 1 {
+		t.Fatalf("rescan runner calls = %d, want 1", len(runner.calls))
+	}
+	d.lastPushedSectionHashes["/saves/Hero.d2s"] = &sectionHashCache{gameID: "d2r"}
+	delete(d.watchedDirs, "/saves")
+	d.handlePluginAvailable(context.Background(), &pb.PluginAvailable{GameId: "d2r"})
+	if _, ok := d.lastPushedSectionHashes["/saves/Hero.d2s"]; ok {
+		t.Fatal("server-notified plugin change retained cache entry")
+	}
+}
+
 func TestUpdatePlugins_NoPluginManager(t *testing.T) {
 	ws := newFakeWSClient()
 	cfg := Config{
