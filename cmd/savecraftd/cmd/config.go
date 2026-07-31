@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"crypto/ed25519"
 	"fmt"
 	"log/slog"
 	"net"
@@ -79,7 +78,7 @@ func createSubsystems(
 	// the daemon binary + its manifest are served.
 	reg := pluginmgr.NewHTTPRegistry(cfg.ServerURL, signing.PublicKey())
 
-	mgr := newPluginManager(reg, cache, wr, pubKey, version, logger)
+	mgr := pluginmgr.NewManager(reg, cache, wr, pubKey, logger, pluginmgr.WithDaemonVersion(version))
 	if cfg.PluginDir != "" {
 		mgr.SetLocalDir(cfg.PluginDir)
 	}
@@ -98,22 +97,6 @@ func createSubsystems(
 		updater: updater,
 		ws:      ws,
 	}, nil
-}
-
-// newPluginManager constructs the plugin manager, wiring the daemon's
-// build-time version (the same anti-rollback floor createSubsystems passes
-// to selfupdate.New) into pluginmgr's min_daemon_version guard via
-// WithDaemonVersion. An unstamped "dev" build leaves the guard a no-op
-// (see hasNumericComponent in pluginmgr).
-func newPluginManager(
-	reg pluginmgr.Registry,
-	cache *pluginmgr.Cache,
-	loader pluginmgr.PluginLoader,
-	pubKey ed25519.PublicKey,
-	version string,
-	logger *slog.Logger,
-) *pluginmgr.Manager {
-	return pluginmgr.NewManager(reg, cache, loader, pubKey, logger, pluginmgr.WithDaemonVersion(version))
 }
 
 // registerResult holds credentials returned by WS registration.

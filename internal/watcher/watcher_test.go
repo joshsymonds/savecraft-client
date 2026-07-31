@@ -346,19 +346,39 @@ func TestAddDirectoryUnit_ExcludedSubdirectory_NoEvents(t *testing.T) {
 	expectNoEvent(t, w.Events())
 }
 
-// TestAddDirectoryUnit_HashDedupStillAppliesPerMember confirms the
-// per-file SHA-256 dedup underneath the new directory quiescence layer is
-// unchanged: rewriting a member with identical content after it has already
-// settled produces no new root event.
-func TestAddDirectoryUnit_HashDedupStillAppliesPerMember(t *testing.T) {
+// TestAddDirectoryUnit_MemberWrite_SkipsPerFileHashRead confirms the P4 fix:
+// a directory-unit member write goes straight to the root's quiescence
+// scheduling without a per-file read+hash. Per-file SHA-256 dedup no longer
+// applies to directory-unit members (unlike a plain file-unit path — see
+// TestHashDedup_SkipsUnchangedContent, unaffected by this change): rewriting
+// a member with byte-identical content still produces a new root event,
+// because the daemon now deduplicates directory-unit content at the
+// aggregate level instead (dispatchDirectoryUnit's dirUnitSnapshotHashes).
+// It also proves w.hashes is never populated for a directory-unit member
+// path, confirming the read+hash step was actually skipped, not just that
+// dedup happened to not trigger.
+func TestAddDirectoryUnit_MemberWrite_SkipsPerFileHashRead(t *testing.T) {
 	w, root := newDirectoryUnitWatcher(t, nil)
 	path := filepath.Join(root, "Level.sav")
 
 	os.WriteFile(path, []byte("same content"), 0o644)
 	waitForEvent(t, w.Events())
 
+	w.mu.Lock()
+	_, hashed := w.hashes[path]
+	w.mu.Unlock()
+	if hashed {
+		t.Errorf(
+			"w.hashes contains directory-unit member %q; per-file read+hash must be skipped for dir-unit members",
+			path,
+		)
+	}
+
 	os.WriteFile(path, []byte("same content"), 0o644)
-	expectNoEvent(t, w.Events())
+	ev := waitForEvent(t, w.Events())
+	if ev.Path != root {
+		t.Errorf("event path = %q, want %q", ev.Path, root)
+	}
 }
 
 // TestAddDirectoryUnit_Remove_StopsEvents confirms Remove on a
@@ -448,6 +468,40 @@ func TestAddDirectoryUnit_ReAdd_ClearsStaleDirUnitRootOf(t *testing.T) {
 	if stale {
 		t.Error("dirUnitRootOf retains a stale entry for a directory no longer present under the re-added root")
 	}
+}
+
+// TestAddDirectoryUnit_ReAdd_ReleasesDroppedDirWatch proves the Q4 fix: when
+// a re-add's new membership drops a directory that is STILL PRESENT on disk
+// (unlike TestAddDirectoryUnit_ReAdd_ClearsStaleDirUnitRootOf above, which
+// removes it from disk first), AddDirectoryUnit must release its underlying
+// fsnotify watch, not just its bookkeeping — otherwise the watch leaks
+// forever and a write there keeps silently producing events for a directory
+// the daemon no longer considers part of the unit.
+func TestAddDirectoryUnit_ReAdd_ReleasesDroppedDirWatch(t *testing.T) {
+	root := t.TempDir()
+	droppedDir := filepath.Join(root, "OldSlot")
+	if err := os.MkdirAll(droppedDir, 0o755); err != nil {
+		t.Fatalf("mkdir OldSlot: %v", err)
+	}
+
+	w, err := New(WithDebounceDuration(testDebounce))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { w.Close() })
+
+	if err := w.AddDirectoryUnit(root, nil); err != nil {
+		t.Fatalf("first AddDirectoryUnit: %v", err)
+	}
+
+	// Simulate a rescan whose new membership no longer includes OldSlot,
+	// even though it remains on disk (e.g. excluded by a config change).
+	if err := w.AddDirectoryUnit(root, []string{"OldSlot"}); err != nil {
+		t.Fatalf("second AddDirectoryUnit: %v", err)
+	}
+
+	os.WriteFile(filepath.Join(droppedDir, "stale.sav"), []byte("data"), 0o644)
+	expectNoEvent(t, w.Events())
 }
 
 // --- Dynamic subdirectory creation under a directory-unit root ---
@@ -577,6 +631,128 @@ func TestAddDirectoryUnit_Remove_ReleasesDynamicallyAddedSubdir(t *testing.T) {
 
 	os.WriteFile(filepath.Join(playersDir, "player1.sav"), []byte("data"), 0o644)
 	expectNoEvent(t, w.Events())
+}
+
+// TestAddDirectoryUnit_DynamicSubdirCreate_DuplicateEventNoDuplicateEntry
+// proves the S5a dedup: a duplicate Create for a subdirectory already
+// registered under this unit (e.g. a redundant fsnotify event) must not add
+// a second dirUnits/dirUnitRootOf entry for it.
+func TestAddDirectoryUnit_DynamicSubdirCreate_DuplicateEventNoDuplicateEntry(t *testing.T) {
+	root := t.TempDir()
+
+	w, err := New(WithDebounceDuration(testDebounce))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { w.Close() })
+
+	if err := w.AddDirectoryUnit(root, nil); err != nil {
+		t.Fatalf("AddDirectoryUnit: %v", err)
+	}
+
+	instancesDir := filepath.Join(root, "Instances")
+	if err := os.MkdirAll(instancesDir, 0o755); err != nil {
+		t.Fatalf("mkdir Instances: %v", err)
+	}
+	time.Sleep(testDebounce / 2) // let the real fsnotify Create attach the watch
+
+	w.mu.Lock()
+	before := len(w.dirUnits[root])
+	w.mu.Unlock()
+
+	// Simulate a duplicate Create event for the same, already-registered
+	// subdirectory. handleDirUnitSubdirCreate is exercised directly since a
+	// second real fsnotify Create for an existing directory isn't reliably
+	// reproducible across platforms.
+	if ok := w.handleDirUnitSubdirCreate(instancesDir); !ok {
+		t.Fatal("handleDirUnitSubdirCreate returned false for an already-registered directory-unit subdirectory")
+	}
+
+	w.mu.Lock()
+	after := len(w.dirUnits[root])
+	dupCount := 0
+	for _, d := range w.dirUnits[root] {
+		if d == instancesDir {
+			dupCount++
+		}
+	}
+	w.mu.Unlock()
+
+	if after != before {
+		t.Errorf("dirUnits[root] grew from %d to %d entries after a duplicate Create", before, after)
+	}
+	if dupCount != 1 {
+		t.Errorf("dirUnits[root] contains %q %d times, want 1 (dedup)", instancesDir, dupCount)
+	}
+}
+
+// TestAddDirectoryUnit_SubdirRemoved_ClearsOwnBookkeeping proves the S5b
+// fix: removing a directory-unit subdirectory from disk must clear its own
+// dirUnitRootOf/dirUnits entry (not just member-file state beneath it) —
+// otherwise a later recreation of the same path is silently treated as
+// "already watched" by the S5a dedup and never re-added, which the final
+// recreate-and-check step below proves.
+func TestAddDirectoryUnit_SubdirRemoved_ClearsOwnBookkeeping(t *testing.T) {
+	root := t.TempDir()
+	instancesDir := filepath.Join(root, "Instances")
+	if err := os.MkdirAll(instancesDir, 0o755); err != nil {
+		t.Fatalf("mkdir Instances: %v", err)
+	}
+
+	w, err := New(WithDebounceDuration(testDebounce))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { w.Close() })
+
+	if err := w.AddDirectoryUnit(root, nil); err != nil {
+		t.Fatalf("AddDirectoryUnit: %v", err)
+	}
+
+	w.mu.Lock()
+	_, watched := w.dirUnitRootOf[instancesDir]
+	w.mu.Unlock()
+	if !watched {
+		t.Fatal("setup: Instances not registered by AddDirectoryUnit")
+	}
+
+	if err := os.RemoveAll(instancesDir); err != nil {
+		t.Fatalf("remove Instances: %v", err)
+	}
+	time.Sleep(testDebounce / 2) // handleRemove runs off the async fsnotify event
+
+	w.mu.Lock()
+	_, stillThere := w.dirUnitRootOf[instancesDir]
+	dupCount := 0
+	for _, d := range w.dirUnits[root] {
+		if d == instancesDir {
+			dupCount++
+		}
+	}
+	w.mu.Unlock()
+	if stillThere {
+		t.Error("dirUnitRootOf retains a stale entry for a removed directory-unit subdirectory")
+	}
+	if dupCount != 0 {
+		t.Errorf("dirUnits[root] still contains removed subdirectory %q", instancesDir)
+	}
+
+	// Recreate: must be treated as fresh, not silently skipped as
+	// "already watched" — the create/delete/recreate cycle this test covers.
+	if err := os.MkdirAll(instancesDir, 0o755); err != nil {
+		t.Fatalf("recreate Instances: %v", err)
+	}
+	time.Sleep(testDebounce / 2)
+
+	w.mu.Lock()
+	readdedRoot, readded := w.dirUnitRootOf[instancesDir]
+	w.mu.Unlock()
+	if !readded || readdedRoot != root {
+		t.Errorf(
+			"dirUnitRootOf[%q] after recreate = (%q, %v), want (%q, true)",
+			instancesDir, readdedRoot, readded, root,
+		)
+	}
 }
 
 // --- scheduleDirectoryUnitEvent / fireDirectoryUnitEvent generation guard ---

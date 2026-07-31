@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -155,14 +156,7 @@ func (w *FSWatcher) AddDirectoryUnit(root string, excludeDirs []string) error {
 	}
 
 	w.mu.Lock()
-	// A re-add for the same root (e.g. a rescan) must not leave stale
-	// dirUnitRootOf entries for directories that were part of a previous
-	// membership but are no longer under this root.
-	if prevDirs, ok := w.dirUnits[root]; ok {
-		for _, dir := range prevDirs {
-			delete(w.dirUnitRootOf, dir)
-		}
-	}
+	w.releaseDroppedDirUnitDirs(root, dirs)
 	w.dirUnits[root] = dirs
 	w.dirUnitExcludes[root] = excludeDirs
 	for _, dir := range dirs {
@@ -170,6 +164,39 @@ func (w *FSWatcher) AddDirectoryUnit(root string, excludeDirs []string) error {
 	}
 	w.mu.Unlock()
 	return nil
+}
+
+// releaseDroppedDirUnitDirs reconciles root's previous membership against
+// its freshly walked dirs on a re-add (e.g. a rescan): a re-add must not
+// leave stale dirUnitRootOf entries for directories that were part of a
+// previous membership but are no longer under this root, and must release
+// the underlying fsnotify watch for each dropped directory too — otherwise
+// it stays watched forever with no bookkeeping entry left to ever Remove it
+// through (a real watch-descriptor leak, not just stale metadata). w.mu must
+// be held by the caller.
+func (w *FSWatcher) releaseDroppedDirUnitDirs(root string, dirs []string) {
+	prevDirs, ok := w.dirUnits[root]
+	if !ok {
+		return
+	}
+	newSet := make(map[string]bool, len(dirs))
+	for _, dir := range dirs {
+		newSet[dir] = true
+	}
+	for _, dir := range prevDirs {
+		// Bookkeeping is cleared unconditionally, before the removal
+		// attempt below: if the on-disk directory itself was removed,
+		// fsnotify already dropped the watch and Remove predictably errors,
+		// but a later legitimate re-add under the same path must not be
+		// silently treated as "already watched" either way.
+		delete(w.dirUnitRootOf, dir)
+		if newSet[dir] {
+			continue
+		}
+		if removeErr := w.inner.Remove(dir); removeErr != nil {
+			continue // best-effort unwind of an already-failing call; nothing actionable
+		}
+	}
 }
 
 // collectDirectoryUnitDirs walks root and returns it plus every
@@ -409,6 +436,14 @@ func (w *FSWatcher) handleDirUnitSubdirCreate(path string) bool {
 		w.mu.Unlock()
 		return false
 	}
+	// A duplicate Create for a subdirectory already registered under this
+	// unit (e.g. a redundant fsnotify event, or a Create arriving for a
+	// directory a parent's own walk already picked up) must not add a
+	// second dirUnits/dirUnitRootOf entry for it.
+	if _, alreadyWatched := w.dirUnitRootOf[path]; alreadyWatched {
+		w.mu.Unlock()
+		return true
+	}
 	excludeDirs := w.dirUnitExcludes[root]
 	w.mu.Unlock()
 
@@ -484,6 +519,18 @@ func (w *FSWatcher) handleRemove(path string) {
 		delete(w.pending, path)
 	}
 	delete(w.hashes, path)
+
+	// If path is itself a registered directory-unit subdirectory (not just a
+	// member file inside one — e.g. a dynamically-added Players/ removed
+	// from disk), drop its own bookkeeping too. Without this, a later
+	// recreation of the same path is silently treated as "already watched"
+	// by the dedup check in handleDirUnitSubdirCreate and never re-added.
+	if root, isDirUnitDir := w.dirUnitRootOf[path]; isDirUnitDir {
+		delete(w.dirUnitRootOf, path)
+		if dirs, ok := w.dirUnits[root]; ok {
+			w.dirUnits[root] = slices.DeleteFunc(dirs, func(d string) bool { return d == path })
+		}
+	}
 	w.mu.Unlock()
 
 	w.emitChange(path, daemon.FileRemove, nil)
@@ -494,8 +541,20 @@ func (w *FSWatcher) fireDebounced(path string) {
 	op := w.pending[path]
 	delete(w.timers, path)
 	delete(w.pending, path)
+	_, isDirUnitMember := w.dirUnitRootOf[filepath.Dir(path)]
 	prevHash, seen := w.hashes[path]
 	w.mu.Unlock()
+
+	// A directory-unit member is hashed as part of the daemon's own
+	// aggregate snapshot (dispatchDirectoryUnit), not per-file here: reading
+	// and hashing it in the watcher too is wasted work and, worse, a second
+	// point of contention against a file the game process may still be
+	// writing. Go straight to the root's quiescence scheduling; emitChange
+	// never uses op/data for a directory-unit member anyway.
+	if isDirUnitMember {
+		w.emitChange(path, op, nil)
+		return
+	}
 
 	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {

@@ -33,6 +33,39 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.DiscardHandler)
 }
 
+// recordingHandler is a minimal slog.Handler that captures emitted records,
+// used to assert a specific warning/error was logged (e.g. the S3/S4
+// directory-unit size-cap and read-failure skips) without depending on any
+// particular log output formatting.
+type recordingHandler struct {
+	mu      *sync.Mutex
+	records *[]slog.Record
+}
+
+// newRecordingLogger returns a logger backed by recordingHandler and an
+// accessor for a snapshot of the records captured so far.
+func newRecordingLogger() (*slog.Logger, func() []slog.Record) {
+	var records []slog.Record
+	h := &recordingHandler{mu: &sync.Mutex{}, records: &records}
+	return slog.New(h), func() []slog.Record {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		return append([]slog.Record(nil), *h.records...)
+	}
+}
+
+func (h *recordingHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *recordingHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	*h.records = append(*h.records, r)
+	return nil
+}
+
+func (h *recordingHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *recordingHandler) WithGroup(string) slog.Handler      { return h }
+
 // --- Fakes ---
 
 // testAllSaveRoots makes the save-path allowlist permissive (filesystem
@@ -88,12 +121,14 @@ func (f *fakeFS) ReadDir(path string) ([]fs.DirEntry, error) {
 	}
 	entries := make([]fs.DirEntry, len(names))
 	for i, name := range names {
-		// IsDir reflects only whether the child is itself a registered
-		// directory (f.dirs), never resolving a symlink target — mirroring
-		// a real os.DirEntry, which reports a symlink's own (non-dir) type
-		// without following it.
-		_, isDir := f.dirs[filepath.Join(path, name)]
-		entries[i] = &fakeDirEntry{name: name, dir: isDir}
+		// IsDir/Type reflect only whether the child is itself a registered
+		// directory (f.dirs) or symlink (f.symlinks), never resolving a
+		// symlink target — mirroring a real os.DirEntry, which reports a
+		// symlink's own (non-dir) type without following it.
+		full := filepath.Join(path, name)
+		_, isDir := f.dirs[full]
+		_, isSymlink := f.symlinks[full]
+		entries[i] = &fakeDirEntry{name: name, dir: isDir, symlink: isSymlink}
 	}
 	return entries, nil
 }
@@ -138,8 +173,9 @@ func (fi *fakeFileInfo) Sys() any {
 }
 
 type fakeDirEntry struct {
-	name string
-	dir  bool
+	name    string
+	dir     bool
+	symlink bool
 }
 
 func (de *fakeDirEntry) Name() string {
@@ -151,6 +187,9 @@ func (de *fakeDirEntry) IsDir() bool {
 }
 
 func (de *fakeDirEntry) Type() fs.FileMode {
+	if de.symlink {
+		return fs.ModeSymlink
+	}
 	if de.dir {
 		return fs.ModeDir
 	}
@@ -3966,6 +4005,51 @@ func TestUnwatchGameEvictsParseFailures(t *testing.T) {
 	}
 }
 
+// TestUnwatchGame_DirectoryUnit_EvictsSnapshotHashAndRedispatches closes the
+// Q3 coverage gap: scanning a palworld-style directory-unit fixture seeds
+// dirUnitSnapshotHashes for the resolved save directory (see
+// dispatchDirectoryUnit); unwatchGame must evict that entry
+// (evictUnwatchedPathCaches already handles dirUnitSnapshotHashes, but
+// nothing exercised the directory-unit path specifically), and a later
+// re-scan with byte-identical on-disk content must still re-dispatch, since
+// the aggregate dedup has nothing left to compare against.
+func TestUnwatchGame_DirectoryUnit_EvictsSnapshotHashAndRedispatches(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := &fakeRunner{results: map[string]*GameState{"palworld": newD2RState()}}
+	cfg := palworldConfig()
+	pm := palworldPluginManager()
+
+	d := New(cfg, palworldFS(), newFakeWatcher(), runner, ws, pm, nil, testLogger())
+	d.scanGame(context.Background(), "palworld", cfg.Games["palworld"], false)
+	if len(runner.calls) != 1 {
+		t.Fatalf("setup: runner called %d times, want 1", len(runner.calls))
+	}
+
+	d.mu.RLock()
+	_, seeded := d.dirUnitSnapshotHashes[palworldSaveDir]
+	d.mu.RUnlock()
+	if !seeded {
+		t.Fatal("setup: dirUnitSnapshotHashes not seeded by the initial scan")
+	}
+
+	d.unwatchGame(context.Background(), cfg.Games["palworld"].SavePath)
+
+	d.mu.RLock()
+	_, stillThere := d.dirUnitSnapshotHashes[palworldSaveDir]
+	d.mu.RUnlock()
+	if stillThere {
+		t.Error("unwatchGame did not evict the directory-unit snapshot hash")
+	}
+
+	d.scanGame(context.Background(), "palworld", cfg.Games["palworld"], false)
+	if len(runner.calls) != 2 {
+		t.Errorf(
+			"runner called %d times after re-scan, want 2 (evicted snapshot must force a re-dispatch)",
+			len(runner.calls),
+		)
+	}
+}
+
 func TestUpdatePlugins_NoPluginManager(t *testing.T) {
 	ws := newFakeWSClient()
 	cfg := Config{
@@ -4617,23 +4701,39 @@ func readTarEntries(t *testing.T, tarBytes []byte) (names []string, contents map
 	return names, contents
 }
 
-// TestBuildDirectoryUnitTar_MembersRelativeSortedExcluded covers the tar
-// dispatch success criteria directly: member paths relative to the save
-// root, deterministic sorted order, correct contents, and the excluded
-// backup/ subdirectory omitted entirely.
-func TestBuildDirectoryUnitTar_MembersRelativeSortedExcluded(t *testing.T) {
+// TestReadThenTarDirectoryUnitMembers_MembersRelativeSortedExcluded covers
+// the tar dispatch success criteria directly, through the P3-split pipeline
+// (directoryUnitMembers walk -> readDirectoryUnitMembers hash-only pass ->
+// tarFromDirUnitMembers) that replaced the old monolithic
+// buildDirectoryUnitTar: member paths relative to the save root,
+// deterministic sorted order, correct contents, the excluded backup/
+// subdirectory omitted entirely, and one hash per member.
+func TestReadThenTarDirectoryUnitMembers_MembersRelativeSortedExcluded(t *testing.T) {
 	d := New(
 		Config{}, palworldFS(), newFakeWatcher(), &fakeRunner{},
 		newFakeWSClient(), &fakePluginManager{}, nil, testLogger(),
 	)
 
-	tarBytes, hashes, err := d.buildDirectoryUnitTar(palworldSaveDir, palworldMembers(), []string{"backup"})
+	relPaths := d.directoryUnitMembers(palworldSaveDir, palworldMembers(), []string{"backup"})
+	want := []string{"Level.sav", "LevelMeta.sav", "Players/player1.sav"}
+	if !slices.Equal(relPaths, want) {
+		t.Fatalf("directoryUnitMembers = %v, want %v (sorted, relative to save root)", relPaths, want)
+	}
+
+	members, err := d.readDirectoryUnitMembers(context.Background(), palworldSaveDir, relPaths)
 	if err != nil {
-		t.Fatalf("buildDirectoryUnitTar: %v", err)
+		t.Fatalf("readDirectoryUnitMembers: %v", err)
+	}
+	if len(members) != 3 {
+		t.Fatalf("members = %d entries, want 3", len(members))
+	}
+
+	tarBytes, err := tarFromDirUnitMembers(members)
+	if err != nil {
+		t.Fatalf("tarFromDirUnitMembers: %v", err)
 	}
 
 	names, contents := readTarEntries(t, tarBytes)
-	want := []string{"Level.sav", "LevelMeta.sav", "Players/player1.sav"}
 	if !slices.Equal(names, want) {
 		t.Fatalf("tar member names = %v, want %v (sorted, relative to save root)", names, want)
 	}
@@ -4646,8 +4746,131 @@ func TestBuildDirectoryUnitTar_MembersRelativeSortedExcluded(t *testing.T) {
 			t.Errorf("excluded backup/ subdirectory leaked into tar: %s", n)
 		}
 	}
-	if len(hashes) != 3 {
-		t.Errorf("member hashes = %d entries, want 3", len(hashes))
+}
+
+// TestReadDirectoryUnitMembers_MemberOverSizeCapSkipped proves S3: a single
+// member whose content exceeds dirUnitMemberSizeCap is skipped (logged
+// warning) rather than aborting the whole read, and a normal-sized sibling
+// member still comes through.
+func TestReadDirectoryUnitMembers_MemberOverSizeCapSkipped(t *testing.T) {
+	logger, records := newRecordingLogger()
+	oversized := make([]byte, dirUnitMemberSizeCap+1)
+	fsys := &fakeFS{
+		dirs: map[string][]string{"/saves/unit": {"Big.sav", "Small.sav"}},
+		files: map[string][]byte{
+			"/saves/unit/Big.sav":   oversized,
+			"/saves/unit/Small.sav": []byte("small"),
+		},
+	}
+	d := New(Config{}, fsys, newFakeWatcher(), &fakeRunner{}, newFakeWSClient(), &fakePluginManager{}, nil, logger)
+
+	members, err := d.readDirectoryUnitMembers(context.Background(), "/saves/unit", []string{"Big.sav", "Small.sav"})
+	if err != nil {
+		t.Fatalf("readDirectoryUnitMembers: %v", err)
+	}
+	if len(members) != 1 || members[0].rel != "Small.sav" {
+		t.Fatalf("members = %+v, want only Small.sav (Big.sav must be skipped for exceeding the size cap)", members)
+	}
+
+	var warned bool
+	for _, r := range records() {
+		if r.Level == slog.LevelWarn && strings.Contains(r.Message, "size cap") {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Error("expected a logged warning for the over-cap member")
+	}
+}
+
+// TestReadDirectoryUnitMembers_TotalOverCapAborts proves S3: once the
+// running total of member sizes exceeds dirUnitTotalSizeCap, the whole read
+// aborts with an error — even though A.sav and B.sav are each individually
+// under the per-member cap (exactly at it, in fact) and would otherwise be
+// accepted.
+func TestReadDirectoryUnitMembers_TotalOverCapAborts(t *testing.T) {
+	atCap := make([]byte, dirUnitMemberSizeCap) // exactly at the per-member cap: allowed individually
+	fsys := &fakeFS{
+		dirs: map[string][]string{"/saves/unit": {"A.sav", "B.sav", "C.sav"}},
+		files: map[string][]byte{
+			"/saves/unit/A.sav": atCap,
+			"/saves/unit/B.sav": atCap,
+			"/saves/unit/C.sav": []byte("x"), // tips the running total past dirUnitTotalSizeCap
+		},
+	}
+	d := New(
+		Config{},
+		fsys,
+		newFakeWatcher(),
+		&fakeRunner{},
+		newFakeWSClient(),
+		&fakePluginManager{},
+		nil,
+		testLogger(),
+	)
+
+	_, err := d.readDirectoryUnitMembers(context.Background(), "/saves/unit", []string{"A.sav", "B.sav", "C.sav"})
+	if err == nil {
+		t.Fatal("expected error once the running total exceeds the directory-unit total size cap")
+	}
+}
+
+// TestReadDirectoryUnitMembers_UnreadableMemberSkippedWithWarning proves S4:
+// a single member that fails to read (e.g. a live race against the game
+// process still writing it) is skipped with a logged warning instead of
+// aborting the whole snapshot, and the archive is still built from whatever
+// did read successfully.
+func TestReadDirectoryUnitMembers_UnreadableMemberSkippedWithWarning(t *testing.T) {
+	logger, records := newRecordingLogger()
+	fsys := &fakeFS{
+		dirs: map[string][]string{"/saves/unit": {"Good.sav", "Missing.sav"}},
+		files: map[string][]byte{
+			"/saves/unit/Good.sav": []byte("good data"),
+			// Missing.sav intentionally has no fixture entry, so ReadFile fails.
+		},
+	}
+	d := New(Config{}, fsys, newFakeWatcher(), &fakeRunner{}, newFakeWSClient(), &fakePluginManager{}, nil, logger)
+
+	members, err := d.readDirectoryUnitMembers(context.Background(), "/saves/unit", []string{"Good.sav", "Missing.sav"})
+	if err != nil {
+		t.Fatalf("readDirectoryUnitMembers: %v", err)
+	}
+	if len(members) != 1 || members[0].rel != "Good.sav" {
+		t.Fatalf("members = %+v, want only Good.sav (archive still built without the unreadable member)", members)
+	}
+
+	var warned bool
+	for _, r := range records() {
+		if r.Level == slog.LevelWarn && strings.Contains(r.Message, "unreadable") {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Error("expected a logged warning for the unreadable member")
+	}
+}
+
+// TestReadDirectoryUnitMembers_AllUnreadableAborts proves the S4 "abort only
+// if ZERO members remain" boundary: when every candidate member fails to
+// read, the snapshot aborts with an error rather than silently dispatching
+// an empty archive — a live race explains one bad member, never all of
+// them, so this signals a real problem worth surfacing.
+func TestReadDirectoryUnitMembers_AllUnreadableAborts(t *testing.T) {
+	fsys := &fakeFS{dirs: map[string][]string{"/saves/unit": {"A.sav", "B.sav"}}}
+	d := New(
+		Config{},
+		fsys,
+		newFakeWatcher(),
+		&fakeRunner{},
+		newFakeWSClient(),
+		&fakePluginManager{},
+		nil,
+		testLogger(),
+	)
+
+	_, err := d.readDirectoryUnitMembers(context.Background(), "/saves/unit", []string{"A.sav", "B.sav"})
+	if err == nil {
+		t.Fatal("expected error when every candidate member fails to read (zero members remain)")
 	}
 }
 
@@ -4849,15 +5072,19 @@ func TestPluginChanged_DirectoryUnit_DispatchesOneTarNoPerFileEvents(t *testing.
 	}
 }
 
-// TestDirectoryUnitMembers_RecursesRealDirsNotSymlinks proves the walk
+// TestDirectoryUnitMembers_RecursesRealDirsSkipsSymlinks proves the walk
 // recurses using the ReadDir entry's own IsDir (never a followed stat, which
 // is what let a symlinked directory tree get archived and a symlink cycle
 // recurse unbounded): "linked" is a symlink to a real directory — Stat
 // follows it and would (with the old, buggy Stat-based walk) report it as a
 // dir, but the ReadDir entry for it correctly reports non-dir without
-// following, exactly like a real os.DirEntry. A real nested subdirectory
-// (realsub) must still recurse and have its member matched.
-func TestDirectoryUnitMembers_RecursesRealDirsNotSymlinks(t *testing.T) {
+// following, exactly like a real os.DirEntry. It also proves the S4 fix:
+// "linked" itself is entirely excluded from the member set (a symlink is
+// never archived, whether it targets a file or a directory — otherwise its
+// target's content, potentially outside the save directory, would end up in
+// the tar). A real nested subdirectory (realsub) must still recurse and have
+// its member matched.
+func TestDirectoryUnitMembers_RecursesRealDirsSkipsSymlinks(t *testing.T) {
 	fsys := &fakeFS{
 		dirs: map[string][]string{
 			"/root":             {"realsub", "linked"},
@@ -4878,9 +5105,9 @@ func TestDirectoryUnitMembers_RecursesRealDirsNotSymlinks(t *testing.T) {
 	if !slices.Contains(got, "realsub/a.sav") {
 		t.Errorf("members = %v, want to contain realsub/a.sav (real subdirectory must recurse)", got)
 	}
-	if !slices.Contains(got, "linked") {
+	if slices.Contains(got, "linked") {
 		t.Errorf(
-			"members = %v, want to contain \"linked\" itself (a non-recursed symlink is a candidate member, not silently dropped)",
+			"members = %v, must not contain \"linked\" (a symlink entry must never be archived as a member)",
 			got,
 		)
 	}
@@ -4889,6 +5116,34 @@ func TestDirectoryUnitMembers_RecursesRealDirsNotSymlinks(t *testing.T) {
 			"readDirCalls = %v, must never contain /root/linked (a symlinked directory must never be recursed into)",
 			fsys.readDirCalls,
 		)
+	}
+}
+
+// TestDirectoryUnitMembers_SkipsFileSymlink proves the S4 symlink skip also
+// covers a symlink whose target is a regular file, not just a directory: a
+// symlinked file that would otherwise match every member pattern (nil
+// members) must still be excluded from the candidate set.
+func TestDirectoryUnitMembers_SkipsFileSymlink(t *testing.T) {
+	fsys := &fakeFS{
+		dirs: map[string][]string{
+			"/root": {"Level.sav", "Level.sav.link"},
+		},
+		files: map[string][]byte{
+			"/root/Level.sav": []byte("real data"),
+		},
+		symlinks: map[string]string{
+			"/root/Level.sav.link": "/root/Level.sav",
+		},
+	}
+	d := &Daemon{fs: fsys}
+
+	got := d.directoryUnitMembers("/root", nil, nil)
+
+	if !slices.Contains(got, "Level.sav") {
+		t.Errorf("members = %v, want to contain the real file Level.sav", got)
+	}
+	if slices.Contains(got, "Level.sav.link") {
+		t.Errorf("members = %v, must not contain the symlinked file Level.sav.link", got)
 	}
 }
 

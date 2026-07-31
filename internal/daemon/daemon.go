@@ -1144,7 +1144,8 @@ func (d *Daemon) rescanQuietDirectoryUnit(
 		if stat, statErr := d.fs.Stat(dir); statErr != nil || !stat.IsDir() {
 			continue
 		}
-		d.dispatchDirectoryUnit(ctx, gameID, dir, info.Members, cfg.ExcludeDirs, true)
+		relPaths := d.directoryUnitMembers(dir, info.Members, cfg.ExcludeDirs)
+		d.dispatchDirectoryUnit(ctx, gameID, dir, relPaths, true)
 	}
 	return true
 }
@@ -1176,7 +1177,11 @@ func matchesMember(rel string, members []string) bool {
 // entry's own IsDir(), never a followed stat: this matches the watcher's
 // parallel walk (watcher.collectDirectoryUnitDirs), so a symlinked
 // directory is neither recursed into nor archived, and a symlink cycle
-// cannot recurse unbounded.
+// cannot recurse unbounded. A symlink entry (file or directory) is also
+// never treated as a member itself and skipped outright: archiving it would
+// read and tar whatever it happens to point at, including a target outside
+// the save directory, silently pulling arbitrary host filesystem content
+// into a save's tar snapshot.
 func (d *Daemon) directoryUnitMembers(dir string, members, excludeDirs []string) []string {
 	var matches []string
 	var walk func(prefix string)
@@ -1187,6 +1192,9 @@ func (d *Daemon) directoryUnitMembers(dir string, members, excludeDirs []string)
 			return
 		}
 		for _, entry := range entries {
+			if entry.Type()&fs.ModeSymlink != 0 {
+				continue
+			}
 			name := entry.Name()
 			rel := filepath.ToSlash(filepath.Join(prefix, name))
 			if entry.IsDir() {
@@ -1206,41 +1214,102 @@ func (d *Daemon) directoryUnitMembers(dir string, members, excludeDirs []string)
 	return matches
 }
 
-// buildDirectoryUnitTar archives dir's matching members (see
-// directoryUnitMembers) into a POSIX ustar archive, entries named by their
-// path relative to dir in deterministic sorted order. It also returns each
-// member's individual SHA-256 content hash, keyed by that same relative
-// path, for the aggregate dedup in dispatchDirectoryUnit.
-func (d *Daemon) buildDirectoryUnitTar(
-	dir string, members, excludeDirs []string,
-) ([]byte, map[string][32]byte, error) {
-	relPaths := d.directoryUnitMembers(dir, members, excludeDirs)
+// dirUnitMemberSizeCap rejects any single directory-unit member whose
+// content exceeds this many bytes: skipped with a logged warning rather than
+// aborting the whole snapshot. Mirrors the plugin-side parser's own
+// per-member cap (MAX_MEMBER_SIZE in
+// plugins/palworld/parser/src/tarball.rs) so an oversized member is dropped
+// on the producer side instead of merely failing the parser's bounded read.
+const dirUnitMemberSizeCap = 64 * 1024 * 1024
 
-	hashes := make(map[string][32]byte, len(relPaths))
-	var buf bytes.Buffer
-	tw := tar.NewWriter(&buf)
+// dirUnitTotalSizeCap aborts building a directory unit's snapshot once the
+// running total of its (post-per-member-cap) member sizes exceeds this.
+// Mirrors the parser's own aggregate cap (MAX_TOTAL_SIZE in
+// plugins/palworld/parser/src/tarball.rs).
+const dirUnitTotalSizeCap = 128 * 1024 * 1024
+
+// dirUnitMember is one successfully read directory-unit member: its path
+// relative to the save directory, its content, and the content's SHA-256.
+type dirUnitMember struct {
+	rel  string
+	data []byte
+	hash [32]byte
+}
+
+// readDirectoryUnitMembers reads and hashes each of relPaths (as returned by
+// directoryUnitMembers) under dir, retaining the bytes it reads so a
+// subsequent tar assembly (tarFromDirUnitMembers) never has to read a member
+// twice. It applies the two producer-side size caps mirrored from the
+// plugin parser (dirUnitMemberSizeCap, dirUnitTotalSizeCap) and tolerates
+// individual read failures: a directory unit is read live, racing the game
+// process that may still be writing one of its members, so a single
+// unreadable member is skipped with a logged warning rather than aborting
+// the whole snapshot. It aborts (returns an error) only when either the
+// running total exceeds dirUnitTotalSizeCap, or every candidate member
+// failed to read — a live race explains one bad member, never all of them.
+func (d *Daemon) readDirectoryUnitMembers(
+	ctx context.Context, dir string, relPaths []string,
+) ([]dirUnitMember, error) {
+	members := make([]dirUnitMember, 0, len(relPaths))
+	var total int64
 	for _, rel := range relPaths {
 		data, readErr := d.fs.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
 		if readErr != nil {
-			return nil, nil, fmt.Errorf("read member %s: %w", rel, readErr)
+			d.log.WarnContext(ctx, "directory-unit member unreadable, skipping",
+				slog.String("path", dir),
+				slog.String("member", rel),
+				slog.String("error", readErr.Error()),
+			)
+			continue
 		}
-		hashes[rel] = sha256.Sum256(data)
+		if int64(len(data)) > dirUnitMemberSizeCap {
+			d.log.WarnContext(ctx, "directory-unit member exceeds size cap, skipping",
+				slog.String("path", dir),
+				slog.String("member", rel),
+				slog.Int("size", len(data)),
+				slog.Int("cap", dirUnitMemberSizeCap),
+			)
+			continue
+		}
+		total += int64(len(data))
+		if total > dirUnitTotalSizeCap {
+			return nil, fmt.Errorf(
+				"directory unit %s exceeds total size cap of %d bytes", dir, dirUnitTotalSizeCap,
+			)
+		}
+		members = append(members, dirUnitMember{rel: rel, data: data, hash: sha256.Sum256(data)})
+	}
+	if len(relPaths) > 0 && len(members) == 0 {
+		return nil, fmt.Errorf("directory unit %s: no members could be read", dir)
+	}
+	return members, nil
+}
+
+// tarFromDirUnitMembers archives members into a POSIX ustar archive, one
+// entry per member named by its path relative to the save directory. members
+// must already be in deterministic sorted order — directoryUnitMembers sorts
+// the relative paths it returns, and readDirectoryUnitMembers preserves that
+// order.
+func tarFromDirUnitMembers(members []dirUnitMember) ([]byte, error) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	for _, member := range members {
 		hdr := &tar.Header{
-			Name: rel,
+			Name: member.rel,
 			Mode: dirUnitTarFileMode,
-			Size: int64(len(data)),
+			Size: int64(len(member.data)),
 		}
 		if headerErr := tw.WriteHeader(hdr); headerErr != nil {
-			return nil, nil, fmt.Errorf("tar header %s: %w", rel, headerErr)
+			return nil, fmt.Errorf("tar header %s: %w", member.rel, headerErr)
 		}
-		if _, writeErr := tw.Write(data); writeErr != nil {
-			return nil, nil, fmt.Errorf("tar write %s: %w", rel, writeErr)
+		if _, writeErr := tw.Write(member.data); writeErr != nil {
+			return nil, fmt.Errorf("tar write %s: %w", member.rel, writeErr)
 		}
 	}
 	if closeErr := tw.Close(); closeErr != nil {
-		return nil, nil, fmt.Errorf("tar close: %w", closeErr)
+		return nil, fmt.Errorf("tar close: %w", closeErr)
 	}
-	return buf.Bytes(), hashes, nil
+	return buf.Bytes(), nil
 }
 
 // aggregateHash reduces a directory unit's per-member content hashes to a
@@ -1275,22 +1344,33 @@ func aggregateHash(memberHashes map[string][32]byte) [32]byte {
 	return sha256.Sum256(buf.Bytes())
 }
 
-// dispatchDirectoryUnit builds dir's current member snapshot and, unless it
-// is identical to the last attempted dispatch for this directory
-// (aggregateHash unchanged — recorded below before parseAndPush runs, so
-// this is "attempted," not "successfully parsed"; pluginChanged is what
-// invalidates it after a plugin change), tar-archives the members and
-// dispatches through the existing parseAndPush pipeline exactly like a
-// file-unit save:
+// dispatchDirectoryUnit reads and hashes dir's current member snapshot
+// (readDirectoryUnitMembers) and, unless the resulting aggregate is
+// identical to the last attempted dispatch for this directory (checked and
+// stored in the same locked section below — the compare-and-set must be
+// atomic even though today's single event-loop goroutine makes the race
+// theoretical; pluginChanged is what invalidates a stale entry after a
+// plugin change), tar-archives the already-read member bytes and dispatches
+// through the existing parseAndPush pipeline exactly like a file-unit save.
+// Comparing before ever building a tar means an unchanged directory costs a
+// read+hash pass but never a tar assembly; a changed directory costs exactly
+// one read per member, never two.
+//
+// relPaths is dir's current member listing (see directoryUnitMembers):
+// callers that already computed it while resolving save directories (see
+// resolveDirectoryUnitSaveDirs) pass that same list through instead of
+// walking dir a second time; callers reacting to a live filesystem change or
+// a rescan compute it fresh immediately before calling.
+//
 // preloadedData bypasses parseAndPush's ReadFile branch (the tar bytes are
 // already in hand), fullPath is the directory itself — the cache/identity
 // key a directory-unit save is tracked under — and fileName is the
 // directory's own base name, per the Runner.Run(gameID, fileName, saveBytes)
 // contract (fileName = dir name for directory units).
 func (d *Daemon) dispatchDirectoryUnit(
-	ctx context.Context, gameID, dir string, members, excludeDirs []string, quiet bool,
+	ctx context.Context, gameID, dir string, relPaths []string, quiet bool,
 ) {
-	tarBytes, memberHashes, err := d.buildDirectoryUnitTar(dir, members, excludeDirs)
+	members, err := d.readDirectoryUnitMembers(ctx, dir, relPaths)
 	if err != nil {
 		d.log.ErrorContext(ctx, "failed to build directory-unit archive",
 			slog.String("game_id", gameID),
@@ -1300,21 +1380,34 @@ func (d *Daemon) dispatchDirectoryUnit(
 		return
 	}
 
+	memberHashes := make(map[string][32]byte, len(members))
+	for _, member := range members {
+		memberHashes[member.rel] = member.hash
+	}
 	agg := aggregateHash(memberHashes)
+
 	d.mu.Lock()
 	prevAgg, seen := d.dirUnitSnapshotHashes[dir]
-	d.mu.Unlock()
 	if seen && agg == prevAgg {
+		d.mu.Unlock()
 		d.log.DebugContext(ctx, "directory unit unchanged, skipping re-parse",
 			slog.String("game_id", gameID),
 			slog.String("path", dir),
 		)
 		return
 	}
-
-	d.mu.Lock()
 	d.dirUnitSnapshotHashes[dir] = agg
 	d.mu.Unlock()
+
+	tarBytes, tarErr := tarFromDirUnitMembers(members)
+	if tarErr != nil {
+		d.log.ErrorContext(ctx, "failed to build directory-unit archive",
+			slog.String("game_id", gameID),
+			slog.String("path", dir),
+			slog.String("error", tarErr.Error()),
+		)
+		return
+	}
 
 	d.parseAndPush(ctx, gameID, dir, filepath.Base(dir), tarBytes, quiet)
 }
@@ -1457,7 +1550,7 @@ func (d *Daemon) scanDirectoryUnitGame(
 		Path:   cfg.SavePath,
 	}}})
 
-	validDirs, saveDirs := d.resolveDirectoryUnitSaveDirs(dirs, info.Members, cfg.ExcludeDirs)
+	validDirs, saveDirs, saveDirMembers := d.resolveDirectoryUnitSaveDirs(dirs, info.Members, cfg.ExcludeDirs)
 
 	if validDirs == 0 {
 		d.log.WarnContext(
@@ -1508,34 +1601,45 @@ func (d *Daemon) scanDirectoryUnitGame(
 		SaveCount: int32(len(saveDirs)), // #nosec G115 -- bounded by filesystem limits
 	}}})
 
-	d.watchAndDispatchDirectoryUnits(ctx, gameID, displayName, cfg, info, saveDirs)
+	d.watchAndDispatchDirectoryUnits(ctx, gameID, displayName, cfg, saveDirs, saveDirMembers)
 }
 
 // resolveDirectoryUnitSaveDirs classifies the resolved candidate
 // directories: validDirs counts every one that exists, and saveDirs is the
 // subset that additionally contains at least one Members match — the
-// directories that are actually saves (see scanDirectoryUnitGame).
+// directories that are actually saves (see scanDirectoryUnitGame). It also
+// returns the member listing (directoryUnitMembers) it already walked for
+// each saveDir, keyed by directory, so watchAndDispatchDirectoryUnits can
+// thread it straight into dispatchDirectoryUnit instead of walking dir a
+// second time.
 func (d *Daemon) resolveDirectoryUnitSaveDirs(
 	dirs, members, excludeDirs []string,
-) (validDirs int, saveDirs []string) {
+) (validDirs int, saveDirs []string, saveDirMembers map[string][]string) {
+	saveDirMembers = make(map[string][]string)
 	for _, dir := range dirs {
 		stat, statErr := d.fs.Stat(dir)
 		if statErr != nil || !stat.IsDir() {
 			continue
 		}
 		validDirs++
-		if len(d.directoryUnitMembers(dir, members, excludeDirs)) > 0 {
+		relPaths := d.directoryUnitMembers(dir, members, excludeDirs)
+		if len(relPaths) > 0 {
 			saveDirs = append(saveDirs, dir)
+			saveDirMembers[dir] = relPaths
 		}
 	}
-	return validDirs, saveDirs
+	return validDirs, saveDirs, saveDirMembers
 }
 
 // watchAndDispatchDirectoryUnits recursively watches every resolved save
 // directory (see watcher.AddDirectoryUnit) and dispatches its initial member
-// snapshot through the shared parseAndPush pipeline.
+// snapshot through the shared parseAndPush pipeline. saveDirMembers is the
+// per-directory member listing resolveDirectoryUnitSaveDirs already walked;
+// reusing it here avoids a redundant directoryUnitMembers walk immediately
+// after resolution.
 func (d *Daemon) watchAndDispatchDirectoryUnits(
-	ctx context.Context, gameID, displayName string, cfg GameConfig, info pluginmgr.PluginInfo, saveDirs []string,
+	ctx context.Context, gameID, displayName string, cfg GameConfig,
+	saveDirs []string, saveDirMembers map[string][]string,
 ) {
 	for _, dir := range saveDirs {
 		if watchErr := d.watcher.AddDirectoryUnit(dir, cfg.ExcludeDirs); watchErr != nil {
@@ -1561,7 +1665,7 @@ func (d *Daemon) watchAndDispatchDirectoryUnits(
 	}}})
 
 	for _, dir := range saveDirs {
-		d.dispatchDirectoryUnit(ctx, gameID, dir, info.Members, cfg.ExcludeDirs, false)
+		d.dispatchDirectoryUnit(ctx, gameID, dir, saveDirMembers[dir], false)
 	}
 }
 
@@ -1625,7 +1729,8 @@ func (d *Daemon) handleFileEvent(ctx context.Context, ev FileEvent) {
 			d.mu.RLock()
 			gameCfg := d.cfg.Games[rootGameID]
 			d.mu.RUnlock()
-			d.dispatchDirectoryUnit(ctx, rootGameID, ev.Path, info.Members, gameCfg.ExcludeDirs, false)
+			relPaths := d.directoryUnitMembers(ev.Path, info.Members, gameCfg.ExcludeDirs)
+			d.dispatchDirectoryUnit(ctx, rootGameID, ev.Path, relPaths, false)
 			return
 		}
 	}
