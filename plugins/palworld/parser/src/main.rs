@@ -2,6 +2,13 @@ mod container;
 mod decompress;
 mod gvas;
 mod ndjson;
+// Section builders that consume `rawdata`'s decoders are a follow-on task
+// (see plugins/palworld/parser/src/rawdata.rs's module doc) -- this plugin
+// doesn't call into it yet, so it's gated behind `#[cfg(test)]` to avoid
+// `-D warnings` dead-code failures on an unwired module in the meantime.
+// Remove this gate when wiring section builders to it for real.
+#[cfg(test)]
+mod rawdata;
 mod sections;
 mod tarball;
 
