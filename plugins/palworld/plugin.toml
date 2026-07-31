@@ -1,0 +1,29 @@
+game_id = "palworld"
+sources = ["wasm"]
+name = "Palworld"
+description = "Parses Palworld dedicated-save world directories — world overview, base camps, pals, and more"
+channel = "alpha"
+coverage = "partial"
+unit = "directory"
+members = ["Level.sav", "LevelMeta.sav", "WorldOption.sav", "Players/*.sav"]
+exclude_dirs = ["backup"]
+min_daemon_version = "0.0.0"
+homepage = "https://savecraft.gg/plugins/palworld"
+license = "GPL-3.0-or-later"
+source_url = "https://github.com/joshsymonds/savecraft-client"
+
+limitations = [
+  "Steam builds only — no Xbox Game Pass (WGS) save support",
+  "Only the world overview section is implemented so far; base camps, pals, and inventory are not yet parsed",
+]
+
+[attribution]
+sources = ["pocketpair"]
+
+[author]
+name = "Josh Symonds"
+github = "joshsymonds"
+
+[default_paths]
+windows = "%LOCALAPPDATA%/Pal/Saved/SaveGames/*/*"
+linux = "~/.local/share/Steam/steamapps/compatdata/1623730/pfx/drive_c/users/steamuser/AppData/Local/Pal/Saved/SaveGames/*/*"

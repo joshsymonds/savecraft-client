@@ -1,0 +1,29 @@
+palworld plugin
+Copyright (C) Josh Symonds
+
+Licensed under the GNU General Public License v3.0 or later (GPL-3.0-or-later).
+See the LICENSE file in this directory for the full license text.
+
+Source: https://github.com/joshsymonds/savecraft-client
+
+This plugin decodes Palworld save files, which are compressed with Oodle's
+Kraken algorithm (a proprietary RAD Game Tools format Palworld uses for its
+.sav files) and stored as Unreal Engine GVAS saves. It depends on:
+
+- oozextract (https://crates.io/crates/oozextract), MIT License.
+  A clean-room, from-scratch reimplementation of the Kraken/Mermaid/Selkie/
+  Leviathan/LZNA/Bitknit decompression algorithms used by Oodle (ooz),
+  written without reference to RAD Game Tools' proprietary source. This
+  plugin does not embed, link against, or depend on any RAD Game Tools code.
+
+- uesave (https://crates.io/crates/uesave), MIT License.
+  A reader/writer for Unreal Engine GVAS save files.
+
+Palworld's type-hint table for otherwise-ambiguous save properties
+(`plugins/palworld/parser/src/gvas.rs`) is ported from the
+`PALWORLD_TYPE_HINTS` table in cheahjs/palworld-save-tools
+(https://github.com/cheahjs/palworld-save-tools), MIT License,
+Copyright (c) 2024 Jun Siang Cheah.
+
+Palworld is a trademark of Pocketpair, Inc. This plugin is not affiliated
+with, endorsed by, or sponsored by Pocketpair, Inc.
