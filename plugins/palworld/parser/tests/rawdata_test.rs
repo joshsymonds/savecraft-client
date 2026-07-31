@@ -1,30 +1,12 @@
-//! Real-fixture, byte-verified tests for the `rawdata` module's five
-//! `RawData` codecs.
-//!
-//! This crate is `[[bin]]`-only (no `[lib]` target), and `rawdata` is
-//! gated behind `#[cfg(test)]` in `main.rs` until a follow-on task wires
-//! section builders to it (see `src/rawdata.rs`'s module doc) -- so there
-//! is no `palworld_parser::` path to import from here. Instead this file
-//! pulls in the exact same source `main.rs` does via `#[path]`, giving it
-//! access to `rawdata`'s decoders and the existing `gvas::decode()`
-//! pipeline (PlM1 container -> Kraken -> GVAS) needed to reach real
-//! `RawData` bytes from `testdata/.../Level.sav`, without any Cargo.toml
-//! changes. `container`/`decompress` are pulled in too because `gvas.rs`
-//! itself references them via `crate::` paths, which resolve against
-//! *this* crate once included.
+//! Real-fixture, byte-verified tests for the `rawdata` module's `RawData`
+//! codecs, plus the `gvas::decode()` pipeline (PlM1 container -> Kraken ->
+//! GVAS) needed to reach real `RawData` bytes from `testdata/.../Level.sav`.
 
-#[path = "../src/container.rs"]
-mod container;
-#[path = "../src/decompress.rs"]
-mod decompress;
-#[path = "../src/gvas.rs"]
-mod gvas;
-#[path = "../src/rawdata.rs"]
-mod rawdata;
-
-use rawdata::{
-    DynamicItemKind, PalValue, decode_character_container_slot, decode_character_save_parameter,
-    decode_dynamic_item, decode_group_save_data, decode_item_container_permission,
+use palworld_parser::gvas;
+use palworld_parser::rawdata::{
+    self, DynamicItemKind, PalValue, decode_character_container_slot,
+    decode_character_save_parameter, decode_dynamic_item, decode_group_save_data,
+    decode_item_container_permission, decode_item_slot,
 };
 use std::path::PathBuf;
 use uesave::{ByteArray, FGuid, MapEntry, Properties, Property, Save, StructValue, ValueVec};
@@ -420,6 +402,149 @@ fn item_container_permission_truncated_type_a_errors_not_panics() {
     assert_eq!(
         err.path,
         "ItemContainerSaveData.Value.RawData.permission.type_a"
+    );
+    assert!(err.message.contains("truncated"));
+}
+
+// --- ItemContainerSaveData (per-slot RawData) -----------------------------
+
+fn item_container_slots(save: &Save, entry_index: usize) -> Vec<Vec<u8>> {
+    let entries = map_entries(world_save_data(save), "ItemContainerSaveData");
+    match find(nested(&entries[entry_index].value), "Slots") {
+        Property::Array(ValueVec::Struct(slots)) => slots
+            .iter()
+            .map(|s| match s {
+                StructValue::Struct(props) => byte_array(props, "RawData").to_vec(),
+                other => panic!("slot is not a nested struct: {other:?}"),
+            })
+            .collect(),
+        other => panic!("Slots is not an array of structs: {other:?}"),
+    }
+}
+
+#[test]
+fn item_slot_decodes_a_plain_static_item_with_no_dynamic_id() {
+    // Container 0 in this fixture holds currency and a key item (not
+    // player-crafted equipment, which -- as `item_slot_decodes_an_egg_and_
+    // cross_references_dynamic_item_save_data`'s sibling discovery showed
+    // for `Axe_Tier_00` -- gets its own per-copy dynamic item id to track
+    // durability). Money has no such identity: it's fungible.
+    let save = level_save();
+    let slots = item_container_slots(&save, 0);
+    let decoded = decode_item_slot(&slots[0]).unwrap().unwrap();
+    assert_eq!(decoded.slot_index, 0);
+    assert_eq!(decoded.count, 749);
+    assert_eq!(decoded.static_id, "Money");
+    assert_eq!(decoded.dynamic_item_id, None);
+}
+
+#[test]
+fn item_slot_decodes_an_egg_and_cross_references_dynamic_item_save_data() {
+    let save = level_save();
+    let slots = item_container_slots(&save, 69);
+    let egg_slot = slots
+        .iter()
+        .find_map(|raw| {
+            let decoded = decode_item_slot(raw).unwrap().unwrap();
+            (decoded.static_id == "PalEgg_Water_01").then_some(decoded)
+        })
+        .expect("a PalEgg_Water_01 slot in this fixture's container 69");
+
+    let dynamic_id = egg_slot
+        .dynamic_item_id
+        .expect("an egg slot should carry a dynamic item id");
+
+    let dynamic_items = dynamic_item_raw_data_blobs(&save);
+    let matched = dynamic_items.iter().any(|raw| {
+        let item = decode_dynamic_item(raw).unwrap().unwrap();
+        item.id.created_world_id == dynamic_id.created_world_id
+            && item.id.local_id_in_created_world == dynamic_id.local_id_in_created_world
+            && item.id.static_id == "PalEgg_Water_01"
+    });
+    assert!(
+        matched,
+        "the item slot's dynamic_item_id should match a real DynamicItemSaveData entry"
+    );
+}
+
+#[test]
+fn item_slot_decodes_every_slot_across_every_container_with_a_two_shape_trailer_and_is_sparse() {
+    // Decodes every occupied slot's real RawData bytes (through
+    // decode_item_slot itself, not just inspecting the raw property tree)
+    // across all 264 ItemContainerSaveData entries in the fixture, and
+    // proves the "Slots is sparse relative to slot_index" claim through the
+    // codec -- at least one decoded slot_index must exceed its own position
+    // in the Slots array.
+    //
+    // The module doc's "a consistent 20 bytes ... regardless of static_id
+    // length" claim does NOT hold across the whole fixture: exactly 336 of
+    // this fixture's 339 occupied slots trail with 20 bytes, but 3 --
+    // ClothArmor, Shield_01, and Glider_Old, all durability-tracked
+    // equipment with a plain (zero-guid) dynamic_item_id -- trail with 25.
+    // No other length occurs. This test pins both real shapes rather than
+    // asserting the disproven "always 20" claim.
+    let save = level_save();
+    let entries = map_entries(world_save_data(&save), "ItemContainerSaveData");
+
+    let mut trailing_20_count = 0;
+    let mut trailing_25_count = 0;
+    let mut found_sparse_gap = false;
+
+    for entry in entries {
+        let slots = match find(nested(&entry.value), "Slots") {
+            Property::Array(ValueVec::Struct(slots)) => slots,
+            other => panic!("Slots is not an array of structs: {other:?}"),
+        };
+
+        for (array_position, slot) in slots.iter().enumerate() {
+            let raw = match slot {
+                StructValue::Struct(props) => byte_array(props, "RawData"),
+                other => panic!("slot is not a nested struct: {other:?}"),
+            };
+            let decoded = decode_item_slot(raw)
+                .expect("decode_item_slot should not error on real fixture bytes")
+                .expect("every Slots entry in this fixture is occupied");
+
+            match decoded.trailing.len() {
+                20 => trailing_20_count += 1,
+                25 => trailing_25_count += 1,
+                other => panic!(
+                    "unexpected trailing tail length {other} for slot_index {} \
+                     (static_id {:?}); only 20 and 25 are known to occur in this fixture",
+                    decoded.slot_index, decoded.static_id
+                ),
+            }
+
+            if decoded.slot_index as usize > array_position {
+                found_sparse_gap = true;
+            }
+        }
+    }
+
+    assert_eq!(trailing_20_count, 336);
+    assert_eq!(trailing_25_count, 3);
+    assert!(
+        found_sparse_gap,
+        "expected at least one container where a slot's slot_index exceeds its position \
+         within the Slots array, proving Slots is sparse relative to slot_index through the \
+         codec itself"
+    );
+}
+
+#[test]
+fn item_slot_truncated_dynamic_id_errors_not_panics() {
+    let save = level_save();
+    let slots = item_container_slots(&save, 44);
+    let raw = &slots[0];
+    let decoded = decode_item_slot(raw).unwrap().unwrap();
+    // Derive the dynamic_id pair's start from a successful decode (rather
+    // than hardcoding an offset) and cut off partway into it.
+    let dynamic_id_start = raw.len() - 32 - decoded.trailing.len();
+    let truncated = &raw[..dynamic_id_start + 10];
+    let err = decode_item_slot(truncated).unwrap_err();
+    assert_eq!(
+        err.path,
+        "ItemContainerSaveData.Value.Slots.Slots.RawData.dynamic_id"
     );
     assert!(err.message.contains("truncated"));
 }

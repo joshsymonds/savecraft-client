@@ -19,86 +19,26 @@
 //! further structure. See each submodule's doc comment for what was
 //! verified and what wasn't.
 //!
-//! This module is gated behind `#[cfg(test)]` in `main.rs`: section
-//! builders that consume these decoders are a follow-on task, so nothing
-//! here is wired into the plugin's real output yet. A follow-on task
-//! removes that gate when it does the wiring. In the meantime, this
-//! module is fully implemented and tested -- see `tests/rawdata_test.rs`
-//! for the real, fixture-backed coverage, and `keep_alive` below for why
-//! this file also references every decoder once itself.
+//! `sections.rs` is this module's real consumer -- see
+//! `tests/rawdata_test.rs` for fixture-backed coverage of the decoders
+//! themselves, and each submodule's own unit tests (including its
+//! empty-input contract) for coverage that doesn't need the real fixture.
 
-// Explicit `#[path]` on every submodule (rather than the usual implicit
-// `rawdata/foo.rs` lookup) so this file resolves identically whether it's
-// loaded normally (`mod rawdata;` in main.rs) or pulled into
-// `tests/rawdata_test.rs` via `#[path]` -- an explicitly-`#[path]`'d file
-// only looks for its *own* children as siblings in its containing
-// directory by default, not in a `<stem>/` subdirectory, so the implicit
-// form breaks under the latter.
-#[path = "rawdata/character.rs"]
 mod character;
-#[path = "rawdata/character_container.rs"]
 mod character_container;
-#[path = "rawdata/dynamic_item.rs"]
 mod dynamic_item;
-#[path = "rawdata/group.rs"]
 mod group;
-#[path = "rawdata/item_container.rs"]
 mod item_container;
-#[path = "rawdata/properties.rs"]
 mod properties;
-#[path = "rawdata/reader.rs"]
 mod reader;
 
 pub use character::{CharacterSaveParameter, decode_character_save_parameter};
 pub use character_container::{CharacterContainerSlot, decode_character_container_slot};
 pub use dynamic_item::{DynamicItem, DynamicItemId, DynamicItemKind, decode_dynamic_item};
 pub use group::{GroupSaveData, decode_group_save_data};
-pub use item_container::{ItemContainerPermission, decode_item_container_permission};
+pub use item_container::{
+    ItemContainerPermission, ItemSlot, ItemSlotDynamicId, decode_item_container_permission,
+    decode_item_slot,
+};
 pub use properties::{PalProperty, PalValue};
 pub use reader::RawDataError;
-
-// Because `main.rs` only pulls this module in under `#[cfg(test)]` (see
-// above), `cargo test`'s "unittests src/main.rs" target compiles it with
-// nothing in that same compilation calling these `pub` decoders --
-// `tests/rawdata_test.rs`, which has the real coverage, is a separate
-// crate from that target's perspective. Without a real call site *inside*
-// this compilation, `-D warnings` (specifically `dead_code`) fails the
-// build. This module references each public decoder once so that doesn't
-// happen; the substantive pinned-value and truncation assertions live in
-// `tests/rawdata_test.rs` and each submodule's own unit tests.
-#[cfg(test)]
-mod keep_alive {
-    use super::*;
-
-    #[test]
-    fn every_public_decoder_is_reachable() {
-        // Empty input is a real, documented contract for these decoders
-        // (see each's own doc comment), not just a way to touch them once
-        // for `-D warnings` -- assert it, not merely call it. The type
-        // annotations (rather than `let _ = ...`) are what keep the
-        // re-exports above from being flagged as unused imports in this
-        // crate, which has no other consumer of them until a follow-on
-        // task wires section builders to this module (see the module doc
-        // comment).
-        let character: Result<CharacterSaveParameter, RawDataError> =
-            decode_character_save_parameter(&[]);
-        assert!(character.is_err());
-
-        let slot: Result<Option<CharacterContainerSlot>, RawDataError> =
-            decode_character_container_slot(&[]);
-        assert_eq!(slot, Ok(None));
-
-        let group: Result<GroupSaveData, RawDataError> = decode_group_save_data(&[]);
-        assert!(group.is_err());
-
-        let permission: Result<Option<ItemContainerPermission>, RawDataError> =
-            decode_item_container_permission(&[]);
-        assert_eq!(permission, Ok(None));
-
-        let item: Result<Option<DynamicItem>, RawDataError> = decode_dynamic_item(&[]);
-        assert_eq!(item, Ok(None));
-
-        let _: Option<fn(&PalProperty) -> &PalValue> = None;
-        let _: Option<fn(&DynamicItemKind) -> &DynamicItemId> = None;
-    }
-}

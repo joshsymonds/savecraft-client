@@ -161,6 +161,157 @@ fn happy_path_emits_one_result_with_identity_and_overview() {
     assert_eq!(overview["saveGameVersion"], 3);
     assert_eq!(overview["packageVersionUe4"], 522);
     assert_eq!(overview["packageVersionUe5"], 1008);
+    assert_eq!(overview["guildName"], "00000000000000000000000000000001");
+    assert_eq!(overview["baseCount"], 1);
+    assert_eq!(overview["playerCount"], 1);
+
+    // Exactly the four progress statuses and nothing else: every join
+    // across players/pals/guild/bases/inventory resolves cleanly against
+    // this real fixture, so no degrade warning should be appended.
+    let statuses: Vec<&str> = out
+        .of_type("status")
+        .iter()
+        .filter_map(|s| s["message"].as_str())
+        .collect();
+    assert_eq!(
+        statuses,
+        vec![
+            "Reading save directory...",
+            "Decoding Level.sav...",
+            "Decoding LevelMeta.sav...",
+            "Decoding player saves...",
+        ],
+        "expected exactly these four progress statuses and no degrade warnings: {statuses:?}"
+    );
+}
+
+#[test]
+fn happy_path_players_section_has_the_host_players_tech_and_paldeck_progress() {
+    let out = run_plugin(&happy_tar());
+    let result = &out.of_type("result")[0];
+    let players = result["sections"]["players"]["data"]["players"]
+        .as_array()
+        .unwrap();
+    assert_eq!(players.len(), 1);
+    let atmus = &players[0];
+    assert_eq!(atmus["playerUId"], "00000000-0000-0000-0000-000000000001");
+    assert_eq!(atmus["name"], "Atmus");
+    assert_eq!(atmus["level"], 9);
+    assert_eq!(atmus["technologyPoint"], 14);
+    assert_eq!(atmus["paldeckUnlockedCount"], 10);
+    assert_eq!(atmus["tribeCaptureCount"], 10);
+    let unlocked = atmus["unlockedTechnologies"].as_array().unwrap();
+    assert_eq!(unlocked.len(), 27);
+    assert!(unlocked.iter().any(|t| t == "Workbench"));
+    assert!(unlocked.iter().any(|t| t == "PalBox"));
+}
+
+#[test]
+fn happy_path_pals_party_and_storage_have_full_detail_from_real_pals() {
+    let out = run_plugin(&happy_tar());
+    let result = &out.of_type("result")[0];
+
+    let party = result["sections"]["pals_party"]["data"]["pals"]
+        .as_array()
+        .unwrap();
+    assert_eq!(party.len(), 3);
+    let dream_demon = party
+        .iter()
+        .find(|p| p["speciesId"] == "DreamDemon")
+        .expect("DreamDemon in the party");
+    assert_eq!(dream_demon["level"], 7);
+    assert_eq!(dream_demon["gender"], "EPalGenderType::Male");
+    assert_eq!(
+        dream_demon["ownerPlayerUId"],
+        "00000000-0000-0000-0000-000000000001"
+    );
+    assert!(
+        dream_demon["passiveSkills"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|s| s == "WorkSuitabilityAddRank_MonsterFarm_1")
+    );
+
+    let storage = result["sections"]["pals_storage"]["data"]["pals"]
+        .as_array()
+        .unwrap();
+    assert_eq!(storage.len(), 28);
+    assert!(
+        storage
+            .iter()
+            .any(|p| p["speciesId"] == "ChickenPal" && p["level"] == 5),
+        "expected ChickenPal at level 5 in pal storage: {storage:?}"
+    );
+}
+
+#[test]
+fn happy_path_guild_section_has_the_hosts_guild_and_full_roster() {
+    let out = run_plugin(&happy_tar());
+    let result = &out.of_type("result")[0];
+
+    let guilds = result["sections"]["guild"]["data"]["guilds"]
+        .as_array()
+        .unwrap();
+    assert_eq!(guilds.len(), 1);
+    let guild = &guilds[0];
+    assert_eq!(guild["memberCount"], 37);
+    let members = guild["members"].as_array().unwrap();
+    assert_eq!(members.len(), 37);
+    assert!(
+        members
+            .iter()
+            .any(|m| m["isPlayer"] == true && m["name"] == "Atmus" && m["level"] == 9)
+    );
+    assert!(
+        members
+            .iter()
+            .any(|m| m["isPlayer"] == false && m["speciesId"] == "ChickenPal")
+    );
+}
+
+#[test]
+fn happy_path_bases_section_has_the_real_base_camp_id() {
+    let out = run_plugin(&happy_tar());
+    let result = &out.of_type("result")[0];
+
+    let bases = result["sections"]["bases"]["data"]["bases"]
+        .as_array()
+        .unwrap();
+    assert_eq!(bases.len(), 1);
+    assert_eq!(bases[0]["baseId"], "4e18f078-4717-eb0a-043c-01b96f527fff");
+}
+
+#[test]
+fn happy_path_inventory_section_labels_containers_by_role_with_real_items() {
+    let out = run_plugin(&happy_tar());
+    let result = &out.of_type("result")[0];
+
+    let inventories = result["sections"]["inventory"]["data"]["inventories"]
+        .as_array()
+        .unwrap();
+    assert_eq!(inventories.len(), 1);
+    let inv = &inventories[0];
+    assert_eq!(inv["playerUId"], "00000000-0000-0000-0000-000000000001");
+
+    let containers = inv["containers"].as_array().unwrap();
+    let weapon_load_out = containers
+        .iter()
+        .find(|c| c["role"] == "weaponLoadOut")
+        .expect("a weaponLoadOut container");
+    let items = weapon_load_out["items"].as_array().unwrap();
+    assert!(
+        items
+            .iter()
+            .any(|i| i["staticId"] == "Axe_Tier_00" && i["count"] == 1),
+        "expected Axe_Tier_00 in weaponLoadOut: {items:?}"
+    );
+
+    let common = containers
+        .iter()
+        .find(|c| c["role"] == "common")
+        .expect("a common container");
+    assert_eq!(common["items"].as_array().unwrap().len(), 23);
 }
 
 #[test]
@@ -178,6 +329,43 @@ fn missing_world_id_arg_falls_back_to_world() {
     assert_eq!(results.len(), 1, "lines: {:?}", out.lines);
     assert_eq!(results[0]["identity"]["extra"]["worldId"], "world");
     assert_eq!(results[0]["identity"]["saveName"], "world");
+
+    // No Players/*.sav members at all -- the players/inventory sections
+    // degrade to empty arrays, and pals_party/pals_storage are empty too:
+    // both are built by iterating each player's own
+    // OtomoCharacterContainerId/PalStorageContainerId, so pals sections DO
+    // depend on players existing -- zero players means zero container ids
+    // to look up in the first place.
+    let sections = &results[0]["sections"];
+    assert_eq!(
+        sections["players"]["data"]["players"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0
+    );
+    assert_eq!(
+        sections["inventory"]["data"]["inventories"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0
+    );
+    assert_eq!(
+        sections["pals_party"]["data"]["pals"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0
+    );
+    assert_eq!(
+        sections["pals_storage"]["data"]["pals"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0
+    );
+    assert_eq!(sections["overview"]["data"]["playerCount"], 0);
 }
 
 // --- Container-level adversarial cases ---------------------------------
@@ -468,5 +656,54 @@ fn missing_level_sav_is_a_structured_error() {
     assert!(
         message.contains("Level.sav"),
         "message should name Level.sav: {message}"
+    );
+}
+
+#[test]
+fn corrupt_player_save_degrades_players_section_with_status_warning_result_still_emitted() {
+    let level = read_fixture("Level.sav");
+    let level_meta = read_fixture("LevelMeta.sav");
+    // A PlM1 container whose Kraken payload is truncated -- fails inside
+    // gvas::decode() the same way truncated_kraken_stream_is_corrupt_file_no_panic
+    // exercises for Level.sav, but here for a Players/*.sav member instead,
+    // proving one undecodable player save degrades that section rather than
+    // aborting the whole run.
+    let (ulen, _clen, payload) = split_container(&level);
+    let half_payload = &payload[..payload.len() / 2];
+    let bogus_player = build_container(ulen, half_payload, b"PlM1");
+    let tar = build_tar(&[
+        ("Level.sav", &level),
+        ("LevelMeta.sav", &level_meta),
+        (
+            "Players/00000000000000000000000000000002.sav",
+            &bogus_player,
+        ),
+    ]);
+
+    let out = run_plugin(&tar);
+    assert_eq!(out.code, 0, "lines: {:?}", out.lines);
+
+    let results = out.of_type("result");
+    assert_eq!(results.len(), 1, "lines: {:?}", out.lines);
+    let sections = &results[0]["sections"];
+    assert_eq!(
+        sections["players"]["data"]["players"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0
+    );
+    assert_eq!(sections["overview"]["data"]["playerCount"], 0);
+
+    let statuses = out.of_type("status");
+    assert!(
+        statuses.iter().any(|s| {
+            s["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains("00000000000000000000000000000002.sav")
+        }),
+        "expected a status warning naming the undecodable player save: {:?}",
+        out.lines
     );
 }

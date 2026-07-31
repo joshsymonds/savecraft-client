@@ -69,6 +69,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn empty_bytes_error_instead_of_decoding_to_a_default() {
+        // Unlike character_container/item_container/dynamic_item, a
+        // `GroupSaveDataMap` entry's `RawData` is never legitimately empty --
+        // every real entry carries at least `group_id` and `group_name`.
+        // Empty input should error, not silently produce a default-valued
+        // group.
+        assert!(decode_group_save_data(&[]).is_err());
+    }
+
+    #[test]
     fn decodes_empty_roster() {
         let mut data = vec![0u8; 16]; // group_id
         data.extend_from_slice(&0i32.to_le_bytes()); // group_name = ""

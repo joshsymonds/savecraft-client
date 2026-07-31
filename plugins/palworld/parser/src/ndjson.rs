@@ -60,15 +60,29 @@ pub fn emit_status(message: &str) {
     let _ = stdout.write_all(b"\n");
 }
 
-pub fn emit_result(identity: Identity, summary: String, sections: HashMap<String, Section>) {
+/// Encodes a result line's exact bytes (including the trailing newline)
+/// without writing them anywhere -- factored out of [`emit_result`] so
+/// tests can assert on the real encoded envelope instead of hand-building
+/// a parallel one that could drift from what the daemon actually receives.
+pub(crate) fn encode_result(
+    identity: Identity,
+    summary: String,
+    sections: HashMap<String, Section>,
+) -> Vec<u8> {
     let out = Output::Result {
         identity,
         summary,
         sections,
     };
+    let mut bytes = serde_json::to_vec(&out).unwrap_or_default();
+    bytes.push(b'\n');
+    bytes
+}
+
+pub fn emit_result(identity: Identity, summary: String, sections: HashMap<String, Section>) {
+    let bytes = encode_result(identity, summary, sections);
     let mut stdout = io::stdout().lock();
-    let _ = serde_json::to_writer(&mut stdout, &out);
-    let _ = stdout.write_all(b"\n");
+    let _ = stdout.write_all(&bytes);
 }
 
 pub fn emit_error(error_type: &str, message: &str) {

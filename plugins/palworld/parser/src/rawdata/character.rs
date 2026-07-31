@@ -112,4 +112,14 @@ mod tests {
         let err = decode_character_save_parameter(&data).unwrap_err();
         assert!(err.message.contains("SaveParameter"));
     }
+
+    #[test]
+    fn empty_bytes_error_instead_of_decoding_to_a_default() {
+        // Unlike character_container/item_container/dynamic_item, a
+        // `CharacterSaveParameterMap` entry's `RawData` is never legitimately
+        // empty -- every real entry carries at least the `SaveParameter`
+        // wrapper. Empty input should error, not silently produce a
+        // default-valued character.
+        assert!(decode_character_save_parameter(&[]).is_err());
+    }
 }
