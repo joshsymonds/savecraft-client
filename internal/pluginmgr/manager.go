@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/joshsymonds/savecraft-client/internal/signing"
@@ -25,15 +27,27 @@ type PluginLoader interface {
 
 // Manager orchestrates plugin download, verification, caching, and loading.
 type Manager struct {
-	registry    Registry
-	cache       *Cache
-	loader      PluginLoader
-	publicKey   ed25519.PublicKey
-	manifest    map[string]PluginInfo
-	localDir    string
-	localHashes map[string]string // SHA-256 of last-loaded local WASM per gameID
-	logger      *slog.Logger
-	mu          sync.Mutex
+	registry      Registry
+	cache         *Cache
+	loader        PluginLoader
+	publicKey     ed25519.PublicKey
+	manifest      map[string]PluginInfo
+	localDir      string
+	localHashes   map[string]string // SHA-256 of last-loaded local WASM per gameID
+	logger        *slog.Logger
+	daemonVersion string // set via WithDaemonVersion; "" disables the min_daemon_version guard
+	mu            sync.Mutex
+}
+
+// ManagerOption configures a Manager.
+type ManagerOption func(*Manager)
+
+// WithDaemonVersion sets the running daemon's version, used to filter
+// manifest entries whose min_daemon_version this daemon does not satisfy
+// (see filterMinDaemonVersion). Omitting it (the default, "") disables the
+// guard entirely — an unknown daemon version is never grounds to filter.
+func WithDaemonVersion(v string) ManagerOption {
+	return func(m *Manager) { m.daemonVersion = v }
 }
 
 // NewManager creates a Manager with the given dependencies.
@@ -43,14 +57,61 @@ func NewManager(
 	loader PluginLoader,
 	publicKey ed25519.PublicKey,
 	logger *slog.Logger,
+	opts ...ManagerOption,
 ) *Manager {
-	return &Manager{
+	mgr := &Manager{
 		registry:  registry,
 		cache:     cache,
 		loader:    loader,
 		publicKey: publicKey,
 		logger:    logger,
 	}
+	for _, opt := range opts {
+		opt(mgr)
+	}
+	return mgr
+}
+
+// hasNumericComponent reports whether v has at least one dot-separated
+// segment that parses as a plain integer — the minimum shape
+// version.IsNewer needs to compare meaningfully. A version with none (for
+// example "dev", cmd/savecraftd's unstamped default, or "") parses entirely
+// to zero in version.IsNewer, which would make IsNewer(minVersion, v) true
+// for any non-empty minVersion and so drop every gated plugin.
+func hasNumericComponent(v string) bool {
+	for _, part := range strings.Split(v, ".") {
+		if _, err := strconv.Atoi(part); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// filterMinDaemonVersion drops manifest entries whose MinDaemonVersion this
+// daemon's configured version does not satisfy, logging one line per skipped
+// plugin. When the daemon version is unconfigured (m.daemonVersion == "") or
+// has no parseable numeric component (e.g. an unstamped "dev" build), the
+// guard is a no-op: filtering out entries against a version that can't be
+// compared would be worse than not filtering.
+func (m *Manager) filterMinDaemonVersion(
+	ctx context.Context, manifest map[string]PluginInfo,
+) map[string]PluginInfo {
+	if m.daemonVersion == "" || !hasNumericComponent(m.daemonVersion) {
+		return manifest
+	}
+	filtered := make(map[string]PluginInfo, len(manifest))
+	for gameID, info := range manifest {
+		if info.MinDaemonVersion != "" && version.IsNewer(info.MinDaemonVersion, m.daemonVersion) {
+			m.logger.InfoContext(ctx, "skipping plugin: requires newer daemon",
+				slog.String("game_id", gameID),
+				slog.String("min_daemon_version", info.MinDaemonVersion),
+				slog.String("daemon_version", m.daemonVersion),
+			)
+			continue
+		}
+		filtered[gameID] = info
+	}
+	return filtered
 }
 
 // SetLocalDir configures a local directory override for plugin loading.
@@ -74,8 +135,8 @@ func (m *Manager) Manifests(
 	if err != nil {
 		return nil, fmt.Errorf("fetch manifest: %w", err)
 	}
-	m.manifest = manifest
-	return manifest, nil
+	m.manifest = m.filterMinDaemonVersion(ctx, manifest)
+	return m.manifest, nil
 }
 
 // EnsurePlugin guarantees the plugin for gameID is loaded into the runner.
@@ -200,10 +261,10 @@ func (m *Manager) checkRemotePlugins(
 	if err != nil {
 		return nil, fmt.Errorf("fetch manifest: %w", err)
 	}
-	m.manifest = manifest
+	m.manifest = m.filterMinDaemonVersion(ctx, manifest)
 
 	var updated []string
-	for gameID, info := range manifest {
+	for gameID, info := range m.manifest {
 		if skip[gameID] {
 			continue
 		}
@@ -331,7 +392,7 @@ func (m *Manager) resolveManifestEntry(
 		if err != nil {
 			return PluginInfo{}, fmt.Errorf("fetch manifest: %w", err)
 		}
-		m.manifest = manifest
+		m.manifest = m.filterMinDaemonVersion(ctx, manifest)
 	}
 
 	info, ok := m.manifest[gameID]
@@ -348,7 +409,7 @@ func (m *Manager) resolveManifestEntry(
 	if err != nil {
 		return PluginInfo{}, fmt.Errorf("fetch manifest: %w", err)
 	}
-	m.manifest = manifest
+	m.manifest = m.filterMinDaemonVersion(ctx, manifest)
 
 	info, ok = m.manifest[gameID]
 	if !ok {

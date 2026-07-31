@@ -2,6 +2,7 @@ package watcher
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -262,5 +263,280 @@ func TestClose_Idempotent(t *testing.T) {
 	}
 	if err := w.Close(); err != nil {
 		t.Errorf("second Close: %v", err)
+	}
+}
+
+// --- Directory-unit tests ---
+
+func newDirectoryUnitWatcher(t *testing.T, excludeDirs []string) (*FSWatcher, string) {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "Players"), 0o755); err != nil {
+		t.Fatalf("mkdir Players: %v", err)
+	}
+	for _, ex := range excludeDirs {
+		if err := os.MkdirAll(filepath.Join(root, ex), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", ex, err)
+		}
+	}
+
+	w, err := New(WithDebounceDuration(testDebounce))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := w.AddDirectoryUnit(root, excludeDirs); err != nil {
+		t.Fatalf("AddDirectoryUnit: %v", err)
+	}
+	t.Cleanup(func() { w.Close() })
+	return w, root
+}
+
+// TestAddDirectoryUnit_NestedWriteRoutesToRoot confirms recursive watching:
+// a write to a file nested under a nested subdirectory (Players/) produces
+// one coalesced FileEvent addressed to the directory-unit root, not the
+// nested subdirectory — the routing the daemon relies on to treat the whole
+// directory as a single save unit.
+func TestAddDirectoryUnit_NestedWriteRoutesToRoot(t *testing.T) {
+	w, root := newDirectoryUnitWatcher(t, nil)
+
+	path := filepath.Join(root, "Players", "player1.sav")
+	os.WriteFile(path, []byte("player data"), 0o644)
+
+	ev := waitForEvent(t, w.Events())
+	if ev.Path != root {
+		t.Errorf("event path = %q, want directory-unit root %q", ev.Path, root)
+	}
+	if ev.Op != daemon.FileModify {
+		t.Errorf("op = %d, want FileModify (%d)", ev.Op, daemon.FileModify)
+	}
+	if ev.Data != nil {
+		t.Errorf("data = %v, want nil (daemon rebuilds its own snapshot)", ev.Data)
+	}
+}
+
+// TestAddDirectoryUnit_Quiescence_CoalescesMultipleMemberWrites writes to
+// three distinct member files within the debounce window and expects exactly
+// one coalesced root event after everything settles — the per-directory
+// quiescence layered over the existing per-file debounce.
+func TestAddDirectoryUnit_Quiescence_CoalescesMultipleMemberWrites(t *testing.T) {
+	w, root := newDirectoryUnitWatcher(t, nil)
+
+	os.WriteFile(filepath.Join(root, "Level.sav"), []byte("level"), 0o644)
+	time.Sleep(testDebounce / 3)
+	os.WriteFile(filepath.Join(root, "LevelMeta.sav"), []byte("meta"), 0o644)
+	time.Sleep(testDebounce / 3)
+	os.WriteFile(filepath.Join(root, "Players", "player1.sav"), []byte("player"), 0o644)
+
+	ev := waitForEvent(t, w.Events())
+	if ev.Path != root {
+		t.Errorf("event path = %q, want %q", ev.Path, root)
+	}
+
+	expectNoEvent(t, w.Events())
+}
+
+// TestAddDirectoryUnit_ExcludedSubdirectory_NoEvents confirms an excluded
+// subdirectory (e.g. a backup folder) is never watched: writes inside it
+// produce no root event and no per-file event.
+func TestAddDirectoryUnit_ExcludedSubdirectory_NoEvents(t *testing.T) {
+	w, root := newDirectoryUnitWatcher(t, []string{"backup"})
+
+	os.WriteFile(filepath.Join(root, "backup", "Level.sav.bak"), []byte("old"), 0o644)
+
+	expectNoEvent(t, w.Events())
+}
+
+// TestAddDirectoryUnit_HashDedupStillAppliesPerMember confirms the
+// per-file SHA-256 dedup underneath the new directory quiescence layer is
+// unchanged: rewriting a member with identical content after it has already
+// settled produces no new root event.
+func TestAddDirectoryUnit_HashDedupStillAppliesPerMember(t *testing.T) {
+	w, root := newDirectoryUnitWatcher(t, nil)
+	path := filepath.Join(root, "Level.sav")
+
+	os.WriteFile(path, []byte("same content"), 0o644)
+	waitForEvent(t, w.Events())
+
+	os.WriteFile(path, []byte("same content"), 0o644)
+	expectNoEvent(t, w.Events())
+}
+
+// TestAddDirectoryUnit_Remove_StopsEvents confirms Remove on a
+// directory-unit root unwatches every recursively-added subdirectory, not
+// just the root itself.
+func TestAddDirectoryUnit_Remove_StopsEvents(t *testing.T) {
+	w, root := newDirectoryUnitWatcher(t, nil)
+
+	if err := w.Remove(root); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+
+	os.WriteFile(filepath.Join(root, "Players", "player1.sav"), []byte("data"), 0o644)
+	os.WriteFile(filepath.Join(root, "Level.sav"), []byte("data"), 0o644)
+
+	expectNoEvent(t, w.Events())
+}
+
+// TestAddDirectoryUnit_PartialAddFailure_UnwindsPriorWatches proves a
+// mid-walk failure unwinds the directories added before it: without the
+// unwind, root (added successfully before the injected failure on its
+// child) would stay registered with fsnotify forever with no bookkeeping
+// entry to ever Remove it through, so a write there would leak a spurious
+// event despite AddDirectoryUnit having returned an error.
+func TestAddDirectoryUnit_PartialAddFailure_UnwindsPriorWatches(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "Players"), 0o755); err != nil {
+		t.Fatalf("mkdir Players: %v", err)
+	}
+
+	w, err := New(WithDebounceDuration(testDebounce))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { w.Close() })
+
+	realAdd := w.addWatch
+	calls := 0
+	w.addWatch = func(dir string) error {
+		calls++
+		if calls == 2 {
+			return fmt.Errorf("simulated watch failure")
+		}
+		return realAdd(dir)
+	}
+
+	if err := w.AddDirectoryUnit(root, nil); err == nil {
+		t.Fatal("expected error from simulated partial failure")
+	}
+
+	os.WriteFile(filepath.Join(root, "Level.sav"), []byte("data"), 0o644)
+	expectNoEvent(t, w.Events())
+}
+
+// TestAddDirectoryUnit_ReAdd_ClearsStaleDirUnitRootOf proves a re-add for
+// the same root (as happens on a rescan) clears the previous membership
+// first: a directory present in the old membership but absent from the new
+// one must not linger in dirUnitRootOf, unreleasable by any future Remove.
+func TestAddDirectoryUnit_ReAdd_ClearsStaleDirUnitRootOf(t *testing.T) {
+	root := t.TempDir()
+	staleDir := filepath.Join(root, "OldSlot")
+	if err := os.MkdirAll(staleDir, 0o755); err != nil {
+		t.Fatalf("mkdir OldSlot: %v", err)
+	}
+
+	w, err := New(WithDebounceDuration(testDebounce))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { w.Close() })
+
+	if err := w.AddDirectoryUnit(root, nil); err != nil {
+		t.Fatalf("first AddDirectoryUnit: %v", err)
+	}
+
+	// Simulate a rescan where OldSlot no longer exists under root.
+	if err := os.RemoveAll(staleDir); err != nil {
+		t.Fatalf("remove OldSlot: %v", err)
+	}
+	if err := w.AddDirectoryUnit(root, nil); err != nil {
+		t.Fatalf("second AddDirectoryUnit: %v", err)
+	}
+
+	w.mu.Lock()
+	_, stale := w.dirUnitRootOf[staleDir]
+	w.mu.Unlock()
+	if stale {
+		t.Error("dirUnitRootOf retains a stale entry for a directory no longer present under the re-added root")
+	}
+}
+
+// --- scheduleDirectoryUnitEvent / fireDirectoryUnitEvent generation guard ---
+
+// TestFireDirectoryUnitEvent_StaleGeneration_DoesNotEmit exercises the
+// generation guard directly: an invocation carrying a generation older than
+// the currently recorded one (as happens when a timer had already fired and
+// started running, blocked on w.mu, while a concurrent
+// scheduleDirectoryUnitEvent raced ahead and bumped the generation) must
+// return without emitting a second, stale event.
+func TestFireDirectoryUnitEvent_StaleGeneration_DoesNotEmit(t *testing.T) {
+	w, err := New(WithDebounceDuration(testDebounce))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { w.Close() })
+
+	const root = "/fake/root"
+	w.mu.Lock()
+	w.dirUnitGenerations[root] = 2
+	w.mu.Unlock()
+
+	w.fireDirectoryUnitEvent(root, 1)
+
+	expectNoEvent(t, w.Events())
+}
+
+// TestFireDirectoryUnitEvent_CurrentGeneration_Emits confirms the guard
+// only suppresses a stale generation — a genuine, current firing still
+// emits normally.
+func TestFireDirectoryUnitEvent_CurrentGeneration_Emits(t *testing.T) {
+	w, err := New(WithDebounceDuration(testDebounce))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { w.Close() })
+
+	const root = "/fake/root"
+	w.mu.Lock()
+	w.dirUnitGenerations[root] = 1
+	w.mu.Unlock()
+
+	w.fireDirectoryUnitEvent(root, 1)
+
+	ev := waitForEvent(t, w.Events())
+	if ev.Path != root {
+		t.Errorf("event path = %q, want %q", ev.Path, root)
+	}
+}
+
+// TestScheduleDirectoryUnitEvent_TimerAlreadyFired_BumpsGenerationAndReschedules
+// exercises scheduleDirectoryUnitEvent's Stop()-fails branch directly: when
+// the previously scheduled timer already fired (Stop returns false — the
+// race window scheduleDirectoryUnitEvent cannot close by itself), it must
+// bump the generation (so the in-flight, already-fired invocation recognizes
+// itself as superseded — see fireDirectoryUnitEvent) and install a fresh
+// timer, rather than resetting a timer that can no longer be stopped.
+func TestScheduleDirectoryUnitEvent_TimerAlreadyFired_BumpsGenerationAndReschedules(t *testing.T) {
+	w, err := New(WithDebounceDuration(testDebounce))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { w.Close() })
+
+	const root = "/fake/root"
+	alreadyFired := time.AfterFunc(0, func() {})
+	time.Sleep(20 * time.Millisecond) // let it actually fire before scheduling again
+
+	w.mu.Lock()
+	w.dirUnitTimers[root] = alreadyFired
+	w.dirUnitGenerations[root] = 1
+	w.mu.Unlock()
+
+	w.scheduleDirectoryUnitEvent(root)
+
+	w.mu.Lock()
+	newGen := w.dirUnitGenerations[root]
+	newTimer := w.dirUnitTimers[root]
+	w.mu.Unlock()
+
+	if newGen != 2 {
+		t.Errorf("generation = %d, want 2 (bumped past the already-fired timer's generation)", newGen)
+	}
+	if newTimer == alreadyFired {
+		t.Error("scheduleDirectoryUnitEvent reused the already-fired timer instead of installing a fresh one")
+	}
+
+	ev := waitForEvent(t, w.Events())
+	if ev.Path != root {
+		t.Errorf("event path = %q, want %q", ev.Path, root)
 	}
 }

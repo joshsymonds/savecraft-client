@@ -144,33 +144,61 @@ func hasGlobMeta(path string) bool {
 // using the provided filesystem interface. If the path contains no glob
 // metacharacters, it is returned as-is (wrapped in a single-element slice).
 //
-// Only the last path segment may contain glob characters. For example,
-// "/saves/*" is supported, but "/*/saves" is not (only the final segment
-// is expanded). This covers the common case of per-user subdirectories
-// like Steam ID folders.
+// Multiple path segments may contain glob characters, expanded left to
+// right and anchored to the fixed segments of the template — for example
+// "SaveGames/*/*" (a per-account directory containing per-slot save
+// directories, as used by directory-unit plugins). Expansion never walks
+// outside the segments the template itself declares: each glob segment is
+// resolved only against the parent directories already resolved from the
+// template, so this stays a bounded expansion of a known shape, not an
+// unbounded filesystem walk.
 //
 // Directories whose names match any entry in excludeDirs (case-insensitive)
 // are skipped. Only directories are included in the result. If the glob
-// matches nothing, the original pattern is returned so callers can report
-// the path in errors.
+// matches nothing at any level, the original pattern is returned so callers
+// can report the path in errors.
 func resolveGlob(fsys FS, pattern string, excludeDirs []string) []string {
 	if !hasGlobMeta(pattern) {
 		return []string{pattern}
 	}
 
-	// Split into parent directory and glob segment.
+	// Split into parent directory/directories and the final glob segment.
 	parentDir := filepath.Dir(pattern)
 	globPart := filepath.Base(pattern)
 
-	// If the parent itself has glob chars, we don't support nested globs.
-	// Return the pattern as-is for error reporting.
+	var parents []string
 	if hasGlobMeta(parentDir) {
+		resolvedParents := resolveGlob(fsys, parentDir, excludeDirs)
+		// A single result identical to the unresolved parent means that
+		// level failed to resolve — propagate the failure by returning the
+		// full original pattern, rather than expanding against a glob.
+		if len(resolvedParents) == 1 && resolvedParents[0] == parentDir {
+			return []string{pattern}
+		}
+		parents = resolvedParents
+	} else {
+		parents = []string{parentDir}
+	}
+
+	var matches []string
+	for _, parent := range parents {
+		matches = append(matches, matchGlobSegment(fsys, parent, globPart, excludeDirs)...)
+	}
+
+	if len(matches) == 0 {
 		return []string{pattern}
 	}
 
-	entries, err := fsys.ReadDir(parentDir)
+	sort.Strings(matches)
+	return matches
+}
+
+// matchGlobSegment returns the directories directly inside parent whose name
+// matches globPart, excluding names in excludeDirs (case-insensitive).
+func matchGlobSegment(fsys FS, parent, globPart string, excludeDirs []string) []string {
+	entries, err := fsys.ReadDir(parent)
 	if err != nil {
-		return []string{pattern}
+		return nil
 	}
 
 	var matches []string
@@ -182,7 +210,7 @@ func resolveGlob(fsys FS, pattern string, excludeDirs []string) []string {
 		if isExcludedDir(entry.Name(), excludeDirs) {
 			continue
 		}
-		full := filepath.Join(parentDir, entry.Name())
+		full := filepath.Join(parent, entry.Name())
 		// Only include directories.
 		info, statErr := fsys.Stat(full)
 		if statErr != nil || !info.IsDir() {
@@ -190,12 +218,6 @@ func resolveGlob(fsys FS, pattern string, excludeDirs []string) []string {
 		}
 		matches = append(matches, full)
 	}
-
-	if len(matches) == 0 {
-		return []string{pattern}
-	}
-
-	sort.Strings(matches)
 	return matches
 }
 

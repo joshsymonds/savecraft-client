@@ -37,6 +37,23 @@ type pluginTOML struct {
 	WorkshopURL    string   `toml:"workshop_url"    json:"workshop_url,omitempty"`
 	Limitations    []string `toml:"limitations"     json:"limitations"`
 
+	// Unit and Members describe directory-unit save plugins: Unit is
+	// "directory" (empty/"file" is the default, single-file, save unit);
+	// Members lists include patterns, relative to the save directory,
+	// selecting which files belong to the archived unit.
+	Unit    string   `toml:"unit"    json:"unit,omitempty"`
+	Members []string `toml:"members" json:"members,omitempty"`
+
+	// MinDaemonVersion is the minimum daemon version (dotted numeric) able
+	// to load this plugin; a daemon older than this skips it entirely.
+	MinDaemonVersion string `toml:"min_daemon_version" json:"min_daemon_version,omitempty"`
+
+	// License and SourceURL are binary-distribution metadata for the
+	// compiled parser.wasm: its SPDX license identifier and a link to the
+	// corresponding source.
+	License   string `toml:"license"    json:"license,omitempty"`
+	SourceURL string `toml:"source_url" json:"source_url,omitempty"`
+
 	Attribution  attributionInfo `toml:"attribution"   json:"attribution,omitzero"`
 	Author       authorInfo      `toml:"author"        json:"author"`
 	DefaultPaths defaultPaths    `toml:"default_paths" json:"default_paths"`

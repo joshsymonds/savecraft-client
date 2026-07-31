@@ -132,6 +132,34 @@ func TestStatusHandler_ReturnsJSON(t *testing.T) {
 	}
 }
 
+// TestStatus_DirectoryUnitGame_ReflectsScannedSaveCount confirms Status()
+// reports live directory-unit state computed from a real scan, not just a
+// round-trip of the static config (which a tautological assertion could
+// never catch breaking): after scanGame discovers and watches one save
+// directory, Status() reports SaveCount 1 for it. Watching is deliberately
+// not asserted here — its lookup keys watchedDirs by the raw SavePath glob
+// template, which never matches a directory-unit save's resolved directory
+// path; that mismatch is a separate, known pre-existing bug being fixed
+// elsewhere.
+func TestStatus_DirectoryUnitGame_ReflectsScannedSaveCount(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := &fakeRunner{results: map[string]*GameState{"palworld": newD2RState()}}
+	cfg := palworldConfig()
+	pm := palworldPluginManager()
+
+	d := New(cfg, palworldFS(), newFakeWatcher(), runner, ws, pm, nil, testLogger())
+	d.scanGame(context.Background(), "palworld", cfg.Games["palworld"], false)
+
+	status := d.Status()
+	game, ok := status.Games["palworld"]
+	if !ok {
+		t.Fatal("palworld missing from status")
+	}
+	if game.SaveCount != 1 {
+		t.Errorf("SaveCount = %d, want 1 (one directory-unit save directory scanned)", game.SaveCount)
+	}
+}
+
 func TestNew_NilLogger(t *testing.T) {
 	ws := newFakeWSClient()
 	cfg := Config{

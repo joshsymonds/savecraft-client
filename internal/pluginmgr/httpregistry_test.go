@@ -66,6 +66,66 @@ func TestHTTPRegistry_FetchManifest_ValidSigned(t *testing.T) {
 	}
 }
 
+const directoryUnitManifestJSON = `{
+	"plugins": {
+		"palworld": {
+			"game_id": "palworld",
+			"name": "Palworld",
+			"version": "1.0.0",
+			"sha256": "def456",
+			"url": "https://install.example/plugins/palworld/parser.wasm",
+			"default_paths": {"linux": "~/palworld/SaveGames/*/*"},
+			"unit": "directory",
+			"members": ["Level.sav", "LevelMeta.sav", "Players/*.sav"],
+			"min_daemon_version": "1.9.0"
+		}
+	}
+}`
+
+// TestHTTPRegistry_FetchManifest_DirectoryUnitFields confirms the
+// directory-unit fields (unit, members, min_daemon_version) survive the
+// signed manifest fetch/verify/parse round trip, same as any other field.
+func TestHTTPRegistry_FetchManifest_DirectoryUnitFields(t *testing.T) {
+	pub, priv, _ := signing.GenerateKeypair()
+	sig := signing.Sign(priv, []byte(directoryUnitManifestJSON))
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/plugins/manifest.json":
+			_, _ = w.Write([]byte(directoryUnitManifestJSON))
+		case "/plugins/manifest.json.sig":
+			_, _ = w.Write(sig)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	reg := NewHTTPRegistry(srv.URL, pub, WithHTTPClient(srv.Client()))
+	got, err := reg.FetchManifest(context.Background())
+	if err != nil {
+		t.Fatalf("FetchManifest: %v", err)
+	}
+	info, ok := got["palworld"]
+	if !ok {
+		t.Fatal("palworld entry missing")
+	}
+	if info.Unit != "directory" {
+		t.Errorf("Unit = %q, want %q", info.Unit, "directory")
+	}
+	wantMembers := []string{"Level.sav", "LevelMeta.sav", "Players/*.sav"}
+	if len(info.Members) != len(wantMembers) {
+		t.Fatalf("Members = %v, want %v", info.Members, wantMembers)
+	}
+	for i, m := range wantMembers {
+		if info.Members[i] != m {
+			t.Errorf("Members[%d] = %q, want %q", i, info.Members[i], m)
+		}
+	}
+	if info.MinDaemonVersion != "1.9.0" {
+		t.Errorf("MinDaemonVersion = %q, want %q", info.MinDaemonVersion, "1.9.0")
+	}
+}
+
 func TestHTTPRegistry_FetchManifest_TamperedRejected(t *testing.T) {
 	pub, priv, _ := signing.GenerateKeypair()
 	// Signature is over manifestJSON, but the server serves a different body.
