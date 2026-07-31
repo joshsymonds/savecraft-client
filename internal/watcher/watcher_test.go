@@ -450,6 +450,135 @@ func TestAddDirectoryUnit_ReAdd_ClearsStaleDirUnitRootOf(t *testing.T) {
 	}
 }
 
+// --- Dynamic subdirectory creation under a directory-unit root ---
+
+// TestAddDirectoryUnit_DynamicSubdirCreate_WatchesAndRoutesToRoot covers the
+// gap this task closes: a subdirectory (e.g. Players/) appearing under a
+// directory-unit root AFTER AddDirectoryUnit's one-shot walk must still be
+// watched, and a member file written inside it must produce exactly one
+// coalesced root event — not silence until the next full rescan.
+func TestAddDirectoryUnit_DynamicSubdirCreate_WatchesAndRoutesToRoot(t *testing.T) {
+	root := t.TempDir()
+
+	w, err := New(WithDebounceDuration(testDebounce))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { w.Close() })
+
+	if err := w.AddDirectoryUnit(root, nil); err != nil {
+		t.Fatalf("AddDirectoryUnit: %v", err)
+	}
+
+	playersDir := filepath.Join(root, "Players")
+	if err := os.MkdirAll(playersDir, 0o755); err != nil {
+		t.Fatalf("mkdir Players: %v", err)
+	}
+	// Give the watch time to attach before writing into the new directory —
+	// mirrors the real race the fix must close (files can land before the
+	// watch on the freshly created directory is registered).
+	time.Sleep(testDebounce / 2)
+	os.WriteFile(filepath.Join(playersDir, "player1.sav"), []byte("player data"), 0o644)
+
+	ev := waitForEvent(t, w.Events())
+	if ev.Path != root {
+		t.Errorf("event path = %q, want directory-unit root %q", ev.Path, root)
+	}
+	if ev.Op != daemon.FileModify {
+		t.Errorf("op = %d, want FileModify (%d)", ev.Op, daemon.FileModify)
+	}
+
+	expectNoEvent(t, w.Events())
+}
+
+// TestAddDirectoryUnit_DynamicSubdirCreate_AlreadyPresentChildRoutesToRoot
+// proves a file that lands inside the new subdirectory before the watch
+// attaches is still picked up: the root event fires once the directory
+// quiesces, driving the daemon's on-disk resnapshot that would otherwise
+// miss it entirely until the next rescan.
+func TestAddDirectoryUnit_DynamicSubdirCreate_AlreadyPresentChildRoutesToRoot(t *testing.T) {
+	root := t.TempDir()
+
+	w, err := New(WithDebounceDuration(testDebounce))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { w.Close() })
+
+	if err := w.AddDirectoryUnit(root, nil); err != nil {
+		t.Fatalf("AddDirectoryUnit: %v", err)
+	}
+
+	playersDir := filepath.Join(root, "Players")
+	if err := os.MkdirAll(playersDir, 0o755); err != nil {
+		t.Fatalf("mkdir Players: %v", err)
+	}
+	// Write immediately, racing the watch attachment — no sleep.
+	os.WriteFile(filepath.Join(playersDir, "player1.sav"), []byte("player data"), 0o644)
+
+	ev := waitForEvent(t, w.Events())
+	if ev.Path != root {
+		t.Errorf("event path = %q, want directory-unit root %q", ev.Path, root)
+	}
+}
+
+// TestAddDirectoryUnit_DynamicExcludedSubdirCreate_NoEvents confirms a
+// subdirectory created dynamically that matches the unit's excludeDirs list
+// (e.g. a backup folder appearing later) is never watched: writes inside it
+// never surface, dynamically or otherwise.
+func TestAddDirectoryUnit_DynamicExcludedSubdirCreate_NoEvents(t *testing.T) {
+	root := t.TempDir()
+
+	w, err := New(WithDebounceDuration(testDebounce))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { w.Close() })
+
+	if err := w.AddDirectoryUnit(root, []string{"backup"}); err != nil {
+		t.Fatalf("AddDirectoryUnit: %v", err)
+	}
+
+	backupDir := filepath.Join(root, "backup")
+	if err := os.MkdirAll(backupDir, 0o755); err != nil {
+		t.Fatalf("mkdir backup: %v", err)
+	}
+	time.Sleep(testDebounce / 2)
+	os.WriteFile(filepath.Join(backupDir, "Level.sav.bak"), []byte("old"), 0o644)
+
+	expectNoEvent(t, w.Events())
+}
+
+// TestAddDirectoryUnit_Remove_ReleasesDynamicallyAddedSubdir proves Remove(root)
+// releases watches added dynamically after AddDirectoryUnit, not just the
+// directories present at add time.
+func TestAddDirectoryUnit_Remove_ReleasesDynamicallyAddedSubdir(t *testing.T) {
+	root := t.TempDir()
+
+	w, err := New(WithDebounceDuration(testDebounce))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { w.Close() })
+
+	if err := w.AddDirectoryUnit(root, nil); err != nil {
+		t.Fatalf("AddDirectoryUnit: %v", err)
+	}
+
+	playersDir := filepath.Join(root, "Players")
+	if err := os.MkdirAll(playersDir, 0o755); err != nil {
+		t.Fatalf("mkdir Players: %v", err)
+	}
+	time.Sleep(testDebounce / 2)
+
+	if err := w.Remove(root); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+
+	os.WriteFile(filepath.Join(playersDir, "player1.sav"), []byte("data"), 0o644)
+	expectNoEvent(t, w.Events())
+}
+
 // --- scheduleDirectoryUnitEvent / fireDirectoryUnitEvent generation guard ---
 
 // TestFireDirectoryUnitEvent_StaleGeneration_DoesNotEmit exercises the

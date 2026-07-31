@@ -50,6 +50,12 @@ type FSWatcher struct {
 	// AddDirectoryUnit and consumed by its Remove counterpart.
 	dirUnits map[string][]string
 
+	// dirUnitExcludes remembers each directory-unit root's excludeDirs, so a
+	// subdirectory created dynamically after AddDirectoryUnit (e.g. Players/
+	// appearing when a fresh world's first player joins) can be filtered the
+	// same way collectDirectoryUnitDirs filtered it at add time.
+	dirUnitExcludes map[string][]string
+
 	// dirUnitRootOf maps every watched directory beneath a directory-unit
 	// root (including the root) back to that root, so a member file's
 	// parent directory can be recognized in O(1) during event handling.
@@ -91,6 +97,7 @@ func New(opts ...Option) (*FSWatcher, error) {
 		timers:             make(map[string]*time.Timer),
 		pending:            make(map[string]daemon.FileOp),
 		dirUnits:           make(map[string][]string),
+		dirUnitExcludes:    make(map[string][]string),
 		dirUnitRootOf:      make(map[string]string),
 		dirUnitTimers:      make(map[string]*time.Timer),
 		dirUnitGenerations: make(map[string]uint64),
@@ -138,7 +145,9 @@ func (w *FSWatcher) AddDirectoryUnit(root string, excludeDirs []string) error {
 			// below, on full success), leaving them watched forever with no
 			// way to Remove them.
 			for _, prior := range added {
-				w.inner.Remove(prior) //nolint:errcheck,gosec // best-effort unwind of an already-failing call
+				if removeErr := w.inner.Remove(prior); removeErr != nil {
+					continue // best-effort unwind of an already-failing call; nothing actionable
+				}
 			}
 			return fmt.Errorf("watch %s: %w", dir, addErr)
 		}
@@ -155,6 +164,7 @@ func (w *FSWatcher) AddDirectoryUnit(root string, excludeDirs []string) error {
 		}
 	}
 	w.dirUnits[root] = dirs
+	w.dirUnitExcludes[root] = excludeDirs
 	for _, dir := range dirs {
 		w.dirUnitRootOf[dir] = root
 	}
@@ -249,6 +259,7 @@ func (w *FSWatcher) removeDirectoryUnit(root string, dirs []string) error {
 	defer w.mu.Unlock()
 
 	delete(w.dirUnits, root)
+	delete(w.dirUnitExcludes, root)
 	for _, dir := range dirs {
 		delete(w.dirUnitRootOf, dir)
 	}
@@ -338,26 +349,131 @@ func (w *FSWatcher) handleFSEvent(ev fsnotify.Event) {
 		return
 	}
 
+	if ev.Has(fsnotify.Create) && w.handleDirUnitSubdirCreate(ev.Name) {
+		return
+	}
+
 	op := daemon.FileModify
 	if ev.Has(fsnotify.Create) {
 		op = daemon.FileCreate
 	}
+	w.scheduleFileDebounce(ev.Name, op)
+}
 
+// scheduleFileDebounce (re)starts the per-file debounce timer for path, the
+// same coalescing a real fsnotify Create/Write event drives in handleFSEvent.
+// Also used to replay a file discovered already present under a
+// dynamically-created directory-unit subdirectory (see
+// handleDirUnitSubdirCreate) as if its own Create event had just fired: if a
+// genuine fsnotify event for the same path arrives shortly after — the watch
+// attached just in time after all — it resets this same timer instead of
+// scheduling a second, independent one.
+func (w *FSWatcher) scheduleFileDebounce(path string, op daemon.FileOp) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	if _, exists := w.pending[ev.Name]; !exists {
-		w.pending[ev.Name] = op
+	if _, exists := w.pending[path]; !exists {
+		w.pending[path] = op
 	}
 
-	if t, ok := w.timers[ev.Name]; ok {
+	if t, ok := w.timers[path]; ok {
 		t.Reset(w.debounce)
 	} else {
-		path := ev.Name
 		w.timers[path] = time.AfterFunc(w.debounce, func() {
 			w.fireDebounced(path)
 		})
 	}
+}
+
+// handleDirUnitSubdirCreate checks whether a Create event names a new
+// subdirectory appearing under an already-registered directory-unit root
+// (e.g. Players/ appearing when a fresh world's first player joins, well
+// after AddDirectoryUnit's one-shot walk). If so, it attaches watches to the
+// new directory and any children already present beneath it, extends the
+// unit's dirUnits/dirUnitRootOf bookkeeping to match, and replays any file
+// already sitting under the new directory through the normal per-file
+// debounce path (see scheduleFileDebounce) so it still reaches the root's
+// quiescence event despite having landed before its own watch could attach.
+// It reports false for anything else (a plain file create, or a directory
+// outside any directory unit), leaving the caller to fall back to normal
+// per-file handling.
+func (w *FSWatcher) handleDirUnitSubdirCreate(path string) bool {
+	info, statErr := os.Lstat(path)
+	if statErr != nil || !info.IsDir() {
+		return false
+	}
+
+	w.mu.Lock()
+	root, isMember := w.dirUnitRootOf[filepath.Dir(path)]
+	if !isMember {
+		w.mu.Unlock()
+		return false
+	}
+	excludeDirs := w.dirUnitExcludes[root]
+	w.mu.Unlock()
+
+	if isDirUnitExcluded(filepath.Base(path), excludeDirs) {
+		return true
+	}
+
+	dirs, err := collectDirectoryUnitDirs(path, excludeDirs)
+	if err != nil {
+		return true
+	}
+
+	added := make([]string, 0, len(dirs))
+	for _, dir := range dirs {
+		if addErr := w.addWatch(dir); addErr != nil {
+			for _, prior := range added {
+				if removeErr := w.inner.Remove(prior); removeErr != nil {
+					continue // best-effort unwind of an already-failing call; nothing actionable
+				}
+			}
+			return true
+		}
+		added = append(added, dir)
+	}
+
+	w.mu.Lock()
+	w.dirUnits[root] = append(w.dirUnits[root], dirs...)
+	for _, dir := range dirs {
+		w.dirUnitRootOf[dir] = root
+	}
+	w.mu.Unlock()
+
+	// A file may have landed inside the new directory before its watch
+	// attached above; fsnotify will never report a Create for it, since the
+	// watch did not exist yet. Route it through the same per-file debounce a
+	// live Create event would use — this also means a genuine fsnotify event
+	// that does still arrive for the same path (the watch attached just in
+	// time after all) resets this same timer rather than scheduling the
+	// root's quiescence a second, independent time.
+	for _, existing := range collectExistingFiles(dirs) {
+		w.scheduleFileDebounce(existing, daemon.FileCreate)
+	}
+
+	return true
+}
+
+// collectExistingFiles returns every regular (non-directory) entry directly
+// inside each of dirs, without descending further — dirs already enumerates
+// every directory in the subtree, so iterating their immediate children
+// covers the whole tree.
+func collectExistingFiles(dirs []string) []string {
+	var files []string
+	for _, dir := range dirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			files = append(files, filepath.Join(dir, entry.Name()))
+		}
+	}
+	return files
 }
 
 func (w *FSWatcher) handleRemove(path string) {
