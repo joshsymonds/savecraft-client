@@ -168,6 +168,9 @@ fn happy_path_emits_one_result_with_identity_and_overview() {
     // Exactly the four progress statuses and nothing else: every join
     // across players/pals/guild/bases/inventory resolves cleanly against
     // this real fixture, so no degrade warning should be appended.
+    // LevelMeta.sav and player saves decode (and drop their bytes) before
+    // Level.sav -- the largest, most memory-hungry member -- decodes last
+    // (see P1+P2), so this order does not match the members' tar order.
     let statuses: Vec<&str> = out
         .of_type("status")
         .iter()
@@ -177,9 +180,9 @@ fn happy_path_emits_one_result_with_identity_and_overview() {
         statuses,
         vec![
             "Reading save directory...",
-            "Decoding Level.sav...",
             "Decoding LevelMeta.sav...",
             "Decoding player saves...",
+            "Decoding Level.sav...",
         ],
         "expected exactly these four progress statuses and no degrade warnings: {statuses:?}"
     );
@@ -424,6 +427,21 @@ fn container_oversized_uncompressed_len_is_corrupt_file_before_allocation() {
     let errors = out.of_type("error");
     assert_eq!(errors.len(), 1, "lines: {:?}", out.lines);
     assert_eq!(errors[0]["errorType"], "corrupt_file");
+    // Names both the actual size and this plugin version's cap, and makes
+    // clear this is a size limit, not corruption (see P1+P2).
+    let message = errors[0]["message"].as_str().unwrap();
+    assert!(
+        message.contains("300.0 MiB"),
+        "message should name the actual size: {message}"
+    );
+    assert!(
+        message.contains("256 MiB"),
+        "message should name this plugin version's cap: {message}"
+    );
+    assert!(
+        message.contains("not corruption"),
+        "message should make clear this is a size limit, not corruption: {message}"
+    );
 }
 
 #[test]
@@ -613,6 +631,14 @@ fn tar_member_exceeding_size_cap_is_corrupt_file() {
     let errors = out.of_type("error");
     assert_eq!(errors.len(), 1, "lines: {:?}", out.lines);
     assert_eq!(errors[0]["errorType"], "corrupt_file");
+    // Same clarity as the container-level uncompressed-size cap (see
+    // P1+P2): the message should make clear this is a size limit, not
+    // corruption.
+    let message = errors[0]["message"].as_str().unwrap();
+    assert!(
+        message.contains("not corruption"),
+        "message should make clear this is a size limit, not corruption: {message}"
+    );
 }
 
 // --- Missing members ------------------------------------------------------

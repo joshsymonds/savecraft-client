@@ -15,7 +15,7 @@ use gvas::GvasError;
 use std::collections::HashMap;
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tarball::{Member, TarError};
+use tarball::TarError;
 
 /// Set by the panic hook installed in `run` when it has already emitted a
 /// structured ndjson error for an in-flight panic. wasm32-wasip1 compiles
@@ -114,36 +114,30 @@ pub fn run() -> i32 {
         .nth(1)
         .unwrap_or_else(|| "world".to_string());
 
-    let level_member = match find_member(&members, "Level.sav") {
-        Some(m) => m,
-        None => {
-            ndjson::emit_error("corrupt_file", "save directory is missing Level.sav");
-            return 1;
+    // Take ownership of every member's bytes by path, keeping only the ones
+    // this plugin actually reads -- anything else the daemon tarred (e.g.
+    // WorldOption.sav, LocalData.sav) is dropped immediately rather than
+    // held alive for the rest of the run (see P1+P2). `members` (and every
+    // byte buffer it doesn't hand off here) is dropped when this loop ends.
+    let mut owned: HashMap<String, Vec<u8>> = HashMap::new();
+    for m in members {
+        if m.path == "Level.sav"
+            || m.path == "LevelMeta.sav"
+            || (m.path.starts_with("Players/") && m.path.ends_with(".sav"))
+        {
+            owned.insert(m.path, m.data);
         }
-    };
+    }
 
-    ndjson::emit_status("Decoding Level.sav...");
-    let level_save = match gvas::decode(&level_member.data) {
-        Ok(s) => s,
-        Err(e) => {
-            // If a panic already reported a structured error (see
-            // PANIC_REPORTED above), emitting a second one here would give
-            // the daemon two "error" lines for one failure.
-            if !PANIC_REPORTED.load(Ordering::SeqCst) {
-                ndjson::emit_error_at(
-                    gvas_error_type(&e),
-                    &format!("Level.sav: {e}"),
-                    gvas_error_offset(&e),
-                );
-            }
-            return 1;
-        }
-    };
-
-    let level_meta_fields = match find_member(&members, "LevelMeta.sav") {
-        Some(m) => {
+    // LevelMeta.sav and every Players/*.sav are decoded (and each one's
+    // bytes dropped) before Level.sav -- by far the largest, most
+    // memory-hungry member -- is decoded last, so its decompressed GVAS
+    // buffer and resulting `Save` tree are never alive at the same time as
+    // any other member's bytes (see P1+P2).
+    let level_meta_fields = match owned.remove("LevelMeta.sav") {
+        Some(data) => {
             ndjson::emit_status("Decoding LevelMeta.sav...");
-            match gvas::decode(&m.data) {
+            match gvas::decode(data) {
                 Ok(s) => Some(sections::level_meta_fields(&s)),
                 Err(e) => {
                     ndjson::emit_status(&format!(
@@ -165,26 +159,81 @@ pub fn run() -> i32 {
     let save_name = world_name.clone().unwrap_or_else(|| world_id.clone());
 
     ndjson::emit_status("Decoding player saves...");
-    let player_members: Vec<&Member> = members
-        .iter()
-        .filter(|m| m.path.starts_with("Players/") && m.path.ends_with(".sav"))
+    let player_paths: Vec<String> = owned
+        .keys()
+        .filter(|p| p.starts_with("Players/") && p.ends_with(".sav"))
+        .cloned()
         .collect();
-    let mut players = Vec::with_capacity(player_members.len());
-    for m in &player_members {
-        match gvas::decode(&m.data) {
+    let mut players = Vec::with_capacity(player_paths.len());
+    for path in player_paths {
+        let data = owned
+            .remove(&path)
+            .expect("path was just collected from owned's own keys");
+        match gvas::decode(data) {
             Ok(s) => players.push(s),
             Err(e) => {
                 ndjson::emit_status(&format!(
-                    "{} failed to decode ({e}); excluding it from the players/pals/inventory sections",
-                    m.path
+                    "{path} failed to decode ({e}); excluding it from the players/pals/inventory sections"
                 ));
             }
         }
     }
 
+    let level_data = match owned.remove("Level.sav") {
+        Some(d) => d,
+        None => {
+            ndjson::emit_error("corrupt_file", "save directory is missing Level.sav");
+            return 1;
+        }
+    };
+
+    ndjson::emit_status("Decoding Level.sav...");
+    let level_save = match gvas::decode(level_data) {
+        Ok(s) => s,
+        Err(e) => {
+            // If a panic already reported a structured error (see
+            // PANIC_REPORTED above), emitting a second one here would give
+            // the daemon two "error" lines for one failure.
+            if !PANIC_REPORTED.load(Ordering::SeqCst) {
+                ndjson::emit_error_at(
+                    gvas_error_type(&e),
+                    &format!("Level.sav: {e}"),
+                    gvas_error_offset(&e),
+                );
+            }
+            return 1;
+        }
+    };
+
     let built = sections::build_all(&level_save, level_meta_fields.as_ref(), &players);
     for warning in &built.warnings {
         ndjson::emit_status(warning);
+    }
+
+    if !built.unsupported_paths.is_empty() {
+        ndjson::emit_status(&format!(
+            "save format newer than this plugin supports at: {}",
+            built.unsupported_paths.join(", ")
+        ));
+    }
+
+    // A mixed world (some RawData understood, some not) still degrades
+    // gracefully via the warnings above -- but if *nothing* decoded
+    // anywhere and at least one failure was specifically an unrecognized
+    // property type, this save's format revision has drifted past what
+    // this plugin's codecs support wholesale. Report that plainly instead
+    // of a near-empty "successful" result (see sections::BuildResult's
+    // `critical_unsupported` doc / C2).
+    if built.critical_unsupported {
+        let paths = built.unsupported_paths.join(", ");
+        ndjson::emit_error(
+            "unsupported_version",
+            &format!(
+                "save format is newer than this plugin version supports (unrecognized property \
+                 types at: {paths}); the world could not be decoded"
+            ),
+        );
+        return 1;
     }
 
     let sections_map = build_sections_map(built);
@@ -222,6 +271,8 @@ pub(crate) fn build_sections_map(built: sections::BuildResult) -> HashMap<String
         bases,
         inventory,
         warnings: _,
+        unsupported_paths: _,
+        critical_unsupported: _,
     } = built;
 
     let mut sections_map = HashMap::new();
@@ -290,12 +341,6 @@ pub(crate) fn build_sections_map(built: sections::BuildResult) -> HashMap<String
     sections_map
 }
 
-fn find_member<'a>(members: &'a [Member], filename: &str) -> Option<&'a Member> {
-    members
-        .iter()
-        .find(|m| m.path.rsplit('/').next() == Some(filename))
-}
-
 fn tar_error_type(e: &TarError) -> &'static str {
     match e {
         TarError::Malformed(_) => "corrupt_file",
@@ -305,7 +350,7 @@ fn tar_error_type(e: &TarError) -> &'static str {
         // through to PARSE_ERROR_TYPE_PARSE_ERROR for anything unrecognized),
         // so these caps were silently downgraded to a misleading parse error.
         TarError::MemberTooLarge { .. } => "corrupt_file",
-        TarError::TotalTooLarge => "corrupt_file",
+        TarError::TotalTooLarge { .. } => "corrupt_file",
     }
 }
 

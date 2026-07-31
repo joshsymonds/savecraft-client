@@ -36,9 +36,6 @@ pub use character::{CharacterSaveParameter, decode_character_save_parameter};
 pub use character_container::{CharacterContainerSlot, decode_character_container_slot};
 pub use dynamic_item::{DynamicItem, DynamicItemId, DynamicItemKind, decode_dynamic_item};
 pub use group::{GroupSaveData, decode_group_save_data};
-pub use item_container::{
-    ItemContainerPermission, ItemSlot, ItemSlotDynamicId, decode_item_container_permission,
-    decode_item_slot,
-};
+pub use item_container::{ItemSlot, ItemSlotDynamicId, decode_item_slot};
 pub use properties::{PalProperty, PalValue};
-pub use reader::RawDataError;
+pub use reader::{RawDataError, RawDataErrorKind};

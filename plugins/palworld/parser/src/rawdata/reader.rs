@@ -43,13 +43,24 @@ impl std::fmt::Display for RawDataError {
 
 impl std::error::Error for RawDataError {}
 
+/// Caps how deeply `StructProperty`'s generic (non-builtin) fallthrough
+/// branch may nest before erroring instead of recursing further --
+/// `read_properties_until_none` -> `read_value` -> `read_struct_value` ->
+/// `read_properties_until_none` is otherwise unbounded mutual recursion, and
+/// a hostile or corrupt payload could nest deeply enough to overflow the
+/// stack. The real fixture nests about 4 levels deep, so this leaves
+/// generous headroom.
+const MAX_STRUCT_DEPTH: usize = 32;
+
 /// A cursor over a `RawData` byte slice, tracking a property-path scope
 /// (pushed/popped by callers around each named field) so a truncation or
-/// unsupported-type error can name exactly where it happened.
+/// unsupported-type error can name exactly where it happened, plus a nested
+/// generic-struct recursion depth (see [`MAX_STRUCT_DEPTH`]).
 pub(crate) struct Reader<'a> {
     data: &'a [u8],
     pos: usize,
     scope: Vec<String>,
+    depth: usize,
 }
 
 impl<'a> Reader<'a> {
@@ -58,6 +69,7 @@ impl<'a> Reader<'a> {
             data,
             pos: 0,
             scope: vec![root.to_string()],
+            depth: 0,
         }
     }
 
@@ -65,8 +77,32 @@ impl<'a> Reader<'a> {
         self.scope.push(name.into());
     }
 
-    pub fn pop(&mut self) {
-        self.scope.pop();
+    /// Pops the innermost scope frame, returning its name. Callers that
+    /// pushed a decoded property name and need it again afterward (e.g. to
+    /// build a [`super::properties::PalProperty`]) can move it back out
+    /// this way instead of cloning it into the scope in the first place
+    /// (see P8).
+    pub fn pop(&mut self) -> String {
+        self.scope
+            .pop()
+            .expect("pop() called without a matching push()")
+    }
+
+    /// Enters one more level of nested generic-struct recursion, erroring
+    /// instead of incrementing once [`MAX_STRUCT_DEPTH`] is reached. Callers
+    /// must pair a successful call with [`Self::exit_struct`].
+    pub fn enter_struct(&mut self) -> Result<(), RawDataError> {
+        if self.depth >= MAX_STRUCT_DEPTH {
+            return Err(self.error(format!("struct nesting exceeds depth {MAX_STRUCT_DEPTH}")));
+        }
+        self.depth += 1;
+        Ok(())
+    }
+
+    /// Leaves one level of nested generic-struct recursion entered via
+    /// [`Self::enter_struct`].
+    pub fn exit_struct(&mut self) {
+        self.depth -= 1;
     }
 
     fn path(&self) -> String {

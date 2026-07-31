@@ -76,12 +76,15 @@ pub(crate) fn read_properties_until_none(r: &mut Reader) -> Result<Vec<PalProper
         if name == "None" {
             break;
         }
-        r.push(name.clone());
+        // Moves `name` into the scope frame rather than cloning it --
+        // `pop()` hands it straight back out once this property's value
+        // has been decoded (see P8).
+        r.push(name);
         let type_name = r.fstring()?;
         let size = r.u32()?;
         let _array_index = r.u32()?;
         let value = read_value(r, &type_name, size)?;
-        r.pop();
+        let name = r.pop();
         out.push(PalProperty {
             name,
             type_name,
@@ -267,7 +270,12 @@ fn read_struct_value(r: &mut Reader, struct_type: &str) -> Result<PalValue, RawD
             r.f32()?,
             r.f32()?,
         )),
-        _ => Ok(PalValue::Struct(read_properties_until_none(r)?)),
+        _ => {
+            r.enter_struct()?;
+            let result = read_properties_until_none(r).map(PalValue::Struct);
+            r.exit_struct();
+            result
+        }
     }
 }
 
@@ -434,6 +442,45 @@ mod tests {
             props[0].value,
             PalValue::ArrayGuid(vec![[1u8; 16], [2u8; 16]])
         );
+    }
+
+    /// Builds `depth` levels of a generic (non-builtin) `StructProperty`
+    /// nested one inside another via a single `"Nested"` field per level,
+    /// terminated by an empty property list at the bottom.
+    fn nested_generic_struct_property_list(depth: usize) -> Vec<u8> {
+        if depth == 0 {
+            return ascii_fstring("None");
+        }
+        let child = nested_generic_struct_property_list(depth - 1);
+        let mut data = Vec::new();
+        data.extend_from_slice(&property_header(
+            "Nested",
+            "StructProperty",
+            child.len() as u32,
+        ));
+        data.extend_from_slice(&ascii_fstring("CustomStruct")); // struct_type: falls through to the generic branch
+        data.extend_from_slice(&[0u8; 16]); // struct_id guid
+        data.push(0); // no optional guid
+        data.extend_from_slice(&child);
+        data.extend_from_slice(&ascii_fstring("None")); // terminates this level's property list
+        data
+    }
+
+    #[test]
+    fn deeply_nested_struct_properties_error_at_a_depth_ceiling_instead_of_overflowing_the_stack() {
+        // Nests far past MAX_STRUCT_DEPTH -- must error cleanly rather than
+        // recursing read_properties_until_none -> read_value ->
+        // read_struct_value -> read_properties_until_none deep enough to
+        // overflow the stack.
+        let data = nested_generic_struct_property_list(200);
+        let mut r = Reader::new(&data, "root");
+        let err = read_properties_until_none(&mut r).unwrap_err();
+        assert!(
+            err.message.contains("depth"),
+            "expected a depth-ceiling error message: {}",
+            err.message
+        );
+        assert_eq!(err.kind, RawDataErrorKind::Malformed(err.message.clone()));
     }
 
     #[test]

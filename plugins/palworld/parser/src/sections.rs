@@ -11,7 +11,7 @@
 
 use crate::rawdata::{self, CharacterContainerSlot, CharacterSaveParameter, ItemSlot};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use uesave::{
     ByteArray, FGuid, MapEntry, Properties, Property, Save, StructValue, ValueVec, VersionInfo,
 };
@@ -519,12 +519,8 @@ const INVENTORY_ROLES: &[(&str, &str)] = &[
 // --- World: every RawData collection decoded once, joined by the section
 // builders below. ------------------------------------------------------------
 
-struct CharacterEntry {
-    params: CharacterSaveParameter,
-}
-
 struct World {
-    characters: HashMap<FGuid, CharacterEntry>,
+    characters: HashMap<FGuid, CharacterSaveParameter>,
     /// `(group_id, GroupType string, decoded roster)`.
     groups: Vec<(FGuid, String, rawdata::GroupSaveData)>,
     char_containers: HashMap<FGuid, Vec<CharacterContainerSlot>>,
@@ -537,15 +533,82 @@ struct World {
 }
 
 impl World {
-    fn find_character(&self, instance_id: FGuid) -> Option<&CharacterEntry> {
+    fn find_character(&self, instance_id: FGuid) -> Option<&CharacterSaveParameter> {
         self.characters.get(&instance_id)
+    }
+}
+
+/// Every `CharacterSaveParameterMap` instance id any section actually joins
+/// against: each player's own character, every party/storage container
+/// slot's occupant, and every Guild-type group's roster (the only group
+/// type [`build_guilds`] displays -- roster members' names still need their
+/// character entries, so their ids belong in this set too). Anything else
+/// in `CharacterSaveParameterMap` (e.g. a non-Guild group's members) is
+/// never surfaced by any section, so [`decode_characters`] skips decoding
+/// its `RawData` entirely (see P7).
+fn collect_needed_character_ids(
+    players: &[Save],
+    char_containers: &HashMap<FGuid, Vec<CharacterContainerSlot>>,
+    groups: &[(FGuid, String, rawdata::GroupSaveData)],
+) -> HashSet<FGuid> {
+    let mut needed = HashSet::new();
+
+    for player in players {
+        if let Some(instance_id) = player_individual_instance_id(player) {
+            needed.insert(instance_id);
+        }
+        for field in ["OtomoCharacterContainerId", "PalStorageContainerId"] {
+            let Some(container_id) = player_container_id(player, field) else {
+                continue;
+            };
+            let Some(slots) = char_containers.get(&container_id) else {
+                continue;
+            };
+            needed.extend(slots.iter().map(|s| guid_bytes_to_fguid(&s.instance_id)));
+        }
+    }
+
+    for (_, group_type, g) in groups {
+        if group_type == "EPalGroupType::Guild" {
+            needed.extend(
+                g.member_handle_ids
+                    .iter()
+                    .map(|(_, instance_id)| guid_bytes_to_fguid(instance_id)),
+            );
+        }
+    }
+
+    needed
+}
+
+/// Formats a per-entry `RawData` decode failure's warning, naming `what`
+/// (e.g. `"character {id}"`) and the failure. Phrases
+/// `RawDataErrorKind::Unsupported` distinctly from genuine corruption
+/// (`Malformed`/`Truncated`) -- an unrecognized property type means this
+/// build's save format has drifted past what this plugin's codecs
+/// recognize, not that the entry itself is broken -- and records its path
+/// in `unsupported` so the caller can summarize or escalate it (see C2).
+fn describe_rawdata_failure(
+    what: &str,
+    e: &rawdata::RawDataError,
+    unsupported: &mut Vec<String>,
+) -> String {
+    if matches!(e.kind, rawdata::RawDataErrorKind::Unsupported(_)) {
+        unsupported.push(e.path.clone());
+        format!(
+            "{what} RawData failed to decode: newer save format than this plugin supports ({e}); skipped"
+        )
+    } else {
+        format!("{what} RawData failed to decode ({e}); skipped")
     }
 }
 
 fn decode_characters(
     wsd: &Properties,
+    needed: &HashSet<FGuid>,
     warnings: &mut Vec<String>,
-) -> HashMap<FGuid, CharacterEntry> {
+    unsupported: &mut Vec<String>,
+) -> HashMap<FGuid, CharacterSaveParameter> {
     let Some(entries) = find_property(wsd, "CharacterSaveParameterMap").and_then(as_map) else {
         warnings.push(
             "CharacterSaveParameterMap missing from Level.sav; players/pals/guild sections will be incomplete"
@@ -554,7 +617,7 @@ fn decode_characters(
         return HashMap::new();
     };
 
-    let mut out = HashMap::with_capacity(entries.len());
+    let mut out = HashMap::with_capacity(needed.len());
     let mut degraded = WarningCap::new(warnings, "characters");
     for entry in entries {
         // `player_uid` (the owning player) isn't needed here: `instance_id`
@@ -567,6 +630,12 @@ fn decode_characters(
             );
             continue;
         };
+        if !needed.contains(&instance_id) {
+            // Not referenced by any player, container slot, or guild
+            // roster this world surfaces -- decoding its RawData would be
+            // wasted work (see P7).
+            continue;
+        }
         let raw = as_nested_struct(&entry.value).and_then(|p| find_property(p, "RawData"));
         let Some(raw) = raw.and_then(as_byte_array) else {
             degraded.push(format!(
@@ -576,10 +645,12 @@ fn decode_characters(
         };
         match rawdata::decode_character_save_parameter(raw) {
             Ok(params) => {
-                out.insert(instance_id, CharacterEntry { params });
+                out.insert(instance_id, params);
             }
-            Err(e) => degraded.push(format!(
-                "character {instance_id} RawData failed to decode ({e}); skipped"
+            Err(e) => degraded.push(describe_rawdata_failure(
+                &format!("character {instance_id}"),
+                &e,
+                unsupported,
             )),
         }
     }
@@ -589,6 +660,7 @@ fn decode_characters(
 fn decode_groups(
     wsd: &Properties,
     warnings: &mut Vec<String>,
+    unsupported: &mut Vec<String>,
 ) -> Vec<(FGuid, String, rawdata::GroupSaveData)> {
     let Some(entries) = find_property(wsd, "GroupSaveDataMap").and_then(as_map) else {
         warnings.push(
@@ -622,8 +694,10 @@ fn decode_groups(
         };
         match rawdata::decode_group_save_data(raw) {
             Ok(g) => out.push((group_id, group_type, g)),
-            Err(e) => degraded.push(format!(
-                "group {group_id} RawData failed to decode ({e}); skipped"
+            Err(e) => degraded.push(describe_rawdata_failure(
+                &format!("group {group_id}"),
+                &e,
+                unsupported,
             )),
         }
     }
@@ -633,17 +707,27 @@ fn decode_groups(
 /// Shared shape between `CharacterContainerSaveData` and
 /// `ItemContainerSaveData`: a map of container id -> `{Slots: [...]}`,
 /// each occupied slot's `RawData` decoded by a per-container-kind decoder.
+/// `kind_label` (e.g. `"character"`/`"item"`) drives every derived message;
+/// the article form (`"a"`/`"an"`) and the missing-map warning are both
+/// derived from `map_name`/`kind_label` rather than passed separately.
 fn decode_slotted_containers<T>(
     wsd: &Properties,
     warnings: &mut Vec<String>,
+    unsupported: &mut Vec<String>,
     map_name: &str,
-    entry_article_and_name: &str,
     kind_label: &str,
-    missing_map_warning: &str,
     decode_slot: impl Fn(&[u8]) -> Result<Option<T>, rawdata::RawDataError>,
 ) -> HashMap<FGuid, Vec<T>> {
+    let article = if map_name.starts_with(['A', 'E', 'I', 'O', 'U']) {
+        "an"
+    } else {
+        "a"
+    };
+
     let Some(entries) = find_property(wsd, map_name).and_then(as_map) else {
-        warnings.push(missing_map_warning.to_string());
+        warnings.push(format!(
+            "{map_name} missing from Level.sav; {kind_label}-related sections will be empty"
+        ));
         return HashMap::new();
     };
 
@@ -652,7 +736,7 @@ fn decode_slotted_containers<T>(
     for entry in entries {
         let Some(id) = container_id_guid(&entry.key) else {
             degraded.push(format!(
-                "{entry_article_and_name} entry has an unrecognized key shape; skipped"
+                "{article} {map_name} entry has an unrecognized key shape; skipped"
             ));
             continue;
         };
@@ -687,8 +771,10 @@ fn decode_slotted_containers<T>(
             match decode_slot(raw) {
                 Ok(Some(item)) => occupied.push(item),
                 Ok(None) => {}
-                Err(e) => degraded.push(format!(
-                    "{kind_label} container {id} slot RawData failed to decode ({e}); skipped"
+                Err(e) => degraded.push(describe_rawdata_failure(
+                    &format!("{kind_label} container {id} slot"),
+                    &e,
+                    unsupported,
                 )),
             }
         }
@@ -700,14 +786,14 @@ fn decode_slotted_containers<T>(
 fn decode_char_containers(
     wsd: &Properties,
     warnings: &mut Vec<String>,
+    unsupported: &mut Vec<String>,
 ) -> HashMap<FGuid, Vec<CharacterContainerSlot>> {
     decode_slotted_containers(
         wsd,
         warnings,
+        unsupported,
         "CharacterContainerSaveData",
-        "a CharacterContainerSaveData",
         "character",
-        "CharacterContainerSaveData missing from Level.sav; pals_party/pals_storage sections will be empty",
         rawdata::decode_character_container_slot,
     )
 }
@@ -715,14 +801,14 @@ fn decode_char_containers(
 fn decode_item_containers(
     wsd: &Properties,
     warnings: &mut Vec<String>,
+    unsupported: &mut Vec<String>,
 ) -> HashMap<FGuid, Vec<ItemSlot>> {
     decode_slotted_containers(
         wsd,
         warnings,
+        unsupported,
         "ItemContainerSaveData",
-        "an ItemContainerSaveData",
         "item",
-        "ItemContainerSaveData missing from Level.sav; inventory section will be empty",
         rawdata::decode_item_slot,
     )
 }
@@ -730,6 +816,7 @@ fn decode_item_containers(
 fn decode_dynamic_items(
     wsd: &Properties,
     warnings: &mut Vec<String>,
+    unsupported: &mut Vec<String>,
 ) -> HashMap<([u8; 16], [u8; 16]), String> {
     let Some(Property::Array(ValueVec::Struct(items))) = find_property(wsd, "DynamicItemSaveData")
     else {
@@ -764,8 +851,10 @@ fn decode_dynamic_items(
                 }
             }
             Ok(None) => {}
-            Err(e) => degraded.push(format!(
-                "a DynamicItemSaveData entry's RawData failed to decode ({e}); skipped"
+            Err(e) => degraded.push(describe_rawdata_failure(
+                "a DynamicItemSaveData entry's",
+                &e,
+                unsupported,
             )),
         }
     }
@@ -805,6 +894,17 @@ fn player_container_id(player: &Save, field: &str) -> Option<FGuid> {
     container_id_guid(find_property(player_save_data(player)?, field)?)
 }
 
+/// A player's own `CharacterSaveParameterMap` instance id, via
+/// `SaveData.IndividualId.InstanceId` -- the key every player's own
+/// character entry (and, from there, their group/guild membership) joins
+/// by.
+fn player_individual_instance_id(player: &Save) -> Option<FGuid> {
+    find_property(player_save_data(player)?, "IndividualId")
+        .and_then(as_nested_struct)
+        .and_then(|p| find_property(p, "InstanceId"))
+        .and_then(as_guid)
+}
+
 fn build_player_section(player: &Save, world: &World, warnings: &mut Vec<String>) -> PlayerSection {
     let uid = player_uid(player);
     let Some(save_data) = player_save_data(player) else {
@@ -820,13 +920,8 @@ fn build_player_section(player: &Save, world: &World, warnings: &mut Vec<String>
         };
     };
 
-    let individual_instance_id = find_property(save_data, "IndividualId")
-        .and_then(as_nested_struct)
-        .and_then(|p| find_property(p, "InstanceId"))
-        .and_then(as_guid);
-
-    let character =
-        individual_instance_id.and_then(|instance_id| world.find_character(instance_id));
+    let character = player_individual_instance_id(player)
+        .and_then(|instance_id| world.find_character(instance_id));
     if character.is_none() {
         warnings.push(
             "a player's own CharacterSaveParameterMap entry could not be joined; name/level degraded"
@@ -834,8 +929,8 @@ fn build_player_section(player: &Save, world: &World, warnings: &mut Vec<String>
         );
     }
 
-    let name = character.and_then(|c| pal_str(&c.params.object, "NickName"));
-    let level = character.and_then(|c| pal_byte(&c.params.object, "Level"));
+    let name = character.and_then(|c| pal_str(&c.object, "NickName"));
+    let level = character.and_then(|c| pal_byte(&c.object, "Level"));
 
     let technology_point = find_property(save_data, "TechnologyPoint").and_then(as_int);
     let unlocked_technologies = find_property(save_data, "UnlockedRecipeTechnologyNames")
@@ -893,7 +988,7 @@ fn build_pals_from_container(
         .filter_map(|slot| {
             let instance_id = guid_bytes_to_fguid(&slot.instance_id);
             match world.find_character(instance_id) {
-                Some(c) => Some(build_pal(&c.params.object)),
+                Some(c) => Some(build_pal(&c.object)),
                 None => {
                     degraded.push(format!(
                         "{label} slot references instance id {instance_id} with no matching CharacterSaveParameterMap entry; skipped"
@@ -924,10 +1019,10 @@ fn build_guilds(world: &World, warnings: &mut Vec<String>) -> Vec<Guild> {
                     let instance_id = guid_bytes_to_fguid(instance_id);
                     match world.find_character(instance_id) {
                         Some(c) => Some(GuildMember {
-                            name: pal_str(&c.params.object, "NickName"),
-                            species_id: pal_str(&c.params.object, "CharacterID"),
-                            is_player: pal_bool(&c.params.object, "IsPlayer").unwrap_or(false),
-                            level: pal_byte(&c.params.object, "Level"),
+                            name: pal_str(&c.object, "NickName"),
+                            species_id: pal_str(&c.object, "CharacterID"),
+                            is_player: pal_bool(&c.object, "IsPlayer").unwrap_or(false),
+                            level: pal_byte(&c.object, "Level"),
                         }),
                         None => {
                             degraded.push(format!(
@@ -945,6 +1040,44 @@ fn build_guilds(world: &World, warnings: &mut Vec<String>) -> Vec<Guild> {
             }
         })
         .collect()
+}
+
+/// The host's own `CharacterSaveParameterMap` group id: the character
+/// carrying `IsPlayer` (this is always a single-player world's host), or --
+/// if no such character resolved -- the first `Players/*.sav`'s own
+/// character via its `IndividualId` join.
+fn resolve_host_group_id(world: &World, players: &[Save]) -> Option<FGuid> {
+    if let Some(host) = world
+        .characters
+        .values()
+        .find(|c| pal_bool(&c.object, "IsPlayer") == Some(true))
+    {
+        return Some(guid_bytes_to_fguid(&host.group_id));
+    }
+    players
+        .iter()
+        .find_map(|player| {
+            player_individual_instance_id(player)
+                .and_then(|instance_id| world.find_character(instance_id))
+        })
+        .map(|host| guid_bytes_to_fguid(&host.group_id))
+}
+
+/// The overview's `guildName`: the Guild-type group the host player
+/// actually belongs to, not an arbitrary `guilds.first()` pick (a world can
+/// have more than one Guild-type entry). Falls back to `guilds.first()`
+/// (with this comment marking why) when no host resolves at all, so the
+/// overview still names *a* guild rather than going empty.
+fn resolve_guild_name(world: &World, players: &[Save], guilds: &[Guild]) -> Option<String> {
+    if let Some(host_group_id) = resolve_host_group_id(world, players) {
+        let host_guild = world.groups.iter().find(|(group_id, group_type, _)| {
+            *group_id == host_group_id && group_type == "EPalGroupType::Guild"
+        });
+        if let Some((_, _, g)) = host_guild {
+            return Some(g.group_name.clone());
+        }
+    }
+    guilds.first().map(|g| g.name.clone())
 }
 
 fn build_inventory_item(slot: &ItemSlot, world: &World) -> InventoryItem {
@@ -1022,6 +1155,20 @@ pub struct BuildResult {
     pub bases: Vec<Base>,
     pub inventory: Vec<PlayerInventory>,
     pub warnings: Vec<String>,
+    /// Paths of every `RawData` entry (character/group/container-slot/
+    /// dynamic-item) whose decode failed with `RawDataErrorKind::Unsupported`
+    /// -- a signal this save's format revision has drifted past what this
+    /// plugin's codecs recognize, not genuine corruption (see C2).
+    pub unsupported_paths: Vec<String>,
+    /// `true` when every one of `worldSaveData`'s decoded collections
+    /// (characters, groups, character/item container slots, dynamic items)
+    /// came back with zero successfully-decoded entries *and* at least one
+    /// of them failed with `RawDataErrorKind::Unsupported` -- i.e. the
+    /// world is functionally wholly undecodable due to format drift, not a
+    /// partial/mixed degrade. The caller (`lib.rs`) escalates this to a
+    /// hard `unsupported_version` error instead of emitting a near-empty
+    /// "successful" result.
+    pub critical_unsupported: bool,
 }
 
 /// Builds every section from a decoded Level.sav, optionally-decoded
@@ -1052,15 +1199,39 @@ pub fn build_all(
             bases: Vec::new(),
             inventory: Vec::new(),
             warnings,
+            unsupported_paths: Vec::new(),
+            critical_unsupported: false,
         };
     };
 
-    let characters = decode_characters(wsd, &mut warnings);
-    let groups = decode_groups(wsd, &mut warnings);
-    let char_containers = decode_char_containers(wsd, &mut warnings);
-    let item_containers = decode_item_containers(wsd, &mut warnings);
-    let dynamic_items = decode_dynamic_items(wsd, &mut warnings);
+    let mut unsupported_paths = Vec::new();
+    let groups = decode_groups(wsd, &mut warnings, &mut unsupported_paths);
+    let char_containers = decode_char_containers(wsd, &mut warnings, &mut unsupported_paths);
+    let item_containers = decode_item_containers(wsd, &mut warnings, &mut unsupported_paths);
+    let dynamic_items = decode_dynamic_items(wsd, &mut warnings, &mut unsupported_paths);
     let base_ids = decode_base_ids(wsd, &mut warnings);
+
+    // Decode only the characters some section actually needs (see P7) --
+    // this depends on containers and groups already being decoded above.
+    let needed_characters = collect_needed_character_ids(players, &char_containers, &groups);
+    let characters = decode_characters(
+        wsd,
+        &needed_characters,
+        &mut warnings,
+        &mut unsupported_paths,
+    );
+
+    // The world is functionally wholly undecodable due to format drift
+    // (rather than a partial/mixed degrade) when nothing at all decoded
+    // successfully anywhere, yet at least one entry failed specifically
+    // because its property type isn't recognized (see C2 / BuildResult's
+    // `critical_unsupported` doc).
+    let total_decoded = characters.len()
+        + groups.len()
+        + char_containers.values().map(Vec::len).sum::<usize>()
+        + item_containers.values().map(Vec::len).sum::<usize>()
+        + dynamic_items.len();
+    let critical_unsupported = total_decoded == 0 && !unsupported_paths.is_empty();
 
     let world = World {
         characters,
@@ -1070,7 +1241,10 @@ pub fn build_all(
         dynamic_items,
     };
 
-    assemble_sections(overview, &world, &base_ids, players, warnings)
+    let mut result = assemble_sections(overview, &world, &base_ids, players, warnings);
+    result.unsupported_paths = unsupported_paths;
+    result.critical_unsupported = critical_unsupported;
+    result
 }
 
 /// The second half of [`build_all`]: joins an already-decoded [`World`]
@@ -1118,7 +1292,7 @@ fn assemble_sections(
         .map(|p| build_player_inventory(p, world, &mut warnings))
         .collect();
 
-    overview.guild_name = guild.first().map(|g| g.name.clone());
+    overview.guild_name = resolve_guild_name(world, players, &guild);
     overview.base_count = bases.len();
 
     BuildResult {
@@ -1130,6 +1304,11 @@ fn assemble_sections(
         bases,
         inventory,
         warnings,
+        // Set by build_all after this call returns -- assemble_sections has
+        // no visibility into the World's raw decode counts or the
+        // accumulated unsupported-path list (see build_all).
+        unsupported_paths: Vec::new(),
+        critical_unsupported: false,
     }
 }
 
@@ -1156,14 +1335,12 @@ mod tests {
         }
     }
 
-    fn character_entry(object: Vec<rawdata::PalProperty>) -> CharacterEntry {
-        CharacterEntry {
-            params: CharacterSaveParameter {
-                object,
-                unknown: [0u8; 4],
-                group_id: [0u8; 16],
-                trailing: Vec::new(),
-            },
+    fn character_entry(object: Vec<rawdata::PalProperty>) -> CharacterSaveParameter {
+        CharacterSaveParameter {
+            object,
+            unknown: [0u8; 4],
+            group_id: [0u8; 16],
+            trailing: Vec::new(),
         }
     }
 
@@ -1232,6 +1409,128 @@ mod tests {
         let mut inner = Properties::default();
         inner.insert("ID", guid_prop(id));
         Property::Struct(StructValue::Struct(inner))
+    }
+
+    /// A `CharacterSaveParameterMap` entry: key = `{PlayerUId, InstanceId}`
+    /// (matching [`character_key`]'s shape), value = `{RawData: <bytes>}`.
+    fn character_map_entry(instance_id: FGuid, raw_data: Vec<u8>) -> MapEntry {
+        let mut key_props = Properties::default();
+        key_props.insert("PlayerUId", guid_prop(FGuid::new(0, 0, 0, 0)));
+        key_props.insert("InstanceId", guid_prop(instance_id));
+
+        let mut value_props = Properties::default();
+        value_props.insert(
+            "RawData",
+            Property::Array(ValueVec::Byte(ByteArray::Byte(raw_data))),
+        );
+
+        MapEntry {
+            key: Property::Struct(StructValue::Struct(key_props)),
+            value: Property::Struct(StructValue::Struct(value_props)),
+        }
+    }
+
+    /// A `RawData` property list's wire-format `FString`: an `i32` length
+    /// (including the trailing NUL it counts) followed by the string's
+    /// ASCII bytes and that NUL -- matches `rawdata::reader`'s own
+    /// `test_support::ascii_fstring` (private to that crate), duplicated
+    /// here since this module builds its own synthetic `RawData` bytes.
+    fn ascii_fstring_bytes(s: &str) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let len = (s.len() + 1) as i32;
+        bytes.extend_from_slice(&len.to_le_bytes());
+        bytes.extend_from_slice(s.as_bytes());
+        bytes.push(0);
+        bytes
+    }
+
+    /// A `RawData` property list whose first (and only) property has a type
+    /// name (`"MapProperty"`) the `rawdata::properties` decoder doesn't
+    /// recognize -- decoding this fails with `RawDataErrorKind::Unsupported`
+    /// before ever reaching any wrapper-shape check (e.g.
+    /// `decode_character_save_parameter`'s `"SaveParameter"` struct), so it
+    /// exercises the C2 escalation path from any of this module's rawdata
+    /// decode sites.
+    fn unsupported_property_type_raw_data() -> Vec<u8> {
+        let mut data = Vec::new();
+        data.extend_from_slice(&ascii_fstring_bytes("Foo")); // property name
+        data.extend_from_slice(&ascii_fstring_bytes("MapProperty")); // unrecognized type
+        data.extend_from_slice(&0u32.to_le_bytes()); // size
+        data.extend_from_slice(&0u32.to_le_bytes()); // array index
+        data
+    }
+
+    #[test]
+    fn decode_characters_unsupported_property_type_degrades_with_a_newer_format_warning_naming_the_path()
+     {
+        let instance_id = guid_bytes_to_fguid(&synthetic_guid_bytes(22, 0));
+        let map = vec![character_map_entry(
+            instance_id,
+            unsupported_property_type_raw_data(),
+        )];
+        let mut wsd = Properties::default();
+        wsd.insert("CharacterSaveParameterMap", Property::Map(map));
+
+        let mut needed = HashSet::new();
+        needed.insert(instance_id);
+
+        let mut warnings = Vec::new();
+        let mut unsupported = Vec::new();
+        let characters = decode_characters(&wsd, &needed, &mut warnings, &mut unsupported);
+
+        assert!(characters.is_empty());
+        assert_eq!(warnings.len(), 1, "warnings: {warnings:?}");
+        let warning = &warnings[0];
+        assert!(warning.contains("newer"), "expected 'newer' in: {warning}");
+        assert!(
+            warning.contains("unsupported"),
+            "expected 'unsupported' in: {warning}"
+        );
+        assert!(
+            warning.contains("Foo"),
+            "expected the failing property's path to be named: {warning}"
+        );
+        assert_eq!(unsupported.len(), 1);
+        assert!(unsupported[0].contains("Foo"));
+    }
+
+    #[test]
+    fn build_all_escalates_to_critical_unsupported_when_nothing_decodes_due_to_format_drift() {
+        // The only character in CharacterSaveParameterMap is referenced by
+        // the sole player's IndividualId (so it's in the P7 "needed" set,
+        // and its decode is actually attempted), but its RawData carries an
+        // unrecognized property type. No other collection has any entries
+        // at all -- so nothing in the world decodes successfully anywhere,
+        // and the one failure is format drift, not corruption.
+        let instance_id = guid_bytes_to_fguid(&synthetic_guid_bytes(23, 0));
+
+        let mut wsd = Properties::default();
+        wsd.insert(
+            "CharacterSaveParameterMap",
+            Property::Map(vec![character_map_entry(
+                instance_id,
+                unsupported_property_type_raw_data(),
+            )]),
+        );
+        let mut root = Properties::default();
+        root.insert("worldSaveData", Property::Struct(StructValue::Struct(wsd)));
+        let level = synthetic_save(root);
+
+        let mut save_data = Properties::default();
+        save_data.insert("PlayerUId", guid_prop(instance_id));
+        save_data.insert("IndividualId", individual_id_prop(instance_id));
+        let player = player_save(save_data);
+
+        let result = build_all(&level, None, std::slice::from_ref(&player));
+
+        assert!(
+            result.critical_unsupported,
+            "expected critical_unsupported when the only referenced character fails with \
+             Unsupported and nothing else in the world decodes: warnings={:?}",
+            result.warnings
+        );
+        assert_eq!(result.unsupported_paths.len(), 1);
+        assert!(result.unsupported_paths[0].contains("Foo"));
     }
 
     // The real fixture's only egg (`PalEgg_Water_01`, in container index 69 --
@@ -1313,6 +1612,48 @@ mod tests {
             cap.push("widget 0 failed".to_string());
         }
         assert_eq!(warnings, vec!["widget 0 failed".to_string()]);
+    }
+
+    // --- decode_characters only decodes needed entries (P7) --------------
+
+    #[test]
+    fn decode_characters_only_attempts_entries_in_the_needed_set() {
+        // Both entries carry empty RawData, which fails to decode (see
+        // rawdata::character's "empty bytes error instead of decoding to a
+        // default" contract) -- so a decode *attempt* always shows up as a
+        // warning naming that entry's instance id. If the unreferenced
+        // entry were ever attempted, it would add a second warning.
+        let needed_id = guid_bytes_to_fguid(&synthetic_guid_bytes(20, 0));
+        let unreferenced_id = guid_bytes_to_fguid(&synthetic_guid_bytes(21, 0));
+
+        let map = vec![
+            character_map_entry(needed_id, Vec::new()),
+            character_map_entry(unreferenced_id, Vec::new()),
+        ];
+        let mut wsd = Properties::default();
+        wsd.insert("CharacterSaveParameterMap", Property::Map(map));
+
+        let mut needed = HashSet::new();
+        needed.insert(needed_id);
+
+        let mut warnings = Vec::new();
+        let mut unsupported = Vec::new();
+        let characters = decode_characters(&wsd, &needed, &mut warnings, &mut unsupported);
+
+        assert!(
+            characters.is_empty(),
+            "the needed entry's empty RawData should fail to decode, not be inserted"
+        );
+        assert_eq!(
+            warnings.len(),
+            1,
+            "exactly one warning (the needed entry's decode failure) -- the unreferenced \
+             entry must never be attempted: {warnings:?}"
+        );
+        assert!(
+            warnings[0].contains(&needed_id.to_string()),
+            "the one warning should name the needed entry: {warnings:?}"
+        );
     }
 
     // --- Degrade branches (GAP 2) ---------------------------------------
@@ -1432,6 +1773,63 @@ mod tests {
     }
 
     #[test]
+    fn resolve_guild_name_picks_the_hosts_guild_not_the_first_one() {
+        let host_instance_bytes = synthetic_guid_bytes(30, 0);
+        let host_instance_id = guid_bytes_to_fguid(&host_instance_bytes);
+        let host_group_bytes = synthetic_guid_bytes(31, 0);
+        let other_group_bytes = synthetic_guid_bytes(32, 0);
+
+        let mut world = empty_world();
+        world.characters.insert(
+            host_instance_id,
+            CharacterSaveParameter {
+                object: vec![
+                    pal_prop("NickName", rawdata::PalValue::Str("Atmus".to_string())),
+                    pal_prop("IsPlayer", rawdata::PalValue::Bool(true)),
+                ],
+                unknown: [0u8; 4],
+                group_id: host_group_bytes,
+                trailing: Vec::new(),
+            },
+        );
+
+        // The *other* guild is inserted first, so a plain `guilds.first()`
+        // pick (the old, arbitrary behavior) would return its name instead
+        // of the host's.
+        world.groups.push((
+            guid_bytes_to_fguid(&other_group_bytes),
+            "EPalGroupType::Guild".to_string(),
+            rawdata::GroupSaveData {
+                group_id: other_group_bytes,
+                group_name: "Other Guild".to_string(),
+                member_handle_ids: Vec::new(),
+                trailing: Vec::new(),
+            },
+        ));
+        world.groups.push((
+            guid_bytes_to_fguid(&host_group_bytes),
+            "EPalGroupType::Guild".to_string(),
+            rawdata::GroupSaveData {
+                group_id: host_group_bytes,
+                group_name: "Host Guild".to_string(),
+                member_handle_ids: vec![([0u8; 16], host_instance_bytes)],
+                trailing: Vec::new(),
+            },
+        ));
+
+        let mut warnings = Vec::new();
+        let guilds = build_guilds(&world, &mut warnings);
+        assert_eq!(guilds.len(), 2, "sanity: both guilds should build");
+        assert_eq!(
+            guilds[0].name, "Other Guild",
+            "sanity: guilds[0] is the non-host guild, proving a plain .first() pick would choose wrong"
+        );
+
+        let name = resolve_guild_name(&world, &[], &guilds);
+        assert_eq!(name, Some("Host Guild".to_string()));
+    }
+
+    #[test]
     fn build_player_section_character_join_failure_degrades_name_and_level_with_a_warning() {
         let instance_id = guid_bytes_to_fguid(&synthetic_guid_bytes(15, 0));
         let mut save_data = Properties::default();
@@ -1533,6 +1931,276 @@ mod tests {
             ),
             pal_prop("IsPlayer", PalValue::Bool(false)),
         ]
+    }
+
+    /// One synthetic player's full contribution to the P6 multi-player
+    /// scale test below: a distinct player `Save` plus its own 3 party
+    /// pals, 1,000 storage pals (each at the same full detail as
+    /// [`synthetic_pal_object`]), and six populated item containers.
+    struct SyntheticPlayerWorld {
+        player_id_bytes: [u8; 16],
+        player_save: Save,
+        characters: Vec<(FGuid, CharacterSaveParameter)>,
+        char_containers: Vec<(FGuid, Vec<CharacterContainerSlot>)>,
+        item_containers: Vec<(FGuid, Vec<ItemSlot>)>,
+    }
+
+    /// Builds one [`SyntheticPlayerWorld`], every synthetic guid tagged off
+    /// `player_tag` (and small fixed offsets from it) so each player's ids
+    /// stay fully distinct from every other player's and from every other
+    /// test in this module.
+    fn build_synthetic_player_world(player_tag: u8) -> SyntheticPlayerWorld {
+        let player_id_bytes = synthetic_guid_bytes(player_tag, 0);
+        let player_instance_id = guid_bytes_to_fguid(&player_id_bytes);
+
+        let mut characters = vec![(
+            player_instance_id,
+            character_entry(vec![
+                pal_prop(
+                    "NickName",
+                    rawdata::PalValue::Str(format!("Player{player_tag}")),
+                ),
+                pal_prop("Level", rawdata::PalValue::ByteRaw(9)),
+                pal_prop("IsPlayer", rawdata::PalValue::Bool(true)),
+            ]),
+        )];
+
+        let party_id_bytes: Vec<[u8; 16]> = (0..3)
+            .map(|k| synthetic_guid_bytes(player_tag + 1, k))
+            .collect();
+        for (k, bytes) in party_id_bytes.iter().enumerate() {
+            characters.push((
+                guid_bytes_to_fguid(bytes),
+                character_entry(synthetic_pal_object(k)),
+            ));
+        }
+
+        let storage_id_bytes: Vec<[u8; 16]> = (0..1000)
+            .map(|k| synthetic_guid_bytes(player_tag + 2, k))
+            .collect();
+        for (k, bytes) in storage_id_bytes.iter().enumerate() {
+            characters.push((
+                guid_bytes_to_fguid(bytes),
+                character_entry(synthetic_pal_object(k)),
+            ));
+        }
+
+        let party_container_id = guid_bytes_to_fguid(&synthetic_guid_bytes(player_tag + 3, 0));
+        let storage_container_id = guid_bytes_to_fguid(&synthetic_guid_bytes(player_tag + 3, 1));
+        let char_containers = vec![
+            (
+                party_container_id,
+                party_id_bytes
+                    .iter()
+                    .map(|bytes| CharacterContainerSlot {
+                        player_uid: player_id_bytes,
+                        instance_id: *bytes,
+                        trailing: Vec::new(),
+                    })
+                    .collect(),
+            ),
+            (
+                storage_container_id,
+                storage_id_bytes
+                    .iter()
+                    .map(|bytes| CharacterContainerSlot {
+                        player_uid: player_id_bytes,
+                        instance_id: *bytes,
+                        trailing: Vec::new(),
+                    })
+                    .collect(),
+            ),
+        ];
+
+        let item_container_ids: Vec<FGuid> = (0..INVENTORY_ROLES.len() as u32)
+            .map(|k| guid_bytes_to_fguid(&synthetic_guid_bytes(player_tag + 4, k)))
+            .collect();
+        let item_containers: Vec<(FGuid, Vec<ItemSlot>)> = item_container_ids
+            .iter()
+            .map(|id| {
+                (
+                    *id,
+                    (0..20)
+                        .map(|i| ItemSlot {
+                            slot_index: i,
+                            count: i + 1,
+                            static_id: format!("Item_{i:03}"),
+                            dynamic_item_id: None,
+                            trailing: Vec::new(),
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
+
+        let mut save_data = Properties::default();
+        save_data.insert("PlayerUId", guid_prop(player_instance_id));
+        save_data.insert("IndividualId", individual_id_prop(player_instance_id));
+        save_data.insert("TechnologyPoint", Property::Int(14));
+        save_data.insert(
+            "UnlockedRecipeTechnologyNames",
+            Property::Array(ValueVec::Name(
+                (0..27).map(|i| format!("Technology_{i}")).collect(),
+            )),
+        );
+        let mut record_data = Properties::default();
+        let mut paldeck = Vec::new();
+        for i in 0..10 {
+            paldeck.push(MapEntry {
+                key: Property::Int(i),
+                value: Property::Bool(true),
+            });
+        }
+        for i in 10..15 {
+            paldeck.push(MapEntry {
+                key: Property::Int(i),
+                value: Property::Bool(false),
+            });
+        }
+        record_data.insert("PaldeckUnlockFlag", Property::Map(paldeck));
+        record_data.insert("TribeCaptureCount", Property::Int(10));
+        save_data.insert(
+            "RecordData",
+            Property::Struct(StructValue::Struct(record_data)),
+        );
+        save_data.insert(
+            "OtomoCharacterContainerId",
+            container_ref(party_container_id),
+        );
+        save_data.insert("PalStorageContainerId", container_ref(storage_container_id));
+        let mut inventory_info = Properties::default();
+        for (i, (field, _role)) in INVENTORY_ROLES.iter().enumerate() {
+            inventory_info.insert(*field, container_ref(item_container_ids[i]));
+        }
+        save_data.insert(
+            "InventoryInfo",
+            Property::Struct(StructValue::Struct(inventory_info)),
+        );
+
+        SyntheticPlayerWorld {
+            player_id_bytes,
+            player_save: player_save(save_data),
+            characters,
+            char_containers,
+            item_containers,
+        }
+    }
+
+    /// P6: measures the actual encoded envelope for 4 players x 1,000
+    /// storage pals each (4,000 storage pals total, every one at the same
+    /// full per-pal detail as the single-player scale test below) through
+    /// the exact `assemble_sections` -> `build_sections_map` ->
+    /// `ndjson::encode_result` chain `run()` uses.
+    ///
+    /// A capped/truncated pal list for oversized worlds was proposed and
+    /// explicitly REJECTED (epic anti-pattern: no capped detail -- owner
+    /// decision, recorded here verbatim rather than implemented). This test
+    /// exists to document the measured envelope instead of asserting a
+    /// hand-built one that could drift from what the daemon actually
+    /// receives: on a real run (2026-07-31, this exact synthetic world),
+    /// the encoded result line measured 1,808,779 bytes (~1.72 MiB) -- 86%
+    /// of the daemon's 2 MiB ndjson line budget for only 4 players. That
+    /// leaves little headroom: a 5th player at this density, or any save
+    /// with denser per-pal data than this synthetic fixture, plausibly
+    /// crosses the daemon's 2 MiB line-budget cliff. Should that happen on
+    /// a real save, the daemon rejecting that oversized line is the
+    /// intended, designed outcome -- nothing in this plugin should ever cap
+    /// pal count or per-pal detail to force a result under budget.
+    #[test]
+    fn scale_full_result_with_4_players_and_4000_storage_pals_measures_the_encoded_size_cliff() {
+        let players_data: Vec<SyntheticPlayerWorld> = (0..4u8)
+            .map(|i| build_synthetic_player_world(60 + i * 10))
+            .collect();
+
+        let mut characters = HashMap::new();
+        let mut char_containers = HashMap::new();
+        let mut item_containers = HashMap::new();
+        let mut players = Vec::new();
+        let mut member_handle_ids = Vec::new();
+
+        for p in players_data {
+            member_handle_ids.push((p.player_id_bytes, p.player_id_bytes));
+            characters.extend(p.characters);
+            char_containers.extend(p.char_containers);
+            item_containers.extend(p.item_containers);
+            players.push(p.player_save);
+        }
+
+        let group_id = guid_bytes_to_fguid(&synthetic_guid_bytes(199, 0));
+        let groups = vec![(
+            group_id,
+            "EPalGroupType::Guild".to_string(),
+            rawdata::GroupSaveData {
+                group_id: synthetic_guid_bytes(199, 0),
+                group_name: "Multi-Player Guild".to_string(),
+                member_handle_ids,
+                trailing: Vec::new(),
+            },
+        )];
+
+        let world = World {
+            characters,
+            groups,
+            char_containers,
+            item_containers,
+            dynamic_items: HashMap::new(),
+        };
+
+        let base_ids = vec![guid_bytes_to_fguid(&synthetic_guid_bytes(200, 0))];
+
+        let overview = Overview {
+            world_name: Some("Palpagos Islands (multi-player scale test)".to_string()),
+            host_player_name: Some("Player60".to_string()),
+            host_player_level: Some(9),
+            in_game_day: Some(4),
+            level_meta_version: Some(100),
+            level_meta_timestamp_ticks: Some(639210506566940000),
+            engine_version: "++UE5+Release-5.1".to_string(),
+            save_game_version: 3,
+            package_version_ue4: 522,
+            package_version_ue5: 1008,
+            guild_name: None,
+            base_count: 0,
+            player_count: 4,
+        };
+
+        let built = assemble_sections(overview, &world, &base_ids, &players, Vec::new());
+        assert!(
+            built.warnings.is_empty(),
+            "expected a clean synthetic world with no degrade warnings: {:?}",
+            built.warnings
+        );
+        assert_eq!(built.pals_party.len(), 4 * 3);
+        assert_eq!(built.pals_storage.len(), 4 * 1000);
+        assert_eq!(built.guild.len(), 1);
+        assert_eq!(built.guild[0].member_count, 4);
+
+        let sections_map = crate::build_sections_map(built);
+        let identity = crate::ndjson::Identity {
+            save_name: "Palpagos Islands (multi-player scale test)".to_string(),
+            game_id: "palworld".to_string(),
+            extra: Some(serde_json::json!({ "worldId": "MULTI-PLAYER-SCALE-TEST" })),
+        };
+        let encoded = crate::ndjson::encode_result(
+            identity,
+            "Palpagos Islands (multi-player scale test)".to_string(),
+            sections_map,
+        );
+
+        // Documents the measured envelope (1,808,779 bytes / ~1.72 MiB on a
+        // real run) rather than asserting an exact byte count that would be
+        // brittle against incidental serialization changes: bounded to a
+        // window around that measurement, still comfortably under the
+        // daemon's 2 MiB budget for exactly 4 players at this density, but
+        // consuming the large majority of it (see the doc comment above).
+        let mib = encoded.len() as f64 / (1024.0 * 1024.0);
+        assert!(
+            (1_600_000..2 * 1024 * 1024).contains(&encoded.len()),
+            "expected the measured envelope for this 4-player, 4,000-storage-pal world to stay \
+             within its documented range (roughly 1.6 MiB to the daemon's 2 MiB budget), just \
+             under budget but consuming most of it: measured {mib:.2} MiB ({} bytes)",
+            encoded.len()
+        );
     }
 
     /// Builds a synthetic `World` (1,000 storage pals, 3 party pals, a

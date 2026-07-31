@@ -5,8 +5,7 @@
 use palworld_parser::gvas;
 use palworld_parser::rawdata::{
     self, DynamicItemKind, PalValue, decode_character_container_slot,
-    decode_character_save_parameter, decode_dynamic_item, decode_group_save_data,
-    decode_item_container_permission, decode_item_slot,
+    decode_character_save_parameter, decode_dynamic_item, decode_group_save_data, decode_item_slot,
 };
 use std::path::PathBuf;
 use uesave::{ByteArray, FGuid, MapEntry, Properties, Property, Save, StructValue, ValueVec};
@@ -22,7 +21,7 @@ fn fixture(name: &str) -> Vec<u8> {
 }
 
 fn level_save() -> Save {
-    gvas::decode(&fixture("Level.sav")).expect("decode Level.sav")
+    gvas::decode(fixture("Level.sav")).expect("decode Level.sav")
 }
 
 fn find<'a>(props: &'a Properties, name: &str) -> &'a Property {
@@ -335,75 +334,6 @@ fn group_save_data_truncated_handle_ids_errors_not_panics() {
     // Caught up front by the count/remaining-bytes check, not a per-element
     // truncation once inside the loop.
     assert!(err.message.contains("exceeds"));
-}
-
-// --- ItemContainerSaveData (permission RawData) --------------------------
-
-fn item_container_raw_data_blobs(save: &Save) -> Vec<Vec<u8>> {
-    let entries = map_entries(world_save_data(save), "ItemContainerSaveData");
-    entries
-        .iter()
-        .map(|e| byte_array(nested(&e.value), "RawData").to_vec())
-        .collect()
-}
-
-#[test]
-fn item_container_permission_decodes_a_real_populated_container() {
-    let save = level_save();
-    let blobs = item_container_raw_data_blobs(&save);
-
-    let populated = blobs
-        .iter()
-        .find(|raw| raw.iter().any(|&b| b != 0))
-        .expect("a container with non-zero RawData in this fixture");
-
-    let decoded = decode_item_container_permission(populated)
-        .expect("decode container")
-        .expect("non-empty bytes should decode to Some");
-
-    assert_eq!(decoded.type_a, vec![9]);
-    assert!(decoded.type_b.is_empty());
-    assert!(decoded.item_static_ids.is_empty());
-    // 3 array headers (4 + 1 element + 4 + 4 = 13 bytes) leave exactly 8
-    // bytes of build-specific padding out of this container's 21-byte
-    // RawData.
-    assert_eq!(decoded.trailing, vec![0u8; 8]);
-}
-
-#[test]
-fn item_container_permission_all_zero_blob_decodes_to_empty_arrays() {
-    let save = level_save();
-    let blobs = item_container_raw_data_blobs(&save);
-    // Every all-zero container in this fixture still carries 20 zero
-    // bytes (three empty-count arrays + padding), not a zero-length
-    // blob -- confirm that decodes to Some with empty arrays, matching
-    // upstream's guard being about byte length, not content.
-    let all_zero = blobs
-        .iter()
-        .find(|raw| raw.iter().all(|&b| b == 0) && !raw.is_empty())
-        .expect("an all-zero-content container in this fixture");
-    let decoded = decode_item_container_permission(all_zero).unwrap().unwrap();
-    assert!(decoded.type_a.is_empty());
-    assert!(decoded.type_b.is_empty());
-    assert!(decoded.item_static_ids.is_empty());
-}
-
-#[test]
-fn item_container_permission_truncated_type_a_errors_not_panics() {
-    let save = level_save();
-    let blobs = item_container_raw_data_blobs(&save);
-    let populated = blobs
-        .iter()
-        .find(|raw| raw.iter().any(|&b| b != 0))
-        .expect("a populated container");
-
-    let truncated = &populated[..2]; // claims a count, no element bytes
-    let err = decode_item_container_permission(truncated).unwrap_err();
-    assert_eq!(
-        err.path,
-        "ItemContainerSaveData.Value.RawData.permission.type_a"
-    );
-    assert!(err.message.contains("truncated"));
 }
 
 // --- ItemContainerSaveData (per-slot RawData) -----------------------------

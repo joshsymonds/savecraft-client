@@ -3,7 +3,7 @@
   "sources": [
     "wasm"
   ],
-  "icon": "",
+  "icon": "icon.png",
   "name": "Palworld",
   "description": "Parses Palworld dedicated-save world directories — world overview, base camps, pals, and more",
   "channel": "alpha",
@@ -14,7 +14,8 @@
   ],
   "homepage": "https://savecraft.gg/plugins/palworld",
   "limitations": [
-    "Steam builds only — no Xbox Game Pass (WGS) save support"
+    "Steam builds only — no Xbox Game Pass (WGS) save support",
+    "Very large late-game worlds (roughly \u003e20 MB compressed Level.sav) exceed this version's memory budget and fail with a clear size error"
   ],
   "unit": "directory",
   "members": [
@@ -41,6 +42,6 @@
     "darwin": ""
   },
   "version": "dev",
-  "sha256": "a7602c53230aa247d83f1d30c97c4ada249d4f6ce61efbbffc090496aa5311a1",
+  "sha256": "4ac2f2d4f0eb81e8c064b711cab596b5f8e876817cf9c04f81cf0be592e78ee5",
   "url": "plugins/palworld/parser.wasm"
 }

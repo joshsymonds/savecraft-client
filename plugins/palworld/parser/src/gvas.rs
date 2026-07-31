@@ -136,12 +136,20 @@ fn build_types() -> Types {
 
 /// Decode one Palworld save member's raw bytes (as read from the tar) into
 /// a parsed GVAS [`Save`]: PlM1 container -> Kraken decompression -> uesave.
-pub fn decode(raw: &[u8]) -> Result<Save, GvasError> {
-    let header = container::parse_header(raw).map_err(GvasError::Container)?;
-    let payload = container::payload(raw, &header);
+/// Takes `raw` by value (rather than borrowing it) so it can be dropped as
+/// soon as decompression has produced `gvas_bytes` from it, instead of
+/// staying alive for the whole call -- at that point `raw` (the compressed
+/// member bytes, up to `tarball::MAX_MEMBER_SIZE`) is no longer needed,
+/// while uesave's parse of `gvas_bytes` into its `Save` tree necessarily
+/// keeps that decompressed buffer alive for the parse's duration (that's
+/// the unavoidable floor -- see P1+P2).
+pub fn decode(raw: Vec<u8>) -> Result<Save, GvasError> {
+    let header = container::parse_header(&raw).map_err(GvasError::Container)?;
+    let payload = container::payload(&raw, &header);
 
     let gvas_bytes =
         decompress::decompress(payload, header.uncompressed_len).map_err(GvasError::Decompress)?;
+    drop(raw);
 
     SaveReader::new()
         .types(build_types())

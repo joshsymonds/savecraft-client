@@ -1,5 +1,6 @@
 game_id = "palworld"
 sources = ["wasm"]
+icon = "icon.png"
 name = "Palworld"
 description = "Parses Palworld dedicated-save world directories — world overview, base camps, pals, and more"
 channel = "alpha"
@@ -14,6 +15,7 @@ source_url = "https://github.com/joshsymonds/savecraft-client"
 
 limitations = [
   "Steam builds only — no Xbox Game Pass (WGS) save support",
+  "Very large late-game worlds (roughly >20 MB compressed Level.sav) exceed this version's memory budget and fail with a clear size error",
 ]
 
 [attribution]

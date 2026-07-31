@@ -58,7 +58,10 @@ impl fmt::Display for ContainerError {
             ContainerError::UncompressedTooLarge { uncompressed_len } => {
                 write!(
                     f,
-                    "uncompressed size {uncompressed_len} exceeds cap of {MAX_UNCOMPRESSED_LEN} bytes"
+                    "save data ({:.1} MiB uncompressed) exceeds the {} MiB this plugin version \
+                     supports -- not corruption",
+                    *uncompressed_len as f64 / (1024.0 * 1024.0),
+                    MAX_UNCOMPRESSED_LEN / (1024 * 1024)
                 )
             }
             ContainerError::TruncatedPayload {
