@@ -39,11 +39,10 @@ func (d *Daemon) Status() DaemonStatus {
 
 	games := make(map[string]GameStatusInfo, len(d.cfg.Games))
 	for gameID, cfg := range d.cfg.Games {
-		_, watching := d.watchedDirs[cfg.SavePath]
 		games[gameID] = GameStatusInfo{
 			SavePath:       cfg.SavePath,
 			Enabled:        cfg.Enabled,
-			Watching:       watching,
+			Watching:       saveCounts[gameID] > 0,
 			FileExtensions: cfg.FileExtensions,
 			SaveCount:      saveCounts[gameID],
 		}
