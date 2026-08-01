@@ -307,6 +307,14 @@ fn happy_path_players_section_has_the_host_players_tech_and_paldeck_progress() {
     assert_eq!(atmus["technologyPoint"], 14);
     assert_eq!(atmus["paldeckUnlockedCount"], 10);
     assert_eq!(atmus["tribeCaptureCount"], 10);
+    assert_eq!(
+        atmus["position"],
+        serde_json::json!({
+            "x": -346_946.959_174_043_73_f64,
+            "y": 191_651.847_912_949_07_f64,
+            "z": -211.404_500_183_231_1_f64,
+        })
+    );
     let unlocked = atmus["unlockedTechnologies"].as_array().unwrap();
     assert_eq!(unlocked.len(), 27);
     assert!(unlocked.iter().any(|t| t == "Workbench"));
@@ -322,12 +330,16 @@ fn happy_path_pals_party_and_storage_have_full_detail_from_real_pals() {
         .as_array()
         .unwrap();
     assert_eq!(party.len(), 3);
+    assert_eq!(
+        party[0]["instanceId"],
+        "719954a8-47f3-d347-6393-1084f7eb5122"
+    );
     let dream_demon = party
         .iter()
         .find(|p| p["speciesId"] == "DreamDemon")
         .expect("DreamDemon in the party");
     assert_eq!(dream_demon["level"], 7);
-    assert_eq!(dream_demon["gender"], "EPalGenderType::Male");
+    assert_eq!(dream_demon["sex"], "EPalGenderType::Male");
     assert_eq!(
         dream_demon["ownerPlayerUId"],
         "00000000-0000-0000-0000-000000000001"
@@ -344,6 +356,13 @@ fn happy_path_pals_party_and_storage_have_full_detail_from_real_pals() {
         .as_array()
         .unwrap();
     assert_eq!(storage.len(), 28);
+    let all_pals: Vec<_> = party.iter().chain(storage.iter()).collect();
+    assert!(all_pals
+        .iter()
+        .any(|p| p["speciesId"] == "ChickenPal" && p["sex"] == "EPalGenderType::Female"));
+    assert!(all_pals
+        .iter()
+        .any(|p| p["speciesId"] == "PinkCat" && p["sex"] == "EPalGenderType::Male"));
     assert!(
         storage
             .iter()
@@ -462,6 +481,14 @@ fn live_fixture_happy_path_emits_all_seven_sections_with_pinned_values() {
     let overview = &sections["overview"]["data"];
     assert_eq!(overview["hostPlayerLevel"], 9);
     assert_eq!(
+        sections["players"]["data"]["players"][0]["position"],
+        serde_json::json!({
+            "x": -351_879.202_569_715_74_f64,
+            "y": 201_841.419_850_038_3_f64,
+            "z": 1_731.043_340_878_700_7_f64,
+        })
+    );
+    assert_eq!(
         overview["levelMetaTimestampTicks"], 639211170474840000_u64,
         "this save's own LevelMeta timestamp, distinguishing it from the original fixture"
     );
@@ -473,6 +500,19 @@ fn live_fixture_happy_path_emits_all_seven_sections_with_pinned_values() {
         28,
         "storage pal count for this fixture"
     );
+    let party = sections["pals_party"]["data"]["pals"].as_array().unwrap();
+    let storage = sections["pals_storage"]["data"]["pals"].as_array().unwrap();
+    assert_eq!(
+        party[0]["instanceId"],
+        "719954a8-47f3-d347-6393-1084f7eb5122"
+    );
+    let all_pals: Vec<_> = party.iter().chain(storage.iter()).collect();
+    assert!(all_pals
+        .iter()
+        .any(|p| p["speciesId"] == "ChickenPal" && p["sex"] == "EPalGenderType::Female"));
+    assert!(all_pals
+        .iter()
+        .any(|p| p["speciesId"] == "PinkCat" && p["sex"] == "EPalGenderType::Male"));
 }
 
 #[test]

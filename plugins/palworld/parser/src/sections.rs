@@ -337,6 +337,13 @@ pub fn build_overview(level_meta: Option<&LevelMetaFields>, level: &Save) -> Ove
 // --- Players ---------------------------------------------------------------
 
 #[derive(Serialize)]
+pub struct Position {
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+}
+
+#[derive(Serialize)]
 pub struct PlayerSection {
     #[serde(rename = "playerUId")]
     pub player_uid: String,
@@ -351,6 +358,7 @@ pub struct PlayerSection {
     pub paldeck_unlocked_count: Option<usize>,
     #[serde(rename = "tribeCaptureCount")]
     pub tribe_capture_count: Option<i32>,
+    pub position: Option<Position>,
 }
 
 /// The `players` section's top-level shape -- the daemon drops any section
@@ -369,7 +377,9 @@ pub struct Pal {
     pub species_id: String,
     pub nickname: Option<String>,
     pub level: Option<i32>,
-    pub gender: Option<String>,
+    pub sex: Option<String>,
+    #[serde(rename = "instanceId")]
+    pub instance_id: String,
     #[serde(rename = "passiveSkills")]
     pub passive_skills: Vec<String>,
     #[serde(rename = "equippedSkills")]
@@ -390,12 +400,14 @@ pub struct Pal {
     pub owner_player_uid: Option<String>,
 }
 
-fn build_pal(object: &[rawdata::PalProperty]) -> Pal {
+fn build_pal(instance_id: FGuid, object: &[rawdata::PalProperty]) -> Pal {
+    let sex = pal_enum(object, "Gender");
     Pal {
         species_id: pal_str(object, "CharacterID").unwrap_or_default(),
         nickname: pal_str(object, "NickName"),
         level: pal_byte(object, "Level"),
-        gender: pal_enum(object, "Gender"),
+        sex,
+        instance_id: instance_id.to_string(),
         passive_skills: pal_str_array(object, "PassiveSkillList"),
         equipped_skills: pal_str_array(object, "EquipWaza"),
         talent_hp: pal_byte(object, "Talent_HP"),
@@ -894,6 +906,18 @@ fn player_container_id(player: &Save, field: &str) -> Option<FGuid> {
     container_id_guid(find_property(player_save_data(player)?, field)?)
 }
 
+fn player_position(save_data: &Properties) -> Option<Position> {
+    let transform = find_property(save_data, "LastTransform").and_then(as_nested_struct)?;
+    match find_property(transform, "Translation")? {
+        Property::Struct(StructValue::Vector(vector)) => Some(Position {
+            x: vector.x.0,
+            y: vector.y.0,
+            z: vector.z.0,
+        }),
+        _ => None,
+    }
+}
+
 /// A player's own `CharacterSaveParameterMap` instance id, via
 /// `SaveData.IndividualId.InstanceId` -- the key every player's own
 /// character entry (and, from there, their group/guild membership) joins
@@ -917,6 +941,7 @@ fn build_player_section(player: &Save, world: &World, warnings: &mut Vec<String>
             unlocked_technologies: Vec::new(),
             paldeck_unlocked_count: None,
             tribe_capture_count: None,
+            position: None,
         };
     };
 
@@ -951,6 +976,7 @@ fn build_player_section(player: &Save, world: &World, warnings: &mut Vec<String>
     let tribe_capture_count = record_data
         .and_then(|p| find_property(p, "TribeCaptureCount"))
         .and_then(as_int);
+    let position = player_position(save_data);
 
     PlayerSection {
         player_uid: uid.map(|g| g.to_string()).unwrap_or_default(),
@@ -960,6 +986,7 @@ fn build_player_section(player: &Save, world: &World, warnings: &mut Vec<String>
         unlocked_technologies,
         paldeck_unlocked_count,
         tribe_capture_count,
+        position,
     }
 }
 
@@ -988,7 +1015,7 @@ fn build_pals_from_container(
         .filter_map(|slot| {
             let instance_id = guid_bytes_to_fguid(&slot.instance_id);
             match world.find_character(instance_id) {
-                Some(c) => Some(build_pal(&c.object)),
+                Some(c) => Some(build_pal(instance_id, &c.object)),
                 None => {
                     degraded.push(format!(
                         "{label} slot references instance id {instance_id} with no matching CharacterSaveParameterMap entry; skipped"
@@ -1843,6 +1870,10 @@ mod tests {
 
         assert_eq!(section.name, None);
         assert_eq!(section.level, None);
+        assert!(
+            section.position.is_none(),
+            "a missing LastTransform must not fabricate a zero position"
+        );
         assert!(
             warnings.iter().any(|w| w.contains("could not be joined")),
             "expected a warning about the failed character join: {warnings:?}"
