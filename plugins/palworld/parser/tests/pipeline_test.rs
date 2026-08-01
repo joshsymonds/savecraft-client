@@ -10,8 +10,85 @@
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use uesave::{Properties, Property, StructValue, ValueVec};
 
 const WORLD_ID: &str = "1FCE97C34D214643B96A23A20A9E27D1";
+const LIVE_WORLD_ID: &str = "live-20260731";
+
+fn push_path(prefix: &str, name: &str) -> String {
+    if prefix.is_empty() {
+        name.to_string()
+    } else {
+        format!("{prefix}.{name}")
+    }
+}
+
+/// Recursively collects the dotted path of every `Property::Raw` (or
+/// `StructValue::Raw`) reachable from `props` -- a property that failed to
+/// parse and was silently downgraded by `error_to_raw(true)` (see
+/// gvas.rs). Paths follow the exact scope convention uesave's own `Types`
+/// lookup uses when resolving TYPE_HINTS (see gvas.rs's TYPE_HINTS doc
+/// comment): no synthetic "Key"/"Value" component is inserted for a map
+/// entry's struct fields -- the map's own property name is followed
+/// directly by the nested field name.
+fn collect_raw_paths(props: &Properties, prefix: &str, out: &mut Vec<String>) {
+    for (key, prop) in props {
+        let path = push_path(prefix, &key.1);
+        collect_raw_paths_in_property(prop, &path, out);
+    }
+}
+
+fn collect_raw_paths_in_property(prop: &Property, path: &str, out: &mut Vec<String>) {
+    match prop {
+        Property::Raw(_) => out.push(path.to_string()),
+        Property::Struct(StructValue::Struct(inner)) => collect_raw_paths(inner, path, out),
+        Property::Struct(StructValue::Raw(_)) => out.push(path.to_string()),
+        Property::Map(entries) => {
+            for entry in entries {
+                collect_raw_paths_in_property(&entry.key, path, out);
+                collect_raw_paths_in_property(&entry.value, path, out);
+            }
+        }
+        Property::Set(ValueVec::Struct(structs)) | Property::Array(ValueVec::Struct(structs)) => {
+            for s in structs {
+                match s {
+                    StructValue::Struct(inner) => collect_raw_paths(inner, path, out),
+                    StructValue::Raw(_) => out.push(path.to_string()),
+                    _ => {}
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn assert_no_raw_degraded_properties(dir_name: &str) {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("testdata")
+        .join(dir_name)
+        .join("Level.sav");
+    let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("reading {path:?}: {e}"));
+    let save = palworld_parser::gvas::decode(bytes)
+        .unwrap_or_else(|e| panic!("decoding {path:?} should succeed: {e}"));
+    let mut raw_paths = Vec::new();
+    collect_raw_paths(&save.root.properties, "", &mut raw_paths);
+    assert!(
+        raw_paths.is_empty(),
+        "{dir_name}/Level.sav has properties silently degraded to Property::Raw -- \
+         this means a TYPE_HINTS entry in src/gvas.rs is missing or unreachable (a \
+         dead path) for these locations: {raw_paths:#?}"
+    );
+}
+
+#[test]
+fn original_fixture_level_sav_parses_with_zero_raw_degraded_properties() {
+    assert_no_raw_degraded_properties(WORLD_ID);
+}
+
+#[test]
+fn live_fixture_level_sav_parses_with_zero_raw_degraded_properties() {
+    assert_no_raw_degraded_properties(LIVE_WORLD_ID);
+}
 
 fn testdata_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -85,6 +162,33 @@ fn happy_tar() -> Vec<u8> {
         ("Level.sav", &level),
         ("LevelMeta.sav", &level_meta),
         ("LocalData.sav", &local_data),
+        ("WorldOption.sav", &world_option),
+        ("Players/00000000000000000000000000000001.sav", &player),
+    ])
+}
+
+fn live_testdata_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("testdata")
+        .join(LIVE_WORLD_ID)
+}
+
+fn read_live_fixture(name: &str) -> Vec<u8> {
+    let path = live_testdata_dir().join(name);
+    std::fs::read(&path).unwrap_or_else(|e| panic!("reading fixture {path:?}: {e}"))
+}
+
+/// The live-20260731 capture has no `LocalData.sav` member (unlike the
+/// original fixture) -- that file is never read by this plugin (see
+/// lib.rs), so its absence here is not a gap.
+fn live_happy_tar() -> Vec<u8> {
+    let level = read_live_fixture("Level.sav");
+    let level_meta = read_live_fixture("LevelMeta.sav");
+    let world_option = read_live_fixture("WorldOption.sav");
+    let player = read_live_fixture("Players/00000000000000000000000000000001.sav");
+    build_tar(&[
+        ("Level.sav", &level),
+        ("LevelMeta.sav", &level_meta),
         ("WorldOption.sav", &world_option),
         ("Players/00000000000000000000000000000001.sav", &player),
     ])
@@ -315,6 +419,60 @@ fn happy_path_inventory_section_labels_containers_by_role_with_real_items() {
         .find(|c| c["role"] == "common")
         .expect("a common container");
     assert_eq!(common["items"].as_array().unwrap().len(), 23);
+}
+
+/// Regression test for the production OOM incident: the deployed plugin
+/// aborted under wazero's 1 GiB allocation cap parsing this exact live save
+/// because a dead TYPE_HINTS path let a nested map's key/value types go
+/// unresolved, misaligning the byte stream into a garbage FString length.
+/// This drives the full tar -> stdout pipeline (not just gvas::decode) to
+/// prove the fixed TYPE_HINTS table produces a complete result -- all seven
+/// sections -- from the owner's real, currently-live world.
+#[test]
+fn live_fixture_happy_path_emits_all_seven_sections_with_pinned_values() {
+    let out = run_plugin_with_args(&live_happy_tar(), &[LIVE_WORLD_ID]);
+    assert_eq!(out.code, 0, "lines: {:?}", out.lines);
+
+    let results = out.of_type("result");
+    assert_eq!(results.len(), 1, "exactly one result line: {:?}", out.lines);
+    let result = results[0];
+
+    assert_eq!(result["identity"]["saveName"], "Palpagos Islands");
+    assert_eq!(result["identity"]["gameId"], "palworld");
+    assert_eq!(result["identity"]["extra"]["worldId"], LIVE_WORLD_ID);
+
+    let sections = &result["sections"];
+    for name in [
+        "overview",
+        "players",
+        "pals_party",
+        "pals_storage",
+        "guild",
+        "bases",
+        "inventory",
+    ] {
+        assert!(
+            sections.get(name).is_some(),
+            "expected section {name:?} present in the live-fixture result: {:?}",
+            out.lines
+        );
+    }
+
+    // Values pinned from this exact fixture's own parse (see testdata/README.md).
+    let overview = &sections["overview"]["data"];
+    assert_eq!(overview["hostPlayerLevel"], 9);
+    assert_eq!(
+        overview["levelMetaTimestampTicks"], 639211170474840000_u64,
+        "this save's own LevelMeta timestamp, distinguishing it from the original fixture"
+    );
+    assert_eq!(
+        sections["pals_storage"]["data"]["pals"]
+            .as_array()
+            .unwrap()
+            .len(),
+        28,
+        "storage pal count for this fixture"
+    );
 }
 
 #[test]

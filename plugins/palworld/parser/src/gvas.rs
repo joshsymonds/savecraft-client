@@ -34,21 +34,37 @@ impl std::fmt::Display for GvasError {
 /// that does not appear in uesave's paths — collapsed to a single component
 /// here, verified against the real Level.sav fixture (parses to a clean EOF
 /// with zero leftover bytes using this exact table).
+///
+/// PATH CONVENTION (bit us twice — read this before adding an entry):
+/// uesave's `Scope` never pushes a synthetic "Key"/"Value" component when it
+/// descends into a MapProperty's entries. The literal `.Key` / `.Value`
+/// suffixes below are ONLY valid as the *terminal* component of a hint path,
+/// naming the entry key/value struct type for the map named by everything
+/// before them (see uesave's `PropertyType::MapProperty` tag parsing, which
+/// pushes "Key"/"Value" only transiently around that single lookup). Once
+/// you need to name a field *nested inside* that entry struct, resume
+/// directly from the map's own property name — do NOT insert `.Value.` (or
+/// `.Key.`) as an intermediate path component. For example, a nested map
+/// `ChildMap` inside `ParentMap`'s entry struct is
+/// `ParentMap.ChildMap.<Key|Value>`, never `ParentMap.Value.ChildMap.<...>`.
+/// `worldSaveData.DungeonSaveData.RewardSaveDataMap.Key` (a map nested
+/// directly under the non-map `DungeonSaveData` struct) is the simplest
+/// working example of this flattened convention.
 const TYPE_HINTS: &[(&str, &str)] = &[
     ("worldSaveData.CharacterContainerSaveData.Key", "Struct"),
     ("worldSaveData.CharacterSaveParameterMap.Key", "Struct"),
     ("worldSaveData.CharacterSaveParameterMap.Value", "Struct"),
     ("worldSaveData.FoliageGridSaveDataMap.Key", "Struct"),
     (
-        "worldSaveData.FoliageGridSaveDataMap.Value.ModelMap.Value",
+        "worldSaveData.FoliageGridSaveDataMap.ModelMap.Value",
         "Struct",
     ),
     (
-        "worldSaveData.FoliageGridSaveDataMap.Value.ModelMap.Value.InstanceDataMap.Key",
+        "worldSaveData.FoliageGridSaveDataMap.ModelMap.InstanceDataMap.Key",
         "Struct",
     ),
     (
-        "worldSaveData.FoliageGridSaveDataMap.Value.ModelMap.Value.InstanceDataMap.Value",
+        "worldSaveData.FoliageGridSaveDataMap.ModelMap.InstanceDataMap.Value",
         "Struct",
     ),
     ("worldSaveData.FoliageGridSaveDataMap.Value", "Struct"),
@@ -70,24 +86,21 @@ const TYPE_HINTS: &[(&str, &str)] = &[
         "Struct",
     ),
     (
-        "worldSaveData.MapObjectSpawnerInStageSaveData.Value.SpawnerDataMapByLevelObjectInstanceId.Key",
+        "worldSaveData.MapObjectSpawnerInStageSaveData.SpawnerDataMapByLevelObjectInstanceId.Key",
         "Guid",
     ),
     (
-        "worldSaveData.MapObjectSpawnerInStageSaveData.Value.SpawnerDataMapByLevelObjectInstanceId.Value",
+        "worldSaveData.MapObjectSpawnerInStageSaveData.SpawnerDataMapByLevelObjectInstanceId.Value",
         "Struct",
     ),
     (
-        "worldSaveData.MapObjectSpawnerInStageSaveData.Value.SpawnerDataMapByLevelObjectInstanceId.Value.ItemMap.Value",
+        "worldSaveData.MapObjectSpawnerInStageSaveData.SpawnerDataMapByLevelObjectInstanceId.ItemMap.Value",
         "Struct",
     ),
     ("worldSaveData.WorkSaveData.WorkAssignMap.Value", "Struct"),
     ("worldSaveData.BaseCampSaveData.Key", "Guid"),
     ("worldSaveData.BaseCampSaveData.Value", "Struct"),
-    (
-        "worldSaveData.BaseCampSaveData.Value.ModuleMap.Value",
-        "Struct",
-    ),
+    ("worldSaveData.BaseCampSaveData.ModuleMap.Value", "Struct"),
     ("worldSaveData.ItemContainerSaveData.Value", "Struct"),
     ("worldSaveData.CharacterContainerSaveData.Value", "Struct"),
     ("worldSaveData.GroupSaveDataMap.Key", "Guid"),
@@ -121,7 +134,7 @@ const TYPE_HINTS: &[(&str, &str)] = &[
         "Struct",
     ),
     (
-        "worldSaveData.EnemyCampSaveData.EnemyCampStatusMap.Value.TreasureBoxInfoMapBySpawnerName.Value",
+        "worldSaveData.EnemyCampSaveData.EnemyCampStatusMap.TreasureBoxInfoMapBySpawnerName.Value",
         "Struct",
     ),
 ];
