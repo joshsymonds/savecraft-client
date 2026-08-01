@@ -1578,3 +1578,158 @@ func TestEnsurePlugin_FirstInstallProceeds(t *testing.T) {
 		t.Fatalf("first install (no cache anchor) should proceed: %v", err)
 	}
 }
+
+// --- min_daemon_version guard ---
+
+func twoGamesManifest(newerMinVersion string) map[string]PluginInfo {
+	return map[string]PluginInfo{
+		"d2r": {
+			GameID: "d2r", Version: "1.0.0", SHA256: "abc", URL: pluginURL,
+			DefaultPaths: map[string]string{"linux": "~/Games/d2r"},
+		},
+		"palworld": {
+			GameID: "palworld", Version: "1.0.0", SHA256: "def",
+			URL:              "https://example.com/plugins/palworld/parser.wasm",
+			DefaultPaths:     map[string]string{"linux": "~/palworld/SaveGames/*/*"},
+			Unit:             "directory",
+			MinDaemonVersion: newerMinVersion,
+		},
+	}
+}
+
+// TestManifests_MinDaemonVersionGuard_SkipsTooNewPlugin proves a manifest
+// entry requiring a daemon version newer than this one is dropped from
+// Manifests() with the other plugin unaffected.
+func TestManifests_MinDaemonVersionGuard_SkipsTooNewPlugin(t *testing.T) {
+	reg := &fakeRegistry{manifest: twoGamesManifest("2.0.0")}
+	mgr := NewManager(
+		reg, NewCache(t.TempDir()), &fakeLoader{}, nil, testLogger(),
+		WithDaemonVersion("1.5.0"),
+	)
+
+	got, err := mgr.Manifests(context.Background())
+	if err != nil {
+		t.Fatalf("Manifests: %v", err)
+	}
+	if _, ok := got["palworld"]; ok {
+		t.Error("palworld should have been skipped: min_daemon_version 2.0.0 > daemon 1.5.0")
+	}
+	if _, ok := got["d2r"]; !ok {
+		t.Error("d2r should be unaffected by the palworld guard")
+	}
+	if len(got) != 1 {
+		t.Errorf("Manifests() = %d entries, want exactly 1 (d2r only): %v", len(got), got)
+	}
+}
+
+// TestManifests_MinDaemonVersionGuard_EqualVersionPasses confirms the guard
+// compares strictly-newer, not newer-or-equal: a plugin requiring exactly
+// the running daemon version is not skipped.
+func TestManifests_MinDaemonVersionGuard_EqualVersionPasses(t *testing.T) {
+	reg := &fakeRegistry{manifest: twoGamesManifest("1.5.0")}
+	mgr := NewManager(
+		reg, NewCache(t.TempDir()), &fakeLoader{}, nil, testLogger(),
+		WithDaemonVersion("1.5.0"),
+	)
+
+	got, err := mgr.Manifests(context.Background())
+	if err != nil {
+		t.Fatalf("Manifests: %v", err)
+	}
+	if _, ok := got["palworld"]; !ok {
+		t.Error("palworld should pass: min_daemon_version 1.5.0 == daemon 1.5.0, not newer")
+	}
+}
+
+// TestManifests_MinDaemonVersionGuard_NoOpWhenDaemonVersionUnset confirms
+// the guard is inert when the daemon version was never configured (the
+// default): filtering out entries without a known version to compare
+// against would be worse than not filtering at all.
+func TestManifests_MinDaemonVersionGuard_NoOpWhenDaemonVersionUnset(t *testing.T) {
+	reg := &fakeRegistry{manifest: twoGamesManifest("999.0.0")}
+	mgr := NewManager(reg, NewCache(t.TempDir()), &fakeLoader{}, nil, testLogger())
+
+	got, err := mgr.Manifests(context.Background())
+	if err != nil {
+		t.Fatalf("Manifests: %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("Manifests() = %d entries, want 2 (guard inert without a configured daemon version)", len(got))
+	}
+}
+
+// TestManifests_MinDaemonVersionGuard_NoOpForNonNumericDaemonVersion confirms
+// the guard does not fail closed for an unstamped build: cmd/savecraftd
+// defaults its version to "dev", and version.IsNewer parses any non-numeric
+// segment as 0, which would otherwise make every non-empty
+// min_daemon_version compare as newer than "dev" and drop every gated
+// plugin.
+func TestManifests_MinDaemonVersionGuard_NoOpForNonNumericDaemonVersion(t *testing.T) {
+	reg := &fakeRegistry{manifest: twoGamesManifest("1.0.0")}
+	mgr := NewManager(
+		reg, NewCache(t.TempDir()), &fakeLoader{}, nil, testLogger(),
+		WithDaemonVersion("dev"),
+	)
+
+	got, err := mgr.Manifests(context.Background())
+	if err != nil {
+		t.Fatalf("Manifests: %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf(
+			"Manifests() = %d entries, want 2 (guard must no-op for a non-numeric daemon version like \"dev\")",
+			len(got),
+		)
+	}
+}
+
+// TestCheckForUpdates_MinDaemonVersionGuard_ExcludesGatedPlugin confirms the
+// guard also applies to the remote-update check path, not just Manifests().
+func TestCheckForUpdates_MinDaemonVersionGuard_ExcludesGatedPlugin(t *testing.T) {
+	reg := &fakeRegistry{manifest: twoGamesManifest("2.0.0")}
+	mgr := NewManager(
+		reg, NewCache(t.TempDir()), &fakeLoader{}, nil, testLogger(),
+		WithDaemonVersion("1.5.0"),
+	)
+
+	updated, err := mgr.CheckForUpdates(context.Background())
+	if err != nil {
+		t.Fatalf("CheckForUpdates: %v", err)
+	}
+	for _, gameID := range updated {
+		if gameID == "palworld" {
+			t.Error("palworld should not appear in CheckForUpdates: gated by min_daemon_version")
+		}
+	}
+}
+
+// TestEnsurePlugin_MinDaemonVersionGuard_FailsSafeForGatedPlugin confirms
+// that if EnsurePlugin is ever called for a version-gated game (which
+// discovery should never surface), it fails with an error rather than
+// loading a plugin whose contract this daemon doesn't understand yet — and
+// that failure does not affect any other plugin.
+func TestEnsurePlugin_MinDaemonVersionGuard_FailsSafeForGatedPlugin(t *testing.T) {
+	pub, priv := generateTestKeys(t)
+	wasm := []byte("d2r wasm")
+	sig, hash := signAndHash(t, priv, wasm)
+	manifest := twoGamesManifest("2.0.0")
+	d2r := manifest["d2r"]
+	d2r.SHA256 = hash
+	manifest["d2r"] = d2r
+	reg := &fakeRegistry{
+		manifest: manifest,
+		files:    map[string][]byte{pluginURL: wasm, pluginURL + ".sig": sig},
+	}
+	loader := &fakeLoader{}
+	mgr := NewManager(
+		reg, NewCache(t.TempDir()), loader, pub, testLogger(),
+		WithDaemonVersion("1.5.0"),
+	)
+
+	if err := mgr.EnsurePlugin(context.Background(), "palworld"); err == nil {
+		t.Error("EnsurePlugin(palworld) should fail: gated by min_daemon_version")
+	}
+	if err := mgr.EnsurePlugin(context.Background(), "d2r"); err != nil {
+		t.Errorf("EnsurePlugin(d2r) should be unaffected by the palworld guard: %v", err)
+	}
+}

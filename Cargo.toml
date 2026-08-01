@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "libs/clausewitz-core",
+    "plugins/palworld/parser",
     "plugins/stellaris/parser",
     "plugins/vic3/parser",
 ]

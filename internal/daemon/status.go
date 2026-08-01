@@ -8,6 +8,12 @@ type GameStatusInfo struct {
 	Enabled        bool     `json:"enabled"`
 	Watching       bool     `json:"watching"`
 	FileExtensions []string `json:"fileExtensions"`
+	// SaveCount is the number of directories currently watched for this
+	// game (d.watchedDirs entries whose value is this gameID). For a
+	// directory-unit game each entry is one save directory, so this is the
+	// live save count; for a file-unit game it is the number of watched
+	// save directories, not individual save files.
+	SaveCount int `json:"saveCount"`
 }
 
 // DaemonStatus is a snapshot of the daemon's live state, suitable for
@@ -26,14 +32,19 @@ func (d *Daemon) Status() DaemonStatus {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
+	saveCounts := make(map[string]int, len(d.cfg.Games))
+	for _, gameID := range d.watchedDirs {
+		saveCounts[gameID]++
+	}
+
 	games := make(map[string]GameStatusInfo, len(d.cfg.Games))
 	for gameID, cfg := range d.cfg.Games {
-		_, watching := d.watchedDirs[cfg.SavePath]
 		games[gameID] = GameStatusInfo{
 			SavePath:       cfg.SavePath,
 			Enabled:        cfg.Enabled,
-			Watching:       watching,
+			Watching:       saveCounts[gameID] > 0,
 			FileExtensions: cfg.FileExtensions,
+			SaveCount:      saveCounts[gameID],
 		}
 	}
 

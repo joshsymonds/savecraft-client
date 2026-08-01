@@ -1,0 +1,8 @@
+build: build-parser
+
+build-parser:
+    cargo build -p palworld-parser --target wasm32-wasip1 --release
+    cp ../../target/wasm32-wasip1/release/palworld-parser.wasm parser.wasm
+
+test:
+    cargo test -p palworld-parser

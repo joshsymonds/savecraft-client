@@ -1,0 +1,47 @@
+{
+  "game_id": "palworld",
+  "sources": [
+    "wasm"
+  ],
+  "icon": "icon.png",
+  "name": "Palworld",
+  "description": "Parses Palworld dedicated-save world directories — world overview, base camps, pals, and more",
+  "channel": "alpha",
+  "coverage": "partial",
+  "file_extensions": null,
+  "exclude_dirs": [
+    "backup"
+  ],
+  "homepage": "https://savecraft.gg/plugins/palworld",
+  "limitations": [
+    "Steam builds only — no Xbox Game Pass (WGS) save support",
+    "Very large late-game worlds (roughly \u003e20 MB compressed Level.sav) exceed this version's memory budget and fail with a clear size error"
+  ],
+  "unit": "directory",
+  "members": [
+    "Level.sav",
+    "LevelMeta.sav",
+    "WorldOption.sav",
+    "Players/*.sav"
+  ],
+  "min_daemon_version": "2.1.0",
+  "license": "GPL-3.0-or-later",
+  "source_url": "https://github.com/joshsymonds/savecraft-client",
+  "attribution": {
+    "sources": [
+      "pocketpair"
+    ]
+  },
+  "author": {
+    "name": "Josh Symonds",
+    "github": "joshsymonds"
+  },
+  "default_paths": {
+    "windows": "%LOCALAPPDATA%/Pal/Saved/SaveGames/*/*",
+    "linux": "~/.local/share/Steam/steamapps/compatdata/1623730/pfx/drive_c/users/steamuser/AppData/Local/Pal/Saved/SaveGames/*/*",
+    "darwin": ""
+  },
+  "version": "dev",
+  "sha256": "4ac2f2d4f0eb81e8c064b711cab596b5f8e876817cf9c04f81cf0be592e78ee5",
+  "url": "plugins/palworld/parser.wasm"
+}

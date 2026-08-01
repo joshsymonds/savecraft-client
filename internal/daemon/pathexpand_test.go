@@ -178,10 +178,103 @@ func TestResolveGlob_NestedGlobReturnsPattern(t *testing.T) {
 	fs := &fakeFS{
 		dirs: map[string][]string{"/saves": {"dir1"}},
 	}
-	// Nested glob (parent has metachar) should return pattern as-is.
+	// The parent segment's glob ("/*") has no entries to expand against (no
+	// "/" directory in the fixture), so resolution dead-ends and the pattern
+	// is returned as-is for error reporting — same observable outcome as the
+	// old single-level-only restriction, now via genuine resolution failure
+	// rather than a hardcoded nested-glob bailout.
 	got := resolveGlob(fs, "/*/saves", nil)
 	if len(got) != 1 || got[0] != "/*/saves" {
 		t.Errorf("resolveGlob(nested glob) = %v, want [/*/saves]", got)
+	}
+}
+
+// TestResolveGlob_MultiLevelWildcard covers the multi-level glob case the
+// single-level restriction used to forbid: a Steam-ID-style directory (first
+// glob) containing per-save-slot directories (second glob), as used by
+// directory-unit plugins like Palworld ("SaveGames/*/*/").
+func TestResolveGlob_MultiLevelWildcard(t *testing.T) {
+	fs := &fakeFS{
+		dirs: map[string][]string{
+			"/base":            {"1001", "1002"},
+			"/base/1001":       {"saveA", "saveB"},
+			"/base/1002":       {"saveC"},
+			"/base/1001/saveA": {"Level.sav"},
+			"/base/1001/saveB": {"Level.sav"},
+			"/base/1002/saveC": {"Level.sav"},
+		},
+	}
+	got := resolveGlob(fs, "/base/*/*", nil)
+	want := []string{"/base/1001/saveA", "/base/1001/saveB", "/base/1002/saveC"}
+	if len(got) != len(want) {
+		t.Fatalf("resolveGlob(/base/*/*) returned %d results, want %d: %v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("resolveGlob(/base/*/*)[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// TestResolveGlob_MultiLevelNoMatchAtIntermediateLevel confirms that when an
+// intermediate glob segment matches nothing, resolution fails closed (returns
+// the original pattern) instead of silently walking further — multi-level
+// support stays anchored to the declared template, it does not become an
+// unbounded filesystem walk.
+func TestResolveGlob_MultiLevelNoMatchAtIntermediateLevel(t *testing.T) {
+	fs := &fakeFS{
+		dirs: map[string][]string{
+			"/base": {"settings.txt"}, // no directories to match the first "*"
+		},
+	}
+	got := resolveGlob(fs, "/base/*/*", nil)
+	if len(got) != 1 || got[0] != "/base/*/*" {
+		t.Errorf("resolveGlob(/base/*/*) = %v, want [/base/*/*]", got)
+	}
+}
+
+// TestResolveGlob_ProtonStyleMultiLevel resolves a Proton compatdata-prefixed
+// Linux path: one glob for the Steam app-ID directory, then the directory
+// unit's own "SaveGames/*/*/" two-level glob for Steam ID + save slot.
+func TestResolveGlob_ProtonStyleMultiLevel(t *testing.T) {
+	const base = "/home/deck/.steam/steam/steamapps/compatdata"
+	prefix := base + "/1234567890/pfx/SaveGames"
+	fs := &fakeFS{
+		dirs: map[string][]string{
+			base:                          {"1234567890"},
+			base + "/1234567890":          {"pfx"},
+			base + "/1234567890/pfx":      {"SaveGames"},
+			prefix:                        {"76561198000000001"},
+			prefix + "/76561198000000001": {"0123456789ABCDEF0123456789ABCDEF"},
+			prefix + "/76561198000000001/0123456789ABCDEF0123456789ABCDEF": {"Level.sav"},
+		},
+	}
+	// One glob for the Proton compatdata app-ID directory, then the
+	// directory unit's own two-level "SaveGames/*/*" glob.
+	pattern := base + "/*/pfx/SaveGames/*/*"
+	got := resolveGlob(fs, pattern, nil)
+	want := []string{prefix + "/76561198000000001/0123456789ABCDEF0123456789ABCDEF"}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Errorf("resolveGlob(proton multi-level) = %v, want %v", got, want)
+	}
+}
+
+// TestResolveGlob_WindowsLocalAppDataMultiLevel resolves a Windows-style
+// %LOCALAPPDATA%-rooted path (already variable-expanded, as expandPaths would
+// produce) with the same "SaveGames/*/*/" two-level glob.
+func TestResolveGlob_WindowsLocalAppDataMultiLevel(t *testing.T) {
+	const base = "C:/Users/TestUser/AppData/Local/Pal/Saved/SaveGames"
+	fs := &fakeFS{
+		dirs: map[string][]string{
+			base:                        {"76561198000000002"},
+			base + "/76561198000000002": {"FEDCBA9876543210FEDCBA9876543210"},
+			base + "/76561198000000002/FEDCBA9876543210FEDCBA9876543210": {"Level.sav"},
+		},
+	}
+	got := resolveGlob(fs, base+"/*/*", nil)
+	want := []string{base + "/76561198000000002/FEDCBA9876543210FEDCBA9876543210"}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Errorf("resolveGlob(windows multi-level) = %v, want %v", got, want)
 	}
 }
 

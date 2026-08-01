@@ -78,7 +78,7 @@ func createSubsystems(
 	// the daemon binary + its manifest are served.
 	reg := pluginmgr.NewHTTPRegistry(cfg.ServerURL, signing.PublicKey())
 
-	mgr := pluginmgr.NewManager(reg, cache, wr, pubKey, logger)
+	mgr := pluginmgr.NewManager(reg, cache, wr, pubKey, logger, pluginmgr.WithDaemonVersion(version))
 	if cfg.PluginDir != "" {
 		mgr.SetLocalDir(cfg.PluginDir)
 	}

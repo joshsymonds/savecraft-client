@@ -1,9 +1,11 @@
 package daemon
 
 import (
+	"archive/tar"
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"encoding/json/jsontext"
 	"errors"
@@ -15,6 +17,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -30,6 +33,39 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.DiscardHandler)
 }
 
+// recordingHandler is a minimal slog.Handler that captures emitted records,
+// used to assert a specific warning/error was logged (e.g. the S3/S4
+// directory-unit size-cap and read-failure skips) without depending on any
+// particular log output formatting.
+type recordingHandler struct {
+	mu      *sync.Mutex
+	records *[]slog.Record
+}
+
+// newRecordingLogger returns a logger backed by recordingHandler and an
+// accessor for a snapshot of the records captured so far.
+func newRecordingLogger() (*slog.Logger, func() []slog.Record) {
+	var records []slog.Record
+	h := &recordingHandler{mu: &sync.Mutex{}, records: &records}
+	return slog.New(h), func() []slog.Record {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		return append([]slog.Record(nil), *h.records...)
+	}
+}
+
+func (h *recordingHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *recordingHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	*h.records = append(*h.records, r)
+	return nil
+}
+
+func (h *recordingHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *recordingHandler) WithGroup(string) slog.Handler      { return h }
+
 // --- Fakes ---
 
 // testAllSaveRoots makes the save-path allowlist permissive (filesystem
@@ -43,6 +79,7 @@ type fakeFS struct {
 	dirs          map[string][]string // dir path -> file names
 	symlinks      map[string]string   // path -> resolved target (symlink escape tests)
 	readFileCount int                 // number of ReadFile calls (for verifying bypass)
+	readDirCalls  []string            // paths passed to ReadDir, in call order (for verifying recursion never attempted)
 }
 
 // EvalSymlinks mimics filepath.EvalSymlinks: returns the mapped target for a
@@ -60,7 +97,13 @@ func (f *fakeFS) EvalSymlinks(path string) (string, error) {
 	return "", os.ErrNotExist
 }
 
+// Stat mimics os.Stat's symlink-following: a path registered in f.symlinks
+// resolves through to its target before being classified, so a symlink to a
+// directory reports IsDir() true, exactly like the real filesystem.
 func (f *fakeFS) Stat(path string) (fs.FileInfo, error) {
+	if target, ok := f.symlinks[path]; ok {
+		return f.Stat(target)
+	}
 	if _, ok := f.dirs[path]; ok {
 		return &fakeFileInfo{name: filepath.Base(path), dir: true}, nil
 	}
@@ -71,13 +114,21 @@ func (f *fakeFS) Stat(path string) (fs.FileInfo, error) {
 }
 
 func (f *fakeFS) ReadDir(path string) ([]fs.DirEntry, error) {
+	f.readDirCalls = append(f.readDirCalls, path)
 	names, ok := f.dirs[path]
 	if !ok {
 		return nil, os.ErrNotExist
 	}
 	entries := make([]fs.DirEntry, len(names))
 	for i, name := range names {
-		entries[i] = &fakeDirEntry{name: name}
+		// IsDir/Type reflect only whether the child is itself a registered
+		// directory (f.dirs) or symlink (f.symlinks), never resolving a
+		// symlink target — mirroring a real os.DirEntry, which reports a
+		// symlink's own (non-dir) type without following it.
+		full := filepath.Join(path, name)
+		_, isDir := f.dirs[full]
+		_, isSymlink := f.symlinks[full]
+		entries[i] = &fakeDirEntry{name: name, dir: isDir, symlink: isSymlink}
 	}
 	return entries, nil
 }
@@ -121,29 +172,45 @@ func (fi *fakeFileInfo) Sys() any {
 	return nil
 }
 
-type fakeDirEntry struct{ name string }
+type fakeDirEntry struct {
+	name    string
+	dir     bool
+	symlink bool
+}
 
 func (de *fakeDirEntry) Name() string {
 	return de.name
 }
 
 func (de *fakeDirEntry) IsDir() bool {
-	return false
+	return de.dir
 }
 
 func (de *fakeDirEntry) Type() fs.FileMode {
+	if de.symlink {
+		return fs.ModeSymlink
+	}
+	if de.dir {
+		return fs.ModeDir
+	}
 	return 0
 }
 
 func (de *fakeDirEntry) Info() (fs.FileInfo, error) {
-	return &fakeFileInfo{name: de.name}, nil
+	return &fakeFileInfo{name: de.name, dir: de.dir}, nil
 }
 
 type fakeWatcher struct {
-	events  chan FileEvent
-	added   []string
-	removed []string
-	mu      sync.Mutex
+	events        chan FileEvent
+	added         []string
+	addedDirUnits []addDirUnitCall
+	removed       []string
+	mu            sync.Mutex
+}
+
+type addDirUnitCall struct {
+	Root        string
+	ExcludeDirs []string
 }
 
 func newFakeWatcher() *fakeWatcher {
@@ -154,6 +221,13 @@ func (w *fakeWatcher) Add(path string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.added = append(w.added, path)
+	return nil
+}
+
+func (w *fakeWatcher) AddDirectoryUnit(root string, excludeDirs []string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.addedDirUnits = append(w.addedDirUnits, addDirUnitCall{Root: root, ExcludeDirs: excludeDirs})
 	return nil
 }
 
@@ -189,18 +263,19 @@ func (r *blockingRunner) Run(_ context.Context, _ string, _ string, _ []byte, _ 
 
 type runCall struct {
 	GameID    string
+	FileName  string
 	SaveBytes []byte
 }
 
 func (r *fakeRunner) Run(
 	_ context.Context,
 	gameID string,
-	_ string,
+	fileName string,
 	saveBytes []byte,
 	onStatus func(string),
 ) (*GameState, error) {
 	r.mu.Lock()
-	r.calls = append(r.calls, runCall{GameID: gameID, SaveBytes: saveBytes})
+	r.calls = append(r.calls, runCall{GameID: gameID, FileName: fileName, SaveBytes: saveBytes})
 	r.mu.Unlock()
 
 	if msgs, ok := r.statusMsgs[gameID]; ok {
@@ -3930,6 +4005,51 @@ func TestUnwatchGameEvictsParseFailures(t *testing.T) {
 	}
 }
 
+// TestUnwatchGame_DirectoryUnit_EvictsSnapshotHashAndRedispatches closes the
+// Q3 coverage gap: scanning a palworld-style directory-unit fixture seeds
+// dirUnitSnapshotHashes for the resolved save directory (see
+// dispatchDirectoryUnit); unwatchGame must evict that entry
+// (evictUnwatchedPathCaches already handles dirUnitSnapshotHashes, but
+// nothing exercised the directory-unit path specifically), and a later
+// re-scan with byte-identical on-disk content must still re-dispatch, since
+// the aggregate dedup has nothing left to compare against.
+func TestUnwatchGame_DirectoryUnit_EvictsSnapshotHashAndRedispatches(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := &fakeRunner{results: map[string]*GameState{"palworld": newD2RState()}}
+	cfg := palworldConfig()
+	pm := palworldPluginManager()
+
+	d := New(cfg, palworldFS(), newFakeWatcher(), runner, ws, pm, nil, testLogger())
+	d.scanGame(context.Background(), "palworld", cfg.Games["palworld"], false)
+	if len(runner.calls) != 1 {
+		t.Fatalf("setup: runner called %d times, want 1", len(runner.calls))
+	}
+
+	d.mu.RLock()
+	_, seeded := d.dirUnitSnapshotHashes[palworldSaveDir]
+	d.mu.RUnlock()
+	if !seeded {
+		t.Fatal("setup: dirUnitSnapshotHashes not seeded by the initial scan")
+	}
+
+	d.unwatchGame(context.Background(), cfg.Games["palworld"].SavePath)
+
+	d.mu.RLock()
+	_, stillThere := d.dirUnitSnapshotHashes[palworldSaveDir]
+	d.mu.RUnlock()
+	if stillThere {
+		t.Error("unwatchGame did not evict the directory-unit snapshot hash")
+	}
+
+	d.scanGame(context.Background(), "palworld", cfg.Games["palworld"], false)
+	if len(runner.calls) != 2 {
+		t.Errorf(
+			"runner called %d times after re-scan, want 2 (evicted snapshot must force a re-dispatch)",
+			len(runner.calls),
+		)
+	}
+}
+
 func TestUpdatePlugins_NoPluginManager(t *testing.T) {
 	ws := newFakeWSClient()
 	cfg := Config{
@@ -4498,5 +4618,564 @@ func TestHandleConfigUpdate_SavePathOutsideAllowlistRefused(t *testing.T) {
 	d.mu.RUnlock()
 	if ok && stored.SavePath == "/etc" {
 		t.Errorf("disallowed SavePath /etc was stored as game config: %+v", stored)
+	}
+}
+
+// --- Directory-unit tests ---
+
+const palworldSaveDir = "/saves/palworld/SaveGames/76561198000000001/SAVEID1"
+
+func palworldMembers() []string {
+	return []string{"Level.sav", "LevelMeta.sav", "Players/*.sav"}
+}
+
+// palworldFS builds a fakeFS for a single Palworld-style directory-unit
+// save: a top-level Level.sav/LevelMeta.sav pair, a nested Players/ member,
+// and an excluded backup/ subdirectory whose contents must never appear in
+// a member snapshot or tar archive.
+func palworldFS() *fakeFS {
+	return &fakeFS{
+		dirs: map[string][]string{
+			"/saves/palworld/SaveGames":                   {"76561198000000001"},
+			"/saves/palworld/SaveGames/76561198000000001": {"SAVEID1"},
+			palworldSaveDir:                               {"Level.sav", "LevelMeta.sav", "Players", "backup"},
+			palworldSaveDir + "/Players":                  {"player1.sav"},
+			palworldSaveDir + "/backup":                   {"Level.sav.bak"},
+		},
+		files: map[string][]byte{
+			palworldSaveDir + "/Level.sav":            []byte("level data"),
+			palworldSaveDir + "/LevelMeta.sav":        []byte("meta data"),
+			palworldSaveDir + "/Players/player1.sav":  []byte("player data"),
+			palworldSaveDir + "/backup/Level.sav.bak": []byte("stale backup data"),
+		},
+	}
+}
+
+func palworldConfig() Config {
+	return Config{
+		SourceID: "steam-deck",
+		Version:  "0.1.0",
+		Games: map[string]GameConfig{
+			"palworld": {
+				SavePath:    "/saves/palworld/SaveGames/*/*",
+				ExcludeDirs: []string{"backup"},
+				Enabled:     true,
+			},
+		},
+	}
+}
+
+func palworldPluginManager() *fakePluginManager {
+	return &fakePluginManager{
+		manifests: map[string]pluginmgr.PluginInfo{
+			"palworld": {
+				GameID:       "palworld",
+				Name:         "Palworld",
+				Unit:         "directory",
+				Members:      palworldMembers(),
+				DefaultPaths: map[string]string{runtime.GOOS: "/saves/palworld/SaveGames/*/*"},
+			},
+		},
+	}
+}
+
+func readTarEntries(t *testing.T, tarBytes []byte) (names []string, contents map[string]string) {
+	t.Helper()
+	contents = map[string]string{}
+	tr := tar.NewReader(bytes.NewReader(tarBytes))
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("tar read: %v", err)
+		}
+		names = append(names, hdr.Name)
+		data, readErr := io.ReadAll(tr)
+		if readErr != nil {
+			t.Fatalf("tar member read: %v", readErr)
+		}
+		contents[hdr.Name] = string(data)
+	}
+	return names, contents
+}
+
+// TestReadThenTarDirectoryUnitMembers_MembersRelativeSortedExcluded covers
+// the tar dispatch success criteria directly, through the P3-split pipeline
+// (directoryUnitMembers walk -> readDirectoryUnitMembers hash-only pass ->
+// tarFromDirUnitMembers) that replaced the old monolithic
+// buildDirectoryUnitTar: member paths relative to the save root,
+// deterministic sorted order, correct contents, the excluded backup/
+// subdirectory omitted entirely, and one hash per member.
+func TestReadThenTarDirectoryUnitMembers_MembersRelativeSortedExcluded(t *testing.T) {
+	d := New(
+		Config{}, palworldFS(), newFakeWatcher(), &fakeRunner{},
+		newFakeWSClient(), &fakePluginManager{}, nil, testLogger(),
+	)
+
+	relPaths := d.directoryUnitMembers(palworldSaveDir, palworldMembers(), []string{"backup"})
+	want := []string{"Level.sav", "LevelMeta.sav", "Players/player1.sav"}
+	if !slices.Equal(relPaths, want) {
+		t.Fatalf("directoryUnitMembers = %v, want %v (sorted, relative to save root)", relPaths, want)
+	}
+
+	members, err := d.readDirectoryUnitMembers(context.Background(), palworldSaveDir, relPaths)
+	if err != nil {
+		t.Fatalf("readDirectoryUnitMembers: %v", err)
+	}
+	if len(members) != 3 {
+		t.Fatalf("members = %d entries, want 3", len(members))
+	}
+
+	tarBytes, err := tarFromDirUnitMembers(members)
+	if err != nil {
+		t.Fatalf("tarFromDirUnitMembers: %v", err)
+	}
+
+	names, contents := readTarEntries(t, tarBytes)
+	if !slices.Equal(names, want) {
+		t.Fatalf("tar member names = %v, want %v (sorted, relative to save root)", names, want)
+	}
+	if contents["Level.sav"] != "level data" || contents["LevelMeta.sav"] != "meta data" ||
+		contents["Players/player1.sav"] != "player data" {
+		t.Errorf("tar member contents = %+v", contents)
+	}
+	for _, n := range names {
+		if strings.Contains(n, "backup") {
+			t.Errorf("excluded backup/ subdirectory leaked into tar: %s", n)
+		}
+	}
+}
+
+// TestReadDirectoryUnitMembers_MemberOverSizeCapSkipped proves S3: a single
+// member whose content exceeds dirUnitMemberSizeCap is skipped (logged
+// warning) rather than aborting the whole read, and a normal-sized sibling
+// member still comes through.
+func TestReadDirectoryUnitMembers_MemberOverSizeCapSkipped(t *testing.T) {
+	logger, records := newRecordingLogger()
+	oversized := make([]byte, dirUnitMemberSizeCap+1)
+	fsys := &fakeFS{
+		dirs: map[string][]string{"/saves/unit": {"Big.sav", "Small.sav"}},
+		files: map[string][]byte{
+			"/saves/unit/Big.sav":   oversized,
+			"/saves/unit/Small.sav": []byte("small"),
+		},
+	}
+	d := New(Config{}, fsys, newFakeWatcher(), &fakeRunner{}, newFakeWSClient(), &fakePluginManager{}, nil, logger)
+
+	members, err := d.readDirectoryUnitMembers(context.Background(), "/saves/unit", []string{"Big.sav", "Small.sav"})
+	if err != nil {
+		t.Fatalf("readDirectoryUnitMembers: %v", err)
+	}
+	if len(members) != 1 || members[0].rel != "Small.sav" {
+		t.Fatalf("members = %+v, want only Small.sav (Big.sav must be skipped for exceeding the size cap)", members)
+	}
+
+	var warned bool
+	for _, r := range records() {
+		if r.Level == slog.LevelWarn && strings.Contains(r.Message, "size cap") {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Error("expected a logged warning for the over-cap member")
+	}
+}
+
+// TestReadDirectoryUnitMembers_TotalOverCapAborts proves S3: once the
+// running total of member sizes exceeds dirUnitTotalSizeCap, the whole read
+// aborts with an error — even though A.sav and B.sav are each individually
+// under the per-member cap (exactly at it, in fact) and would otherwise be
+// accepted.
+func TestReadDirectoryUnitMembers_TotalOverCapAborts(t *testing.T) {
+	atCap := make([]byte, dirUnitMemberSizeCap) // exactly at the per-member cap: allowed individually
+	fsys := &fakeFS{
+		dirs: map[string][]string{"/saves/unit": {"A.sav", "B.sav", "C.sav"}},
+		files: map[string][]byte{
+			"/saves/unit/A.sav": atCap,
+			"/saves/unit/B.sav": atCap,
+			"/saves/unit/C.sav": []byte("x"), // tips the running total past dirUnitTotalSizeCap
+		},
+	}
+	d := New(
+		Config{},
+		fsys,
+		newFakeWatcher(),
+		&fakeRunner{},
+		newFakeWSClient(),
+		&fakePluginManager{},
+		nil,
+		testLogger(),
+	)
+
+	_, err := d.readDirectoryUnitMembers(context.Background(), "/saves/unit", []string{"A.sav", "B.sav", "C.sav"})
+	if err == nil {
+		t.Fatal("expected error once the running total exceeds the directory-unit total size cap")
+	}
+}
+
+// TestReadDirectoryUnitMembers_UnreadableMemberSkippedWithWarning proves S4:
+// a single member that fails to read (e.g. a live race against the game
+// process still writing it) is skipped with a logged warning instead of
+// aborting the whole snapshot, and the archive is still built from whatever
+// did read successfully.
+func TestReadDirectoryUnitMembers_UnreadableMemberSkippedWithWarning(t *testing.T) {
+	logger, records := newRecordingLogger()
+	fsys := &fakeFS{
+		dirs: map[string][]string{"/saves/unit": {"Good.sav", "Missing.sav"}},
+		files: map[string][]byte{
+			"/saves/unit/Good.sav": []byte("good data"),
+			// Missing.sav intentionally has no fixture entry, so ReadFile fails.
+		},
+	}
+	d := New(Config{}, fsys, newFakeWatcher(), &fakeRunner{}, newFakeWSClient(), &fakePluginManager{}, nil, logger)
+
+	members, err := d.readDirectoryUnitMembers(context.Background(), "/saves/unit", []string{"Good.sav", "Missing.sav"})
+	if err != nil {
+		t.Fatalf("readDirectoryUnitMembers: %v", err)
+	}
+	if len(members) != 1 || members[0].rel != "Good.sav" {
+		t.Fatalf("members = %+v, want only Good.sav (archive still built without the unreadable member)", members)
+	}
+
+	var warned bool
+	for _, r := range records() {
+		if r.Level == slog.LevelWarn && strings.Contains(r.Message, "unreadable") {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Error("expected a logged warning for the unreadable member")
+	}
+}
+
+// TestReadDirectoryUnitMembers_AllUnreadableAborts proves the S4 "abort only
+// if ZERO members remain" boundary: when every candidate member fails to
+// read, the snapshot aborts with an error rather than silently dispatching
+// an empty archive — a live race explains one bad member, never all of
+// them, so this signals a real problem worth surfacing.
+func TestReadDirectoryUnitMembers_AllUnreadableAborts(t *testing.T) {
+	fsys := &fakeFS{dirs: map[string][]string{"/saves/unit": {"A.sav", "B.sav"}}}
+	d := New(
+		Config{},
+		fsys,
+		newFakeWatcher(),
+		&fakeRunner{},
+		newFakeWSClient(),
+		&fakePluginManager{},
+		nil,
+		testLogger(),
+	)
+
+	_, err := d.readDirectoryUnitMembers(context.Background(), "/saves/unit", []string{"A.sav", "B.sav"})
+	if err == nil {
+		t.Fatal("expected error when every candidate member fails to read (zero members remain)")
+	}
+}
+
+// TestScanGame_DirectoryUnit_SaveCountIsOnePerDirectory confirms a
+// directory-unit save counts as exactly ONE save, not one per member file
+// (there are 3 matching member files in the fixture, but 1 save directory).
+func TestScanGame_DirectoryUnit_SaveCountIsOnePerDirectory(t *testing.T) {
+	ws := newFakeWSClient()
+	watcher := newFakeWatcher()
+	runner := &fakeRunner{
+		results: map[string]*GameState{"palworld": newD2RState()},
+	}
+	cfg := palworldConfig()
+	pm := palworldPluginManager()
+
+	d := New(cfg, palworldFS(), watcher, runner, ws, pm, nil, testLogger())
+	d.scanGame(context.Background(), "palworld", cfg.Games["palworld"], false)
+
+	detected := ws.sentProto("gameDetected", 0)
+	if detected == nil {
+		t.Fatal("missing gameDetected")
+	}
+	if saveCount := detected.GetGameDetected().SaveCount; saveCount != 1 {
+		t.Errorf("SaveCount = %d, want 1 (one directory save, not 3 member files)", saveCount)
+	}
+
+	if len(runner.calls) != 1 {
+		t.Fatalf("runner called %d times, want 1", len(runner.calls))
+	}
+	if runner.calls[0].FileName != "SAVEID1" {
+		t.Errorf("fileName = %q, want the save directory's own base name %q", runner.calls[0].FileName, "SAVEID1")
+	}
+	names, _ := readTarEntries(t, runner.calls[0].SaveBytes)
+	if len(names) != 3 {
+		t.Errorf("dispatched tar has %d members, want 3", len(names))
+	}
+
+	if len(watcher.addedDirUnits) != 1 {
+		t.Fatalf("AddDirectoryUnit called %d times, want 1", len(watcher.addedDirUnits))
+	}
+	if watcher.addedDirUnits[0].Root != palworldSaveDir {
+		t.Errorf("AddDirectoryUnit root = %q, want %q", watcher.addedDirUnits[0].Root, palworldSaveDir)
+	}
+	if !slices.Equal(watcher.addedDirUnits[0].ExcludeDirs, []string{"backup"}) {
+		t.Errorf("AddDirectoryUnit excludeDirs = %v, want [backup]", watcher.addedDirUnits[0].ExcludeDirs)
+	}
+
+	d.mu.RLock()
+	gameID, watched := d.watchedDirs[palworldSaveDir]
+	d.mu.RUnlock()
+	if !watched || gameID != "palworld" {
+		t.Errorf("watchedDirs[%q] = (%q, %v), want (palworld, true)", palworldSaveDir, gameID, watched)
+	}
+}
+
+// TestHandleFileEvent_DirectoryUnit_RootRoutesAndDispatches confirms a
+// coalesced root FileEvent (as the watcher emits for directory units — see
+// watcher.AddDirectoryUnit) is recognized directly, without requiring
+// filepath.Dir(ev.Path) to match a watched directory — the nested-event
+// routing fix. A write nested under Players/ is represented by the watcher's
+// already-coalesced root event; this test exercises the daemon's handling of
+// that root event.
+func TestHandleFileEvent_DirectoryUnit_RootRoutesAndDispatches(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := &fakeRunner{results: map[string]*GameState{"palworld": newD2RState()}}
+	cfg := palworldConfig()
+	pm := palworldPluginManager()
+
+	d := New(cfg, palworldFS(), newFakeWatcher(), runner, ws, pm, nil, testLogger())
+	d.watchedDirs[palworldSaveDir] = "palworld"
+
+	d.handleFileEvent(context.Background(), FileEvent{Path: palworldSaveDir, Op: FileModify})
+
+	if len(runner.calls) != 1 {
+		t.Fatalf("runner called %d times, want 1", len(runner.calls))
+	}
+	if runner.calls[0].GameID != "palworld" {
+		t.Errorf("gameID = %q, want palworld", runner.calls[0].GameID)
+	}
+	types := ws.sentEventTypes()
+	if !slices.Contains(types, "pushSave") {
+		t.Error("missing pushSave event")
+	}
+}
+
+// TestHandleFileEvent_DirectoryUnit_AggregateDedup_UnchangedSkipsReparse
+// confirms the aggregate (path,hash) dedup: firing the root event twice with
+// identical on-disk content re-parses only once.
+func TestHandleFileEvent_DirectoryUnit_AggregateDedup_UnchangedSkipsReparse(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := &fakeRunner{results: map[string]*GameState{"palworld": newD2RState()}}
+	cfg := palworldConfig()
+	pm := palworldPluginManager()
+
+	d := New(cfg, palworldFS(), newFakeWatcher(), runner, ws, pm, nil, testLogger())
+	d.watchedDirs[palworldSaveDir] = "palworld"
+
+	d.handleFileEvent(context.Background(), FileEvent{Path: palworldSaveDir, Op: FileModify})
+	d.handleFileEvent(context.Background(), FileEvent{Path: palworldSaveDir, Op: FileModify})
+
+	if len(runner.calls) != 1 {
+		t.Errorf("runner called %d times, want 1 (unchanged member set must not re-parse)", len(runner.calls))
+	}
+}
+
+// TestHandleFileEvent_DirectoryUnit_AggregateDedup_ChangedMemberReparses
+// confirms a genuine content change to one member re-triggers the parse.
+func TestHandleFileEvent_DirectoryUnit_AggregateDedup_ChangedMemberReparses(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := &fakeRunner{results: map[string]*GameState{"palworld": newD2RState()}}
+	cfg := palworldConfig()
+	pm := palworldPluginManager()
+	fsys := palworldFS()
+
+	d := New(cfg, fsys, newFakeWatcher(), runner, ws, pm, nil, testLogger())
+	d.watchedDirs[palworldSaveDir] = "palworld"
+
+	d.handleFileEvent(context.Background(), FileEvent{Path: palworldSaveDir, Op: FileModify})
+	fsys.files[palworldSaveDir+"/Level.sav"] = []byte("level data v2")
+	d.handleFileEvent(context.Background(), FileEvent{Path: palworldSaveDir, Op: FileModify})
+
+	if len(runner.calls) != 2 {
+		t.Errorf("runner called %d times, want 2 (changed member must re-parse)", len(runner.calls))
+	}
+}
+
+// TestDiscoverGames_DirectoryUnit_CountsDirectoriesNotMembers confirms
+// discovery counts qualifying save directories, not their member files —
+// consistent with the scanGame SaveCount semantics.
+func TestDiscoverGames_DirectoryUnit_CountsDirectoriesNotMembers(t *testing.T) {
+	ws := newFakeWSClient()
+	fsys := palworldFS()
+	// Add a second save slot directory under the same Steam ID.
+	fsys.dirs["/saves/palworld/SaveGames/76561198000000001"] = []string{"SAVEID1", "SAVEID2"}
+	fsys.dirs["/saves/palworld/SaveGames/76561198000000001/SAVEID2"] = []string{"Level.sav"}
+	fsys.files["/saves/palworld/SaveGames/76561198000000001/SAVEID2/Level.sav"] = []byte("level2")
+
+	pm := palworldPluginManager()
+	d := New(Config{Games: map[string]GameConfig{}}, fsys, newFakeWatcher(), &fakeRunner{}, ws, pm, nil, testLogger())
+	d.discoverGames(context.Background())
+
+	gd := ws.sentProto("gamesDiscovered", 0).GetGamesDiscovered()
+	if len(gd.Games) != 1 {
+		t.Fatalf("games count = %d, want 1", len(gd.Games))
+	}
+	if gd.Games[0].FileCount != 2 {
+		t.Errorf("FileCount = %d, want 2 (two save directories, not member files)", gd.Games[0].FileCount)
+	}
+}
+
+// TestPluginChanged_DirectoryUnit_DispatchesOneTarNoPerFileEvents proves
+// pluginChanged branches directory-unit games to rescanQuietDirectoryUnit
+// (mirroring scanGame) instead of unconditionally calling rescanQuiet, whose
+// ReadDir+filterSaveFiles path would dispatch raw member files under file
+// identities to a plugin that expects one tar archive under the directory
+// identity. It also proves the stale dirUnitSnapshotHashes entry for the
+// save directory is invalidated, so the forced re-parse below isn't itself
+// suppressed by the aggregate dedup.
+func TestPluginChanged_DirectoryUnit_DispatchesOneTarNoPerFileEvents(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := &fakeRunner{results: map[string]*GameState{"palworld": newD2RState()}}
+	cfg := palworldConfig()
+	pm := palworldPluginManager()
+
+	d := New(cfg, palworldFS(), newFakeWatcher(), runner, ws, pm, nil, testLogger())
+	// Initial scan watches the save directory and dispatches the initial
+	// tar, seeding dirUnitSnapshotHashes with the current (unchanged) content.
+	d.scanGame(context.Background(), "palworld", cfg.Games["palworld"], false)
+	if len(runner.calls) != 1 {
+		t.Fatalf("setup: runner called %d times, want 1", len(runner.calls))
+	}
+
+	d.pluginChanged(context.Background(), "palworld", cfg.Games["palworld"])
+
+	if len(runner.calls) != 2 {
+		t.Fatalf(
+			"runner called %d times after pluginChanged, want 2 (exactly one forced re-dispatch)",
+			len(runner.calls),
+		)
+	}
+	second := runner.calls[1]
+	if second.GameID != "palworld" {
+		t.Errorf("gameID = %q, want palworld", second.GameID)
+	}
+	if second.FileName != "SAVEID1" {
+		t.Errorf(
+			"fileName = %q, want the save directory's own base name %q (directory identity, not a raw member)",
+			second.FileName, "SAVEID1",
+		)
+	}
+	names, _ := readTarEntries(t, second.SaveBytes)
+	if len(names) != 3 {
+		t.Errorf("re-dispatched tar has %d members, want 3", len(names))
+	}
+	for _, call := range runner.calls {
+		if call.FileName == "Level.sav" || call.FileName == "LevelMeta.sav" {
+			t.Errorf("per-file raw dispatch leaked through: fileName=%q", call.FileName)
+		}
+	}
+}
+
+// TestDirectoryUnitMembers_RecursesRealDirsSkipsSymlinks proves the walk
+// recurses using the ReadDir entry's own IsDir (never a followed stat, which
+// is what let a symlinked directory tree get archived and a symlink cycle
+// recurse unbounded): "linked" is a symlink to a real directory — Stat
+// follows it and would (with the old, buggy Stat-based walk) report it as a
+// dir, but the ReadDir entry for it correctly reports non-dir without
+// following, exactly like a real os.DirEntry. It also proves the S4 fix:
+// "linked" itself is entirely excluded from the member set (a symlink is
+// never archived, whether it targets a file or a directory — otherwise its
+// target's content, potentially outside the save directory, would end up in
+// the tar). A real nested subdirectory (realsub) must still recurse and have
+// its member matched.
+func TestDirectoryUnitMembers_RecursesRealDirsSkipsSymlinks(t *testing.T) {
+	fsys := &fakeFS{
+		dirs: map[string][]string{
+			"/root":             {"realsub", "linked"},
+			"/root/realsub":     {"a.sav"},
+			"/elsewhere/target": {},
+		},
+		files: map[string][]byte{
+			"/root/realsub/a.sav": []byte("data"),
+		},
+		symlinks: map[string]string{
+			"/root/linked": "/elsewhere/target",
+		},
+	}
+	d := &Daemon{fs: fsys}
+
+	got := d.directoryUnitMembers("/root", nil, nil)
+
+	if !slices.Contains(got, "realsub/a.sav") {
+		t.Errorf("members = %v, want to contain realsub/a.sav (real subdirectory must recurse)", got)
+	}
+	if slices.Contains(got, "linked") {
+		t.Errorf(
+			"members = %v, must not contain \"linked\" (a symlink entry must never be archived as a member)",
+			got,
+		)
+	}
+	if slices.Contains(fsys.readDirCalls, "/root/linked") {
+		t.Errorf(
+			"readDirCalls = %v, must never contain /root/linked (a symlinked directory must never be recursed into)",
+			fsys.readDirCalls,
+		)
+	}
+}
+
+// TestDirectoryUnitMembers_SkipsFileSymlink proves the S4 symlink skip also
+// covers a symlink whose target is a regular file, not just a directory: a
+// symlinked file that would otherwise match every member pattern (nil
+// members) must still be excluded from the candidate set.
+func TestDirectoryUnitMembers_SkipsFileSymlink(t *testing.T) {
+	fsys := &fakeFS{
+		dirs: map[string][]string{
+			"/root": {"Level.sav", "Level.sav.link"},
+		},
+		files: map[string][]byte{
+			"/root/Level.sav": []byte("real data"),
+		},
+		symlinks: map[string]string{
+			"/root/Level.sav.link": "/root/Level.sav",
+		},
+	}
+	d := &Daemon{fs: fsys}
+
+	got := d.directoryUnitMembers("/root", nil, nil)
+
+	if !slices.Contains(got, "Level.sav") {
+		t.Errorf("members = %v, want to contain the real file Level.sav", got)
+	}
+	if slices.Contains(got, "Level.sav.link") {
+		t.Errorf("members = %v, must not contain the symlinked file Level.sav.link", got)
+	}
+}
+
+// TestMatchesMember_SlashSeparatorExact proves member matching is
+// slash-exact regardless of the host OS path separator: members are
+// authored with '/' (e.g. "Players/*.sav"), and matchesMember must match a
+// slash-separated rel using path.Match semantics, not filepath.Match (which
+// on Windows would compare against a backslash-separated path and never
+// match a nested member pattern).
+func TestMatchesMember_SlashSeparatorExact(t *testing.T) {
+	if !matchesMember("Players/player1.sav", []string{"Players/*.sav"}) {
+		t.Error("matchesMember failed to match a nested member against its slash-separated pattern")
+	}
+	if matchesMember("Players\\player1.sav", []string{"Players/*.sav"}) {
+		t.Error("matchesMember matched a backslash-separated path against a slash pattern (separator not exact)")
+	}
+}
+
+// TestAggregateHash_NoDelimiterCollision proves the length-prefixed
+// serialization cannot conflate two distinct member snapshots that would
+// collide under a naive "name:hexhash\n" delimiter join: a crafted member
+// name containing another entry's exact "name:hexhash\n" bytes produces a
+// provably different aggregate hash from the two-entry set it mimics.
+func TestAggregateHash_NoDelimiterCollision(t *testing.T) {
+	h1 := sha256.Sum256([]byte("content one"))
+	h2 := sha256.Sum256([]byte("content two"))
+
+	setA := map[string][32]byte{"bar": h2, "foo": h1}
+	craftedName := fmt.Sprintf("bar:%x\nfoo", h2)
+	setB := map[string][32]byte{craftedName: h1}
+
+	if aggregateHash(setA) == aggregateHash(setB) {
+		t.Fatal("aggregateHash collided between two distinct member snapshots (delimiter-ambiguous serialization)")
 	}
 }

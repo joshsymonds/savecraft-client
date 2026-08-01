@@ -132,6 +132,80 @@ func TestStatusHandler_ReturnsJSON(t *testing.T) {
 	}
 }
 
+// TestStatus_DirectoryUnitGame_ReflectsScannedSaveCount confirms Status()
+// reports live directory-unit state computed from a real scan, not just a
+// round-trip of the static config (which a tautological assertion could
+// never catch breaking): after scanGame discovers and watches one save
+// directory, Status() reports SaveCount 1 for it, and Watching reflects the
+// resolved directory being watched (not the raw SavePath glob template).
+func TestStatus_DirectoryUnitGame_ReflectsScannedSaveCount(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := &fakeRunner{results: map[string]*GameState{"palworld": newD2RState()}}
+	cfg := palworldConfig()
+	pm := palworldPluginManager()
+
+	d := New(cfg, palworldFS(), newFakeWatcher(), runner, ws, pm, nil, testLogger())
+	d.scanGame(context.Background(), "palworld", cfg.Games["palworld"], false)
+
+	status := d.Status()
+	game, ok := status.Games["palworld"]
+	if !ok {
+		t.Fatal("palworld missing from status")
+	}
+	if game.SaveCount != 1 {
+		t.Errorf("SaveCount = %d, want 1 (one directory-unit save directory scanned)", game.SaveCount)
+	}
+	if !game.Watching {
+		t.Error("palworld should be watching after scan (directory-unit, glob-resolved SavePath)")
+	}
+}
+
+func sdvConfig() Config {
+	return Config{
+		SourceID: "steam-deck",
+		Version:  "0.1.0",
+		Games: map[string]GameConfig{
+			"sdv": {SavePath: "/saves/sdv/Saves/*", Enabled: true},
+		},
+	}
+}
+
+func sdvFS() *fakeFS {
+	return &fakeFS{
+		dirs: map[string][]string{
+			"/saves/sdv/Saves":                  {"Farmer_123456789"},
+			"/saves/sdv/Saves/Farmer_123456789": {"SaveGameInfo"},
+		},
+		files: map[string][]byte{
+			"/saves/sdv/Saves/Farmer_123456789/SaveGameInfo": []byte("fake save data"),
+		},
+	}
+}
+
+// TestStatus_GlobFileUnitGame_Watching guards the file-unit counterpart of
+// the directory-unit case above: a file-unit game whose SavePath is a glob
+// template (e.g. Stardew Valley's "Saves/*") resolves at scan time to one
+// or more concrete save directories, and those resolved paths — not the raw
+// glob template — are what land in d.watchedDirs. Watching must reflect
+// that resolved state.
+func TestStatus_GlobFileUnitGame_Watching(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := &fakeRunner{results: map[string]*GameState{"sdv": newD2RState()}}
+	cfg := sdvConfig()
+
+	d := New(cfg, sdvFS(), newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+	d.scanGame(context.Background(), "sdv", cfg.Games["sdv"], false)
+
+	status := d.Status()
+	game, ok := status.Games["sdv"]
+	if !ok {
+		t.Fatal("sdv missing from status")
+	}
+	if !game.Watching {
+		t.Error("sdv should be watching after scan (file-unit, glob-resolved SavePath)")
+	}
+}
+
 func TestNew_NilLogger(t *testing.T) {
 	ws := newFakeWSClient()
 	cfg := Config{
