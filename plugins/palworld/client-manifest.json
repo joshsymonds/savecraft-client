@@ -41,7 +41,7 @@
     "linux": "~/.local/share/Steam/steamapps/compatdata/1623730/pfx/drive_c/users/steamuser/AppData/Local/Pal/Saved/SaveGames/*/*",
     "darwin": ""
   },
-  "version": "1.1.0",
+  "version": "dev",
   "sha256": "c796063d916fb4cab0d698740690c43247cc1b2af88e635c8f2ec5926e7958c4",
   "url": "plugins/palworld/parser.wasm"
 }
