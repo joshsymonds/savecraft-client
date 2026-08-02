@@ -339,7 +339,7 @@ fn happy_path_pals_party_and_storage_have_full_detail_from_real_pals() {
         .find(|p| p["speciesId"] == "DreamDemon")
         .expect("DreamDemon in the party");
     assert_eq!(dream_demon["level"], 7);
-    assert_eq!(dream_demon["sex"], "EPalGenderType::Male");
+    assert_eq!(dream_demon["sex"], "Male");
     assert_eq!(
         dream_demon["ownerPlayerUId"],
         "00000000-0000-0000-0000-000000000001"
@@ -359,10 +359,10 @@ fn happy_path_pals_party_and_storage_have_full_detail_from_real_pals() {
     let all_pals: Vec<_> = party.iter().chain(storage.iter()).collect();
     assert!(all_pals
         .iter()
-        .any(|p| p["speciesId"] == "ChickenPal" && p["sex"] == "EPalGenderType::Female"));
+        .any(|p| p["speciesId"] == "ChickenPal" && p["sex"] == "Female"));
     assert!(all_pals
         .iter()
-        .any(|p| p["speciesId"] == "PinkCat" && p["sex"] == "EPalGenderType::Male"));
+        .any(|p| p["speciesId"] == "PinkCat" && p["sex"] == "Male"));
     assert!(
         storage
             .iter()
@@ -507,12 +507,79 @@ fn live_fixture_happy_path_emits_all_seven_sections_with_pinned_values() {
         "719954a8-47f3-d347-6393-1084f7eb5122"
     );
     let all_pals: Vec<_> = party.iter().chain(storage.iter()).collect();
+    let emitted_pal_bytes: usize = all_pals
+        .iter()
+        .map(|pal| serde_json::to_vec(pal).unwrap().len())
+        .sum();
+    // This fixture now averages 322 bytes per emitted Pal, down from 413
+    // before qualified values and null-valued optional fields were removed.
+    assert_eq!(emitted_pal_bytes / all_pals.len(), 322);
     assert!(all_pals
         .iter()
-        .any(|p| p["speciesId"] == "ChickenPal" && p["sex"] == "EPalGenderType::Female"));
+        .any(|p| p["speciesId"] == "ChickenPal" && p["sex"] == "Female"));
     assert!(all_pals
         .iter()
-        .any(|p| p["speciesId"] == "PinkCat" && p["sex"] == "EPalGenderType::Male"));
+        .any(|p| p["speciesId"] == "PinkCat" && p["sex"] == "Male"));
+
+    let mut equipped_skill_count = 0;
+    for pal in &all_pals {
+        let sex = pal["sex"].as_str().expect("every emitted fixture pal has sex");
+        assert!(!sex.contains("::"), "qualified emitted sex on {pal:?}");
+
+        if let Some(work_suitability) = pal.get("currentWorkSuitability") {
+            assert!(
+                !work_suitability
+                    .as_str()
+                    .expect("currentWorkSuitability string")
+                    .contains("::"),
+                "qualified emitted currentWorkSuitability on {pal:?}"
+            );
+        }
+
+        for field in ["passiveSkills", "equippedSkills"] {
+            for skill in pal[field].as_array().expect("skill list") {
+                if field == "equippedSkills" {
+                    equipped_skill_count += 1;
+                }
+                assert!(
+                    !skill.as_str().expect("skill id").contains("::"),
+                    "qualified emitted {field} entry on {pal:?}"
+                );
+            }
+        }
+    }
+    assert_eq!(equipped_skill_count, 38, "live fixture equipped skill count");
+
+    assert!(
+        all_pals.iter().any(|pal| {
+            pal["passiveSkills"]
+                .as_array()
+                .expect("passive skill list")
+                .iter()
+                .any(|skill| skill == "WorkSuitabilityAddRank_MonsterFarm_1")
+        }),
+        "already-bare passive skill IDs must be preserved"
+    );
+    assert!(
+        all_pals.iter().any(|pal| {
+            !pal.as_object().unwrap().contains_key("nickname")
+                && !pal.as_object().unwrap().contains_key("friendshipPoint")
+                && !pal
+                    .as_object()
+                    .unwrap()
+                    .contains_key("currentWorkSuitability")
+        }),
+        "a sparse fixture pal must omit absent optional fields"
+    );
+    assert!(
+        all_pals.iter().any(|pal| {
+            pal.get("ownerPlayerUId")
+                == Some(&serde_json::json!(
+                    "00000000-0000-0000-0000-000000000001"
+                ))
+        }),
+        "ownerPlayerUId must retain its public name and GUID string value"
+    );
 }
 
 #[test]

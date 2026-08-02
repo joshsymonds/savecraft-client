@@ -257,9 +257,14 @@ fn pal_nested_i64(props: &[rawdata::PalProperty], name: &str) -> Option<i64> {
 
 fn pal_enum(props: &[rawdata::PalProperty], name: &str) -> Option<String> {
     match pal_find(props, name) {
-        Some(rawdata::PalValue::Enum { value, .. }) => Some(value.clone()),
+        Some(rawdata::PalValue::Enum { value, .. }) => Some(bare_ue_enum_value(value).to_string()),
         _ => None,
     }
+}
+
+/// UE's enum qualification is redundant once the output field identifies the type.
+fn bare_ue_enum_value(value: &str) -> &str {
+    value.rsplit_once("::").map_or(value, |(_, bare)| bare)
 }
 
 fn pal_bool(props: &[rawdata::PalProperty], name: &str) -> Option<bool> {
@@ -271,7 +276,10 @@ fn pal_bool(props: &[rawdata::PalProperty], name: &str) -> Option<bool> {
 
 fn pal_str_array(props: &[rawdata::PalProperty], name: &str) -> Vec<String> {
     match pal_find(props, name) {
-        Some(rawdata::PalValue::ArrayStr(v)) => v.clone(),
+        Some(rawdata::PalValue::ArrayStr(v)) => v
+            .iter()
+            .map(|value| bare_ue_enum_value(value).to_string())
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -375,8 +383,11 @@ pub struct PlayersSection {
 pub struct Pal {
     #[serde(rename = "speciesId")]
     pub species_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub nickname: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub level: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub sex: Option<String>,
     #[serde(rename = "instanceId")]
     pub instance_id: String,
@@ -384,19 +395,30 @@ pub struct Pal {
     pub passive_skills: Vec<String>,
     #[serde(rename = "equippedSkills")]
     pub equipped_skills: Vec<String>,
-    #[serde(rename = "talentHp")]
+    #[serde(rename = "talentHp", skip_serializing_if = "Option::is_none")]
     pub talent_hp: Option<i32>,
-    #[serde(rename = "talentShot")]
+    #[serde(rename = "talentShot", skip_serializing_if = "Option::is_none")]
     pub talent_shot: Option<i32>,
-    #[serde(rename = "talentDefense")]
+    #[serde(rename = "talentDefense", skip_serializing_if = "Option::is_none")]
     pub talent_defense: Option<i32>,
-    #[serde(rename = "currentWorkSuitability")]
+    #[serde(
+        rename = "currentWorkSuitability",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub current_work_suitability: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub exp: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub hp: Option<i64>,
-    #[serde(rename = "friendshipPoint")]
+    #[serde(
+        rename = "friendshipPoint",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub friendship_point: Option<i32>,
-    #[serde(rename = "ownerPlayerUId")]
+    #[serde(
+        rename = "ownerPlayerUId",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub owner_player_uid: Option<String>,
 }
 
@@ -1369,6 +1391,42 @@ mod tests {
             group_id: [0u8; 16],
             trailing: Vec::new(),
         }
+    }
+
+    #[test]
+    fn build_pal_emits_bare_values_from_qualified_and_bare_inputs() {
+        let pal = build_pal(
+            FGuid::new(1, 2, 3, 4),
+            &[
+                pal_prop(
+                    "Gender",
+                    rawdata::PalValue::Enum {
+                        enum_type: "EPalGenderType".to_string(),
+                        value: "EPalGenderType::Female".to_string(),
+                    },
+                ),
+                pal_prop(
+                    "PassiveSkillList",
+                    rawdata::PalValue::ArrayStr(vec!["Rare".to_string()]),
+                ),
+                pal_prop(
+                    "EquipWaza",
+                    rawdata::PalValue::ArrayStr(vec!["EPalWazaID::AirCanon".to_string()]),
+                ),
+                pal_prop(
+                    "CurrentWorkSuitability",
+                    rawdata::PalValue::Enum {
+                        enum_type: "EPalWorkSuitability".to_string(),
+                        value: "EPalWorkSuitability::Deforest".to_string(),
+                    },
+                ),
+            ],
+        );
+
+        assert_eq!(pal.sex.as_deref(), Some("Female"));
+        assert_eq!(pal.passive_skills, ["Rare"]);
+        assert_eq!(pal.equipped_skills, ["AirCanon"]);
+        assert_eq!(pal.current_work_suitability.as_deref(), Some("Deforest"));
     }
 
     /// A distinguishable `[u8; 16]` guid: `tag` picks the category (player,
