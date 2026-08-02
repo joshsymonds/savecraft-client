@@ -233,3 +233,83 @@ fn work_assignment_prefixes_and_machine_state_are_pinned() {
         assert!(linked, "fixture {fixture}");
     }
 }
+
+#[test]
+fn base_position_and_name_are_cross_validated() {
+    const POSITION: [f64; 3] = [
+        -347922.1286995581,
+        264690.7242905643,
+        4006.8075977033227,
+    ];
+    const PLAYER_POSITIONS: [[f64; 3]; 2] = [
+        [-346946.95917404373, 191651.84791294907, -211.4045001832311],
+        [-351879.20256971574, 201841.4198500383, 1731.0433408787007],
+    ];
+
+    for ((fixture, _, _, _), player_position) in FIXTURES.into_iter().zip(PLAYER_POSITIONS) {
+        let save = decoded_world(fixture);
+        let world = properties(property(&save.root.properties, "worldSaveData"));
+        let base = &map(property(world, "BaseCampSaveData"))[0];
+        let base_raw = raw(property(properties(&base.value), "RawData"));
+        assert_eq!(i32::from_le_bytes(base_raw[16..20].try_into().unwrap()), -18);
+        let name_units: Vec<_> = base_raw[20..54]
+            .chunks_exact(2)
+            .map(|pair| u16::from_le_bytes(pair.try_into().unwrap()))
+            .collect();
+        assert_eq!(&base_raw[54..56], &[0, 0]);
+        assert_eq!(
+            String::from_utf16(&name_units).unwrap(),
+            "新規生成拠点テンプレート名0(仮)"
+        );
+
+        let position = [89, 97, 105].map(|offset| {
+            f64::from_le_bytes(base_raw[offset..offset + 8].try_into().unwrap())
+        });
+        assert_eq!(position, POSITION, "fixture {fixture}");
+        let plausible_vector_offsets: Vec<_> = (0..=base_raw.len() - 24)
+            .filter(|offset| {
+                let values = [0, 8, 16].map(|relative| {
+                    f64::from_le_bytes(
+                        base_raw[offset + relative..offset + relative + 8]
+                            .try_into()
+                            .unwrap(),
+                    )
+                });
+                values.iter().all(|value| value.is_finite() && value.abs() <= 1_000_000.0)
+                    && values[0].abs() > 10_000.0
+                    && values[1].abs() > 10_000.0
+            })
+            .collect();
+        assert_eq!(plausible_vector_offsets, [89], "fixture {fixture}");
+
+        let palbox_model = structs(property(world, "MapObjectSaveData"))
+            .iter()
+            .find_map(|object| {
+                let StructValue::Struct(object) = object else { return None };
+                let model = properties(property(object, "Model"));
+                (matches!(property(object, "MapObjectId"), Property::Name(name) if name == "PalBoxV2")
+                    && raw(property(model, "RawData")).get(32..48)
+                        == Some(guid_bytes(guid(&base.key)).as_slice()))
+                .then_some(raw(property(model, "RawData")))
+            })
+            .expect("base-linked PalBoxV2");
+        assert_eq!(&base_raw[89..113], &palbox_model[104..128]);
+
+        let player_distance = position
+            .into_iter()
+            .zip(player_position)
+            .map(|(base, player)| (base - player).powi(2))
+            .sum::<f64>()
+            .sqrt();
+        assert!(player_distance < 75_000.0, "fixture {fixture}: {player_distance}");
+        let readout = [
+            (position[1] - 158000.0) / 459.0,
+            (position[0] - -123888.0) / -459.0,
+        ];
+        assert!(readout
+            .into_iter()
+            .all(|coordinate| (0.0..=1000.0).contains(&coordinate)));
+    }
+
+    assert!(include_str!("../docs/v1.2-fields.md").contains("### Base position and name"));
+}
