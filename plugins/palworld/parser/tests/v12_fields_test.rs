@@ -19,6 +19,14 @@ const ASSIGNED_PALS: [&str; 3] = [
     "c63b3553-49f9-f3f5-1aee-e498828c41ad",
     "36d42d72-4589-a111-073f-50a0556e6866",
 ];
+const WORKER_PALS: [&str; 5] = [
+    "36d42d72-4589-a111-073f-50a0556e6866",
+    "968f5f72-4400-9682-9adb-6ab8f5088316",
+    "c63b3553-49f9-f3f5-1aee-e498828c41ad",
+    "8fd0a461-4b36-96d9-592e-99bee9ca4953",
+    "baebd795-452c-b1d3-9021-6a9793fc59e3",
+];
+const GUILD_ID: &str = "ef9302c3-4326-566b-926d-76a0f74ab46d";
 
 fn fixture_path(fixture: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -312,4 +320,97 @@ fn base_position_and_name_are_cross_validated() {
     }
 
     assert!(include_str!("../docs/v1.2-fields.md").contains("### Base position and name"));
+}
+
+#[test]
+fn base_to_guild_candidate_joins_are_pinned() {
+    for (fixture, _, _, _) in FIXTURES {
+        let save = decoded_world(fixture);
+        let world = properties(property(&save.root.properties, "worldSaveData"));
+        let base = &map(property(world, "BaseCampSaveData"))[0];
+        let base_raw = raw(property(properties(&base.value), "RawData"));
+
+        let guilds: Vec<_> = map(property(world, "GroupSaveDataMap"))
+            .iter()
+            .filter(|entry| {
+                matches!(
+                    property(properties(&entry.value), "GroupType"),
+                    Property::Enum(group_type) if group_type == "EPalGroupType::Guild"
+                )
+            })
+            .map(|entry| {
+                let group_raw = raw(property(properties(&entry.value), "RawData"));
+                palworld_parser::rawdata::decode_group_save_data(group_raw).unwrap()
+            })
+            .collect();
+        assert_eq!(guilds.len(), 1, "fixture {fixture}");
+        assert_eq!(raw_guid(&guilds[0].group_id).to_string(), GUILD_ID);
+        assert_eq!(
+            &base_raw[56..89],
+            &[
+                0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4a, 0x9d, 0x59, 0x77, 0xc1,
+                0xe4, 0xe2, 0xbf, 0x74, 0x3e, 0x5a, 0xc5, 0xb4, 0xd3, 0xe9, 0x3f,
+            ],
+            "fixture {fixture}"
+        );
+
+        let direct_offsets: Vec<_> = (0..=base_raw.len() - 16)
+            .filter(|offset| {
+                guilds
+                    .iter()
+                    .any(|guild| base_raw[*offset..*offset + 16] == guild.group_id)
+            })
+            .collect();
+        assert_eq!(direct_offsets, [141], "fixture {fixture}");
+        assert_eq!(&base_raw[141..157], &guilds[0].group_id, "fixture {fixture}");
+
+        let worker_raw = raw(property(
+            properties(property(properties(&base.value), "WorkerDirector")),
+            "RawData",
+        ));
+        let worker_container_id = raw_guid(&worker_raw[98..114]).to_string();
+        let worker = properties(
+            &container_entry(world, "CharacterContainerSaveData", &worker_container_id).value,
+        );
+        let worker_ids: Vec<_> = structs(property(worker, "Slots"))
+            .iter()
+            .filter_map(|slot| {
+                let StructValue::Struct(slot) = slot else {
+                    panic!("slot is not a struct")
+                };
+                palworld_parser::rawdata::decode_character_container_slot(raw(property(
+                    slot, "RawData",
+                )))
+                .unwrap()
+            })
+            .map(|slot| slot.instance_id)
+            .collect();
+        assert_eq!(worker_ids.len(), 5, "fixture {fixture}");
+        assert_eq!(
+            worker_ids
+                .iter()
+                .map(|id| raw_guid(id).to_string())
+                .collect::<Vec<_>>(),
+            WORKER_PALS,
+            "fixture {fixture}"
+        );
+        let membership_counts: Vec<_> = worker_ids
+            .iter()
+            .map(|worker_id| {
+                guilds
+                    .iter()
+                    .filter(|guild| {
+                        guild
+                            .member_handle_ids
+                            .iter()
+                            .any(|(_, instance_id)| instance_id == worker_id)
+                    })
+                    .count()
+            })
+            .collect();
+        assert_eq!(membership_counts, [1; 5], "fixture {fixture}");
+    }
+
+    assert!(include_str!("../docs/v1.2-fields.md").contains("### Base-to-guild attribution"));
 }
