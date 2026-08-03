@@ -357,12 +357,16 @@ fn happy_path_pals_party_and_storage_have_full_detail_from_real_pals() {
         .unwrap();
     assert_eq!(storage.len(), 28);
     let all_pals: Vec<_> = party.iter().chain(storage.iter()).collect();
-    assert!(all_pals
-        .iter()
-        .any(|p| p["speciesId"] == "ChickenPal" && p["sex"] == "Female"));
-    assert!(all_pals
-        .iter()
-        .any(|p| p["speciesId"] == "PinkCat" && p["sex"] == "Male"));
+    assert!(
+        all_pals
+            .iter()
+            .any(|p| p["speciesId"] == "ChickenPal" && p["sex"] == "Female")
+    );
+    assert!(
+        all_pals
+            .iter()
+            .any(|p| p["speciesId"] == "PinkCat" && p["sex"] == "Male")
+    );
     assert!(
         storage
             .iter()
@@ -407,28 +411,52 @@ fn happy_path_bases_section_aggregates_real_base_camp_details() {
     assert_eq!(bases.len(), 1);
     let base = &bases[0];
     assert_eq!(base["baseId"], "4e18f078-4717-eb0a-043c-01b96f527fff");
+    let guild_id = base["guildId"].as_str().expect("decoded guild id");
+    assert_eq!(guild_id, "ef9302c3-4326-566b-926d-76a0f74ab46d");
+    assert_eq!(
+        guild_id.len(),
+        36,
+        "guildId must be a formatted GUID, not raw bytes"
+    );
     assert_eq!(base["name"], "新規生成拠点テンプレート名0(仮)");
     let position = &base["position"];
     assert!((position["x"].as_f64().unwrap() - -347_922.128_699_558_1).abs() < 1e-9);
     assert!((position["y"].as_f64().unwrap() - 264_690.724_290_564_3).abs() < 1e-9);
     assert!((position["z"].as_f64().unwrap() - 4_006.807_597_703_322_7).abs() < 1e-9);
     assert_eq!(base["workers"].as_array().unwrap().len(), 5);
-    assert!(base.get("guildId").is_none());
     assert!(base.get("level").is_none());
 
     let map_objects = base["mapObjects"].as_array().unwrap();
-    assert!(base.get("buildings").is_none(), "the field is named for what it holds");
-    assert!(map_objects.iter().all(|entry| !entry.is_object() || entry.get("objects").is_none()));
+    assert!(
+        base.get("buildings").is_none(),
+        "the field is named for what it holds"
+    );
+    assert!(
+        map_objects
+            .iter()
+            .all(|entry| !entry.is_object() || entry.get("objects").is_none())
+    );
     assert_eq!(
-        map_objects.iter().map(|entry| entry["count"].as_u64().unwrap()).sum::<u64>(),
+        map_objects
+            .iter()
+            .map(|entry| entry["count"].as_u64().unwrap())
+            .sum::<u64>(),
         37,
     );
-    assert!(map_objects.iter().all(|entry| entry["flags"]["under_construction"].is_null()));
+    assert!(
+        map_objects
+            .iter()
+            .all(|entry| entry["flags"]["under_construction"].is_null())
+    );
     assert_flags_are_uniform_and_unknown_is_exclusive(map_objects);
 
     let items = base["items"]["items"].as_array().unwrap();
     assert!(items.len() >= 8);
-    assert!(items.iter().any(|item| item["id"] == "Wood" && item["quantity"] == 61));
+    assert!(
+        items
+            .iter()
+            .any(|item| item["id"] == "Wood" && item["quantity"] == 61)
+    );
     assert!(base["items"].get("trimmed").is_none());
 
     let section = &result["sections"]["bases"];
@@ -457,7 +485,9 @@ fn assert_flags_are_uniform_and_unknown_is_exclusive(entries: &[serde_json::Valu
                 "flags.{name} is {value} on {entry}: every flag value must be an integer tally or null",
             );
         }
-        let unknown = flags["unknown"].as_u64().expect("unknown is always countable");
+        let unknown = flags["unknown"]
+            .as_u64()
+            .expect("unknown is always countable");
         let sourced: Vec<u64> = flags
             .iter()
             .filter(|(name, _)| name.as_str() != "unknown")
@@ -493,6 +523,9 @@ fn live_fixture_base_map_object_flags_are_uniform_and_unknown_is_exclusive() {
     let out = run_plugin_with_args(&live_happy_tar(), &[LIVE_WORLD_ID]);
     let result = &out.of_type("result")[0];
     let base = &result["sections"]["bases"]["data"]["bases"][0];
+    let guild_id = base["guildId"].as_str().expect("decoded guild id");
+    assert_eq!(guild_id, "ef9302c3-4326-566b-926d-76a0f74ab46d");
+    assert_eq!(guild_id.len(), 36, "guildId must be a formatted GUID, not raw bytes");
     let entries = base["mapObjects"].as_array().expect("mapObjects array");
     assert_flags_are_uniform_and_unknown_is_exclusive(entries);
 
@@ -625,16 +658,22 @@ fn live_fixture_happy_path_emits_all_seven_sections_with_pinned_values() {
     // This fixture now averages 322 bytes per emitted Pal, down from 413
     // before qualified values and null-valued optional fields were removed.
     assert_eq!(emitted_pal_bytes / all_pals.len(), 322);
-    assert!(all_pals
-        .iter()
-        .any(|p| p["speciesId"] == "ChickenPal" && p["sex"] == "Female"));
-    assert!(all_pals
-        .iter()
-        .any(|p| p["speciesId"] == "PinkCat" && p["sex"] == "Male"));
+    assert!(
+        all_pals
+            .iter()
+            .any(|p| p["speciesId"] == "ChickenPal" && p["sex"] == "Female")
+    );
+    assert!(
+        all_pals
+            .iter()
+            .any(|p| p["speciesId"] == "PinkCat" && p["sex"] == "Male")
+    );
 
     let mut equipped_skill_count = 0;
     for pal in &all_pals {
-        let sex = pal["sex"].as_str().expect("every emitted fixture pal has sex");
+        let sex = pal["sex"]
+            .as_str()
+            .expect("every emitted fixture pal has sex");
         assert!(!sex.contains("::"), "qualified emitted sex on {pal:?}");
 
         if let Some(work_suitability) = pal.get("currentWorkSuitability") {
@@ -659,21 +698,38 @@ fn live_fixture_happy_path_emits_all_seven_sections_with_pinned_values() {
             }
         }
     }
-    assert_eq!(equipped_skill_count, 38, "live fixture equipped skill count");
+    assert_eq!(
+        equipped_skill_count, 38,
+        "live fixture equipped skill count"
+    );
 
     let base = &sections["bases"]["data"]["bases"][0];
     assert_eq!(base["baseId"], "4e18f078-4717-eb0a-043c-01b96f527fff");
     assert_eq!(base["name"], "新規生成拠点テンプレート名0(仮)");
     assert_eq!(base["workers"].as_array().unwrap().len(), 5);
     assert_eq!(
-        base["mapObjects"].as_array().unwrap().iter()
-            .map(|entry| entry["count"].as_u64().unwrap()).sum::<u64>(),
+        base["mapObjects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| entry["count"].as_u64().unwrap())
+            .sum::<u64>(),
         36,
     );
-    assert!(base["mapObjects"].as_array().unwrap().iter()
-        .all(|entry| entry["flags"]["under_construction"].is_null()));
-    assert!(base["items"]["items"].as_array().unwrap()
-        .iter().any(|item| item["id"] == "CopperOre" && item["quantity"] == 25));
+    assert!(
+        base["mapObjects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|entry| entry["flags"]["under_construction"].is_null())
+    );
+    assert!(
+        base["items"]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["id"] == "CopperOre" && item["quantity"] == 25)
+    );
     assert!(serde_json::to_vec(&sections["bases"]).unwrap().len() < 81_920);
 
     assert!(
@@ -700,9 +756,7 @@ fn live_fixture_happy_path_emits_all_seven_sections_with_pinned_values() {
     assert!(
         all_pals.iter().any(|pal| {
             pal.get("ownerPlayerUId")
-                == Some(&serde_json::json!(
-                    "00000000-0000-0000-0000-000000000001"
-                ))
+                == Some(&serde_json::json!("00000000-0000-0000-0000-000000000001"))
         }),
         "ownerPlayerUId must retain its public name and GUID string value"
     );

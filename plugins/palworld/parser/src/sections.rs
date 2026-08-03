@@ -410,15 +410,9 @@ pub struct Pal {
     pub exp: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hp: Option<i64>,
-    #[serde(
-        rename = "friendshipPoint",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(rename = "friendshipPoint", skip_serializing_if = "Option::is_none")]
     pub friendship_point: Option<i32>,
-    #[serde(
-        rename = "ownerPlayerUId",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(rename = "ownerPlayerUId", skip_serializing_if = "Option::is_none")]
     pub owner_player_uid: Option<String>,
 }
 
@@ -491,6 +485,8 @@ pub struct GuildsSection {
 pub struct Base {
     #[serde(rename = "baseId")]
     pub base_id: String,
+    #[serde(rename = "guildId")]
+    pub guild_id: Option<String>,
     pub name: String,
     pub position: Position,
     pub workers: Vec<String>,
@@ -549,7 +545,10 @@ pub struct BaseItems {
 }
 
 #[derive(Serialize, Clone)]
-pub struct BaseItem { pub id: String, pub quantity: i64 }
+pub struct BaseItem {
+    pub id: String,
+    pub quantity: i64,
+}
 
 #[derive(Serialize, Clone)]
 pub struct BaseItemsTrimmed {
@@ -991,70 +990,144 @@ fn decode_bases(wsd: &Properties, warnings: &mut Vec<String>) -> HashMap<FGuid, 
         };
         let Some(raw) = as_nested_struct(&entry.value)
             .and_then(|props| find_property(props, "RawData"))
-            .and_then(as_byte_array) else {
-                degraded.push(format!("base camp {id} is missing RawData; skipped"));
-                continue;
-            };
+            .and_then(as_byte_array)
+        else {
+            degraded.push(format!("base camp {id} is missing RawData; skipped"));
+            continue;
+        };
         match rawdata::decode_base_camp(raw) {
-            Ok(base) if guid_bytes_to_fguid(&base.base_id) == id => { out.insert(id, base); }
-            Ok(_) => degraded.push(format!("base camp {id} RawData id does not match map key; skipped")),
-            Err(e) => degraded.push(format!("base camp {id} RawData failed to decode ({e}); skipped")),
+            Ok(base) if guid_bytes_to_fguid(&base.base_id) == id => {
+                out.insert(id, base);
+            }
+            Ok(_) => degraded.push(format!(
+                "base camp {id} RawData id does not match map key; skipped"
+            )),
+            Err(e) => degraded.push(format!(
+                "base camp {id} RawData failed to decode ({e}); skipped"
+            )),
         }
     }
     out
 }
 
 fn decode_base_worker_containers(wsd: &Properties) -> HashMap<FGuid, FGuid> {
-    find_property(wsd, "BaseCampSaveData").and_then(as_map).into_iter().flatten().filter_map(|entry| {
-        let id = as_guid(&entry.key)?;
-        let raw = as_nested_struct(&entry.value)
-            .and_then(|props| find_property(props, "WorkerDirector"))
-            .and_then(as_nested_struct)
-            .and_then(|props| find_property(props, "RawData"))
-            .and_then(as_byte_array)?;
-        raw.get(98..114)?.try_into().ok().map(|bytes: [u8; 16]| (id, guid_bytes_to_fguid(&bytes)))
-    }).collect()
+    find_property(wsd, "BaseCampSaveData")
+        .and_then(as_map)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let id = as_guid(&entry.key)?;
+            let raw = as_nested_struct(&entry.value)
+                .and_then(|props| find_property(props, "WorkerDirector"))
+                .and_then(as_nested_struct)
+                .and_then(|props| find_property(props, "RawData"))
+                .and_then(as_byte_array)?;
+            raw.get(98..114)?
+                .try_into()
+                .ok()
+                .map(|bytes: [u8; 16]| (id, guid_bytes_to_fguid(&bytes)))
+        })
+        .collect()
 }
 
 fn decode_map_objects(wsd: &Properties, warnings: &mut Vec<String>) -> Vec<MapObject> {
-    let Some(Property::Array(ValueVec::Struct(objects))) = find_property(wsd, "MapObjectSaveData") else {
-        warnings.push("MapObjectSaveData missing from Level.sav; base map objects/items will be empty".to_string());
+    let Some(Property::Array(ValueVec::Struct(objects))) = find_property(wsd, "MapObjectSaveData")
+    else {
+        warnings.push(
+            "MapObjectSaveData missing from Level.sav; base map objects/items will be empty"
+                .to_string(),
+        );
         return Vec::new();
     };
     let mut out = Vec::new();
     let mut degraded = WarningCap::new(warnings, "map objects");
     for object in objects {
-        let StructValue::Struct(props) = object else { continue };
-        let (Some(id), Some(model_raw)) = (find_property(props, "MapObjectId").and_then(|p| match p { Property::Name(name) => Some(name.clone()), _ => None }), find_property(props, "Model").and_then(as_nested_struct).and_then(|p| find_property(p, "RawData")).and_then(as_byte_array)) else { continue };
-        let base_id = match rawdata::decode_base_id(model_raw) { Ok(id) => guid_bytes_to_fguid(&id), Err(e) => { degraded.push(format!("map object {id} model failed to decode ({e}); skipped")); continue; } };
+        let StructValue::Struct(props) = object else {
+            continue;
+        };
+        let (Some(id), Some(model_raw)) = (
+            find_property(props, "MapObjectId").and_then(|p| match p {
+                Property::Name(name) => Some(name.clone()),
+                _ => None,
+            }),
+            find_property(props, "Model")
+                .and_then(as_nested_struct)
+                .and_then(|p| find_property(p, "RawData"))
+                .and_then(as_byte_array),
+        ) else {
+            continue;
+        };
+        let base_id = match rawdata::decode_base_id(model_raw) {
+            Ok(id) => guid_bytes_to_fguid(&id),
+            Err(e) => {
+                degraded.push(format!(
+                    "map object {id} model failed to decode ({e}); skipped"
+                ));
+                continue;
+            }
+        };
         let mut item_container_ids = Vec::new();
         let mut workee_id = None;
-        if let Some(modules) = find_property(props, "ConcreteModel").and_then(as_nested_struct).and_then(|p| find_property(p, "ModuleMap")).and_then(as_map) {
+        if let Some(modules) = find_property(props, "ConcreteModel")
+            .and_then(as_nested_struct)
+            .and_then(|p| find_property(p, "ModuleMap"))
+            .and_then(as_map)
+        {
             for module in modules {
-                let Some(kind) = as_enum(&module.key) else { continue };
-                let Some(raw) = as_nested_struct(&module.value).and_then(|p| find_property(p, "RawData")).and_then(as_byte_array) else { continue };
+                let Some(kind) = as_enum(&module.key) else {
+                    continue;
+                };
+                let Some(raw) = as_nested_struct(&module.value)
+                    .and_then(|p| find_property(p, "RawData"))
+                    .and_then(as_byte_array)
+                else {
+                    continue;
+                };
                 if kind.ends_with("::ItemContainer") {
-                    if let Ok(id) = rawdata::decode_module_guid(raw, "MapObjectSaveData.ConcreteModel.ModuleMap.ItemContainer.RawData") { item_container_ids.push(guid_bytes_to_fguid(&id)); }
+                    if let Ok(id) = rawdata::decode_module_guid(
+                        raw,
+                        "MapObjectSaveData.ConcreteModel.ModuleMap.ItemContainer.RawData",
+                    ) {
+                        item_container_ids.push(guid_bytes_to_fguid(&id));
+                    }
                 } else if kind.ends_with("::Workee")
-                    && let Ok(id) = rawdata::decode_module_guid(raw, "MapObjectSaveData.ConcreteModel.ModuleMap.Workee.RawData")
+                    && let Ok(id) = rawdata::decode_module_guid(
+                        raw,
+                        "MapObjectSaveData.ConcreteModel.ModuleMap.Workee.RawData",
+                    )
                 {
                     workee_id = Some(guid_bytes_to_fguid(&id));
                 }
             }
         }
-        out.push(MapObject { base_id, id, item_container_ids, workee_id });
+        out.push(MapObject {
+            base_id,
+            id,
+            item_container_ids,
+            workee_id,
+        });
     }
     out
 }
 
 fn decode_workable_ids(wsd: &Properties) -> HashSet<FGuid> {
-    let Some(Property::Array(ValueVec::Struct(records))) = find_property(wsd, "WorkSaveData") else { return HashSet::new() };
-    records.iter().filter_map(|record| {
-        let StructValue::Struct(props) = record else { return None };
-        as_enum(find_property(props, "WorkableType")?)?;
-        let raw = find_property(props, "RawData").and_then(as_byte_array)?;
-        rawdata::decode_module_guid(raw, "WorkSaveData.RawData").ok().map(|id| guid_bytes_to_fguid(&id))
-    }).collect()
+    let Some(Property::Array(ValueVec::Struct(records))) = find_property(wsd, "WorkSaveData")
+    else {
+        return HashSet::new();
+    };
+    records
+        .iter()
+        .filter_map(|record| {
+            let StructValue::Struct(props) = record else {
+                return None;
+            };
+            as_enum(find_property(props, "WorkableType")?)?;
+            let raw = find_property(props, "RawData").and_then(as_byte_array)?;
+            rawdata::decode_module_guid(raw, "WorkSaveData.RawData")
+                .ok()
+                .map(|id| guid_bytes_to_fguid(&id))
+        })
+        .collect()
 }
 
 fn player_save_data(player: &Save) -> Option<&Properties> {
@@ -1477,8 +1550,7 @@ fn assemble_sections(
         .collect();
 
     let guild = build_guilds(world, &mut warnings);
-    let mut bases: Vec<Base> = world.bases.iter().map(|(id, base)| build_base(*id, base, world)).collect();
-    bases.sort_by(|a, b| a.base_id.cmp(&b.base_id));
+    let mut bases = build_bases(world, &mut warnings);
     enforce_bases_budget(&mut bases, &mut warnings);
     let inventory = players
         .iter()
@@ -1505,40 +1577,105 @@ fn assemble_sections(
     }
 }
 
+fn build_bases(world: &World, warnings: &mut Vec<String>) -> Vec<Base> {
+    let mut bases: Vec<Base> = world
+        .bases
+        .iter()
+        .map(|(id, base)| build_base(*id, base, world))
+        .collect();
+    let unresolved_guilds = bases.iter().filter(|base| base.guild_id.is_none()).count();
+    if unresolved_guilds > 0 {
+        warnings.push(format!(
+            "{unresolved_guilds} base camp guild reference(s) did not match a decoded group; guildId emitted as null"
+        ));
+    }
+    bases.sort_by(|a, b| a.base_id.cmp(&b.base_id));
+    bases
+}
+
 fn build_base(id: FGuid, base: &rawdata::BaseCamp, world: &World) -> Base {
-    let objects: Vec<_> = world.map_objects.iter().filter(|object| object.base_id == id).collect();
+    let objects: Vec<_> = world
+        .map_objects
+        .iter()
+        .filter(|object| object.base_id == id)
+        .collect();
     let workers = base_worker_ids(id, world);
     let mut by_id: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
     let mut totals: BTreeMap<String, i64> = BTreeMap::new();
     for object in objects {
         let entry = by_id.entry(&object.id).or_default();
         entry.0 += 1;
-        if object.workee_id.is_some_and(|work| world.workable_ids.contains(&work)) { entry.1 += 1; }
+        if object
+            .workee_id
+            .is_some_and(|work| world.workable_ids.contains(&work))
+        {
+            entry.1 += 1;
+        }
         for container_id in &object.item_container_ids {
             if let Some(items) = world.item_containers.get(container_id) {
-                for item in items { *totals.entry(item.static_id.clone()).or_default() += i64::from(item.count); }
+                for item in items {
+                    *totals.entry(item.static_id.clone()).or_default() += i64::from(item.count);
+                }
             }
         }
     }
     Base {
-        base_id: id.to_string(), name: base.name.clone(),
-        position: Position { x: base.position[0], y: base.position[1], z: base.position[2] }, workers,
+        base_id: id.to_string(),
+        guild_id: world
+            .groups
+            .iter()
+            .find(|(_, _, group)| group.group_id == base.guild_id)
+            .map(|(_, _, group)| guid_bytes_to_fguid(&group.group_id).to_string()),
+        name: base.name.clone(),
+        position: Position {
+            x: base.position[0],
+            y: base.position[1],
+            z: base.position[2],
+        },
+        workers,
         // `unknown` is every object this build could source no signal for,
         // i.e. the ones `working` did not claim -- never both (see
         // [`BaseMapObjectFlags`]).
-        map_objects: by_id.into_iter().map(|(id, (count, working))| BaseMapObject { id: id.to_string(), count, flags: BaseMapObjectFlags { powered: None, working: Some(working), damaged: None, under_construction: None, unknown: count - working } }).collect(),
-        items: BaseItems { items: sorted_base_items(totals), trimmed: None },
+        map_objects: by_id
+            .into_iter()
+            .map(|(id, (count, working))| BaseMapObject {
+                id: id.to_string(),
+                count,
+                flags: BaseMapObjectFlags {
+                    powered: None,
+                    working: Some(working),
+                    damaged: None,
+                    under_construction: None,
+                    unknown: count - working,
+                },
+            })
+            .collect(),
+        items: BaseItems {
+            items: sorted_base_items(totals),
+            trimmed: None,
+        },
     }
 }
 
 fn base_worker_ids(id: FGuid, world: &World) -> Vec<String> {
-    world.base_worker_containers.get(&id).and_then(|container_id| world.char_containers.get(container_id))
-        .map(|slots| slots.iter().map(|slot| guid_bytes_to_fguid(&slot.instance_id).to_string()).collect())
+    world
+        .base_worker_containers
+        .get(&id)
+        .and_then(|container_id| world.char_containers.get(container_id))
+        .map(|slots| {
+            slots
+                .iter()
+                .map(|slot| guid_bytes_to_fguid(&slot.instance_id).to_string())
+                .collect()
+        })
         .unwrap_or_default()
 }
 
 fn sorted_base_items(totals: BTreeMap<String, i64>) -> Vec<BaseItem> {
-    let mut items: Vec<_> = totals.into_iter().map(|(id, quantity)| BaseItem { id, quantity }).collect();
+    let mut items: Vec<_> = totals
+        .into_iter()
+        .map(|(id, quantity)| BaseItem { id, quantity })
+        .collect();
     items.sort_by(|a, b| b.quantity.cmp(&a.quantity).then_with(|| a.id.cmp(&b.id)));
     items
 }
@@ -1546,13 +1683,35 @@ fn sorted_base_items(totals: BTreeMap<String, i64>) -> Vec<BaseItem> {
 const BASES_SECTION_LIMIT: usize = 81_920;
 
 fn enforce_bases_budget(bases: &mut [Base], warnings: &mut Vec<String>) {
-    while serde_json::to_vec(&BasesSection { bases: bases.to_vec(), count: bases.len() }).is_ok_and(|json| json.len() > BASES_SECTION_LIMIT) {
-        let Some((base_index, item_index)) = bases.iter().enumerate().find_map(|(base_index, base)| base.items.items.iter().enumerate().next_back().map(|(item_index, _)| (base_index, item_index))) else {
-            warnings.push(format!("bases section exceeds {BASES_SECTION_LIMIT} bytes after item trimming"));
+    while serde_json::to_vec(&BasesSection {
+        bases: bases.to_vec(),
+        count: bases.len(),
+    })
+    .is_ok_and(|json| json.len() > BASES_SECTION_LIMIT)
+    {
+        let Some((base_index, item_index)) =
+            bases.iter().enumerate().find_map(|(base_index, base)| {
+                base.items
+                    .items
+                    .iter()
+                    .enumerate()
+                    .next_back()
+                    .map(|(item_index, _)| (base_index, item_index))
+            })
+        else {
+            warnings.push(format!(
+                "bases section exceeds {BASES_SECTION_LIMIT} bytes after item trimming"
+            ));
             return;
         };
         let item = bases[base_index].items.items.remove(item_index);
-        let trimmed = bases[base_index].items.trimmed.get_or_insert(BaseItemsTrimmed { types_omitted: 0, quantity_omitted: 0 });
+        let trimmed = bases[base_index]
+            .items
+            .trimmed
+            .get_or_insert(BaseItemsTrimmed {
+                types_omitted: 0,
+                quantity_omitted: 0,
+            });
         trimmed.types_omitted += 1;
         trimmed.quantity_omitted += item.quantity;
     }
@@ -1575,6 +1734,30 @@ mod tests {
             map_objects: Vec::new(),
             workable_ids: HashSet::new(),
         }
+    }
+
+    #[test]
+    fn unmatched_base_guild_reference_emits_null_and_is_counted_in_warning() {
+        let mut world = empty_world();
+        let base_id = guid_bytes_to_fguid(&synthetic_guid_bytes(7, 0));
+        world.bases.insert(
+            base_id,
+            rawdata::BaseCamp {
+                base_id: synthetic_guid_bytes(7, 0),
+                name: "Unmatched guild base".to_string(),
+                position: [0.0; 3],
+                guild_id: synthetic_guid_bytes(99, 0),
+                trailing: Vec::new(),
+            },
+        );
+        let mut warnings = Vec::new();
+
+        let bases = build_bases(&world, &mut warnings);
+
+        assert!(bases[0].guild_id.is_none());
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("1 base camp guild reference"));
+        assert!(warnings[0].contains("guildId emitted as null"));
     }
 
     fn pal_prop(name: &str, value: rawdata::PalValue) -> rawdata::PalProperty {
@@ -2430,10 +2613,16 @@ mod tests {
 
         let base_id = guid_bytes_to_fguid(&synthetic_guid_bytes(7, 0));
         let mut bases = HashMap::new();
-        bases.insert(base_id, rawdata::BaseCamp {
-            base_id: synthetic_guid_bytes(7, 0), name: "Synthetic base".to_string(),
-            position: [0.0; 3], trailing: Vec::new(),
-        });
+        bases.insert(
+            base_id,
+            rawdata::BaseCamp {
+                base_id: synthetic_guid_bytes(7, 0),
+                name: "Synthetic base".to_string(),
+                position: [0.0; 3],
+                guild_id: synthetic_guid_bytes(199, 0),
+                trailing: Vec::new(),
+            },
+        );
         let world = World {
             characters,
             groups,
@@ -2445,7 +2634,6 @@ mod tests {
             map_objects: Vec::new(),
             workable_ids: HashSet::new(),
         };
-
 
         let overview = Overview {
             world_name: Some("Palpagos Islands (multi-player scale test)".to_string()),
@@ -2602,10 +2790,16 @@ mod tests {
 
         let base_id = guid_bytes_to_fguid(&synthetic_guid_bytes(7, 0));
         let mut bases = HashMap::new();
-        bases.insert(base_id, rawdata::BaseCamp {
-            base_id: synthetic_guid_bytes(7, 0), name: "Synthetic base".to_string(),
-            position: [0.0; 3], trailing: Vec::new(),
-        });
+        bases.insert(
+            base_id,
+            rawdata::BaseCamp {
+                base_id: synthetic_guid_bytes(7, 0),
+                name: "Synthetic base".to_string(),
+                position: [0.0; 3],
+                guild_id: synthetic_guid_bytes(8, 0),
+                trailing: Vec::new(),
+            },
+        );
         let world = World {
             characters,
             groups,
@@ -2617,7 +2811,6 @@ mod tests {
             map_objects: Vec::new(),
             workable_ids: HashSet::new(),
         };
-
 
         let mut save_data = Properties::default();
         save_data.insert("PlayerUId", guid_prop(player_instance_id));
@@ -2680,12 +2873,7 @@ mod tests {
             player_count: 1,
         };
 
-        let built = assemble_sections(
-            overview,
-            &world,
-            std::slice::from_ref(&player),
-            Vec::new(),
-        );
+        let built = assemble_sections(overview, &world, std::slice::from_ref(&player), Vec::new());
         assert!(
             built.warnings.is_empty(),
             "expected a clean synthetic world with no degrade warnings: {:?}",
