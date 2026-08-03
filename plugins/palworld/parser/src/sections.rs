@@ -1103,13 +1103,27 @@ fn decode_map_objects(wsd: &Properties, warnings: &mut Vec<String>) -> Vec<MapOb
                 let Some(kind) = as_enum(&module.key) else {
                     continue;
                 };
+                let is_item_container = kind.ends_with("::ItemContainer");
+                let is_workee = kind.ends_with("::Workee");
+                if !is_item_container && !is_workee {
+                    continue;
+                }
                 let Some(raw) = as_nested_struct(&module.value)
                     .and_then(|p| find_property(p, "RawData"))
                     .and_then(as_byte_array)
                 else {
+                    if is_item_container {
+                        degraded.push(format!(
+                            "map object {id} item-container module has no readable RawData; items unavailable"
+                        ));
+                    } else {
+                        degraded.push(format!(
+                            "map object {id} workee module has no readable RawData; work signal unknown"
+                        ));
+                    }
                     continue;
                 };
-                if kind.ends_with("::ItemContainer") {
+                if is_item_container {
                     match rawdata::decode_module_guid(
                         raw,
                         "MapObjectSaveData.ConcreteModel.ModuleMap.ItemContainer.RawData",
@@ -1119,7 +1133,7 @@ fn decode_map_objects(wsd: &Properties, warnings: &mut Vec<String>) -> Vec<MapOb
                             "map object {id} item-container module failed to decode ({e}); items unavailable"
                         )),
                     }
-                } else if kind.ends_with("::Workee") {
+                } else if is_workee {
                     match rawdata::decode_module_guid(
                         raw,
                         "MapObjectSaveData.ConcreteModel.ModuleMap.Workee.RawData",
@@ -2074,6 +2088,53 @@ mod tests {
             4,
             "three details plus summary: {warnings:?}"
         );
+    }
+
+    #[test]
+    fn unreadable_target_module_raw_data_warns_without_warning_for_irrelevant_module() {
+        let mut model = Properties::default();
+        model.insert(
+            "RawData",
+            Property::Array(ValueVec::Byte(ByteArray::Byte(vec![0; 48]))),
+        );
+        let modules = vec![
+            MapEntry {
+                key: Property::Enum(
+                    "EPalMapObjectConcreteModelModuleType::ItemContainer".to_string(),
+                ),
+                value: Property::Int(0),
+            },
+            MapEntry {
+                key: Property::Enum("EPalMapObjectConcreteModelModuleType::Workee".to_string()),
+                value: Property::Int(0),
+            },
+            MapEntry {
+                key: Property::Enum("EPalMapObjectConcreteModelModuleType::Effect".to_string()),
+                value: Property::Int(0),
+            },
+        ];
+        let mut concrete = Properties::default();
+        concrete.insert("ModuleMap", Property::Map(modules));
+        let mut object = Properties::default();
+        object.insert("MapObjectId", Property::Name("Chest".to_string()));
+        object.insert("Model", Property::Struct(StructValue::Struct(model)));
+        object.insert(
+            "ConcreteModel",
+            Property::Struct(StructValue::Struct(concrete)),
+        );
+        let mut wsd = Properties::default();
+        wsd.insert(
+            "MapObjectSaveData",
+            Property::Array(ValueVec::Struct(vec![StructValue::Struct(object)])),
+        );
+        let mut warnings = Vec::new();
+
+        let decoded = decode_map_objects(&wsd, &mut warnings);
+
+        assert_eq!(decoded.len(), 1);
+        assert_eq!(warnings.len(), 2, "warnings: {warnings:?}");
+        assert!(warnings[0].contains("item-container module has no readable RawData"));
+        assert!(warnings[1].contains("workee module has no readable RawData"));
     }
 
     #[test]
