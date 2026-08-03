@@ -1,5 +1,5 @@
-use jomini::text::ObjectReader;
 use jomini::Windows1252Encoding;
+use jomini::text::ObjectReader;
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -52,7 +52,11 @@ pub fn extract(country: &ObjectReader<'_, '_, Windows1252Encoding>) -> Economy {
     if let Some(income_val) = find_field(&current, "income")
         && let Ok(income_obj) = income_val.read_object()
     {
-        aggregate_categories(&income_obj, &mut economy.income, &mut economy.income_by_category);
+        aggregate_categories(
+            &income_obj,
+            &mut economy.income,
+            &mut economy.income_by_category,
+        );
     }
 
     // Parse expense categories
@@ -68,8 +72,11 @@ pub fn extract(country: &ObjectReader<'_, '_, Windows1252Encoding>) -> Economy {
 
     // Make expenses positive (they come as positive from the save but represent outflows)
     // Compute net
-    let all_resources: std::collections::HashSet<&String> =
-        economy.income.keys().chain(economy.expenses.keys()).collect();
+    let all_resources: std::collections::HashSet<&String> = economy
+        .income
+        .keys()
+        .chain(economy.expenses.keys())
+        .collect();
     for resource in all_resources {
         let inc = economy.income.get(resource).copied().unwrap_or(0.0);
         let exp = economy.expenses.get(resource).copied().unwrap_or(0.0);
@@ -96,9 +103,9 @@ fn aggregate_categories(
                 if let Ok(val_str) = res_val.read_str()
                     && let Ok(amount) = val_str.parse::<f64>()
                 {
-                        let abs_amount = amount.abs();
-                        *totals.entry(resource.clone()).or_insert(0.0) += abs_amount;
-                        cat_resources.insert(resource, abs_amount);
+                    let abs_amount = amount.abs();
+                    *totals.entry(resource.clone()).or_insert(0.0) += abs_amount;
+                    cat_resources.insert(resource, abs_amount);
                 }
             }
             if !cat_resources.is_empty() {

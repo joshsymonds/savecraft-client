@@ -1,5 +1,5 @@
-use jomini::text::ObjectReader;
 use jomini::Windows1252Encoding;
+use jomini::text::ObjectReader;
 use serde::Serialize;
 use std::collections::HashSet;
 
@@ -44,13 +44,13 @@ pub fn extract(
         if let Some(val) = find_field(country, "owned_planets")
             && let Ok(arr) = val.read_array()
         {
-                for item in arr.values() {
-                    if let Ok(s) = item.read_str()
-                        && let Ok(id) = s.parse::<i64>()
-                    {
-                        set.insert(id);
-                    }
+            for item in arr.values() {
+                if let Ok(s) = item.read_str()
+                    && let Ok(id) = s.parse::<i64>()
+                {
+                    set.insert(id);
                 }
+            }
         }
         set
     };
@@ -107,9 +107,7 @@ pub fn extract(
     }
 
     // Sort by population descending
-    result
-        .colonies
-        .sort_by(|a, b| b.num_pops.cmp(&a.num_pops));
+    result.colonies.sort_by(|a, b| b.num_pops.cmp(&a.num_pops));
 
     result
 }

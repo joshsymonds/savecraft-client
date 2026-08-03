@@ -22,7 +22,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy,rustfmt
 
       - name: Test Rust workspace
         run: just test-rust

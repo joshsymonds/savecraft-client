@@ -1,5 +1,5 @@
-use jomini::text::ObjectReader;
 use jomini::Windows1252Encoding;
+use jomini::text::ObjectReader;
 use serde::Serialize;
 
 use super::gamestate::{find_field, read_f64, read_i64, read_string};
@@ -213,14 +213,12 @@ pub fn extract(
 
     // Sort fallen empires: awakened first, then by military power descending
     threats.fallen_empires.sort_by(|a, b| {
-        b.awakened
-            .cmp(&a.awakened)
-            .then_with(|| {
-                b.military_power
-                    .unwrap_or(0.0)
-                    .partial_cmp(&a.military_power.unwrap_or(0.0))
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
+        b.awakened.cmp(&a.awakened).then_with(|| {
+            b.military_power
+                .unwrap_or(0.0)
+                .partial_cmp(&a.military_power.unwrap_or(0.0))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
     });
 
     // Sort hostile neighbors by military power descending

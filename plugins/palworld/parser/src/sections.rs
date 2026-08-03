@@ -491,6 +491,10 @@ pub struct Base {
     pub base_id: String,
     #[serde(rename = "guildId")]
     pub guild_id: Option<String>,
+    /// The committed fixtures do not distinguish a trustworthy level
+    /// encoding. Keep explicit unknown separate from a section predating
+    /// this field.
+    pub level: Option<u32>,
     pub name: String,
     pub position: Position,
     pub workers: Vec<String>,
@@ -1014,24 +1018,42 @@ fn decode_bases(wsd: &Properties, warnings: &mut Vec<String>) -> HashMap<FGuid, 
     out
 }
 
-fn decode_base_worker_containers(wsd: &Properties) -> HashMap<FGuid, FGuid> {
-    find_property(wsd, "BaseCampSaveData")
+fn decode_base_worker_containers(
+    wsd: &Properties,
+    warnings: &mut Vec<String>,
+) -> HashMap<FGuid, FGuid> {
+    let mut out = HashMap::new();
+    let mut degraded = WarningCap::new(warnings, "base worker references");
+    for entry in find_property(wsd, "BaseCampSaveData")
         .and_then(as_map)
         .into_iter()
         .flatten()
-        .filter_map(|entry| {
-            let id = as_guid(&entry.key)?;
-            let raw = as_nested_struct(&entry.value)
-                .and_then(|props| find_property(props, "WorkerDirector"))
-                .and_then(as_nested_struct)
-                .and_then(|props| find_property(props, "RawData"))
-                .and_then(as_byte_array)?;
-            raw.get(98..114)?
-                .try_into()
-                .ok()
-                .map(|bytes: [u8; 16]| (id, guid_bytes_to_fguid(&bytes)))
-        })
-        .collect()
+    {
+        let Some(id) = as_guid(&entry.key) else {
+            degraded
+                .push("a base worker reference has an unrecognized key shape; skipped".to_string());
+            continue;
+        };
+        let Some(raw) = as_nested_struct(&entry.value)
+            .and_then(|props| find_property(props, "WorkerDirector"))
+            .and_then(as_nested_struct)
+            .and_then(|props| find_property(props, "RawData"))
+            .and_then(as_byte_array)
+        else {
+            degraded.push(format!(
+                "base camp {id} has no readable WorkerDirector RawData; workers unavailable"
+            ));
+            continue;
+        };
+        let Some(bytes) = raw.get(98..114).and_then(|bytes| bytes.try_into().ok()) else {
+            degraded.push(format!(
+                "base camp {id} WorkerDirector RawData is truncated; workers unavailable"
+            ));
+            continue;
+        };
+        out.insert(id, guid_bytes_to_fguid(bytes));
+    }
+    out
 }
 
 fn decode_map_objects(wsd: &Properties, warnings: &mut Vec<String>) -> Vec<MapObject> {
@@ -1088,19 +1110,25 @@ fn decode_map_objects(wsd: &Properties, warnings: &mut Vec<String>) -> Vec<MapOb
                     continue;
                 };
                 if kind.ends_with("::ItemContainer") {
-                    if let Ok(id) = rawdata::decode_module_guid(
+                    match rawdata::decode_module_guid(
                         raw,
                         "MapObjectSaveData.ConcreteModel.ModuleMap.ItemContainer.RawData",
                     ) {
-                        item_container_ids.push(guid_bytes_to_fguid(&id));
+                        Ok(id) => item_container_ids.push(guid_bytes_to_fguid(&id)),
+                        Err(e) => degraded.push(format!(
+                            "map object {id} item-container module failed to decode ({e}); items unavailable"
+                        )),
                     }
-                } else if kind.ends_with("::Workee")
-                    && let Ok(id) = rawdata::decode_module_guid(
+                } else if kind.ends_with("::Workee") {
+                    match rawdata::decode_module_guid(
                         raw,
                         "MapObjectSaveData.ConcreteModel.ModuleMap.Workee.RawData",
-                    )
-                {
-                    workee_id = Some(guid_bytes_to_fguid(&id));
+                    ) {
+                        Ok(id) => workee_id = Some(guid_bytes_to_fguid(&id)),
+                        Err(e) => degraded.push(format!(
+                            "map object {id} workee module failed to decode ({e}); work signal unknown"
+                        )),
+                    }
                 }
             }
         }
@@ -1114,24 +1142,38 @@ fn decode_map_objects(wsd: &Properties, warnings: &mut Vec<String>) -> Vec<MapOb
     out
 }
 
-fn decode_workable_ids(wsd: &Properties) -> HashSet<FGuid> {
+fn decode_workable_ids(wsd: &Properties, warnings: &mut Vec<String>) -> HashSet<FGuid> {
     let Some(Property::Array(ValueVec::Struct(records))) = find_property(wsd, "WorkSaveData")
     else {
         return HashSet::new();
     };
-    records
-        .iter()
-        .filter_map(|record| {
-            let StructValue::Struct(props) = record else {
-                return None;
-            };
-            as_enum(find_property(props, "WorkableType")?)?;
-            let raw = find_property(props, "RawData").and_then(as_byte_array)?;
-            rawdata::decode_module_guid(raw, "WorkSaveData.RawData")
-                .ok()
-                .map(|id| guid_bytes_to_fguid(&id))
-        })
-        .collect()
+    let mut out = HashSet::new();
+    let mut degraded = WarningCap::new(warnings, "work records");
+    for record in records {
+        let StructValue::Struct(props) = record else {
+            continue;
+        };
+        if find_property(props, "WorkableType")
+            .and_then(as_enum)
+            .is_none()
+        {
+            continue;
+        }
+        let Some(raw) = find_property(props, "RawData").and_then(as_byte_array) else {
+            degraded
+                .push("a typed work record is missing RawData; work signal unknown".to_string());
+            continue;
+        };
+        match rawdata::decode_module_guid(raw, "WorkSaveData.RawData") {
+            Ok(id) => {
+                out.insert(guid_bytes_to_fguid(&id));
+            }
+            Err(e) => degraded.push(format!(
+                "a work record failed to decode ({e}); work signal unknown"
+            )),
+        }
+    }
+    out
 }
 
 fn player_save_data(player: &Save) -> Option<&Properties> {
@@ -1484,9 +1526,9 @@ pub fn build_all(
     let item_containers = decode_item_containers(wsd, &mut warnings, &mut unsupported_paths);
     let dynamic_items = decode_dynamic_items(wsd, &mut warnings, &mut unsupported_paths);
     let bases = decode_bases(wsd, &mut warnings);
-    let base_worker_containers = decode_base_worker_containers(wsd);
+    let base_worker_containers = decode_base_worker_containers(wsd, &mut warnings);
     let map_objects = decode_map_objects(wsd, &mut warnings);
-    let workable_ids = decode_workable_ids(wsd);
+    let workable_ids = decode_workable_ids(wsd, &mut warnings);
 
     // Decode only the characters some section actually needs (see P7) --
     // this depends on containers and groups already being decoded above.
@@ -1589,10 +1631,27 @@ fn assemble_sections(
 }
 
 fn build_bases(world: &World, warnings: &mut Vec<String>) -> Vec<Base> {
+    let mut objects_by_base: HashMap<FGuid, Vec<&MapObject>> = HashMap::new();
+    for object in &world.map_objects {
+        objects_by_base
+            .entry(object.base_id)
+            .or_default()
+            .push(object);
+    }
     let mut bases: Vec<Base> = world
         .bases
         .iter()
-        .map(|(id, base)| build_base(*id, base, world))
+        .map(|(id, base)| {
+            build_base(
+                *id,
+                base,
+                objects_by_base
+                    .get(id)
+                    .map(Vec::as_slice)
+                    .unwrap_or_default(),
+                world,
+            )
+        })
         .collect();
     let unresolved_guilds = bases.iter().filter(|base| base.guild_id.is_none()).count();
     if unresolved_guilds > 0 {
@@ -1604,12 +1663,7 @@ fn build_bases(world: &World, warnings: &mut Vec<String>) -> Vec<Base> {
     bases
 }
 
-fn build_base(id: FGuid, base: &rawdata::BaseCamp, world: &World) -> Base {
-    let objects: Vec<_> = world
-        .map_objects
-        .iter()
-        .filter(|object| object.base_id == id)
-        .collect();
+fn build_base(id: FGuid, base: &rawdata::BaseCamp, objects: &[&MapObject], world: &World) -> Base {
     let workers = base_worker_ids(id, world);
     let mut by_id: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
     let mut totals: BTreeMap<String, i64> = BTreeMap::new();
@@ -1637,6 +1691,7 @@ fn build_base(id: FGuid, base: &rawdata::BaseCamp, world: &World) -> Base {
             .iter()
             .find(|(_, _, group)| group.group_id == base.guild_id)
             .map(|(_, _, group)| guid_bytes_to_fguid(&group.group_id).to_string()),
+        level: None,
         name: base.name.clone(),
         position: Position {
             x: base.position[0],
@@ -1692,39 +1747,141 @@ fn sorted_base_items(totals: BTreeMap<String, i64>) -> Vec<BaseItem> {
 }
 
 const BASES_SECTION_LIMIT: usize = 81_920;
+pub const BASES_SECTION_DESCRIPTION: &str = "Base camp count and ids";
 
-fn enforce_bases_budget(bases: &mut [Base], warnings: &mut Vec<String>) {
-    while serde_json::to_vec(&BasesSection {
-        bases: bases.to_vec(),
-        count: bases.len(),
+#[derive(Serialize)]
+struct BasesSectionRef<'a> {
+    bases: &'a [Base],
+    count: usize,
+}
+
+#[derive(Serialize)]
+struct EmittedBasesSectionRef<'a> {
+    description: &'static str,
+    data: BasesSectionRef<'a>,
+}
+
+fn bases_section_json_len(bases: &[Base]) -> usize {
+    serde_json::to_vec(&EmittedBasesSectionRef {
+        description: BASES_SECTION_DESCRIPTION,
+        data: BasesSectionRef {
+            bases,
+            count: bases.len(),
+        },
     })
-    .is_ok_and(|json| json.len() > BASES_SECTION_LIMIT)
-    {
-        let Some((base_index, item_index)) =
-            bases.iter().enumerate().find_map(|(base_index, base)| {
-                base.items
-                    .items
-                    .iter()
-                    .enumerate()
-                    .next_back()
-                    .map(|(item_index, _)| (base_index, item_index))
-            })
-        else {
-            warnings.push(format!(
-                "bases section exceeds {BASES_SECTION_LIMIT} bytes after item trimming"
-            ));
-            return;
-        };
-        let item = bases[base_index].items.items.remove(item_index);
-        let trimmed = bases[base_index]
-            .items
-            .trimmed
-            .get_or_insert(BaseItemsTrimmed {
-                types_omitted: 0,
-                quantity_omitted: 0,
+    .map_or(usize::MAX, |json| json.len())
+}
+
+fn retained_bases_section_json_len(bases: &[Base], retained_per_base: usize) -> usize {
+    #[derive(Serialize)]
+    struct ItemsRef<'a> {
+        items: &'a [BaseItem],
+        #[serde(skip_serializing_if = "Option::is_none")]
+        trimmed: Option<BaseItemsTrimmed>,
+    }
+    #[derive(Serialize)]
+    struct BaseRef<'a> {
+        #[serde(rename = "baseId")]
+        base_id: &'a str,
+        #[serde(rename = "guildId")]
+        guild_id: &'a Option<String>,
+        level: Option<u32>,
+        name: &'a str,
+        position: &'a Position,
+        workers: &'a [String],
+        #[serde(rename = "mapObjects")]
+        map_objects: &'a [BaseMapObject],
+        items: ItemsRef<'a>,
+    }
+    let projected: Vec<_> = bases
+        .iter()
+        .map(|base| {
+            let keep = retained_per_base.min(base.items.items.len());
+            let omitted = &base.items.items[keep..];
+            BaseRef {
+                base_id: &base.base_id,
+                guild_id: &base.guild_id,
+                level: base.level,
+                name: &base.name,
+                position: &base.position,
+                workers: &base.workers,
+                map_objects: &base.map_objects,
+                items: ItemsRef {
+                    items: &base.items.items[..keep],
+                    trimmed: (!omitted.is_empty()).then(|| BaseItemsTrimmed {
+                        types_omitted: omitted.len(),
+                        quantity_omitted: omitted.iter().map(|item| item.quantity).sum(),
+                    }),
+                },
+            }
+        })
+        .collect();
+    #[derive(Serialize)]
+    struct ProjectedData<'a> {
+        bases: &'a [BaseRef<'a>],
+        count: usize,
+    }
+    #[derive(Serialize)]
+    struct ProjectedEnvelope<'a> {
+        description: &'static str,
+        data: ProjectedData<'a>,
+    }
+    serde_json::to_vec(&ProjectedEnvelope {
+        description: BASES_SECTION_DESCRIPTION,
+        data: ProjectedData {
+            bases: &projected,
+            count: bases.len(),
+        },
+    })
+    .map_or(usize::MAX, |json| json.len())
+}
+
+fn enforce_bases_budget(bases: &mut Vec<Base>, warnings: &mut Vec<String>) {
+    if bases_section_json_len(bases) <= BASES_SECTION_LIMIT {
+        return;
+    }
+
+    let mut low = 0usize;
+    let mut high = bases
+        .iter()
+        .map(|base| base.items.items.len())
+        .max()
+        .unwrap_or(0)
+        + 1;
+    while low + 1 < high {
+        let middle = low + (high - low) / 2;
+        if retained_bases_section_json_len(bases, middle) <= BASES_SECTION_LIMIT {
+            low = middle;
+        } else {
+            high = middle;
+        }
+    }
+
+    if retained_bases_section_json_len(bases, low) > BASES_SECTION_LIMIT {
+        let omitted = bases.len();
+        bases.clear();
+        warnings.push(format!(
+            "bases section metadata exceeds {BASES_SECTION_LIMIT} bytes; omitted {omitted} base camp(s)"
+        ));
+        return;
+    }
+
+    for base in bases.iter_mut() {
+        let keep = low.min(base.items.items.len());
+        if keep < base.items.items.len() {
+            let omitted = base.items.items.split_off(keep);
+            base.items.trimmed = Some(BaseItemsTrimmed {
+                types_omitted: omitted.len(),
+                quantity_omitted: omitted.iter().map(|item| item.quantity).sum(),
             });
-        trimmed.types_omitted += 1;
-        trimmed.quantity_omitted += item.quantity;
+        }
+    }
+    if bases_section_json_len(bases) > BASES_SECTION_LIMIT {
+        let omitted = bases.len();
+        bases.clear();
+        warnings.push(format!(
+            "bases section exact-size verification exceeded {BASES_SECTION_LIMIT} bytes; omitted {omitted} base camp(s)"
+        ));
     }
 }
 
@@ -1769,6 +1926,173 @@ mod tests {
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("1 base camp guild reference"));
         assert!(warnings[0].contains("guildId emitted as null"));
+    }
+
+    fn synthetic_base(name: String, items: Vec<BaseItem>) -> Base {
+        Base {
+            base_id: FGuid::new(1, 2, 3, 4).to_string(),
+            guild_id: None,
+            level: None,
+            name,
+            position: Position {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            workers: Vec::new(),
+            map_objects: Vec::new(),
+            items: BaseItems {
+                items,
+                trimmed: None,
+            },
+        }
+    }
+
+    #[test]
+    fn bases_budget_measures_the_emitted_section_and_keeps_top_items() {
+        let items = (0..2_000)
+            .rev()
+            .map(|index| BaseItem {
+                id: format!("item-{index:04}-{}", "x".repeat(32)),
+                quantity: index + 1,
+            })
+            .collect();
+        let mut bases = vec![synthetic_base("near limit".to_string(), items)];
+        let mut warnings = Vec::new();
+
+        enforce_bases_budget(&mut bases, &mut warnings);
+
+        let emitted = bases_section_json_len(&bases);
+        assert!(emitted <= BASES_SECTION_LIMIT, "emitted {emitted} bytes");
+        let trimmed = bases[0].items.trimmed.as_ref().expect("trim metadata");
+        assert!(trimmed.types_omitted > 0);
+        assert!(trimmed.quantity_omitted > 0);
+        assert!(
+            bases[0]
+                .items
+                .items
+                .windows(2)
+                .all(|pair| pair[0].quantity >= pair[1].quantity)
+        );
+    }
+
+    #[test]
+    fn bases_budget_trims_multiple_bases_and_never_returns_oversized_metadata() {
+        let mut bases = vec![
+            synthetic_base(
+                "a".to_string(),
+                (0..1_200)
+                    .map(|index| BaseItem {
+                        id: format!("a-{index:04}-{}", "x".repeat(32)),
+                        quantity: index + 1,
+                    })
+                    .collect(),
+            ),
+            synthetic_base(
+                "b".to_string(),
+                (0..1_200)
+                    .map(|index| BaseItem {
+                        id: format!("b-{index:04}-{}", "x".repeat(32)),
+                        quantity: index + 1,
+                    })
+                    .collect(),
+            ),
+        ];
+        let mut warnings = Vec::new();
+
+        enforce_bases_budget(&mut bases, &mut warnings);
+
+        assert!(bases_section_json_len(&bases) <= BASES_SECTION_LIMIT);
+        for base in &bases {
+            let trimmed = base.items.trimmed.as_ref().expect("each base trimmed");
+            assert!(trimmed.types_omitted > 0);
+            assert!(trimmed.quantity_omitted > 0);
+        }
+
+        let mut untrimmable = vec![synthetic_base("x".repeat(BASES_SECTION_LIMIT), Vec::new())];
+        enforce_bases_budget(&mut untrimmable, &mut warnings);
+        assert!(bases_section_json_len(&untrimmable) <= BASES_SECTION_LIMIT);
+    }
+
+    #[test]
+    fn malformed_base_worker_reference_emits_a_warning() {
+        let mut wsd = Properties::default();
+        wsd.insert(
+            "BaseCampSaveData",
+            Property::Map(vec![MapEntry {
+                key: Property::Int(7),
+                value: Property::Int(0),
+            }]),
+        );
+        let mut warnings = Vec::new();
+        let decoded = decode_base_worker_containers(&wsd, &mut warnings);
+        assert!(decoded.is_empty());
+        assert_eq!(warnings.len(), 1, "warnings: {warnings:?}");
+    }
+
+    #[test]
+    fn malformed_map_object_modules_emit_bounded_warnings() {
+        let mut model = Properties::default();
+        model.insert(
+            "RawData",
+            Property::Array(ValueVec::Byte(ByteArray::Byte(vec![0; 48]))),
+        );
+        let modules = (0..5)
+            .map(|_| {
+                let mut value = Properties::default();
+                value.insert(
+                    "RawData",
+                    Property::Array(ValueVec::Byte(ByteArray::Byte(vec![0; 3]))),
+                );
+                MapEntry {
+                    key: Property::Enum(
+                        "EPalMapObjectConcreteModelModuleType::ItemContainer".to_string(),
+                    ),
+                    value: Property::Struct(StructValue::Struct(value)),
+                }
+            })
+            .collect();
+        let mut concrete = Properties::default();
+        concrete.insert("ModuleMap", Property::Map(modules));
+        let mut object = Properties::default();
+        object.insert("MapObjectId", Property::Name("Chest".to_string()));
+        object.insert("Model", Property::Struct(StructValue::Struct(model)));
+        object.insert(
+            "ConcreteModel",
+            Property::Struct(StructValue::Struct(concrete)),
+        );
+        let mut wsd = Properties::default();
+        wsd.insert(
+            "MapObjectSaveData",
+            Property::Array(ValueVec::Struct(vec![StructValue::Struct(object)])),
+        );
+        let mut warnings = Vec::new();
+        let decoded = decode_map_objects(&wsd, &mut warnings);
+        assert_eq!(decoded.len(), 1);
+        assert_eq!(
+            warnings.len(),
+            4,
+            "three details plus summary: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn malformed_work_record_emits_a_warning() {
+        let mut record = Properties::default();
+        record.insert("WorkableType", Property::Enum("Work".to_string()));
+        record.insert(
+            "RawData",
+            Property::Array(ValueVec::Byte(ByteArray::Byte(vec![0; 3]))),
+        );
+        let mut wsd = Properties::default();
+        wsd.insert(
+            "WorkSaveData",
+            Property::Array(ValueVec::Struct(vec![StructValue::Struct(record)])),
+        );
+        let mut warnings = Vec::new();
+        let decoded = decode_workable_ids(&wsd, &mut warnings);
+        assert!(decoded.is_empty());
+        assert_eq!(warnings.len(), 1, "warnings: {warnings:?}");
     }
 
     fn pal_prop(name: &str, value: rawdata::PalValue) -> rawdata::PalProperty {

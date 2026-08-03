@@ -449,7 +449,11 @@ fn happy_path_bases_section_aggregates_real_base_camp_details() {
     assert!((position["y"].as_f64().unwrap() - 264_690.724_290_564_3).abs() < 1e-9);
     assert!((position["z"].as_f64().unwrap() - 4_006.807_597_703_322_7).abs() < 1e-9);
     assert_eq!(base["workers"].as_array().unwrap().len(), 5);
-    assert!(base.get("level").is_none());
+    assert!(
+        base.get("level").is_some(),
+        "level must be emitted explicitly"
+    );
+    assert!(base["level"].is_null(), "unverified level must be null");
 
     let map_objects = base["mapObjects"].as_array().unwrap();
     assert!(
@@ -550,7 +554,11 @@ fn live_fixture_base_map_object_flags_are_uniform_and_unknown_is_exclusive() {
     let base = &result["sections"]["bases"]["data"]["bases"][0];
     let guild_id = base["guildId"].as_str().expect("decoded guild id");
     assert_eq!(guild_id, "ef9302c3-4326-566b-926d-76a0f74ab46d");
-    assert_eq!(guild_id.len(), 36, "guildId must be a formatted GUID, not raw bytes");
+    assert_eq!(
+        guild_id.len(),
+        36,
+        "guildId must be a formatted GUID, not raw bytes"
+    );
     let entries = base["mapObjects"].as_array().expect("mapObjects array");
     assert_flags_are_uniform_and_unknown_is_exclusive(entries);
 

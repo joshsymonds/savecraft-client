@@ -27,3 +27,14 @@ pub fn decode_base_camp(raw: &[u8]) -> Result<BaseCamp, RawDataError> {
         trailing: r.rest().to_vec(),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn short_payload_errors_instead_of_fabricating_a_base() {
+        let error = decode_base_camp(&[0; 15]).unwrap_err();
+        assert_eq!(error.path, "BaseCampSaveData.Value.RawData");
+    }
+}

@@ -1,5 +1,5 @@
-use jomini::text::ObjectReader;
 use jomini::Windows1252Encoding;
+use jomini::text::ObjectReader;
 use serde::Serialize;
 
 use super::gamestate::{find_field, read_f64, read_i64, read_string};

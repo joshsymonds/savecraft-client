@@ -50,6 +50,7 @@ lint-go:
 
 # Lint every Rust workspace target, including tests.
 lint-rust:
+    cargo fmt --all -- --check
     cargo clippy --workspace --all-targets -- -D warnings
 
 fmt-go:

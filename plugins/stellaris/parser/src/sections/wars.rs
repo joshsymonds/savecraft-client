@@ -1,5 +1,5 @@
-use jomini::text::ObjectReader;
 use jomini::Windows1252Encoding;
+use jomini::text::ObjectReader;
 use serde::Serialize;
 
 use super::gamestate::{find_field, read_f64, read_i64, read_string};
@@ -109,16 +109,16 @@ fn parse_participants(
     if let Some(val) = find_field(war_obj, field)
         && let Ok(arr) = val.read_array()
     {
-            for item in arr.values() {
-                if let Ok(obj) = item.read_object()
-                    && let Some(country) = read_i64(&obj, "country")
-                {
-                        participants.push(WarParticipant {
-                            country,
-                            call_type: read_string(&obj, "call_type"),
-                        });
-                }
+        for item in arr.values() {
+            if let Ok(obj) = item.read_object()
+                && let Some(country) = read_i64(&obj, "country")
+            {
+                participants.push(WarParticipant {
+                    country,
+                    call_type: read_string(&obj, "call_type"),
+                });
             }
+        }
     }
     participants
 }

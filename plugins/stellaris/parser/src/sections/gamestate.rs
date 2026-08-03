@@ -1,5 +1,5 @@
-use jomini::text::{ObjectReader, ValueReader};
 use jomini::Windows1252Encoding;
+use jomini::text::{ObjectReader, ValueReader};
 
 /// Find a top-level key in an ObjectReader and return its ValueReader.
 pub fn find_field<'data, 'tokens>(
@@ -28,9 +28,7 @@ pub fn find_entry<'data, 'tokens>(
 }
 
 /// Read all string values from an array-like object (e.g. `civics={"a" "b" "c"}`).
-pub fn read_string_array(
-    value: &ValueReader<'_, '_, Windows1252Encoding>,
-) -> Vec<String> {
+pub fn read_string_array(value: &ValueReader<'_, '_, Windows1252Encoding>) -> Vec<String> {
     let mut result = Vec::new();
     if let Ok(arr) = value.read_array() {
         for item in arr.values() {
@@ -80,19 +78,19 @@ pub fn read_display_name(
         if let Some(vars_val) = find_field(&name_obj, "variables")
             && let Ok(vars_arr) = vars_val.read_array()
         {
-                for item in vars_arr.values() {
-                    if let Ok(var_obj) = item.read_object()
-                        && let (Some(k), Some(v_val)) =
-                            (read_string(&var_obj, "key"), find_field(&var_obj, "value"))
+            for item in vars_arr.values() {
+                if let Ok(var_obj) = item.read_object()
+                    && let (Some(k), Some(v_val)) =
+                        (read_string(&var_obj, "key"), find_field(&var_obj, "value"))
+                {
+                    // value is either { key="X" } or a plain string
+                    if let Ok(v_obj) = v_val.read_object()
+                        && let Some(v_str) = read_string(&v_obj, "key")
                     {
-                            // value is either { key="X" } or a plain string
-                            if let Ok(v_obj) = v_val.read_object()
-                                && let Some(v_str) = read_string(&v_obj, "key")
-                            {
-                                vars.insert(k, v_str);
-                            }
+                        vars.insert(k, v_str);
                     }
                 }
+            }
         }
 
         // Case 1: template with variables
@@ -147,17 +145,11 @@ pub fn read_string(
 }
 
 /// Read a float field from an object, returning None if missing.
-pub fn read_f64(
-    reader: &ObjectReader<'_, '_, Windows1252Encoding>,
-    target: &str,
-) -> Option<f64> {
+pub fn read_f64(reader: &ObjectReader<'_, '_, Windows1252Encoding>, target: &str) -> Option<f64> {
     find_field(reader, target).and_then(|v| v.read_str().ok().and_then(|s| s.parse().ok()))
 }
 
 /// Read an integer field from an object, returning None if missing.
-pub fn read_i64(
-    reader: &ObjectReader<'_, '_, Windows1252Encoding>,
-    target: &str,
-) -> Option<i64> {
+pub fn read_i64(reader: &ObjectReader<'_, '_, Windows1252Encoding>, target: &str) -> Option<i64> {
     find_field(reader, target).and_then(|v| v.read_str().ok().and_then(|s| s.parse().ok()))
 }

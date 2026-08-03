@@ -1,5 +1,5 @@
-use jomini::text::ObjectReader;
 use jomini::Windows1252Encoding;
+use jomini::text::ObjectReader;
 use serde::Serialize;
 
 use super::gamestate::find_field;
@@ -24,13 +24,13 @@ fn read_id_array(obj: &ObjectReader<'_, '_, Windows1252Encoding>, field: &str) -
     if let Some(val) = find_field(obj, field)
         && let Ok(arr) = val.read_array()
     {
-            for item in arr.values() {
-                if let Ok(s) = item.read_str()
-                    && let Ok(id) = s.parse::<i64>()
-                {
-                    result.push(id);
-                }
+        for item in arr.values() {
+            if let Ok(s) = item.read_str()
+                && let Ok(id) = s.parse::<i64>()
+            {
+                result.push(id);
             }
+        }
     }
     result
 }
