@@ -37,8 +37,9 @@ pub fn extract(country: &ObjectReader<'_, '_, Windows1252Encoding>) -> Diplomacy
     };
 
     // Extract relations from relations_manager
-    if let Some(rm_val) = find_field(country, "relations_manager") {
-        if let Ok(rm_obj) = rm_val.read_object() {
+    if let Some(rm_val) = find_field(country, "relations_manager")
+        && let Ok(rm_obj) = rm_val.read_object()
+    {
             // Relations are repeated `relation={}` blocks
             for (key, _op, value) in rm_obj.fields() {
                 if key.read_str() != "relation" {
@@ -71,7 +72,6 @@ pub fn extract(country: &ObjectReader<'_, '_, Windows1252Encoding>) -> Diplomacy
                     });
                 }
             }
-        }
     }
 
     // Sort relations by opinion (most hostile first — most interesting to AI)
@@ -80,12 +80,13 @@ pub fn extract(country: &ObjectReader<'_, '_, Windows1252Encoding>) -> Diplomacy
         .sort_by(|a, b| a.opinion.partial_cmp(&b.opinion).unwrap_or(std::cmp::Ordering::Equal));
 
     // Extract casus belli from standard_diplomacy_module
-    if let Some(mod_val) = find_field(country, "modules") {
-        if let Ok(mod_obj) = mod_val.read_object() {
-            if let Some(diplo_val) = find_field(&mod_obj, "standard_diplomacy_module") {
-                if let Ok(diplo_obj) = diplo_val.read_object() {
-                    if let Some(cb_val) = find_field(&diplo_obj, "casus_belli") {
-                        if let Ok(cb_arr) = cb_val.read_array() {
+    if let Some(mod_val) = find_field(country, "modules")
+        && let Ok(mod_obj) = mod_val.read_object()
+        && let Some(diplo_val) = find_field(&mod_obj, "standard_diplomacy_module")
+        && let Ok(diplo_obj) = diplo_val.read_object()
+        && let Some(cb_val) = find_field(&diplo_obj, "casus_belli")
+        && let Ok(cb_arr) = cb_val.read_array()
+    {
                             for item in cb_arr.values() {
                                 if let Ok(cb_obj) = item.read_object() {
                                     let cb_type = match read_string(&cb_obj, "type") {
@@ -102,11 +103,6 @@ pub fn extract(country: &ObjectReader<'_, '_, Windows1252Encoding>) -> Diplomacy
                                     });
                                 }
                             }
-                        }
-                    }
-                }
-            }
-        }
     }
 
     diplomacy

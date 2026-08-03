@@ -106,19 +106,19 @@ fn parse_participants(
     field: &str,
 ) -> Vec<WarParticipant> {
     let mut participants = Vec::new();
-    if let Some(val) = find_field(war_obj, field) {
-        if let Ok(arr) = val.read_array() {
+    if let Some(val) = find_field(war_obj, field)
+        && let Ok(arr) = val.read_array()
+    {
             for item in arr.values() {
-                if let Ok(obj) = item.read_object() {
-                    if let Some(country) = read_i64(&obj, "country") {
+                if let Ok(obj) = item.read_object()
+                    && let Some(country) = read_i64(&obj, "country")
+                {
                         participants.push(WarParticipant {
                             country,
                             call_type: read_string(&obj, "call_type"),
                         });
-                    }
                 }
             }
-        }
     }
     participants
 }

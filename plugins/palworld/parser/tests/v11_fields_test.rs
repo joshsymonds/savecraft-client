@@ -36,7 +36,7 @@ fn decode(path: &Path) -> uesave::Save {
 }
 
 fn property<'a>(properties: &'a Properties, name: &str) -> &'a Property {
-    &properties
+    properties
         .0
         .iter()
         .find(|(key, _)| key.1 == name)

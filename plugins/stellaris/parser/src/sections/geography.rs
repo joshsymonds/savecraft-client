@@ -21,16 +21,16 @@ pub fn extract(country: &ObjectReader<'_, '_, Windows1252Encoding>) -> Geography
 
 fn read_id_array(obj: &ObjectReader<'_, '_, Windows1252Encoding>, field: &str) -> Vec<i64> {
     let mut result = Vec::new();
-    if let Some(val) = find_field(obj, field) {
-        if let Ok(arr) = val.read_array() {
+    if let Some(val) = find_field(obj, field)
+        && let Ok(arr) = val.read_array()
+    {
             for item in arr.values() {
-                if let Ok(s) = item.read_str() {
-                    if let Ok(id) = s.parse::<i64>() {
-                        result.push(id);
-                    }
+                if let Ok(s) = item.read_str()
+                    && let Ok(id) = s.parse::<i64>()
+                {
+                    result.push(id);
                 }
             }
-        }
     }
     result
 }

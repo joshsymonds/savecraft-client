@@ -259,10 +259,10 @@ fn find_player_country_id(
     let player_val = find_field(reader, "player")?;
     let player_arr = player_val.read_array().ok()?;
     for item in player_arr.values() {
-        if let Ok(obj) = item.read_object() {
-            if let Some(id) = read_i64(&obj, "country") {
-                return Some(id);
-            }
+        if let Ok(obj) = item.read_object()
+            && let Some(id) = read_i64(&obj, "country")
+        {
+            return Some(id);
         }
     }
     None

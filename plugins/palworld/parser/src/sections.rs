@@ -1035,8 +1035,10 @@ fn decode_map_objects(wsd: &Properties, warnings: &mut Vec<String>) -> Vec<MapOb
                 let Some(raw) = as_nested_struct(&module.value).and_then(|p| find_property(p, "RawData")).and_then(as_byte_array) else { continue };
                 if kind.ends_with("::ItemContainer") {
                     if let Ok(id) = rawdata::decode_module_guid(raw, "MapObjectSaveData.ConcreteModel.ModuleMap.ItemContainer.RawData") { item_container_ids.push(guid_bytes_to_fguid(&id)); }
-                } else if kind.ends_with("::Workee") {
-                    if let Ok(id) = rawdata::decode_module_guid(raw, "MapObjectSaveData.ConcreteModel.ModuleMap.Workee.RawData") { workee_id = Some(guid_bytes_to_fguid(&id)); }
+                } else if kind.ends_with("::Workee")
+                    && let Ok(id) = rawdata::decode_module_guid(raw, "MapObjectSaveData.ConcreteModel.ModuleMap.Workee.RawData")
+                {
+                    workee_id = Some(guid_bytes_to_fguid(&id));
                 }
             }
         }
@@ -1544,8 +1546,8 @@ fn sorted_base_items(totals: BTreeMap<String, i64>) -> Vec<BaseItem> {
 const BASES_SECTION_LIMIT: usize = 81_920;
 
 fn enforce_bases_budget(bases: &mut [Base], warnings: &mut Vec<String>) {
-    while serde_json::to_vec(&BasesSection { bases: bases.to_vec(), count: bases.len() }).map_or(false, |json| json.len() > BASES_SECTION_LIMIT) {
-        let Some((base_index, item_index)) = bases.iter().enumerate().filter_map(|(base_index, base)| base.items.items.iter().enumerate().last().map(|(item_index, _)| (base_index, item_index))).next() else {
+    while serde_json::to_vec(&BasesSection { bases: bases.to_vec(), count: bases.len() }).is_ok_and(|json| json.len() > BASES_SECTION_LIMIT) {
+        let Some((base_index, item_index)) = bases.iter().enumerate().find_map(|(base_index, base)| base.items.items.iter().enumerate().next_back().map(|(item_index, _)| (base_index, item_index))) else {
             warnings.push(format!("bases section exceeds {BASES_SECTION_LIMIT} bytes after item trimming"));
             return;
         };

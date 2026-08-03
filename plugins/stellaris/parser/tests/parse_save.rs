@@ -1,5 +1,16 @@
 use std::process::Command;
 
+fn read_fixture_or_skip(path: &str) -> Option<Vec<u8>> {
+    match std::fs::read(path) {
+        Ok(data) => Some(data),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!("skipping: fixture {path} is absent (gitignored; see testdata/.gitignore)");
+            None
+        }
+        Err(error) => panic!("failed to read fixture {path}: {error}"),
+    }
+}
+
 /// Feed a real Stellaris save to the parser binary and verify ndjson output.
 #[test]
 fn parse_mid_game_save() {
@@ -7,7 +18,9 @@ fn parse_mid_game_save() {
         env!("CARGO_MANIFEST_DIR"),
         "/../testdata/autosave_2327.07.01.sav"
     );
-    let save_data = std::fs::read(save_path).expect("failed to read test save");
+    let Some(save_data) = read_fixture_or_skip(save_path) else {
+        return;
+    };
 
     // Build and run the parser binary natively (not WASM — for test speed)
     let output = Command::new(env!("CARGO_BIN_EXE_stellaris-parser"))
@@ -330,7 +343,9 @@ fn parse_early_game_save() {
         env!("CARGO_MANIFEST_DIR"),
         "/../testdata/2200.01.01.sav"
     );
-    let save_data = std::fs::read(save_path).expect("failed to read early-game save");
+    let Some(save_data) = read_fixture_or_skip(save_path) else {
+        return;
+    };
 
     let output = Command::new(env!("CARGO_BIN_EXE_stellaris-parser"))
         .stdin(std::process::Stdio::piped())

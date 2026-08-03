@@ -115,10 +115,10 @@ fn extract_casus_belli(
     for item in cb_arr.values() {
         if let Ok(cb_obj) = item.read_object() {
             let target = read_i64(&cb_obj, "country");
-            if target == Some(target_country_id) {
-                if let Some(cb_type) = read_string(&cb_obj, "type") {
-                    cb_types.push(cb_type);
-                }
+            if target == Some(target_country_id)
+                && let Some(cb_type) = read_string(&cb_obj, "type")
+            {
+                cb_types.push(cb_type);
             }
         }
     }

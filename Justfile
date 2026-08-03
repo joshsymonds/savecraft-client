@@ -40,9 +40,17 @@ test-go:
 test-go-race:
     GOEXPERIMENT=jsonv2 go test -race ./internal/... ./cmd/...
 
+# Run all Rust workspace tests, including every plugin parser.
+test-rust:
+    cargo test --workspace -- --nocapture
+
 lint-go:
     GOEXPERIMENT=jsonv2 golangci-lint run ./internal/... ./cmd/...
     GOEXPERIMENT=jsonv2 deadcode -test ./internal/... ./cmd/... ./plugins/...
+
+# Lint every Rust workspace target, including tests.
+lint-rust:
+    cargo clippy --workspace --all-targets -- -D warnings
 
 fmt-go:
     find internal/ cmd/ plugins/ -name '*.go' -not -path 'internal/proto/*' -print0 | xargs -0 goimports -w
@@ -190,5 +198,7 @@ check:
     just proto-lint
     just proto
     just lint
+    just lint-rust
     just test
+    just test-rust
     just public-boundary

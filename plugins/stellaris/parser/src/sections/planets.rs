@@ -41,16 +41,16 @@ pub fn extract(
     // Get the player's owned planet IDs
     let owned_ids: HashSet<i64> = {
         let mut set = HashSet::new();
-        if let Some(val) = find_field(country, "owned_planets") {
-            if let Ok(arr) = val.read_array() {
+        if let Some(val) = find_field(country, "owned_planets")
+            && let Ok(arr) = val.read_array()
+        {
                 for item in arr.values() {
-                    if let Ok(s) = item.read_str() {
-                        if let Ok(id) = s.parse::<i64>() {
-                            set.insert(id);
-                        }
+                    if let Ok(s) = item.read_str()
+                        && let Ok(id) = s.parse::<i64>()
+                    {
+                        set.insert(id);
                     }
                 }
-            }
         }
         set
     };

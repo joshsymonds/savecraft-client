@@ -49,10 +49,10 @@ pub fn read_repeated_strings(
 ) -> Vec<String> {
     let mut result = Vec::new();
     for (key, _op, value) in reader.fields() {
-        if key.read_str() == target {
-            if let Ok(s) = value.read_str() {
-                result.push(s.into_owned());
-            }
+        if key.read_str() == target
+            && let Ok(s) = value.read_str()
+        {
+            result.push(s.into_owned());
         }
     }
     result
@@ -77,23 +77,22 @@ pub fn read_display_name(
 
         // Collect variables if present
         let mut vars = std::collections::HashMap::new();
-        if let Some(vars_val) = find_field(&name_obj, "variables") {
-            if let Ok(vars_arr) = vars_val.read_array() {
+        if let Some(vars_val) = find_field(&name_obj, "variables")
+            && let Ok(vars_arr) = vars_val.read_array()
+        {
                 for item in vars_arr.values() {
-                    if let Ok(var_obj) = item.read_object() {
-                        if let (Some(k), Some(v_val)) =
+                    if let Ok(var_obj) = item.read_object()
+                        && let (Some(k), Some(v_val)) =
                             (read_string(&var_obj, "key"), find_field(&var_obj, "value"))
-                        {
+                    {
                             // value is either { key="X" } or a plain string
-                            if let Ok(v_obj) = v_val.read_object() {
-                                if let Some(v_str) = read_string(&v_obj, "key") {
-                                    vars.insert(k, v_str);
-                                }
+                            if let Ok(v_obj) = v_val.read_object()
+                                && let Some(v_str) = read_string(&v_obj, "key")
+                            {
+                                vars.insert(k, v_str);
                             }
-                        }
                     }
                 }
-            }
         }
 
         // Case 1: template with variables
