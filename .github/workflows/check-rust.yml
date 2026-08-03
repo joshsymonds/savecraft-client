@@ -21,8 +21,18 @@ jobs:
           tool: just
 
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy,rustfmt
+
+      # rust-toolchain.toml pins the channel, so rustup redirects every cargo call to
+      # that toolchain regardless of which one the action installed. Components asked
+      # of the action land on stable and are invisible to the pinned toolchain, which
+      # rustup then auto-installs bare. Add them to whichever toolchain is ACTIVE, so
+      # the pin stays the single source of truth for the version.
+      - name: Add clippy and rustfmt to the pinned toolchain
+        run: |
+          rustup show active-toolchain
+          rustup component add clippy rustfmt
+          cargo fmt --version
+          cargo clippy --version
 
       - name: Test Rust workspace
         run: just test-rust
