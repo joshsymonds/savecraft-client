@@ -24,6 +24,11 @@ import (
 
 const maxResultSize = 2 * 1024 * 1024 // 2MB
 
+// Allow modest non-result lines over the result limit while keeping reads bounded.
+const maxBufferedPluginLineSize = maxResultSize + 64*1024
+
+var errPluginProducedNoResult = errors.New("plugin produced no result")
+
 // defaultMaxMemoryPages caps a plugin's Wasm linear memory. 1 page = 64 KiB,
 // so 16384 pages = 1 GiB. This is far below the wasm32 ceiling of 65536 pages
 // (4 GiB, above which wazero panics) yet generous enough for the largest real
@@ -190,7 +195,7 @@ func (wr *WazeroRunner) Run(
 	}
 
 	// Structured ndjson error always takes priority.
-	if parseErr != nil {
+	if parseErr != nil && !errors.Is(parseErr, errPluginProducedNoResult) {
 		return nil, parseErr
 	}
 
@@ -225,7 +230,9 @@ func (wr *WazeroRunner) parsePluginOutput(
 	onStatus func(string),
 ) (*daemon.GameState, error) {
 	scanner := bufio.NewScanner(stdoutR)
-	scanner.Buffer(make([]byte, 0, 64*1024), maxResultSize)
+	splitter := &pluginLineSplitter{}
+	scanner.Split(splitter.split)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxBufferedPluginLineSize+1)
 
 	var (
 		result   *daemon.GameState
@@ -233,6 +240,10 @@ func (wr *WazeroRunner) parsePluginOutput(
 	)
 
 	for scanner.Scan() {
+		if splitter.consumeLineTooLong() {
+			parseErr = fmt.Errorf("result exceeds %d byte limit", maxResultSize)
+			continue
+		}
 		line := scanner.Bytes()
 		var msg pluginLine
 		if err := json.Unmarshal(line, &msg); err != nil {
@@ -268,7 +279,53 @@ func (wr *WazeroRunner) parsePluginOutput(
 		}
 	}
 
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read plugin output: %w", err)
+	}
+	if result == nil && parseErr == nil {
+		parseErr = errPluginProducedNoResult
+	}
+
 	return result, parseErr
+}
+
+// pluginLineSplitter bounds plugin output buffering so an oversized result is
+// reported as a size error instead of an opaque scanner token error. It drains
+// the rest of an oversized line without buffering it.
+type pluginLineSplitter struct {
+	lineTooLong    bool
+	discardingLine bool
+}
+
+func (s *pluginLineSplitter) split(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if s.discardingLine {
+		if newline := bytes.IndexByte(data, '\n'); newline >= 0 {
+			s.discardingLine = false
+			return newline + 1, nil, nil
+		}
+		return len(data), nil, nil
+	}
+
+	if newline := bytes.IndexByte(data, '\n'); newline >= 0 {
+		return newline + 1, data[:newline], nil
+	}
+	if len(data) > maxBufferedPluginLineSize {
+		s.lineTooLong = true
+		s.discardingLine = !atEOF
+		return len(data), data[:maxBufferedPluginLineSize], nil
+	}
+	if atEOF && len(data) > 0 {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
+}
+
+func (s *pluginLineSplitter) consumeLineTooLong() bool {
+	if !s.lineTooLong {
+		return false
+	}
+	s.lineTooLong = false
+	return true
 }
 
 // Close shuts down the wazero runtime.

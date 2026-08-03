@@ -303,12 +303,100 @@ func TestParsePluginOutput_DisplayName(t *testing.T) {
 	}
 }
 
+func TestParsePluginOutput_ResultSizeLimit(t *testing.T) {
+	runner := &WazeroRunner{}
+	resultPrefix := `{"type":"result","identity":{"saveName":"Test","gameId":"t"},"summary":"`
+	resultSuffix := `","sections":{}}`
+
+	for _, tt := range []struct {
+		name    string
+		size    int
+		wantErr bool
+	}{
+		{name: "exactly at limit", size: maxResultSize},
+		{name: "one byte over limit", size: maxResultSize + 1, wantErr: true},
+		{name: "many times over limit", size: 4 * maxResultSize, wantErr: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			line := resultPrefix + strings.Repeat("a", tt.size-len(resultPrefix)-len(resultSuffix)) + resultSuffix
+			state, err := runner.parsePluginOutput(strings.NewReader(line+"\n"), nil)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected size error")
+				}
+				if !strings.Contains(err.Error(), fmt.Sprintf("%d byte limit", maxResultSize)) {
+					t.Errorf("error = %q, want byte limit", err)
+				}
+				if strings.Contains(err.Error(), "token too long") {
+					t.Errorf("error = %q, must not expose scanner token error", err)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if state == nil || state.Identity.SaveName != "Test" {
+				t.Fatalf("state = %+v, want parsed result", state)
+			}
+		})
+	}
+}
+
+func TestParsePluginOutput_ScannerError(t *testing.T) {
+	runner := &WazeroRunner{}
+	wantErr := errors.New("read failed")
+
+	state, err := runner.parsePluginOutput(errorReader{err: wantErr}, nil)
+	if err == nil {
+		t.Fatal("expected scanner error, got nil")
+	}
+	if !errors.Is(err, wantErr) {
+		t.Errorf("error = %v, want wrapped %v", err, wantErr)
+	}
+	if state != nil {
+		t.Errorf("state = %+v, want nil", state)
+	}
+}
+
+func TestParsePluginOutput_OversizedStatusIsForwarded(t *testing.T) {
+	runner := &WazeroRunner{}
+	statusPrefix := `{"type":"status","message":"`
+	statusSuffix := `"}`
+	line := statusPrefix + strings.Repeat("a", maxResultSize+1-len(statusPrefix)-len(statusSuffix)) + statusSuffix
+	result := `{"type":"result","identity":{"saveName":"Test","gameId":"t"},"sections":{}}`
+	var status string
+
+	// Status messages are not plugin results, so the result-size cap does not apply.
+	state, err := runner.parsePluginOutput(strings.NewReader(line+"\n"+result+"\n"), func(message string) {
+		status = message
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if state == nil {
+		t.Fatal("expected result")
+	}
+	if len(status) != maxResultSize+1-len(statusPrefix)-len(statusSuffix) {
+		t.Errorf("status length = %d, want oversized message forwarded", len(status))
+	}
+}
+
+type errorReader struct {
+	err error
+}
+
+func (r errorReader) Read([]byte) (int, error) {
+	return 0, r.err
+}
+
 func TestParsePluginOutput_EmptyInput(t *testing.T) {
 	runner := &WazeroRunner{}
 
 	state, err := runner.parsePluginOutput(strings.NewReader(""), nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected no-result error")
 	}
 	if state != nil {
 		t.Errorf("expected nil state, got %+v", state)
@@ -327,8 +415,8 @@ func TestParsePluginOutput_StatusForwarding(t *testing.T) {
 	state, err := runner.parsePluginOutput(input, func(msg string) {
 		statuses = append(statuses, msg)
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected no-result error")
 	}
 	if state != nil {
 		t.Errorf("expected nil state")

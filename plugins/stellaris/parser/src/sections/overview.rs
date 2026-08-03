@@ -1,5 +1,5 @@
-use jomini::text::ObjectReader;
 use jomini::Windows1252Encoding;
+use jomini::text::ObjectReader;
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -38,7 +38,10 @@ pub struct Overview {
 }
 
 /// Extract the overview section from parsed meta and the player's country object.
-pub fn extract(meta: &Meta, player_country: &ObjectReader<'_, '_, Windows1252Encoding>) -> Overview {
+pub fn extract(
+    meta: &Meta,
+    player_country: &ObjectReader<'_, '_, Windows1252Encoding>,
+) -> Overview {
     let mut overview = Overview {
         empire_name: meta.name.clone(),
         date: meta.date.clone(),
@@ -65,21 +68,21 @@ pub fn extract(meta: &Meta, player_country: &ObjectReader<'_, '_, Windows1252Enc
     };
 
     // Extract ethics from ethos block
-    if let Some(ethos_val) = find_field(player_country, "ethos") {
-        if let Ok(ethos_obj) = ethos_val.read_object() {
-            overview.ethics = read_repeated_strings(&ethos_obj, "ethic");
-        }
+    if let Some(ethos_val) = find_field(player_country, "ethos")
+        && let Ok(ethos_obj) = ethos_val.read_object()
+    {
+        overview.ethics = read_repeated_strings(&ethos_obj, "ethic");
     }
 
     // Extract government block
-    if let Some(gov_val) = find_field(player_country, "government") {
-        if let Ok(gov_obj) = gov_val.read_object() {
-            overview.government_type = read_string(&gov_obj, "type");
-            overview.authority = read_string(&gov_obj, "authority");
-            overview.origin = read_string(&gov_obj, "origin");
-            if let Some(civics_val) = find_field(&gov_obj, "civics") {
-                overview.civics = read_string_array(&civics_val);
-            }
+    if let Some(gov_val) = find_field(player_country, "government")
+        && let Ok(gov_obj) = gov_val.read_object()
+    {
+        overview.government_type = read_string(&gov_obj, "type");
+        overview.authority = read_string(&gov_obj, "authority");
+        overview.origin = read_string(&gov_obj, "origin");
+        if let Some(civics_val) = find_field(&gov_obj, "civics") {
+            overview.civics = read_string_array(&civics_val);
         }
     }
 
@@ -96,25 +99,19 @@ pub fn extract(meta: &Meta, player_country: &ObjectReader<'_, '_, Windows1252Enc
     overview.num_pops = read_i64(player_country, "num_sapient_pops");
 
     // Extract resource stockpiles from modules.standard_economy_module.resources
-    if let Some(modules_val) = find_field(player_country, "modules") {
-        if let Ok(modules_obj) = modules_val.read_object() {
-            if let Some(econ_val) = find_field(&modules_obj, "standard_economy_module") {
-                if let Ok(econ_obj) = econ_val.read_object() {
-                    if let Some(res_val) = find_field(&econ_obj, "resources") {
-                        if let Ok(res_obj) = res_val.read_object() {
-                            for (key, _op, value) in res_obj.fields() {
-                                let key_str = key.read_str();
-                                if let Ok(val_str) = value.read_str() {
-                                    if let Ok(num) = val_str.parse::<f64>() {
-                                        overview
-                                            .resources
-                                            .insert(key_str.into_owned(), num);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+    if let Some(modules_val) = find_field(player_country, "modules")
+        && let Ok(modules_obj) = modules_val.read_object()
+        && let Some(econ_val) = find_field(&modules_obj, "standard_economy_module")
+        && let Ok(econ_obj) = econ_val.read_object()
+        && let Some(res_val) = find_field(&econ_obj, "resources")
+        && let Ok(res_obj) = res_val.read_object()
+    {
+        for (key, _op, value) in res_obj.fields() {
+            let key_str = key.read_str();
+            if let Ok(val_str) = value.read_str()
+                && let Ok(num) = val_str.parse::<f64>()
+            {
+                overview.resources.insert(key_str.into_owned(), num);
             }
         }
     }

@@ -71,20 +71,14 @@ fn main() {
     let player_val = match find_entry(&country_obj, &id_str) {
         Some(v) => v,
         None => {
-            ndjson::emit_error(
-                "parse_error",
-                &format!("player country {id_str} not found"),
-            );
+            ndjson::emit_error("parse_error", &format!("player country {id_str} not found"));
             std::process::exit(1);
         }
     };
     let player_country = match player_val.read_object() {
         Ok(o) => o,
         Err(e) => {
-            ndjson::emit_error(
-                "parse_error",
-                &format!("player country not an object: {e}"),
-            );
+            ndjson::emit_error("parse_error", &format!("player country not an object: {e}"));
             std::process::exit(1);
         }
     };
@@ -259,10 +253,10 @@ fn find_player_country_id(
     let player_val = find_field(reader, "player")?;
     let player_arr = player_val.read_array().ok()?;
     for item in player_arr.values() {
-        if let Ok(obj) = item.read_object() {
-            if let Some(id) = read_i64(&obj, "country") {
-                return Some(id);
-            }
+        if let Ok(obj) = item.read_object()
+            && let Some(id) = read_i64(&obj, "country")
+        {
+            return Some(id);
         }
     }
     None

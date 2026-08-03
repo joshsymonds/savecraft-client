@@ -1,5 +1,5 @@
-use jomini::text::ObjectReader;
 use jomini::Windows1252Encoding;
+use jomini::text::ObjectReader;
 use serde::Serialize;
 
 use super::gamestate::{find_field, read_string, read_string_array};
@@ -35,20 +35,20 @@ pub fn extract(country: &ObjectReader<'_, '_, Windows1252Encoding>) -> Progressi
         progression.ascension_perks = read_string_array(&val);
     }
 
-    if let Some(val) = find_field(country, "edicts") {
-        if let Ok(arr) = val.read_array() {
-            for item in arr.values() {
-                if let Ok(obj) = item.read_object() {
-                    if let Some(edict_name) = read_string(&obj, "edict") {
-                        let perpetual = read_string(&obj, "perpetual")
-                            .map(|s| s == "yes")
-                            .unwrap_or(false);
-                        progression.edicts.push(Edict {
-                            edict: edict_name,
-                            perpetual,
-                        });
-                    }
-                }
+    if let Some(val) = find_field(country, "edicts")
+        && let Ok(arr) = val.read_array()
+    {
+        for item in arr.values() {
+            if let Ok(obj) = item.read_object()
+                && let Some(edict_name) = read_string(&obj, "edict")
+            {
+                let perpetual = read_string(&obj, "perpetual")
+                    .map(|s| s == "yes")
+                    .unwrap_or(false);
+                progression.edicts.push(Edict {
+                    edict: edict_name,
+                    perpetual,
+                });
             }
         }
     }

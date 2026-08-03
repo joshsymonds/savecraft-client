@@ -2,12 +2,13 @@ use std::process::Command;
 
 /// Feed a real Stellaris save to the parser binary and verify ndjson output.
 #[test]
+#[ignore = "external fixture suite: requires gitignored testdata/autosave_2327.07.01.sav"]
 fn parse_mid_game_save() {
     let save_path = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../testdata/autosave_2327.07.01.sav"
     );
-    let save_data = std::fs::read(save_path).expect("failed to read test save");
+    let save_data = std::fs::read(save_path).expect("external mid-game fixture");
 
     // Build and run the parser binary natively (not WASM — for test speed)
     let output = Command::new(env!("CARGO_BIN_EXE_stellaris-parser"))
@@ -17,12 +18,7 @@ fn parse_mid_game_save() {
         .spawn()
         .and_then(|mut child| {
             use std::io::Write;
-            child
-                .stdin
-                .take()
-                .unwrap()
-                .write_all(&save_data)
-                .unwrap();
+            child.stdin.take().unwrap().write_all(&save_data).unwrap();
             child.wait_with_output()
         })
         .expect("failed to run parser");
@@ -66,19 +62,13 @@ fn parse_mid_game_save() {
 
     // Verify overview section exists
     let sections = &result["sections"];
-    assert!(
-        sections["overview"].is_object(),
-        "overview section missing"
-    );
+    assert!(sections["overview"].is_object(), "overview section missing");
 
     let overview = &sections["overview"]["data"];
     assert_eq!(overview["empire_name"], "Termanid Host 7");
     assert_eq!(overview["date"], "2327.07.01");
     assert!(
-        overview["game_version"]
-            .as_str()
-            .unwrap()
-            .contains("4.2"),
+        overview["game_version"].as_str().unwrap().contains("4.2"),
         "expected game version containing 4.2"
     );
     assert!(
@@ -130,10 +120,7 @@ fn parse_mid_game_save() {
     );
 
     // --- Economy section ---
-    assert!(
-        sections["economy"].is_object(),
-        "economy section missing"
-    );
+    assert!(sections["economy"].is_object(), "economy section missing");
     let economy = &sections["economy"]["data"];
 
     // Income should have multiple resource types with positive values
@@ -156,10 +143,7 @@ fn parse_mid_game_save() {
 
     // Net balance should exist
     let net = &economy["net"];
-    assert!(
-        net.is_object(),
-        "net balance should be an object"
-    );
+    assert!(net.is_object(), "net balance should be an object");
 
     // --- Technology section ---
     assert!(
@@ -211,10 +195,7 @@ fn parse_mid_game_save() {
     );
 
     // --- Military section ---
-    assert!(
-        sections["military"].is_object(),
-        "military section missing"
-    );
+    assert!(sections["military"].is_object(), "military section missing");
     let military = &sections["military"]["data"];
     assert!(
         military["military_power"].as_f64().unwrap() > 100000.0,
@@ -226,10 +207,7 @@ fn parse_mid_game_save() {
     );
 
     // --- Wars section ---
-    assert!(
-        sections["wars"].is_object(),
-        "wars section missing"
-    );
+    assert!(sections["wars"].is_object(), "wars section missing");
     let wars = &sections["wars"]["data"];
     let active_wars = wars["active_wars"].as_array().unwrap();
     // Wars section should be present and be an array (may be empty if player isn't at war)
@@ -273,12 +251,18 @@ fn parse_mid_game_save() {
     );
 
     // --- Progression section ---
-    assert!(sections["progression"].is_object(), "progression section missing");
+    assert!(
+        sections["progression"].is_object(),
+        "progression section missing"
+    );
     let progression = &sections["progression"]["data"];
     let traditions = progression["traditions"].as_array().unwrap();
     assert!(traditions.len() > 30, "expected many traditions");
     let ascension_perks = progression["ascension_perks"].as_array().unwrap();
-    assert!(ascension_perks.len() >= 5, "expected at least 5 ascension perks");
+    assert!(
+        ascension_perks.len() >= 5,
+        "expected at least 5 ascension perks"
+    );
     let edicts = progression["edicts"].as_array().unwrap();
     assert!(!edicts.is_empty(), "expected at least one active edict");
 
@@ -289,8 +273,14 @@ fn parse_mid_game_save() {
     assert!(!leader_list.is_empty(), "expected at least one leader");
     // Each leader should have class and level
     let first_leader = &leader_list[0];
-    assert!(first_leader["class"].is_string(), "leader should have class");
-    assert!(first_leader["level"].is_number(), "leader should have level");
+    assert!(
+        first_leader["class"].is_string(),
+        "leader should have class"
+    );
+    assert!(
+        first_leader["level"].is_number(),
+        "leader should have level"
+    );
 
     // --- Species section ---
     assert!(sections["species"].is_object(), "species section missing");
@@ -303,10 +293,16 @@ fn parse_mid_game_save() {
     // Gestalt consciousness may have no factions — just verify the section exists
 
     // --- Exploration section ---
-    assert!(sections["exploration"].is_object(), "exploration section missing");
+    assert!(
+        sections["exploration"].is_object(),
+        "exploration section missing"
+    );
 
     // --- Geography section ---
-    assert!(sections["geography"].is_object(), "geography section missing");
+    assert!(
+        sections["geography"].is_object(),
+        "geography section missing"
+    );
     let geography = &sections["geography"]["data"];
     let owned_planets = geography["owned_planet_ids"].as_array().unwrap();
     assert_eq!(owned_planets.len(), 12, "expected 12 owned planets");
@@ -318,19 +314,26 @@ fn parse_mid_game_save() {
     assert!(colony_list.len() >= 10, "expected at least 10 colonies");
     // First colony should have key data
     let first_colony = &colony_list[0];
-    assert!(first_colony["planet_id"].is_number(), "colony should have planet_id");
-    assert!(first_colony["planet_class"].is_string(), "colony should have planet_class");
-    assert!(first_colony["num_pops"].is_number(), "colony should have num_pops");
+    assert!(
+        first_colony["planet_id"].is_number(),
+        "colony should have planet_id"
+    );
+    assert!(
+        first_colony["planet_class"].is_string(),
+        "colony should have planet_class"
+    );
+    assert!(
+        first_colony["num_pops"].is_number(),
+        "colony should have num_pops"
+    );
 }
 
 /// Early-game save (2200.01.01) — minimal data, verifies graceful handling of sparse state.
 #[test]
+#[ignore = "external fixture suite: requires gitignored testdata/2200.01.01.sav"]
 fn parse_early_game_save() {
-    let save_path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../testdata/2200.01.01.sav"
-    );
-    let save_data = std::fs::read(save_path).expect("failed to read early-game save");
+    let save_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../testdata/2200.01.01.sav");
+    let save_data = std::fs::read(save_path).expect("external early-game fixture");
 
     let output = Command::new(env!("CARGO_BIN_EXE_stellaris-parser"))
         .stdin(std::process::Stdio::piped())
@@ -362,17 +365,26 @@ fn parse_early_game_save() {
         "personality mismatch"
     );
     assert_eq!(
-        result["summary"],
-        "Interstellar Shantarian Alignment, Erudite Explorers (2200.01.01)",
+        result["summary"], "Interstellar Shantarian Alignment, Erudite Explorers (2200.01.01)",
         "summary mismatch"
     );
 
     // All 13 sections should be present even in early game
     let sections = &result["sections"];
     for section_name in &[
-        "overview", "economy", "technology", "military", "wars",
-        "diplomacy", "progression", "leaders", "species", "factions",
-        "exploration", "geography", "planets",
+        "overview",
+        "economy",
+        "technology",
+        "military",
+        "wars",
+        "diplomacy",
+        "progression",
+        "leaders",
+        "species",
+        "factions",
+        "exploration",
+        "geography",
+        "planets",
     ] {
         assert!(
             sections[section_name].is_object(),
@@ -401,13 +413,21 @@ fn corrupt_input_returns_error() {
         .spawn()
         .and_then(|mut child| {
             use std::io::Write;
-            child.stdin.take().unwrap().write_all(b"not a zip file").unwrap();
+            child
+                .stdin
+                .take()
+                .unwrap()
+                .write_all(b"not a zip file")
+                .unwrap();
             child.wait_with_output()
         })
         .expect("failed to run parser");
 
     // Should exit non-zero
-    assert!(!output.status.success(), "parser should fail on corrupt input");
+    assert!(
+        !output.status.success(),
+        "parser should fail on corrupt input"
+    );
 
     // Should emit an ndjson error line, not crash silently
     let stdout = String::from_utf8(output.stdout).expect("non-UTF8");

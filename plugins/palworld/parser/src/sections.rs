@@ -11,7 +11,7 @@
 
 use crate::rawdata::{self, CharacterContainerSlot, CharacterSaveParameter, ItemSlot};
 use serde::Serialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use uesave::{
     ByteArray, FGuid, MapEntry, Properties, Property, Save, StructValue, ValueVec, VersionInfo,
 };
@@ -257,9 +257,14 @@ fn pal_nested_i64(props: &[rawdata::PalProperty], name: &str) -> Option<i64> {
 
 fn pal_enum(props: &[rawdata::PalProperty], name: &str) -> Option<String> {
     match pal_find(props, name) {
-        Some(rawdata::PalValue::Enum { value, .. }) => Some(value.clone()),
+        Some(rawdata::PalValue::Enum { value, .. }) => Some(bare_ue_enum_value(value).to_string()),
         _ => None,
     }
+}
+
+/// UE's enum qualification is redundant once the output field identifies the type.
+fn bare_ue_enum_value(value: &str) -> &str {
+    value.rsplit_once("::").map_or(value, |(_, bare)| bare)
 }
 
 fn pal_bool(props: &[rawdata::PalProperty], name: &str) -> Option<bool> {
@@ -271,7 +276,10 @@ fn pal_bool(props: &[rawdata::PalProperty], name: &str) -> Option<bool> {
 
 fn pal_str_array(props: &[rawdata::PalProperty], name: &str) -> Vec<String> {
     match pal_find(props, name) {
-        Some(rawdata::PalValue::ArrayStr(v)) => v.clone(),
+        Some(rawdata::PalValue::ArrayStr(v)) => v
+            .iter()
+            .map(|value| bare_ue_enum_value(value).to_string())
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -336,7 +344,7 @@ pub fn build_overview(level_meta: Option<&LevelMetaFields>, level: &Save) -> Ove
 
 // --- Players ---------------------------------------------------------------
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct Position {
     pub x: f64,
     pub y: f64,
@@ -375,8 +383,11 @@ pub struct PlayersSection {
 pub struct Pal {
     #[serde(rename = "speciesId")]
     pub species_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub nickname: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub level: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub sex: Option<String>,
     #[serde(rename = "instanceId")]
     pub instance_id: String,
@@ -384,19 +395,24 @@ pub struct Pal {
     pub passive_skills: Vec<String>,
     #[serde(rename = "equippedSkills")]
     pub equipped_skills: Vec<String>,
-    #[serde(rename = "talentHp")]
+    #[serde(rename = "talentHp", skip_serializing_if = "Option::is_none")]
     pub talent_hp: Option<i32>,
-    #[serde(rename = "talentShot")]
+    #[serde(rename = "talentShot", skip_serializing_if = "Option::is_none")]
     pub talent_shot: Option<i32>,
-    #[serde(rename = "talentDefense")]
+    #[serde(rename = "talentDefense", skip_serializing_if = "Option::is_none")]
     pub talent_defense: Option<i32>,
-    #[serde(rename = "currentWorkSuitability")]
+    #[serde(
+        rename = "currentWorkSuitability",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub current_work_suitability: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub exp: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub hp: Option<i64>,
-    #[serde(rename = "friendshipPoint")]
+    #[serde(rename = "friendshipPoint", skip_serializing_if = "Option::is_none")]
     pub friendship_point: Option<i32>,
-    #[serde(rename = "ownerPlayerUId")]
+    #[serde(rename = "ownerPlayerUId", skip_serializing_if = "Option::is_none")]
     pub owner_player_uid: Option<String>,
 }
 
@@ -440,11 +456,15 @@ pub struct GuildMember {
     pub species_id: Option<String>,
     #[serde(rename = "isPlayer")]
     pub is_player: bool,
+    #[serde(rename = "playerUId", skip_serializing_if = "Option::is_none")]
+    pub player_uid: Option<String>,
     pub level: Option<i32>,
 }
 
 #[derive(Serialize)]
 pub struct Guild {
+    #[serde(rename = "guildId")]
+    pub guild_id: String,
     pub name: String,
     /// The guild's true roster size (`GroupSaveData.member_handle_ids.len()`),
     /// which can exceed `members.len()` when a member's
@@ -465,10 +485,85 @@ pub struct GuildsSection {
 
 // --- Bases -------------------------------------------------------------------
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct Base {
     #[serde(rename = "baseId")]
     pub base_id: String,
+    #[serde(rename = "guildId")]
+    pub guild_id: Option<String>,
+    /// The committed fixtures do not distinguish a trustworthy level
+    /// encoding. Keep explicit unknown separate from a section predating
+    /// this field.
+    pub level: Option<u32>,
+    pub name: String,
+    pub position: Position,
+    pub workers: Vec<String>,
+    /// Base-linked `MapObjectSaveData` entries aggregated by verbatim
+    /// `MapObjectId`. Deliberately NOT called `buildings`: the save gives no
+    /// way to tell a player-built structure from a world object, and the
+    /// base-linked set genuinely includes dropped-item pickups
+    /// (`CommonDropItem3D`) and scenery (`DamagableRock…`). The cloud
+    /// classifies and names these ids by joining `DT_BuildObjectDataTable`
+    /// on `MapObjectId` (see `docs/v1.2-fields.md`).
+    #[serde(rename = "mapObjects")]
+    pub map_objects: Vec<BaseMapObject>,
+    pub items: BaseItems,
+}
+
+#[derive(Serialize, Clone)]
+pub struct BaseMapObject {
+    pub id: String,
+    pub count: usize,
+    pub flags: BaseMapObjectFlags,
+}
+
+/// Per-condition tallies over the `count` objects of one `MapObjectId`.
+///
+/// Every value is one JSON type family -- an integer tally, or `null` when
+/// the flag exists but this build can source no signal for it at all. A
+/// consumer's schema is `number|null` for every key; a string sentinel in an
+/// integer field is forbidden.
+///
+/// Sourceable tallies may overlap each other (REQ-9): one object can be both
+/// powered and damaged. `unknown` is NOT a peer flag -- it counts the objects
+/// for which NO condition signal of any kind was readable, so it is mutually
+/// exclusive with every sourceable flag. The invariant, asserted by
+/// `tests/pipeline_test.rs`, is: `unknown` plus the number of objects
+/// carrying at least one sourceable signal equals `count`. `working` is the
+/// only sourceable flag in this build, so that reduces to
+/// `unknown + working == count`.
+#[derive(Serialize, Clone)]
+pub struct BaseMapObjectFlags {
+    pub powered: Option<usize>,
+    /// Objects whose `Workee` module GUID resolves to a `WorkSaveData`
+    /// record with a readable `WorkableType` -- the only condition signal
+    /// confirmed in these fixtures.
+    pub working: Option<usize>,
+    pub damaged: Option<usize>,
+    #[serde(rename = "under_construction")]
+    pub under_construction: Option<usize>,
+    pub unknown: usize,
+}
+
+#[derive(Serialize, Clone)]
+pub struct BaseItems {
+    pub items: Vec<BaseItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trimmed: Option<BaseItemsTrimmed>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct BaseItem {
+    pub id: String,
+    pub quantity: i64,
+}
+
+#[derive(Serialize, Clone)]
+pub struct BaseItemsTrimmed {
+    #[serde(rename = "types_omitted")]
+    pub types_omitted: usize,
+    #[serde(rename = "quantity_omitted")]
+    pub quantity_omitted: i64,
 }
 
 /// The `bases` section's top-level shape -- see [`PlayersSection`] for why
@@ -542,6 +637,17 @@ struct World {
     /// ever looked up (see `build_inventory_item`), so non-egg entries
     /// aren't indexed at all.
     dynamic_items: HashMap<([u8; 16], [u8; 16]), String>,
+    bases: HashMap<FGuid, rawdata::BaseCamp>,
+    base_worker_containers: HashMap<FGuid, FGuid>,
+    map_objects: Vec<MapObject>,
+    workable_ids: HashSet<FGuid>,
+}
+
+struct MapObject {
+    base_id: FGuid,
+    id: String,
+    item_container_ids: Vec<FGuid>,
+    workee_id: Option<FGuid>,
 }
 
 impl World {
@@ -873,22 +979,212 @@ fn decode_dynamic_items(
     out
 }
 
-fn decode_base_ids(wsd: &Properties, warnings: &mut Vec<String>) -> Vec<FGuid> {
+fn decode_bases(wsd: &Properties, warnings: &mut Vec<String>) -> HashMap<FGuid, rawdata::BaseCamp> {
     let Some(entries) = find_property(wsd, "BaseCampSaveData").and_then(as_map) else {
         warnings.push(
             "BaseCampSaveData missing from Level.sav; bases section will be empty".to_string(),
         );
-        return Vec::new();
+        return HashMap::new();
     };
 
-    let mut out = Vec::with_capacity(entries.len());
+    let mut out = HashMap::with_capacity(entries.len());
     let mut degraded = WarningCap::new(warnings, "base camps");
     for entry in entries {
-        match as_guid(&entry.key) {
-            Some(id) => out.push(id),
-            None => degraded.push(
+        let Some(id) = as_guid(&entry.key) else {
+            degraded.push(
                 "a BaseCampSaveData entry has an unrecognized key shape; skipped".to_string(),
-            ),
+            );
+            continue;
+        };
+        let Some(raw) = as_nested_struct(&entry.value)
+            .and_then(|props| find_property(props, "RawData"))
+            .and_then(as_byte_array)
+        else {
+            degraded.push(format!("base camp {id} is missing RawData; skipped"));
+            continue;
+        };
+        match rawdata::decode_base_camp(raw) {
+            Ok(base) if guid_bytes_to_fguid(&base.base_id) == id => {
+                out.insert(id, base);
+            }
+            Ok(_) => degraded.push(format!(
+                "base camp {id} RawData id does not match map key; skipped"
+            )),
+            Err(e) => degraded.push(format!(
+                "base camp {id} RawData failed to decode ({e}); skipped"
+            )),
+        }
+    }
+    out
+}
+
+fn decode_base_worker_containers(
+    wsd: &Properties,
+    warnings: &mut Vec<String>,
+) -> HashMap<FGuid, FGuid> {
+    let mut out = HashMap::new();
+    let mut degraded = WarningCap::new(warnings, "base worker references");
+    for entry in find_property(wsd, "BaseCampSaveData")
+        .and_then(as_map)
+        .into_iter()
+        .flatten()
+    {
+        let Some(id) = as_guid(&entry.key) else {
+            degraded
+                .push("a base worker reference has an unrecognized key shape; skipped".to_string());
+            continue;
+        };
+        let Some(raw) = as_nested_struct(&entry.value)
+            .and_then(|props| find_property(props, "WorkerDirector"))
+            .and_then(as_nested_struct)
+            .and_then(|props| find_property(props, "RawData"))
+            .and_then(as_byte_array)
+        else {
+            degraded.push(format!(
+                "base camp {id} has no readable WorkerDirector RawData; workers unavailable"
+            ));
+            continue;
+        };
+        let Some(bytes) = raw.get(98..114).and_then(|bytes| bytes.try_into().ok()) else {
+            degraded.push(format!(
+                "base camp {id} WorkerDirector RawData is truncated; workers unavailable"
+            ));
+            continue;
+        };
+        out.insert(id, guid_bytes_to_fguid(bytes));
+    }
+    out
+}
+
+fn decode_map_objects(wsd: &Properties, warnings: &mut Vec<String>) -> Vec<MapObject> {
+    let Some(Property::Array(ValueVec::Struct(objects))) = find_property(wsd, "MapObjectSaveData")
+    else {
+        warnings.push(
+            "MapObjectSaveData missing from Level.sav; base map objects/items will be empty"
+                .to_string(),
+        );
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut degraded = WarningCap::new(warnings, "map objects");
+    for object in objects {
+        let StructValue::Struct(props) = object else {
+            continue;
+        };
+        let (Some(id), Some(model_raw)) = (
+            find_property(props, "MapObjectId").and_then(|p| match p {
+                Property::Name(name) => Some(name.clone()),
+                _ => None,
+            }),
+            find_property(props, "Model")
+                .and_then(as_nested_struct)
+                .and_then(|p| find_property(p, "RawData"))
+                .and_then(as_byte_array),
+        ) else {
+            continue;
+        };
+        let base_id = match rawdata::decode_base_id(model_raw) {
+            Ok(id) => guid_bytes_to_fguid(&id),
+            Err(e) => {
+                degraded.push(format!(
+                    "map object {id} model failed to decode ({e}); skipped"
+                ));
+                continue;
+            }
+        };
+        let mut item_container_ids = Vec::new();
+        let mut workee_id = None;
+        if let Some(modules) = find_property(props, "ConcreteModel")
+            .and_then(as_nested_struct)
+            .and_then(|p| find_property(p, "ModuleMap"))
+            .and_then(as_map)
+        {
+            for module in modules {
+                let Some(kind) = as_enum(&module.key) else {
+                    continue;
+                };
+                let is_item_container = kind.ends_with("::ItemContainer");
+                let is_workee = kind.ends_with("::Workee");
+                if !is_item_container && !is_workee {
+                    continue;
+                }
+                let Some(raw) = as_nested_struct(&module.value)
+                    .and_then(|p| find_property(p, "RawData"))
+                    .and_then(as_byte_array)
+                else {
+                    if is_item_container {
+                        degraded.push(format!(
+                            "map object {id} item-container module has no readable RawData; items unavailable"
+                        ));
+                    } else {
+                        degraded.push(format!(
+                            "map object {id} workee module has no readable RawData; work signal unknown"
+                        ));
+                    }
+                    continue;
+                };
+                if is_item_container {
+                    match rawdata::decode_module_guid(
+                        raw,
+                        "MapObjectSaveData.ConcreteModel.ModuleMap.ItemContainer.RawData",
+                    ) {
+                        Ok(id) => item_container_ids.push(guid_bytes_to_fguid(&id)),
+                        Err(e) => degraded.push(format!(
+                            "map object {id} item-container module failed to decode ({e}); items unavailable"
+                        )),
+                    }
+                } else if is_workee {
+                    match rawdata::decode_module_guid(
+                        raw,
+                        "MapObjectSaveData.ConcreteModel.ModuleMap.Workee.RawData",
+                    ) {
+                        Ok(id) => workee_id = Some(guid_bytes_to_fguid(&id)),
+                        Err(e) => degraded.push(format!(
+                            "map object {id} workee module failed to decode ({e}); work signal unknown"
+                        )),
+                    }
+                }
+            }
+        }
+        out.push(MapObject {
+            base_id,
+            id,
+            item_container_ids,
+            workee_id,
+        });
+    }
+    out
+}
+
+fn decode_workable_ids(wsd: &Properties, warnings: &mut Vec<String>) -> HashSet<FGuid> {
+    let Some(Property::Array(ValueVec::Struct(records))) = find_property(wsd, "WorkSaveData")
+    else {
+        return HashSet::new();
+    };
+    let mut out = HashSet::new();
+    let mut degraded = WarningCap::new(warnings, "work records");
+    for record in records {
+        let StructValue::Struct(props) = record else {
+            continue;
+        };
+        if find_property(props, "WorkableType")
+            .and_then(as_enum)
+            .is_none()
+        {
+            continue;
+        }
+        let Some(raw) = find_property(props, "RawData").and_then(as_byte_array) else {
+            degraded
+                .push("a typed work record is missing RawData; work signal unknown".to_string());
+            continue;
+        };
+        match rawdata::decode_module_guid(raw, "WorkSaveData.RawData") {
+            Ok(id) => {
+                out.insert(guid_bytes_to_fguid(&id));
+            }
+            Err(e) => degraded.push(format!(
+                "a work record failed to decode ({e}); work signal unknown"
+            )),
         }
     }
     out
@@ -1042,15 +1338,21 @@ fn build_guilds(world: &World, warnings: &mut Vec<String>) -> Vec<Guild> {
             let members: Vec<GuildMember> = g
                 .member_handle_ids
                 .iter()
-                .filter_map(|(_, instance_id)| {
+                .filter_map(|(character_guid, instance_id)| {
                     let instance_id = guid_bytes_to_fguid(instance_id);
                     match world.find_character(instance_id) {
-                        Some(c) => Some(GuildMember {
-                            name: pal_str(&c.object, "NickName"),
-                            species_id: pal_str(&c.object, "CharacterID"),
-                            is_player: pal_bool(&c.object, "IsPlayer").unwrap_or(false),
-                            level: pal_byte(&c.object, "Level"),
-                        }),
+                        Some(c) => {
+                            let is_player = pal_bool(&c.object, "IsPlayer").unwrap_or(false);
+                            Some(GuildMember {
+                                name: pal_str(&c.object, "NickName"),
+                                species_id: pal_str(&c.object, "CharacterID"),
+                                is_player,
+                                player_uid: is_player.then(|| {
+                                    guid_bytes_to_fguid(character_guid).to_string()
+                                }),
+                                level: pal_byte(&c.object, "Level"),
+                            })
+                        }
                         None => {
                             degraded.push(format!(
                                 "guild {group_id} member {instance_id} has no matching CharacterSaveParameterMap entry; omitted from roster"
@@ -1061,6 +1363,7 @@ fn build_guilds(world: &World, warnings: &mut Vec<String>) -> Vec<Guild> {
                 })
                 .collect();
             Guild {
+                guild_id: guid_bytes_to_fguid(&g.group_id).to_string(),
                 name: g.group_name.clone(),
                 member_count: g.member_handle_ids.len(),
                 members,
@@ -1236,7 +1539,10 @@ pub fn build_all(
     let char_containers = decode_char_containers(wsd, &mut warnings, &mut unsupported_paths);
     let item_containers = decode_item_containers(wsd, &mut warnings, &mut unsupported_paths);
     let dynamic_items = decode_dynamic_items(wsd, &mut warnings, &mut unsupported_paths);
-    let base_ids = decode_base_ids(wsd, &mut warnings);
+    let bases = decode_bases(wsd, &mut warnings);
+    let base_worker_containers = decode_base_worker_containers(wsd, &mut warnings);
+    let map_objects = decode_map_objects(wsd, &mut warnings);
+    let workable_ids = decode_workable_ids(wsd, &mut warnings);
 
     // Decode only the characters some section actually needs (see P7) --
     // this depends on containers and groups already being decoded above.
@@ -1266,9 +1572,13 @@ pub fn build_all(
         char_containers,
         item_containers,
         dynamic_items,
+        bases,
+        base_worker_containers,
+        map_objects,
+        workable_ids,
     };
 
-    let mut result = assemble_sections(overview, &world, &base_ids, players, warnings);
+    let mut result = assemble_sections(overview, &world, players, warnings);
     result.unsupported_paths = unsupported_paths;
     result.critical_unsupported = critical_unsupported;
     result
@@ -1282,7 +1592,6 @@ pub fn build_all(
 fn assemble_sections(
     mut overview: Overview,
     world: &World,
-    base_ids: &[FGuid],
     players: &[Save],
     mut warnings: Vec<String>,
 ) -> BuildResult {
@@ -1308,12 +1617,8 @@ fn assemble_sections(
         .collect();
 
     let guild = build_guilds(world, &mut warnings);
-    let bases: Vec<Base> = base_ids
-        .iter()
-        .map(|id| Base {
-            base_id: id.to_string(),
-        })
-        .collect();
+    let mut bases = build_bases(world, &mut warnings);
+    enforce_bases_budget(&mut bases, &mut warnings);
     let inventory = players
         .iter()
         .map(|p| build_player_inventory(p, world, &mut warnings))
@@ -1339,6 +1644,261 @@ fn assemble_sections(
     }
 }
 
+fn build_bases(world: &World, warnings: &mut Vec<String>) -> Vec<Base> {
+    let mut objects_by_base: HashMap<FGuid, Vec<&MapObject>> = HashMap::new();
+    for object in &world.map_objects {
+        objects_by_base
+            .entry(object.base_id)
+            .or_default()
+            .push(object);
+    }
+    let mut bases: Vec<Base> = world
+        .bases
+        .iter()
+        .map(|(id, base)| {
+            build_base(
+                *id,
+                base,
+                objects_by_base
+                    .get(id)
+                    .map(Vec::as_slice)
+                    .unwrap_or_default(),
+                world,
+            )
+        })
+        .collect();
+    let unresolved_guilds = bases.iter().filter(|base| base.guild_id.is_none()).count();
+    if unresolved_guilds > 0 {
+        warnings.push(format!(
+            "{unresolved_guilds} base camp guild reference(s) did not match a decoded group; guildId emitted as null"
+        ));
+    }
+    bases.sort_by(|a, b| a.base_id.cmp(&b.base_id));
+    bases
+}
+
+fn build_base(id: FGuid, base: &rawdata::BaseCamp, objects: &[&MapObject], world: &World) -> Base {
+    let workers = base_worker_ids(id, world);
+    let mut by_id: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
+    let mut totals: BTreeMap<String, i64> = BTreeMap::new();
+    for object in objects {
+        let entry = by_id.entry(&object.id).or_default();
+        entry.0 += 1;
+        if object
+            .workee_id
+            .is_some_and(|work| world.workable_ids.contains(&work))
+        {
+            entry.1 += 1;
+        }
+        for container_id in &object.item_container_ids {
+            if let Some(items) = world.item_containers.get(container_id) {
+                for item in items {
+                    *totals.entry(item.static_id.clone()).or_default() += i64::from(item.count);
+                }
+            }
+        }
+    }
+    Base {
+        base_id: id.to_string(),
+        guild_id: world
+            .groups
+            .iter()
+            .find(|(_, _, group)| group.group_id == base.guild_id)
+            .map(|(_, _, group)| guid_bytes_to_fguid(&group.group_id).to_string()),
+        level: None,
+        name: base.name.clone(),
+        position: Position {
+            x: base.position[0],
+            y: base.position[1],
+            z: base.position[2],
+        },
+        workers,
+        // `unknown` is every object this build could source no signal for,
+        // i.e. the ones `working` did not claim -- never both (see
+        // [`BaseMapObjectFlags`]).
+        map_objects: by_id
+            .into_iter()
+            .map(|(id, (count, working))| BaseMapObject {
+                id: id.to_string(),
+                count,
+                flags: BaseMapObjectFlags {
+                    powered: None,
+                    working: Some(working),
+                    damaged: None,
+                    under_construction: None,
+                    unknown: count - working,
+                },
+            })
+            .collect(),
+        items: BaseItems {
+            items: sorted_base_items(totals),
+            trimmed: None,
+        },
+    }
+}
+
+fn base_worker_ids(id: FGuid, world: &World) -> Vec<String> {
+    world
+        .base_worker_containers
+        .get(&id)
+        .and_then(|container_id| world.char_containers.get(container_id))
+        .map(|slots| {
+            slots
+                .iter()
+                .map(|slot| guid_bytes_to_fguid(&slot.instance_id).to_string())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn sorted_base_items(totals: BTreeMap<String, i64>) -> Vec<BaseItem> {
+    let mut items: Vec<_> = totals
+        .into_iter()
+        .map(|(id, quantity)| BaseItem { id, quantity })
+        .collect();
+    items.sort_by(|a, b| b.quantity.cmp(&a.quantity).then_with(|| a.id.cmp(&b.id)));
+    items
+}
+
+const BASES_SECTION_LIMIT: usize = 81_920;
+pub const BASES_SECTION_DESCRIPTION: &str = "Base camp count and ids";
+
+#[derive(Serialize)]
+struct BasesSectionRef<'a> {
+    bases: &'a [Base],
+    count: usize,
+}
+
+#[derive(Serialize)]
+struct EmittedBasesSectionRef<'a> {
+    description: &'static str,
+    data: BasesSectionRef<'a>,
+}
+
+fn bases_section_json_len(bases: &[Base]) -> usize {
+    serde_json::to_vec(&EmittedBasesSectionRef {
+        description: BASES_SECTION_DESCRIPTION,
+        data: BasesSectionRef {
+            bases,
+            count: bases.len(),
+        },
+    })
+    .map_or(usize::MAX, |json| json.len())
+}
+
+fn retained_bases_section_json_len(bases: &[Base], retained_per_base: usize) -> usize {
+    #[derive(Serialize)]
+    struct ItemsRef<'a> {
+        items: &'a [BaseItem],
+        #[serde(skip_serializing_if = "Option::is_none")]
+        trimmed: Option<BaseItemsTrimmed>,
+    }
+    #[derive(Serialize)]
+    struct BaseRef<'a> {
+        #[serde(rename = "baseId")]
+        base_id: &'a str,
+        #[serde(rename = "guildId")]
+        guild_id: &'a Option<String>,
+        level: Option<u32>,
+        name: &'a str,
+        position: &'a Position,
+        workers: &'a [String],
+        #[serde(rename = "mapObjects")]
+        map_objects: &'a [BaseMapObject],
+        items: ItemsRef<'a>,
+    }
+    let projected: Vec<_> = bases
+        .iter()
+        .map(|base| {
+            let keep = retained_per_base.min(base.items.items.len());
+            let omitted = &base.items.items[keep..];
+            BaseRef {
+                base_id: &base.base_id,
+                guild_id: &base.guild_id,
+                level: base.level,
+                name: &base.name,
+                position: &base.position,
+                workers: &base.workers,
+                map_objects: &base.map_objects,
+                items: ItemsRef {
+                    items: &base.items.items[..keep],
+                    trimmed: (!omitted.is_empty()).then(|| BaseItemsTrimmed {
+                        types_omitted: omitted.len(),
+                        quantity_omitted: omitted.iter().map(|item| item.quantity).sum(),
+                    }),
+                },
+            }
+        })
+        .collect();
+    #[derive(Serialize)]
+    struct ProjectedData<'a> {
+        bases: &'a [BaseRef<'a>],
+        count: usize,
+    }
+    #[derive(Serialize)]
+    struct ProjectedEnvelope<'a> {
+        description: &'static str,
+        data: ProjectedData<'a>,
+    }
+    serde_json::to_vec(&ProjectedEnvelope {
+        description: BASES_SECTION_DESCRIPTION,
+        data: ProjectedData {
+            bases: &projected,
+            count: bases.len(),
+        },
+    })
+    .map_or(usize::MAX, |json| json.len())
+}
+
+fn enforce_bases_budget(bases: &mut Vec<Base>, warnings: &mut Vec<String>) {
+    if bases_section_json_len(bases) <= BASES_SECTION_LIMIT {
+        return;
+    }
+
+    let mut low = 0usize;
+    let mut high = bases
+        .iter()
+        .map(|base| base.items.items.len())
+        .max()
+        .unwrap_or(0)
+        + 1;
+    while low + 1 < high {
+        let middle = low + (high - low) / 2;
+        if retained_bases_section_json_len(bases, middle) <= BASES_SECTION_LIMIT {
+            low = middle;
+        } else {
+            high = middle;
+        }
+    }
+
+    if retained_bases_section_json_len(bases, low) > BASES_SECTION_LIMIT {
+        let omitted = bases.len();
+        bases.clear();
+        warnings.push(format!(
+            "bases section metadata exceeds {BASES_SECTION_LIMIT} bytes; omitted {omitted} base camp(s)"
+        ));
+        return;
+    }
+
+    for base in bases.iter_mut() {
+        let keep = low.min(base.items.items.len());
+        if keep < base.items.items.len() {
+            let omitted = base.items.items.split_off(keep);
+            base.items.trimmed = Some(BaseItemsTrimmed {
+                types_omitted: omitted.len(),
+                quantity_omitted: omitted.iter().map(|item| item.quantity).sum(),
+            });
+        }
+    }
+    if bases_section_json_len(bases) > BASES_SECTION_LIMIT {
+        let omitted = bases.len();
+        bases.clear();
+        warnings.push(format!(
+            "bases section exact-size verification exceeded {BASES_SECTION_LIMIT} bytes; omitted {omitted} base camp(s)"
+        ));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1351,7 +1911,249 @@ mod tests {
             char_containers: HashMap::new(),
             item_containers: HashMap::new(),
             dynamic_items: HashMap::new(),
+            bases: HashMap::new(),
+            base_worker_containers: HashMap::new(),
+            map_objects: Vec::new(),
+            workable_ids: HashSet::new(),
         }
+    }
+
+    #[test]
+    fn unmatched_base_guild_reference_emits_null_and_is_counted_in_warning() {
+        let mut world = empty_world();
+        let base_id = guid_bytes_to_fguid(&synthetic_guid_bytes(7, 0));
+        world.bases.insert(
+            base_id,
+            rawdata::BaseCamp {
+                base_id: synthetic_guid_bytes(7, 0),
+                name: "Unmatched guild base".to_string(),
+                position: [0.0; 3],
+                guild_id: synthetic_guid_bytes(99, 0),
+                trailing: Vec::new(),
+            },
+        );
+        let mut warnings = Vec::new();
+
+        let bases = build_bases(&world, &mut warnings);
+
+        assert!(bases[0].guild_id.is_none());
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("1 base camp guild reference"));
+        assert!(warnings[0].contains("guildId emitted as null"));
+    }
+
+    fn synthetic_base(name: String, items: Vec<BaseItem>) -> Base {
+        Base {
+            base_id: FGuid::new(1, 2, 3, 4).to_string(),
+            guild_id: None,
+            level: None,
+            name,
+            position: Position {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            workers: Vec::new(),
+            map_objects: Vec::new(),
+            items: BaseItems {
+                items,
+                trimmed: None,
+            },
+        }
+    }
+
+    #[test]
+    fn bases_budget_measures_the_emitted_section_and_keeps_top_items() {
+        let items = (0..2_000)
+            .rev()
+            .map(|index| BaseItem {
+                id: format!("item-{index:04}-{}", "x".repeat(32)),
+                quantity: index + 1,
+            })
+            .collect();
+        let mut bases = vec![synthetic_base("near limit".to_string(), items)];
+        let mut warnings = Vec::new();
+
+        enforce_bases_budget(&mut bases, &mut warnings);
+
+        let emitted = bases_section_json_len(&bases);
+        assert!(emitted <= BASES_SECTION_LIMIT, "emitted {emitted} bytes");
+        let trimmed = bases[0].items.trimmed.as_ref().expect("trim metadata");
+        assert!(trimmed.types_omitted > 0);
+        assert!(trimmed.quantity_omitted > 0);
+        assert!(
+            bases[0]
+                .items
+                .items
+                .windows(2)
+                .all(|pair| pair[0].quantity >= pair[1].quantity)
+        );
+    }
+
+    #[test]
+    fn bases_budget_trims_multiple_bases_and_never_returns_oversized_metadata() {
+        let mut bases = vec![
+            synthetic_base(
+                "a".to_string(),
+                (0..1_200)
+                    .map(|index| BaseItem {
+                        id: format!("a-{index:04}-{}", "x".repeat(32)),
+                        quantity: index + 1,
+                    })
+                    .collect(),
+            ),
+            synthetic_base(
+                "b".to_string(),
+                (0..1_200)
+                    .map(|index| BaseItem {
+                        id: format!("b-{index:04}-{}", "x".repeat(32)),
+                        quantity: index + 1,
+                    })
+                    .collect(),
+            ),
+        ];
+        let mut warnings = Vec::new();
+
+        enforce_bases_budget(&mut bases, &mut warnings);
+
+        assert!(bases_section_json_len(&bases) <= BASES_SECTION_LIMIT);
+        for base in &bases {
+            let trimmed = base.items.trimmed.as_ref().expect("each base trimmed");
+            assert!(trimmed.types_omitted > 0);
+            assert!(trimmed.quantity_omitted > 0);
+        }
+
+        let mut untrimmable = vec![synthetic_base("x".repeat(BASES_SECTION_LIMIT), Vec::new())];
+        enforce_bases_budget(&mut untrimmable, &mut warnings);
+        assert!(bases_section_json_len(&untrimmable) <= BASES_SECTION_LIMIT);
+    }
+
+    #[test]
+    fn malformed_base_worker_reference_emits_a_warning() {
+        let mut wsd = Properties::default();
+        wsd.insert(
+            "BaseCampSaveData",
+            Property::Map(vec![MapEntry {
+                key: Property::Int(7),
+                value: Property::Int(0),
+            }]),
+        );
+        let mut warnings = Vec::new();
+        let decoded = decode_base_worker_containers(&wsd, &mut warnings);
+        assert!(decoded.is_empty());
+        assert_eq!(warnings.len(), 1, "warnings: {warnings:?}");
+    }
+
+    #[test]
+    fn malformed_map_object_modules_emit_bounded_warnings() {
+        let mut model = Properties::default();
+        model.insert(
+            "RawData",
+            Property::Array(ValueVec::Byte(ByteArray::Byte(vec![0; 48]))),
+        );
+        let modules = (0..5)
+            .map(|_| {
+                let mut value = Properties::default();
+                value.insert(
+                    "RawData",
+                    Property::Array(ValueVec::Byte(ByteArray::Byte(vec![0; 3]))),
+                );
+                MapEntry {
+                    key: Property::Enum(
+                        "EPalMapObjectConcreteModelModuleType::ItemContainer".to_string(),
+                    ),
+                    value: Property::Struct(StructValue::Struct(value)),
+                }
+            })
+            .collect();
+        let mut concrete = Properties::default();
+        concrete.insert("ModuleMap", Property::Map(modules));
+        let mut object = Properties::default();
+        object.insert("MapObjectId", Property::Name("Chest".to_string()));
+        object.insert("Model", Property::Struct(StructValue::Struct(model)));
+        object.insert(
+            "ConcreteModel",
+            Property::Struct(StructValue::Struct(concrete)),
+        );
+        let mut wsd = Properties::default();
+        wsd.insert(
+            "MapObjectSaveData",
+            Property::Array(ValueVec::Struct(vec![StructValue::Struct(object)])),
+        );
+        let mut warnings = Vec::new();
+        let decoded = decode_map_objects(&wsd, &mut warnings);
+        assert_eq!(decoded.len(), 1);
+        assert_eq!(
+            warnings.len(),
+            4,
+            "three details plus summary: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn unreadable_target_module_raw_data_warns_without_warning_for_irrelevant_module() {
+        let mut model = Properties::default();
+        model.insert(
+            "RawData",
+            Property::Array(ValueVec::Byte(ByteArray::Byte(vec![0; 48]))),
+        );
+        let modules = vec![
+            MapEntry {
+                key: Property::Enum(
+                    "EPalMapObjectConcreteModelModuleType::ItemContainer".to_string(),
+                ),
+                value: Property::Int(0),
+            },
+            MapEntry {
+                key: Property::Enum("EPalMapObjectConcreteModelModuleType::Workee".to_string()),
+                value: Property::Int(0),
+            },
+            MapEntry {
+                key: Property::Enum("EPalMapObjectConcreteModelModuleType::Effect".to_string()),
+                value: Property::Int(0),
+            },
+        ];
+        let mut concrete = Properties::default();
+        concrete.insert("ModuleMap", Property::Map(modules));
+        let mut object = Properties::default();
+        object.insert("MapObjectId", Property::Name("Chest".to_string()));
+        object.insert("Model", Property::Struct(StructValue::Struct(model)));
+        object.insert(
+            "ConcreteModel",
+            Property::Struct(StructValue::Struct(concrete)),
+        );
+        let mut wsd = Properties::default();
+        wsd.insert(
+            "MapObjectSaveData",
+            Property::Array(ValueVec::Struct(vec![StructValue::Struct(object)])),
+        );
+        let mut warnings = Vec::new();
+
+        let decoded = decode_map_objects(&wsd, &mut warnings);
+
+        assert_eq!(decoded.len(), 1);
+        assert_eq!(warnings.len(), 2, "warnings: {warnings:?}");
+        assert!(warnings[0].contains("item-container module has no readable RawData"));
+        assert!(warnings[1].contains("workee module has no readable RawData"));
+    }
+
+    #[test]
+    fn malformed_work_record_emits_a_warning() {
+        let mut record = Properties::default();
+        record.insert("WorkableType", Property::Enum("Work".to_string()));
+        record.insert(
+            "RawData",
+            Property::Array(ValueVec::Byte(ByteArray::Byte(vec![0; 3]))),
+        );
+        let mut wsd = Properties::default();
+        wsd.insert(
+            "WorkSaveData",
+            Property::Array(ValueVec::Struct(vec![StructValue::Struct(record)])),
+        );
+        let mut warnings = Vec::new();
+        let decoded = decode_workable_ids(&wsd, &mut warnings);
+        assert!(decoded.is_empty());
+        assert_eq!(warnings.len(), 1, "warnings: {warnings:?}");
     }
 
     fn pal_prop(name: &str, value: rawdata::PalValue) -> rawdata::PalProperty {
@@ -1369,6 +2171,42 @@ mod tests {
             group_id: [0u8; 16],
             trailing: Vec::new(),
         }
+    }
+
+    #[test]
+    fn build_pal_emits_bare_values_from_qualified_and_bare_inputs() {
+        let pal = build_pal(
+            FGuid::new(1, 2, 3, 4),
+            &[
+                pal_prop(
+                    "Gender",
+                    rawdata::PalValue::Enum {
+                        enum_type: "EPalGenderType".to_string(),
+                        value: "EPalGenderType::Female".to_string(),
+                    },
+                ),
+                pal_prop(
+                    "PassiveSkillList",
+                    rawdata::PalValue::ArrayStr(vec!["Rare".to_string()]),
+                ),
+                pal_prop(
+                    "EquipWaza",
+                    rawdata::PalValue::ArrayStr(vec!["EPalWazaID::AirCanon".to_string()]),
+                ),
+                pal_prop(
+                    "CurrentWorkSuitability",
+                    rawdata::PalValue::Enum {
+                        enum_type: "EPalWorkSuitability".to_string(),
+                        value: "EPalWorkSuitability::Deforest".to_string(),
+                    },
+                ),
+            ],
+        );
+
+        assert_eq!(pal.sex.as_deref(), Some("Female"));
+        assert_eq!(pal.passive_skills, ["Rare"]);
+        assert_eq!(pal.equipped_skills, ["AirCanon"]);
+        assert_eq!(pal.current_work_suitability.as_deref(), Some("Deforest"));
     }
 
     /// A distinguishable `[u8; 16]` guid: `tag` picks the category (player,
@@ -2169,15 +3007,29 @@ mod tests {
             },
         )];
 
+        let base_id = guid_bytes_to_fguid(&synthetic_guid_bytes(7, 0));
+        let mut bases = HashMap::new();
+        bases.insert(
+            base_id,
+            rawdata::BaseCamp {
+                base_id: synthetic_guid_bytes(7, 0),
+                name: "Synthetic base".to_string(),
+                position: [0.0; 3],
+                guild_id: synthetic_guid_bytes(199, 0),
+                trailing: Vec::new(),
+            },
+        );
         let world = World {
             characters,
             groups,
             char_containers,
             item_containers,
             dynamic_items: HashMap::new(),
+            bases,
+            base_worker_containers: HashMap::new(),
+            map_objects: Vec::new(),
+            workable_ids: HashSet::new(),
         };
-
-        let base_ids = vec![guid_bytes_to_fguid(&synthetic_guid_bytes(200, 0))];
 
         let overview = Overview {
             world_name: Some("Palpagos Islands (multi-player scale test)".to_string()),
@@ -2195,7 +3047,7 @@ mod tests {
             player_count: 4,
         };
 
-        let built = assemble_sections(overview, &world, &base_ids, &players, Vec::new());
+        let built = assemble_sections(overview, &world, &players, Vec::new());
         assert!(
             built.warnings.is_empty(),
             "expected a clean synthetic world with no degrade warnings: {:?}",
@@ -2332,15 +3184,29 @@ mod tests {
             },
         )];
 
+        let base_id = guid_bytes_to_fguid(&synthetic_guid_bytes(7, 0));
+        let mut bases = HashMap::new();
+        bases.insert(
+            base_id,
+            rawdata::BaseCamp {
+                base_id: synthetic_guid_bytes(7, 0),
+                name: "Synthetic base".to_string(),
+                position: [0.0; 3],
+                guild_id: synthetic_guid_bytes(8, 0),
+                trailing: Vec::new(),
+            },
+        );
         let world = World {
             characters,
             groups,
             char_containers,
             item_containers,
             dynamic_items: HashMap::new(),
+            bases,
+            base_worker_containers: HashMap::new(),
+            map_objects: Vec::new(),
+            workable_ids: HashSet::new(),
         };
-
-        let base_ids = vec![guid_bytes_to_fguid(&synthetic_guid_bytes(7, 0))];
 
         let mut save_data = Properties::default();
         save_data.insert("PlayerUId", guid_prop(player_instance_id));
@@ -2403,13 +3269,7 @@ mod tests {
             player_count: 1,
         };
 
-        let built = assemble_sections(
-            overview,
-            &world,
-            &base_ids,
-            std::slice::from_ref(&player),
-            Vec::new(),
-        );
+        let built = assemble_sections(overview, &world, std::slice::from_ref(&player), Vec::new());
         assert!(
             built.warnings.is_empty(),
             "expected a clean synthetic world with no degrade warnings: {:?}",

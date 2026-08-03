@@ -1,5 +1,5 @@
-use jomini::text::ObjectReader;
 use jomini::Windows1252Encoding;
+use jomini::text::ObjectReader;
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -81,53 +81,52 @@ pub fn extract(country: &ObjectReader<'_, '_, Windows1252Encoding>) -> Technolog
     // Extract in-progress research from queues
     for category in &["physics", "society", "engineering"] {
         let queue_key = format!("{category}_queue");
-        if let Some(queue_val) = find_field(&tech_status, &queue_key) {
-            if let Ok(queue_arr) = queue_val.read_array() {
-                // First entry in the queue is the current research
-                for item in queue_arr.values() {
-                    if let Ok(item_obj) = item.read_object() {
-                        let mut tech_name = None;
-                        let mut progress = 0.0;
-                        for (k, _op, v) in item_obj.fields() {
-                            match k.read_str().as_ref() {
-                                "technology" => {
-                                    if let Ok(s) = v.read_str() {
-                                        tech_name = Some(s.into_owned());
-                                    }
-                                }
-                                "progress" => {
-                                    if let Ok(s) = v.read_str() {
-                                        progress = s.parse().unwrap_or(0.0);
-                                    }
-                                }
-                                _ => {}
+        if let Some(queue_val) = find_field(&tech_status, &queue_key)
+            && let Ok(queue_arr) = queue_val.read_array()
+        {
+            // First entry in the queue is the current research
+            if let Some(item) = queue_arr.values().next()
+                && let Ok(item_obj) = item.read_object()
+            {
+                let mut tech_name = None;
+                let mut progress = 0.0;
+                for (k, _op, v) in item_obj.fields() {
+                    match k.read_str().as_ref() {
+                        "technology" => {
+                            if let Ok(s) = v.read_str() {
+                                tech_name = Some(s.into_owned());
                             }
                         }
-                        if let Some(name) = tech_name {
-                            tech.in_progress.insert(
-                                category.to_string(),
-                                InProgressTech {
-                                    tech: name,
-                                    progress,
-                                },
-                            );
+                        "progress" => {
+                            if let Ok(s) = v.read_str() {
+                                progress = s.parse().unwrap_or(0.0);
+                            }
                         }
+                        _ => {}
                     }
-                    break; // Only first entry (current research)
+                }
+                if let Some(name) = tech_name {
+                    tech.in_progress.insert(
+                        category.to_string(),
+                        InProgressTech {
+                            tech: name,
+                            progress,
+                        },
+                    );
                 }
             }
         }
     }
 
     // Extract alternatives (available techs)
-    if let Some(alt_val) = find_field(&tech_status, "alternatives") {
-        if let Ok(alt_obj) = alt_val.read_object() {
-            for category in &["physics", "society", "engineering"] {
-                if let Some(cat_val) = find_field(&alt_obj, category) {
-                    let techs = read_string_array(&cat_val);
-                    if !techs.is_empty() {
-                        tech.alternatives.insert(category.to_string(), techs);
-                    }
+    if let Some(alt_val) = find_field(&tech_status, "alternatives")
+        && let Ok(alt_obj) = alt_val.read_object()
+    {
+        for category in &["physics", "society", "engineering"] {
+            if let Some(cat_val) = find_field(&alt_obj, category) {
+                let techs = read_string_array(&cat_val);
+                if !techs.is_empty() {
+                    tech.alternatives.insert(category.to_string(), techs);
                 }
             }
         }

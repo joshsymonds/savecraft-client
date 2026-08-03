@@ -12,11 +12,19 @@ use uesave::{ByteArray, FGuid, MapEntry, Properties, Property, StructValue, Valu
 const FIXTURES: [(&str, [f64; 3]); 2] = [
     (
         "1FCE97C34D214643B96A23A20A9E27D1",
-        [-346_946.959_174_043_73, 191_651.847_912_949_07, -211.404_500_183_231_1],
+        [
+            -346_946.959_174_043_73,
+            191_651.847_912_949_07,
+            -211.404_500_183_231_1,
+        ],
     ),
     (
         "live-20260731",
-        [-351_879.202_569_715_74, 201_841.419_850_038_3, 1_731.043_340_878_700_7],
+        [
+            -351_879.202_569_715_74,
+            201_841.419_850_038_3,
+            1_731.043_340_878_700_7,
+        ],
     ),
 ];
 const PLAYER_FILE: &str = "Players/00000000000000000000000000000001.sav";
@@ -31,12 +39,11 @@ fn fixture_path(fixture: &str, relative: &str) -> PathBuf {
 
 fn decode(path: &Path) -> uesave::Save {
     let bytes = std::fs::read(path).unwrap_or_else(|e| panic!("reading {path:?}: {e}"));
-    palworld_parser::gvas::decode(bytes)
-        .unwrap_or_else(|e| panic!("decoding {path:?}: {e}"))
+    palworld_parser::gvas::decode(bytes).unwrap_or_else(|e| panic!("decoding {path:?}: {e}"))
 }
 
 fn property<'a>(properties: &'a Properties, name: &str) -> &'a Property {
-    &properties
+    properties
         .0
         .iter()
         .find(|(key, _)| key.1 == name)
@@ -185,7 +192,10 @@ fn pal_gender_instance_id_and_owner_decode_and_join_for_party_and_storage() {
         );
 
         for (slot_owner, instance_id) in &all_slots {
-            assert_eq!(*slot_owner, host_uid, "fixture {fixture}, pal {instance_id}");
+            assert_eq!(
+                *slot_owner, host_uid,
+                "fixture {fixture}, pal {instance_id}"
+            );
             assert!(characters.contains_key(instance_id));
         }
 

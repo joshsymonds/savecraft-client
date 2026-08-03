@@ -320,7 +320,7 @@ pub(crate) fn build_sections_map(built: sections::BuildResult) -> HashMap<String
     sections_map.insert(
         "bases".to_string(),
         ndjson::Section {
-            description: "Base camp count and ids".to_string(),
+            description: sections::BASES_SECTION_DESCRIPTION.to_string(),
             data: serde_json::to_value(&sections::BasesSection {
                 count: bases.len(),
                 bases,

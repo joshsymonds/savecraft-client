@@ -4,5 +4,5 @@
 //! and stdin/stdout WASI scaffolding. Game-specific plugins depend on this
 //! crate and implement their own section extraction and reference data.
 
-pub mod ndjson;
 pub mod envelope;
+pub mod ndjson;
