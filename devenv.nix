@@ -70,6 +70,16 @@
       rustup target add wasm32-wasip1
     fi
 
+    # rust-toolchain.toml pins the channel, so every cargo call resolves to THAT
+    # toolchain no matter what `rustup default` says above. Auto-installing it can
+    # land a bare toolchain with neither component, and `just lint-rust` needs both.
+    # Target the active toolchain so the pin stays the only source of the version.
+    for component in clippy rustfmt; do
+      if ! rustup component list --installed 2>/dev/null | grep -q "^$component"; then
+        rustup component add "$component"
+      fi
+    done
+
     # Use nix-patched workerd binary for miniflare/vitest (NixOS can't run npm's dynamically linked workerd)
     export MINIFLARE_WORKERD_PATH="$(find ${pkgs.wrangler} -path '*workerd-linux-64/bin/workerd' 2>/dev/null | sort | tail -1)"
 
