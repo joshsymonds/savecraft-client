@@ -11,7 +11,7 @@
 
 use crate::rawdata::{self, CharacterContainerSlot, CharacterSaveParameter, ItemSlot};
 use serde::Serialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use uesave::{
     ByteArray, FGuid, MapEntry, Properties, Property, Save, StructValue, ValueVec, VersionInfo,
 };
@@ -344,7 +344,7 @@ pub fn build_overview(level_meta: Option<&LevelMetaFields>, level: &Save) -> Ove
 
 // --- Players ---------------------------------------------------------------
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct Position {
     pub x: f64,
     pub y: f64,
@@ -487,10 +487,76 @@ pub struct GuildsSection {
 
 // --- Bases -------------------------------------------------------------------
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct Base {
     #[serde(rename = "baseId")]
     pub base_id: String,
+    pub name: String,
+    pub position: Position,
+    pub workers: Vec<String>,
+    /// Base-linked `MapObjectSaveData` entries aggregated by verbatim
+    /// `MapObjectId`. Deliberately NOT called `buildings`: the save gives no
+    /// way to tell a player-built structure from a world object, and the
+    /// base-linked set genuinely includes dropped-item pickups
+    /// (`CommonDropItem3D`) and scenery (`DamagableRock…`). The cloud
+    /// classifies and names these ids by joining `DT_BuildObjectDataTable`
+    /// on `MapObjectId` (see `docs/v1.2-fields.md`).
+    #[serde(rename = "mapObjects")]
+    pub map_objects: Vec<BaseMapObject>,
+    pub items: BaseItems,
+}
+
+#[derive(Serialize, Clone)]
+pub struct BaseMapObject {
+    pub id: String,
+    pub count: usize,
+    pub flags: BaseMapObjectFlags,
+}
+
+/// Per-condition tallies over the `count` objects of one `MapObjectId`.
+///
+/// Every value is one JSON type family -- an integer tally, or `null` when
+/// the flag exists but this build can source no signal for it at all. A
+/// consumer's schema is `number|null` for every key; a string sentinel in an
+/// integer field is forbidden.
+///
+/// Sourceable tallies may overlap each other (REQ-9): one object can be both
+/// powered and damaged. `unknown` is NOT a peer flag -- it counts the objects
+/// for which NO condition signal of any kind was readable, so it is mutually
+/// exclusive with every sourceable flag. The invariant, asserted by
+/// `tests/pipeline_test.rs`, is: `unknown` plus the number of objects
+/// carrying at least one sourceable signal equals `count`. `working` is the
+/// only sourceable flag in this build, so that reduces to
+/// `unknown + working == count`.
+#[derive(Serialize, Clone)]
+pub struct BaseMapObjectFlags {
+    pub powered: Option<usize>,
+    /// Objects whose `Workee` module GUID resolves to a `WorkSaveData`
+    /// record with a readable `WorkableType` -- the only condition signal
+    /// confirmed in these fixtures.
+    pub working: Option<usize>,
+    pub damaged: Option<usize>,
+    #[serde(rename = "under_construction")]
+    pub under_construction: Option<usize>,
+    pub unknown: usize,
+}
+
+#[derive(Serialize, Clone)]
+pub struct BaseItems {
+    pub items: Vec<BaseItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trimmed: Option<BaseItemsTrimmed>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct BaseItem { pub id: String, pub quantity: i64 }
+
+#[derive(Serialize, Clone)]
+pub struct BaseItemsTrimmed {
+    #[serde(rename = "types_omitted")]
+    pub types_omitted: usize,
+    #[serde(rename = "quantity_omitted")]
+    pub quantity_omitted: i64,
 }
 
 /// The `bases` section's top-level shape -- see [`PlayersSection`] for why
@@ -564,6 +630,17 @@ struct World {
     /// ever looked up (see `build_inventory_item`), so non-egg entries
     /// aren't indexed at all.
     dynamic_items: HashMap<([u8; 16], [u8; 16]), String>,
+    bases: HashMap<FGuid, rawdata::BaseCamp>,
+    base_worker_containers: HashMap<FGuid, FGuid>,
+    map_objects: Vec<MapObject>,
+    workable_ids: HashSet<FGuid>,
+}
+
+struct MapObject {
+    base_id: FGuid,
+    id: String,
+    item_container_ids: Vec<FGuid>,
+    workee_id: Option<FGuid>,
 }
 
 impl World {
@@ -895,25 +972,87 @@ fn decode_dynamic_items(
     out
 }
 
-fn decode_base_ids(wsd: &Properties, warnings: &mut Vec<String>) -> Vec<FGuid> {
+fn decode_bases(wsd: &Properties, warnings: &mut Vec<String>) -> HashMap<FGuid, rawdata::BaseCamp> {
     let Some(entries) = find_property(wsd, "BaseCampSaveData").and_then(as_map) else {
         warnings.push(
             "BaseCampSaveData missing from Level.sav; bases section will be empty".to_string(),
         );
-        return Vec::new();
+        return HashMap::new();
     };
 
-    let mut out = Vec::with_capacity(entries.len());
+    let mut out = HashMap::with_capacity(entries.len());
     let mut degraded = WarningCap::new(warnings, "base camps");
     for entry in entries {
-        match as_guid(&entry.key) {
-            Some(id) => out.push(id),
-            None => degraded.push(
+        let Some(id) = as_guid(&entry.key) else {
+            degraded.push(
                 "a BaseCampSaveData entry has an unrecognized key shape; skipped".to_string(),
-            ),
+            );
+            continue;
+        };
+        let Some(raw) = as_nested_struct(&entry.value)
+            .and_then(|props| find_property(props, "RawData"))
+            .and_then(as_byte_array) else {
+                degraded.push(format!("base camp {id} is missing RawData; skipped"));
+                continue;
+            };
+        match rawdata::decode_base_camp(raw) {
+            Ok(base) if guid_bytes_to_fguid(&base.base_id) == id => { out.insert(id, base); }
+            Ok(_) => degraded.push(format!("base camp {id} RawData id does not match map key; skipped")),
+            Err(e) => degraded.push(format!("base camp {id} RawData failed to decode ({e}); skipped")),
         }
     }
     out
+}
+
+fn decode_base_worker_containers(wsd: &Properties) -> HashMap<FGuid, FGuid> {
+    find_property(wsd, "BaseCampSaveData").and_then(as_map).into_iter().flatten().filter_map(|entry| {
+        let id = as_guid(&entry.key)?;
+        let raw = as_nested_struct(&entry.value)
+            .and_then(|props| find_property(props, "WorkerDirector"))
+            .and_then(as_nested_struct)
+            .and_then(|props| find_property(props, "RawData"))
+            .and_then(as_byte_array)?;
+        raw.get(98..114)?.try_into().ok().map(|bytes: [u8; 16]| (id, guid_bytes_to_fguid(&bytes)))
+    }).collect()
+}
+
+fn decode_map_objects(wsd: &Properties, warnings: &mut Vec<String>) -> Vec<MapObject> {
+    let Some(Property::Array(ValueVec::Struct(objects))) = find_property(wsd, "MapObjectSaveData") else {
+        warnings.push("MapObjectSaveData missing from Level.sav; base map objects/items will be empty".to_string());
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut degraded = WarningCap::new(warnings, "map objects");
+    for object in objects {
+        let StructValue::Struct(props) = object else { continue };
+        let (Some(id), Some(model_raw)) = (find_property(props, "MapObjectId").and_then(|p| match p { Property::Name(name) => Some(name.clone()), _ => None }), find_property(props, "Model").and_then(as_nested_struct).and_then(|p| find_property(p, "RawData")).and_then(as_byte_array)) else { continue };
+        let base_id = match rawdata::decode_base_id(model_raw) { Ok(id) => guid_bytes_to_fguid(&id), Err(e) => { degraded.push(format!("map object {id} model failed to decode ({e}); skipped")); continue; } };
+        let mut item_container_ids = Vec::new();
+        let mut workee_id = None;
+        if let Some(modules) = find_property(props, "ConcreteModel").and_then(as_nested_struct).and_then(|p| find_property(p, "ModuleMap")).and_then(as_map) {
+            for module in modules {
+                let Some(kind) = as_enum(&module.key) else { continue };
+                let Some(raw) = as_nested_struct(&module.value).and_then(|p| find_property(p, "RawData")).and_then(as_byte_array) else { continue };
+                if kind.ends_with("::ItemContainer") {
+                    if let Ok(id) = rawdata::decode_module_guid(raw, "MapObjectSaveData.ConcreteModel.ModuleMap.ItemContainer.RawData") { item_container_ids.push(guid_bytes_to_fguid(&id)); }
+                } else if kind.ends_with("::Workee") {
+                    if let Ok(id) = rawdata::decode_module_guid(raw, "MapObjectSaveData.ConcreteModel.ModuleMap.Workee.RawData") { workee_id = Some(guid_bytes_to_fguid(&id)); }
+                }
+            }
+        }
+        out.push(MapObject { base_id, id, item_container_ids, workee_id });
+    }
+    out
+}
+
+fn decode_workable_ids(wsd: &Properties) -> HashSet<FGuid> {
+    let Some(Property::Array(ValueVec::Struct(records))) = find_property(wsd, "WorkSaveData") else { return HashSet::new() };
+    records.iter().filter_map(|record| {
+        let StructValue::Struct(props) = record else { return None };
+        as_enum(find_property(props, "WorkableType")?)?;
+        let raw = find_property(props, "RawData").and_then(as_byte_array)?;
+        rawdata::decode_module_guid(raw, "WorkSaveData.RawData").ok().map(|id| guid_bytes_to_fguid(&id))
+    }).collect()
 }
 
 fn player_save_data(player: &Save) -> Option<&Properties> {
@@ -1258,7 +1397,10 @@ pub fn build_all(
     let char_containers = decode_char_containers(wsd, &mut warnings, &mut unsupported_paths);
     let item_containers = decode_item_containers(wsd, &mut warnings, &mut unsupported_paths);
     let dynamic_items = decode_dynamic_items(wsd, &mut warnings, &mut unsupported_paths);
-    let base_ids = decode_base_ids(wsd, &mut warnings);
+    let bases = decode_bases(wsd, &mut warnings);
+    let base_worker_containers = decode_base_worker_containers(wsd);
+    let map_objects = decode_map_objects(wsd, &mut warnings);
+    let workable_ids = decode_workable_ids(wsd);
 
     // Decode only the characters some section actually needs (see P7) --
     // this depends on containers and groups already being decoded above.
@@ -1288,9 +1430,13 @@ pub fn build_all(
         char_containers,
         item_containers,
         dynamic_items,
+        bases,
+        base_worker_containers,
+        map_objects,
+        workable_ids,
     };
 
-    let mut result = assemble_sections(overview, &world, &base_ids, players, warnings);
+    let mut result = assemble_sections(overview, &world, players, warnings);
     result.unsupported_paths = unsupported_paths;
     result.critical_unsupported = critical_unsupported;
     result
@@ -1304,7 +1450,6 @@ pub fn build_all(
 fn assemble_sections(
     mut overview: Overview,
     world: &World,
-    base_ids: &[FGuid],
     players: &[Save],
     mut warnings: Vec<String>,
 ) -> BuildResult {
@@ -1330,12 +1475,9 @@ fn assemble_sections(
         .collect();
 
     let guild = build_guilds(world, &mut warnings);
-    let bases: Vec<Base> = base_ids
-        .iter()
-        .map(|id| Base {
-            base_id: id.to_string(),
-        })
-        .collect();
+    let mut bases: Vec<Base> = world.bases.iter().map(|(id, base)| build_base(*id, base, world)).collect();
+    bases.sort_by(|a, b| a.base_id.cmp(&b.base_id));
+    enforce_bases_budget(&mut bases, &mut warnings);
     let inventory = players
         .iter()
         .map(|p| build_player_inventory(p, world, &mut warnings))
@@ -1361,6 +1503,59 @@ fn assemble_sections(
     }
 }
 
+fn build_base(id: FGuid, base: &rawdata::BaseCamp, world: &World) -> Base {
+    let objects: Vec<_> = world.map_objects.iter().filter(|object| object.base_id == id).collect();
+    let workers = base_worker_ids(id, world);
+    let mut by_id: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
+    let mut totals: BTreeMap<String, i64> = BTreeMap::new();
+    for object in objects {
+        let entry = by_id.entry(&object.id).or_default();
+        entry.0 += 1;
+        if object.workee_id.is_some_and(|work| world.workable_ids.contains(&work)) { entry.1 += 1; }
+        for container_id in &object.item_container_ids {
+            if let Some(items) = world.item_containers.get(container_id) {
+                for item in items { *totals.entry(item.static_id.clone()).or_default() += i64::from(item.count); }
+            }
+        }
+    }
+    Base {
+        base_id: id.to_string(), name: base.name.clone(),
+        position: Position { x: base.position[0], y: base.position[1], z: base.position[2] }, workers,
+        // `unknown` is every object this build could source no signal for,
+        // i.e. the ones `working` did not claim -- never both (see
+        // [`BaseMapObjectFlags`]).
+        map_objects: by_id.into_iter().map(|(id, (count, working))| BaseMapObject { id: id.to_string(), count, flags: BaseMapObjectFlags { powered: None, working: Some(working), damaged: None, under_construction: None, unknown: count - working } }).collect(),
+        items: BaseItems { items: sorted_base_items(totals), trimmed: None },
+    }
+}
+
+fn base_worker_ids(id: FGuid, world: &World) -> Vec<String> {
+    world.base_worker_containers.get(&id).and_then(|container_id| world.char_containers.get(container_id))
+        .map(|slots| slots.iter().map(|slot| guid_bytes_to_fguid(&slot.instance_id).to_string()).collect())
+        .unwrap_or_default()
+}
+
+fn sorted_base_items(totals: BTreeMap<String, i64>) -> Vec<BaseItem> {
+    let mut items: Vec<_> = totals.into_iter().map(|(id, quantity)| BaseItem { id, quantity }).collect();
+    items.sort_by(|a, b| b.quantity.cmp(&a.quantity).then_with(|| a.id.cmp(&b.id)));
+    items
+}
+
+const BASES_SECTION_LIMIT: usize = 81_920;
+
+fn enforce_bases_budget(bases: &mut [Base], warnings: &mut Vec<String>) {
+    while serde_json::to_vec(&BasesSection { bases: bases.to_vec(), count: bases.len() }).map_or(false, |json| json.len() > BASES_SECTION_LIMIT) {
+        let Some((base_index, item_index)) = bases.iter().enumerate().filter_map(|(base_index, base)| base.items.items.iter().enumerate().last().map(|(item_index, _)| (base_index, item_index))).next() else {
+            warnings.push(format!("bases section exceeds {BASES_SECTION_LIMIT} bytes after item trimming"));
+            return;
+        };
+        let item = bases[base_index].items.items.remove(item_index);
+        let trimmed = bases[base_index].items.trimmed.get_or_insert(BaseItemsTrimmed { types_omitted: 0, quantity_omitted: 0 });
+        trimmed.types_omitted += 1;
+        trimmed.quantity_omitted += item.quantity;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1373,6 +1568,10 @@ mod tests {
             char_containers: HashMap::new(),
             item_containers: HashMap::new(),
             dynamic_items: HashMap::new(),
+            bases: HashMap::new(),
+            base_worker_containers: HashMap::new(),
+            map_objects: Vec::new(),
+            workable_ids: HashSet::new(),
         }
     }
 
@@ -2227,15 +2426,24 @@ mod tests {
             },
         )];
 
+        let base_id = guid_bytes_to_fguid(&synthetic_guid_bytes(7, 0));
+        let mut bases = HashMap::new();
+        bases.insert(base_id, rawdata::BaseCamp {
+            base_id: synthetic_guid_bytes(7, 0), name: "Synthetic base".to_string(),
+            position: [0.0; 3], trailing: Vec::new(),
+        });
         let world = World {
             characters,
             groups,
             char_containers,
             item_containers,
             dynamic_items: HashMap::new(),
+            bases,
+            base_worker_containers: HashMap::new(),
+            map_objects: Vec::new(),
+            workable_ids: HashSet::new(),
         };
 
-        let base_ids = vec![guid_bytes_to_fguid(&synthetic_guid_bytes(200, 0))];
 
         let overview = Overview {
             world_name: Some("Palpagos Islands (multi-player scale test)".to_string()),
@@ -2253,7 +2461,7 @@ mod tests {
             player_count: 4,
         };
 
-        let built = assemble_sections(overview, &world, &base_ids, &players, Vec::new());
+        let built = assemble_sections(overview, &world, &players, Vec::new());
         assert!(
             built.warnings.is_empty(),
             "expected a clean synthetic world with no degrade warnings: {:?}",
@@ -2390,15 +2598,24 @@ mod tests {
             },
         )];
 
+        let base_id = guid_bytes_to_fguid(&synthetic_guid_bytes(7, 0));
+        let mut bases = HashMap::new();
+        bases.insert(base_id, rawdata::BaseCamp {
+            base_id: synthetic_guid_bytes(7, 0), name: "Synthetic base".to_string(),
+            position: [0.0; 3], trailing: Vec::new(),
+        });
         let world = World {
             characters,
             groups,
             char_containers,
             item_containers,
             dynamic_items: HashMap::new(),
+            bases,
+            base_worker_containers: HashMap::new(),
+            map_objects: Vec::new(),
+            workable_ids: HashSet::new(),
         };
 
-        let base_ids = vec![guid_bytes_to_fguid(&synthetic_guid_bytes(7, 0))];
 
         let mut save_data = Properties::default();
         save_data.insert("PlayerUId", guid_prop(player_instance_id));
@@ -2464,7 +2681,6 @@ mod tests {
         let built = assemble_sections(
             overview,
             &world,
-            &base_ids,
             std::slice::from_ref(&player),
             Vec::new(),
         );

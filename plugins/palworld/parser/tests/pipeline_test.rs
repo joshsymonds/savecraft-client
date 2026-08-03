@@ -397,7 +397,7 @@ fn happy_path_guild_section_has_the_hosts_guild_and_full_roster() {
 }
 
 #[test]
-fn happy_path_bases_section_has_the_real_base_camp_id() {
+fn happy_path_bases_section_aggregates_real_base_camp_details() {
     let out = run_plugin(&happy_tar());
     let result = &out.of_type("result")[0];
 
@@ -405,7 +405,118 @@ fn happy_path_bases_section_has_the_real_base_camp_id() {
         .as_array()
         .unwrap();
     assert_eq!(bases.len(), 1);
-    assert_eq!(bases[0]["baseId"], "4e18f078-4717-eb0a-043c-01b96f527fff");
+    let base = &bases[0];
+    assert_eq!(base["baseId"], "4e18f078-4717-eb0a-043c-01b96f527fff");
+    assert_eq!(base["name"], "新規生成拠点テンプレート名0(仮)");
+    let position = &base["position"];
+    assert!((position["x"].as_f64().unwrap() - -347_922.128_699_558_1).abs() < 1e-9);
+    assert!((position["y"].as_f64().unwrap() - 264_690.724_290_564_3).abs() < 1e-9);
+    assert!((position["z"].as_f64().unwrap() - 4_006.807_597_703_322_7).abs() < 1e-9);
+    assert_eq!(base["workers"].as_array().unwrap().len(), 5);
+    assert!(base.get("guildId").is_none());
+    assert!(base.get("level").is_none());
+
+    let map_objects = base["mapObjects"].as_array().unwrap();
+    assert!(base.get("buildings").is_none(), "the field is named for what it holds");
+    assert!(map_objects.iter().all(|entry| !entry.is_object() || entry.get("objects").is_none()));
+    assert_eq!(
+        map_objects.iter().map(|entry| entry["count"].as_u64().unwrap()).sum::<u64>(),
+        37,
+    );
+    assert!(map_objects.iter().all(|entry| entry["flags"]["under_construction"].is_null()));
+    assert_flags_are_uniform_and_unknown_is_exclusive(map_objects);
+
+    let items = base["items"]["items"].as_array().unwrap();
+    assert!(items.len() >= 8);
+    assert!(items.iter().any(|item| item["id"] == "Wood" && item["quantity"] == 61));
+    assert!(base["items"].get("trimmed").is_none());
+
+    let section = &result["sections"]["bases"];
+    assert!(serde_json::to_vec(section).unwrap().len() < 81_920);
+}
+
+/// Asserts the two shape rules `bases[].mapObjects[].flags` obeys, against
+/// real parser output:
+///
+/// 1. Every value is an integer tally or `null` -- one JSON type family, so
+///    a consumer can treat the object uniformly instead of special-casing a
+///    string sentinel per key.
+/// 2. `unknown` counts the objects for which NO condition signal of any kind
+///    was readable, so it is mutually exclusive with every sourceable flag.
+///    Sourceable tallies may overlap each other (REQ-9: an object can be both
+///    powered and damaged), so the invariant is `unknown` plus the number of
+///    objects carrying at least one sourceable signal equals `count`.
+fn assert_flags_are_uniform_and_unknown_is_exclusive(entries: &[serde_json::Value]) {
+    assert!(!entries.is_empty(), "expected map-object entries to check");
+    for entry in entries {
+        let count = entry["count"].as_u64().expect("count");
+        let flags = entry["flags"].as_object().expect("flags object");
+        for (name, value) in flags {
+            assert!(
+                value.is_u64() || value.is_null(),
+                "flags.{name} is {value} on {entry}: every flag value must be an integer tally or null",
+            );
+        }
+        let unknown = flags["unknown"].as_u64().expect("unknown is always countable");
+        let sourced: Vec<u64> = flags
+            .iter()
+            .filter(|(name, _)| name.as_str() != "unknown")
+            .filter_map(|(_, value)| value.as_u64())
+            .collect();
+        assert_eq!(
+            sourced.len(),
+            1,
+            "`working` is this build's only sourceable flag; revisit how many objects \
+             carry at least one signal before adding a second one: {entry}",
+        );
+        assert_eq!(
+            unknown + sourced[0],
+            count,
+            "unknown plus the objects carrying a signal must equal count on {entry}",
+        );
+        for signalled in sourced {
+            assert!(
+                unknown + signalled <= count,
+                "unknown overlaps a sourceable flag on {entry}",
+            );
+        }
+    }
+}
+
+/// `unknown` is not a peer flag -- it means "no condition signal could be
+/// sourced for this object" -- so an object with a readable work signal must
+/// never also be counted unknown. The live base's `CampFire` is the case that
+/// proves it: one object, formerly emitted with both `working: 1` and
+/// `unknown: 1`.
+#[test]
+fn live_fixture_base_map_object_flags_are_uniform_and_unknown_is_exclusive() {
+    let out = run_plugin_with_args(&live_happy_tar(), &[LIVE_WORLD_ID]);
+    let result = &out.of_type("result")[0];
+    let base = &result["sections"]["bases"]["data"]["bases"][0];
+    let entries = base["mapObjects"].as_array().expect("mapObjects array");
+    assert_flags_are_uniform_and_unknown_is_exclusive(entries);
+
+    let campfire = entries
+        .iter()
+        .find(|entry| entry["id"] == "CampFire")
+        .expect("the live base's CampFire");
+    assert_eq!(campfire["count"], 1);
+    assert_eq!(campfire["flags"]["working"], 1);
+    assert_eq!(campfire["flags"]["unknown"], 0);
+    for name in ["powered", "damaged", "under_construction"] {
+        assert!(
+            campfire["flags"][name].is_null(),
+            "{name} is unsourceable in this build and must be null, not a string",
+        );
+    }
+
+    // An id with no readable signal keeps every one of its objects unknown.
+    let chest = entries
+        .iter()
+        .find(|entry| entry["id"] == "ItemChest")
+        .expect("the live base's ItemChest");
+    assert_eq!(chest["flags"]["working"], 0);
+    assert_eq!(chest["flags"]["unknown"], chest["count"]);
 }
 
 #[test]
@@ -549,6 +660,21 @@ fn live_fixture_happy_path_emits_all_seven_sections_with_pinned_values() {
         }
     }
     assert_eq!(equipped_skill_count, 38, "live fixture equipped skill count");
+
+    let base = &sections["bases"]["data"]["bases"][0];
+    assert_eq!(base["baseId"], "4e18f078-4717-eb0a-043c-01b96f527fff");
+    assert_eq!(base["name"], "新規生成拠点テンプレート名0(仮)");
+    assert_eq!(base["workers"].as_array().unwrap().len(), 5);
+    assert_eq!(
+        base["mapObjects"].as_array().unwrap().iter()
+            .map(|entry| entry["count"].as_u64().unwrap()).sum::<u64>(),
+        36,
+    );
+    assert!(base["mapObjects"].as_array().unwrap().iter()
+        .all(|entry| entry["flags"]["under_construction"].is_null()));
+    assert!(base["items"]["items"].as_array().unwrap()
+        .iter().any(|item| item["id"] == "CopperOre" && item["quantity"] == 25));
+    assert!(serde_json::to_vec(&sections["bases"]).unwrap().len() < 81_920);
 
     assert!(
         all_pals.iter().any(|pal| {

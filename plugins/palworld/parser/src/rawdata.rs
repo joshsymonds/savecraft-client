@@ -26,16 +26,20 @@
 
 mod character;
 mod character_container;
+mod base_camp;
 mod dynamic_item;
 mod group;
 mod item_container;
+mod map_object;
 mod properties;
 mod reader;
 
 pub use character::{CharacterSaveParameter, decode_character_save_parameter};
+pub use base_camp::{BaseCamp, decode_base_camp};
 pub use character_container::{CharacterContainerSlot, decode_character_container_slot};
 pub use dynamic_item::{DynamicItem, DynamicItemId, DynamicItemKind, decode_dynamic_item};
 pub use group::{GroupSaveData, decode_group_save_data};
 pub use item_container::{ItemSlot, ItemSlotDynamicId, decode_item_slot};
+pub use map_object::{decode_base_id, decode_module_guid};
 pub use properties::{PalProperty, PalValue};
 pub use reader::{RawDataError, RawDataErrorKind};
