@@ -456,11 +456,15 @@ pub struct GuildMember {
     pub species_id: Option<String>,
     #[serde(rename = "isPlayer")]
     pub is_player: bool,
+    #[serde(rename = "playerUId", skip_serializing_if = "Option::is_none")]
+    pub player_uid: Option<String>,
     pub level: Option<i32>,
 }
 
 #[derive(Serialize)]
 pub struct Guild {
+    #[serde(rename = "guildId")]
+    pub guild_id: String,
     pub name: String,
     /// The guild's true roster size (`GroupSaveData.member_handle_ids.len()`),
     /// which can exceed `members.len()` when a member's
@@ -1278,15 +1282,21 @@ fn build_guilds(world: &World, warnings: &mut Vec<String>) -> Vec<Guild> {
             let members: Vec<GuildMember> = g
                 .member_handle_ids
                 .iter()
-                .filter_map(|(_, instance_id)| {
+                .filter_map(|(character_guid, instance_id)| {
                     let instance_id = guid_bytes_to_fguid(instance_id);
                     match world.find_character(instance_id) {
-                        Some(c) => Some(GuildMember {
-                            name: pal_str(&c.object, "NickName"),
-                            species_id: pal_str(&c.object, "CharacterID"),
-                            is_player: pal_bool(&c.object, "IsPlayer").unwrap_or(false),
-                            level: pal_byte(&c.object, "Level"),
-                        }),
+                        Some(c) => {
+                            let is_player = pal_bool(&c.object, "IsPlayer").unwrap_or(false);
+                            Some(GuildMember {
+                                name: pal_str(&c.object, "NickName"),
+                                species_id: pal_str(&c.object, "CharacterID"),
+                                is_player,
+                                player_uid: is_player.then(|| {
+                                    guid_bytes_to_fguid(character_guid).to_string()
+                                }),
+                                level: pal_byte(&c.object, "Level"),
+                            })
+                        }
                         None => {
                             degraded.push(format!(
                                 "guild {group_id} member {instance_id} has no matching CharacterSaveParameterMap entry; omitted from roster"
@@ -1297,6 +1307,7 @@ fn build_guilds(world: &World, warnings: &mut Vec<String>) -> Vec<Guild> {
                 })
                 .collect();
             Guild {
+                guild_id: guid_bytes_to_fguid(&g.group_id).to_string(),
                 name: g.group_name.clone(),
                 member_count: g.member_handle_ids.len(),
                 members,

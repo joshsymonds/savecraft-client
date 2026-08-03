@@ -401,6 +401,31 @@ fn happy_path_guild_section_has_the_hosts_guild_and_full_roster() {
 }
 
 #[test]
+fn live_fixture_player_to_guild_to_base_identifiers_round_trip() {
+    let out = run_plugin_with_args(&live_happy_tar(), &[LIVE_WORLD_ID]);
+    let result = &out.of_type("result")[0];
+
+    let player_uid = result["sections"]["players"]["data"]["players"][0]["playerUId"]
+        .as_str()
+        .expect("player UID");
+    let guild = &result["sections"]["guild"]["data"]["guilds"][0];
+    let guild_player_uid = guild["members"]
+        .as_array()
+        .expect("guild roster")
+        .iter()
+        .find(|member| member["isPlayer"] == true)
+        .and_then(|member| member["playerUId"].as_str())
+        .expect("player member UID");
+    let guild_id = guild["guildId"].as_str().expect("guild ID");
+    let base_guild_id = result["sections"]["bases"]["data"]["bases"][0]["guildId"]
+        .as_str()
+        .expect("base guild ID");
+
+    assert_eq!(guild_player_uid, player_uid);
+    assert_eq!(guild_id, base_guild_id);
+}
+
+#[test]
 fn happy_path_bases_section_aggregates_real_base_camp_details() {
     let out = run_plugin(&happy_tar());
     let result = &out.of_type("result")[0];
