@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# This suite builds scratch git repos in temp dirs. Git hooks (pre-push)
+# export a relative GIT_DIR=.git, which after any cd makes every git call
+# here — including the scratch `git init` — target the invoking repo
+# instead of the scratch one. Sanitize so the suite behaves identically
+# whether run directly or from a hook.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 checker="${script_dir}/check-public-boundary.sh"
 helper="${script_dir}/read-git-batch.mjs"
