@@ -34,11 +34,7 @@ func (*OSFS) ReadDir(path string) ([]fs.DirEntry, error) {
 
 // ReadFile returns the contents of the file at the given path.
 func (*OSFS) ReadFile(path string) ([]byte, error) {
-	data, err := os.ReadFile(filepath.Clean(path))
-	if err != nil {
-		return nil, fmt.Errorf("readfile %s: %w", path, err)
-	}
-	return data, nil
+	return ReadFileShared(path)
 }
 
 // EvalSymlinks resolves any symbolic links in path. It errors if the path
