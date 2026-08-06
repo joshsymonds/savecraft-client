@@ -206,6 +206,25 @@ pub fn run() -> i32 {
     };
 
     let built = sections::build_all(&level_save, level_meta_fields.as_ref(), &players);
+
+    // Level.sav decoded but its root has no worldSaveData at all: every
+    // section except overview would be empty. Pushing that as a "success"
+    // overwrites whatever good sections the server already has for this
+    // world, so report it as the format-drift failure it is -- and name
+    // the root properties that were present, so the error itself documents
+    // the unrecognized layout.
+    if let Some(found_roots) = &built.missing_world_save_data {
+        ndjson::emit_error(
+            "unsupported_version",
+            &format!(
+                "Level.sav decoded but has no worldSaveData at its root (root properties: \
+                 {found_roots}); this world's save layout is newer than this plugin version \
+                 supports"
+            ),
+        );
+        return 1;
+    }
+
     for warning in &built.warnings {
         ndjson::emit_status(warning);
     }
@@ -273,6 +292,7 @@ pub(crate) fn build_sections_map(built: sections::BuildResult) -> HashMap<String
         warnings: _,
         unsupported_paths: _,
         critical_unsupported: _,
+        missing_world_save_data: _,
     } = built;
 
     let mut sections_map = HashMap::new();
