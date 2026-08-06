@@ -6,14 +6,37 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // The game's save commit is "write Level.sav.tmp, then rename it over
-// Level.sav". These tests pin that a ReadFileShared-style handle never
-// blocks that commit — the regression that made Palworld fail its own
-// autosave ("could not save") whenever the daemon was mid-read.
+// Level.sav". These tests pin that a ReadFileShared-style reader never
+// makes that commit FAIL — the regression that made Palworld error its
+// own autosave ("could not save") whenever the daemon was mid-read.
+//
+// Windows semantics make this two distinct guarantees:
+//   - delete of a held file succeeds outright (FILE_SHARE_DELETE);
+//   - rename-OVER a held file cannot succeed while any handle is open,
+//     so the RH oplock makes the writer WAIT for our close (bounded by a
+//     read's few milliseconds) instead of failing with ACCESS_DENIED.
 
-func TestOpenShared_AllowsRenameReplaceWhileOpen(t *testing.T) {
+func TestReadFileShared_ReadsContent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Level.sav")
+	want := []byte("live save bytes, windows edition")
+	if err := os.WriteFile(path, want, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ReadFileShared(path)
+	if err != nil {
+		t.Fatalf("ReadFileShared: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Errorf("content = %q, want %q", got, want)
+	}
+}
+
+func TestOpenShared_RenameReplaceWaitsForReaderInsteadOfFailing(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "Level.sav")
 	tmp := filepath.Join(dir, "Level.sav.tmp")
@@ -24,20 +47,36 @@ func TestOpenShared_AllowsRenameReplaceWhileOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	f, err := openShared(target)
+	const hold = 300 * time.Millisecond
+	r, err := openShared(target)
 	if err != nil {
 		t.Fatalf("openShared: %v", err)
 	}
-	defer f.Close()
+	if r.oplockEvent == 0 {
+		r.Close()
+		t.Skip("RH oplock not granted on this filesystem — yield semantics unavailable")
+	}
+	closed := make(chan struct{})
+	go func() {
+		defer close(closed)
+		time.Sleep(hold)
+		r.Close()
+	}()
 
 	// The game's commit: rename-replace over the file the daemon is
-	// reading. With FILE_SHARE_DELETE on the read handle this must
-	// succeed; without it, it fails with a sharing violation.
+	// reading. With the RH oplock this must BLOCK until the reader
+	// closes, then succeed — never fail.
+	start := time.Now()
 	if err := os.Rename(tmp, target); err != nil {
 		t.Fatalf("rename-replace while a shared read handle is open: %v", err)
 	}
+	elapsed := time.Since(start)
+	<-closed
 
-	f.Close()
+	if elapsed < hold/2 {
+		t.Errorf("rename returned after %v — expected it to wait ~%v for the reader's close", elapsed, hold)
+	}
+
 	got, err := ReadFileShared(target)
 	if err != nil {
 		t.Fatalf("ReadFileShared after replace: %v", err)
@@ -54,22 +93,22 @@ func TestOpenShared_AllowsDeleteWhileOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	f, err := openShared(target)
+	r, err := openShared(target)
 	if err != nil {
 		t.Fatalf("openShared: %v", err)
 	}
-	defer f.Close()
+	defer r.Close()
 
 	if err := os.Remove(target); err != nil {
 		t.Fatalf("delete while a shared read handle is open: %v", err)
 	}
 }
 
-// Canary for why openShared exists at all: a plain os.Open handle (no
-// FILE_SHARE_DELETE) blocks the game's rename-replace. If Go's stdlib ever
-// starts opening with FILE_SHARE_DELETE (golang/go#32088), this test fails
-// — at which point openShared and the platform split can be deleted in
-// favor of os.ReadFile everywhere.
+// Canary for why this file exists at all: a plain os.Open handle (no
+// FILE_SHARE_DELETE, no oplock) makes the game's rename-replace fail. If
+// Go's stdlib ever starts yielding to writers (golang/go#32088), this
+// test fails — at which point the platform split can be deleted in favor
+// of os.ReadFile everywhere.
 func TestPlainOsOpen_BlocksRenameReplace(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "Level.sav")
@@ -89,6 +128,6 @@ func TestPlainOsOpen_BlocksRenameReplace(t *testing.T) {
 
 	if err := os.Rename(tmp, target); err == nil {
 		t.Fatal("os.Rename over a plain os.Open handle succeeded — the stdlib " +
-			"now shares delete access, so the osfs platform split is obsolete")
+			"now yields to writers, so the osfs platform split is obsolete")
 	}
 }
