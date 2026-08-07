@@ -15,6 +15,17 @@ use uesave::{Properties, Property, StructValue, ValueVec};
 const WORLD_ID: &str = "1FCE97C34D214643B96A23A20A9E27D1";
 const LIVE_WORLD_ID: &str = "live-20260731";
 
+#[test]
+fn plugin_manifest_version_is_1_4_0() {
+    let version = include_str!("../../plugin.toml")
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .find_map(|(key, value)| (key.trim() == "version").then(|| value.trim()))
+        .expect("plugin.toml version field");
+
+    assert_eq!(version, "\"1.4.0\"");
+}
+
 fn push_path(prefix: &str, name: &str) -> String {
     if prefix.is_empty() {
         name.to_string()
@@ -375,6 +386,98 @@ fn happy_path_pals_party_and_storage_have_full_detail_from_real_pals() {
     );
 }
 
+fn serialized_existing_pal_sections(result: &serde_json::Value) -> Vec<u8> {
+    serde_json::to_vec(&serde_json::json!({
+        "pals_party": result["sections"]["pals_party"]["data"],
+        "pals_storage": result["sections"]["pals_storage"]["data"],
+    }))
+    .unwrap()
+}
+
+#[test]
+fn existing_fixture_party_and_storage_bytes_are_pinned() {
+    let out = run_plugin(&happy_tar());
+    let result = &out.of_type("result")[0];
+    let expected = include_bytes!("fixtures/pals-original.json")
+        .strip_suffix(b"\n")
+        .expect("snapshot ends with one source-file newline");
+
+    assert_eq!(serialized_existing_pal_sections(result), expected);
+}
+
+#[test]
+fn live_fixture_party_and_storage_bytes_are_pinned() {
+    let out = run_plugin_with_args(&live_happy_tar(), &[LIVE_WORLD_ID]);
+    let result = &out.of_type("result")[0];
+    let expected = include_bytes!("fixtures/pals-live-20260731.json")
+        .strip_suffix(b"\n")
+        .expect("snapshot ends with one source-file newline");
+
+    assert_eq!(serialized_existing_pal_sections(result), expected);
+}
+
+#[test]
+fn fixture_base_workers_are_emitted_once_with_their_owning_base() {
+    const BASE_ID: &str = "4e18f078-4717-eb0a-043c-01b96f527fff";
+    const WORKER_IDS: [&str; 5] = [
+        "36d42d72-4589-a111-073f-50a0556e6866",
+        "968f5f72-4400-9682-9adb-6ab8f5088316",
+        "c63b3553-49f9-f3f5-1aee-e498828c41ad",
+        "8fd0a461-4b36-96d9-592e-99bee9ca4953",
+        "baebd795-452c-b1d3-9021-6a9793fc59e3",
+    ];
+
+    for (fixture, out) in [
+        (WORLD_ID, run_plugin(&happy_tar())),
+        (
+            LIVE_WORLD_ID,
+            run_plugin_with_args(&live_happy_tar(), &[LIVE_WORLD_ID]),
+        ),
+    ] {
+        let result = &out.of_type("result")[0];
+        let sections = &result["sections"];
+        assert_eq!(
+            sections["pals_base"]["description"], "Pals assigned as workers at each base",
+            "fixture {fixture}"
+        );
+        let base = sections["pals_base"]["data"]["pals"]
+            .as_array()
+            .unwrap_or_else(|| panic!("fixture {fixture} must emit pals_base.pals"));
+        assert_eq!(base.len(), WORKER_IDS.len(), "fixture {fixture}");
+        assert!(
+            base.iter().all(|pal| pal["baseId"] == BASE_ID),
+            "fixture {fixture}: {base:?}"
+        );
+        assert_eq!(
+            base.iter()
+                .map(|pal| pal["instanceId"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            WORKER_IDS,
+            "fixture {fixture}"
+        );
+        assert!(
+            base.iter()
+                .all(|pal| pal["speciesId"].as_str().is_some_and(|id| !id.is_empty())),
+            "fixture {fixture}: raw species ids must be present verbatim"
+        );
+
+        let party = sections["pals_party"]["data"]["pals"].as_array().unwrap();
+        let storage = sections["pals_storage"]["data"]["pals"].as_array().unwrap();
+        let instance_ids: Vec<_> = party
+            .iter()
+            .chain(base)
+            .chain(storage)
+            .map(|pal| pal["instanceId"].as_str().unwrap())
+            .collect();
+        let unique: std::collections::HashSet<_> = instance_ids.iter().copied().collect();
+        assert_eq!(
+            unique.len(),
+            instance_ids.len(),
+            "fixture {fixture}: party/base/storage must be mutually exclusive"
+        );
+    }
+}
+
 #[test]
 fn happy_path_guild_section_has_the_hosts_guild_and_full_roster() {
     let out = run_plugin(&happy_tar());
@@ -622,10 +725,10 @@ fn happy_path_inventory_section_labels_containers_by_role_with_real_items() {
 /// because a dead TYPE_HINTS path let a nested map's key/value types go
 /// unresolved, misaligning the byte stream into a garbage FString length.
 /// This drives the full tar -> stdout pipeline (not just gvas::decode) to
-/// prove the fixed TYPE_HINTS table produces a complete result -- all seven
+/// prove the fixed TYPE_HINTS table produces a complete result -- all eight
 /// sections -- from the owner's real, currently-live world.
 #[test]
-fn live_fixture_happy_path_emits_all_seven_sections_with_pinned_values() {
+fn live_fixture_happy_path_emits_all_eight_sections_with_pinned_values() {
     let out = run_plugin_with_args(&live_happy_tar(), &[LIVE_WORLD_ID]);
     assert_eq!(out.code, 0, "lines: {:?}", out.lines);
 
@@ -642,6 +745,7 @@ fn live_fixture_happy_path_emits_all_seven_sections_with_pinned_values() {
         "overview",
         "players",
         "pals_party",
+        "pals_base",
         "pals_storage",
         "guild",
         "bases",
@@ -814,9 +918,9 @@ fn missing_world_id_arg_falls_back_to_world() {
     // No Players/*.sav members at all -- the players/inventory sections
     // degrade to empty arrays, and pals_party/pals_storage are empty too:
     // both are built by iterating each player's own
-    // OtomoCharacterContainerId/PalStorageContainerId, so pals sections DO
-    // depend on players existing -- zero players means zero container ids
-    // to look up in the first place.
+    // OtomoCharacterContainerId/PalStorageContainerId, so those two
+    // sections depend on players existing. pals_base is world-scoped and
+    // remains available without any Players/*.sav members.
     let sections = &results[0]["sections"];
     assert_eq!(
         sections["players"]["data"]["players"]
@@ -838,6 +942,13 @@ fn missing_world_id_arg_falls_back_to_world() {
             .unwrap()
             .len(),
         0
+    );
+    assert_eq!(
+        sections["pals_base"]["data"]["pals"]
+            .as_array()
+            .unwrap()
+            .len(),
+        5
     );
     assert_eq!(
         sections["pals_storage"]["data"]["pals"]

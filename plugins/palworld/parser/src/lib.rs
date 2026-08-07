@@ -285,6 +285,7 @@ pub(crate) fn build_sections_map(built: sections::BuildResult) -> HashMap<String
         overview,
         players,
         pals_party,
+        pals_base,
         pals_storage,
         guild,
         bases,
@@ -318,6 +319,14 @@ pub(crate) fn build_sections_map(built: sections::BuildResult) -> HashMap<String
         ndjson::Section {
             description: "Pals in the active party".to_string(),
             data: serde_json::to_value(&sections::PalsSection { pals: pals_party })
+                .unwrap_or_default(),
+        },
+    );
+    sections_map.insert(
+        "pals_base".to_string(),
+        ndjson::Section {
+            description: "Pals assigned as workers at each base".to_string(),
+            data: serde_json::to_value(&sections::BasePalsSection { pals: pals_base })
                 .unwrap_or_default(),
         },
     );

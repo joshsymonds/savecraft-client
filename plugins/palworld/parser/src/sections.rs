@@ -377,7 +377,7 @@ pub struct PlayersSection {
     pub players: Vec<PlayerSection>,
 }
 
-// --- Pals (shared by pals_party and pals_storage) ---------------------------
+// --- Pals (shared by pals_party, pals_base, and pals_storage) ---------------
 
 #[derive(Serialize)]
 pub struct Pal {
@@ -445,6 +445,21 @@ fn build_pal(instance_id: FGuid, object: &[rawdata::PalProperty]) -> Pal {
 #[derive(Serialize)]
 pub struct PalsSection {
     pub pals: Vec<Pal>,
+}
+
+#[derive(Serialize)]
+pub struct BasePal {
+    #[serde(flatten)]
+    pub pal: Pal,
+    #[serde(rename = "baseId")]
+    pub base_id: String,
+}
+
+/// The `pals_base` section's top-level shape. Its entries reuse [`Pal`]
+/// verbatim and add the base id that owns each worker assignment.
+#[derive(Serialize)]
+pub struct BasePalsSection {
+    pub pals: Vec<BasePal>,
 }
 
 // --- Guild -------------------------------------------------------------------
@@ -657,17 +672,18 @@ impl World {
 }
 
 /// Every `CharacterSaveParameterMap` instance id any section actually joins
-/// against: each player's own character, every party/storage container
-/// slot's occupant, and every Guild-type group's roster (the only group
-/// type [`build_guilds`] displays -- roster members' names still need their
-/// character entries, so their ids belong in this set too). Anything else
-/// in `CharacterSaveParameterMap` (e.g. a non-Guild group's members) is
+/// against: each player's own character, every party/storage/base-worker
+/// container slot's occupant, and every Guild-type group's roster (the only
+/// group type [`build_guilds`] displays -- roster members' names still need
+/// their character entries, so their ids belong in this set too). Anything
+/// else in `CharacterSaveParameterMap` (e.g. a non-Guild group's members) is
 /// never surfaced by any section, so [`decode_characters`] skips decoding
 /// its `RawData` entirely (see P7).
 fn collect_needed_character_ids(
     players: &[Save],
     char_containers: &HashMap<FGuid, Vec<CharacterContainerSlot>>,
     groups: &[(FGuid, String, rawdata::GroupSaveData)],
+    base_worker_containers: &HashMap<FGuid, FGuid>,
 ) -> HashSet<FGuid> {
     let mut needed = HashSet::new();
 
@@ -684,6 +700,13 @@ fn collect_needed_character_ids(
             };
             needed.extend(slots.iter().map(|s| guid_bytes_to_fguid(&s.instance_id)));
         }
+    }
+
+    for container_id in base_worker_containers.values() {
+        let Some(slots) = char_containers.get(container_id) else {
+            continue;
+        };
+        needed.extend(slots.iter().map(|s| guid_bytes_to_fguid(&s.instance_id)));
     }
 
     for (_, group_type, g) in groups {
@@ -1286,11 +1309,12 @@ fn build_player_section(player: &Save, world: &World, warnings: &mut Vec<String>
     }
 }
 
-fn build_pals_from_container(
+fn build_unique_pals_from_container(
     container_id: Option<FGuid>,
     world: &World,
     warnings: &mut Vec<String>,
     label: &str,
+    located_pal_ids: &mut HashSet<FGuid>,
 ) -> Vec<Pal> {
     let Some(container_id) = container_id else {
         warnings.push(format!(
@@ -1310,6 +1334,9 @@ fn build_pals_from_container(
         .iter()
         .filter_map(|slot| {
             let instance_id = guid_bytes_to_fguid(&slot.instance_id);
+            if !located_pal_ids.insert(instance_id) {
+                return None;
+            }
             match world.find_character(instance_id) {
                 Some(c) => Some(build_pal(instance_id, &c.object)),
                 None => {
@@ -1319,6 +1346,37 @@ fn build_pals_from_container(
                     None
                 }
             }
+        })
+        .collect()
+}
+
+fn build_base_pals(
+    world: &World,
+    located_pal_ids: &mut HashSet<FGuid>,
+    warnings: &mut Vec<String>,
+) -> Vec<BasePal> {
+    let mut base_ids: Vec<_> = world.bases.keys().copied().collect();
+    base_ids.sort_by_key(FGuid::to_string);
+
+    base_ids
+        .into_iter()
+        .flat_map(|base_id| {
+            let Some(container_id) = world.base_worker_containers.get(&base_id).copied() else {
+                return Vec::new();
+            };
+            build_unique_pals_from_container(
+                Some(container_id),
+                world,
+                warnings,
+                "base worker",
+                located_pal_ids,
+            )
+            .into_iter()
+            .map(|pal| BasePal {
+                pal,
+                base_id: base_id.to_string(),
+            })
+            .collect()
         })
         .collect()
 }
@@ -1480,6 +1538,7 @@ pub struct BuildResult {
     pub overview: Overview,
     pub players: Vec<PlayerSection>,
     pub pals_party: Vec<Pal>,
+    pub pals_base: Vec<BasePal>,
     pub pals_storage: Vec<Pal>,
     pub guild: Vec<Guild>,
     pub bases: Vec<Base>,
@@ -1544,6 +1603,7 @@ pub fn build_all(
             overview,
             players: Vec::new(),
             pals_party: Vec::new(),
+            pals_base: Vec::new(),
             pals_storage: Vec::new(),
             guild: Vec::new(),
             bases: Vec::new(),
@@ -1567,7 +1627,8 @@ pub fn build_all(
 
     // Decode only the characters some section actually needs (see P7) --
     // this depends on containers and groups already being decoded above.
-    let needed_characters = collect_needed_character_ids(players, &char_containers, &groups);
+    let needed_characters =
+        collect_needed_character_ids(players, &char_containers, &groups, &base_worker_containers);
     let characters = decode_characters(
         wsd,
         &needed_characters,
@@ -1621,19 +1682,34 @@ fn assemble_sections(
         .map(|p| build_player_section(p, world, &mut warnings))
         .collect();
 
+    let mut located_pal_ids = HashSet::new();
     let pals_party = players
         .iter()
         .flat_map(|p| {
             let container_id = player_container_id(p, "OtomoCharacterContainerId");
-            build_pals_from_container(container_id, world, &mut warnings, "party")
+            build_unique_pals_from_container(
+                container_id,
+                world,
+                &mut warnings,
+                "party",
+                &mut located_pal_ids,
+            )
         })
         .collect();
+
+    let pals_base = build_base_pals(world, &mut located_pal_ids, &mut warnings);
 
     let pals_storage = players
         .iter()
         .flat_map(|p| {
             let container_id = player_container_id(p, "PalStorageContainerId");
-            build_pals_from_container(container_id, world, &mut warnings, "storage")
+            build_unique_pals_from_container(
+                container_id,
+                world,
+                &mut warnings,
+                "storage",
+                &mut located_pal_ids,
+            )
         })
         .collect();
 
@@ -1652,6 +1728,7 @@ fn assemble_sections(
         overview,
         players: players_section,
         pals_party,
+        pals_base,
         pals_storage,
         guild,
         bases,
@@ -2557,6 +2634,7 @@ mod tests {
 
         assert!(result.players.is_empty());
         assert!(result.pals_party.is_empty());
+        assert!(result.pals_base.is_empty());
         assert!(result.pals_storage.is_empty());
         assert!(result.guild.is_empty());
         assert!(result.bases.is_empty());
@@ -2599,7 +2677,13 @@ mod tests {
         );
 
         let mut warnings = Vec::new();
-        let pals = build_pals_from_container(Some(container_id), &world, &mut warnings, "party");
+        let pals = build_unique_pals_from_container(
+            Some(container_id),
+            &world,
+            &mut warnings,
+            "party",
+            &mut HashSet::new(),
+        );
 
         assert!(pals.is_empty());
         assert!(
@@ -2616,7 +2700,13 @@ mod tests {
         let world = empty_world(); // no entry for container_id at all
 
         let mut warnings = Vec::new();
-        let pals = build_pals_from_container(Some(container_id), &world, &mut warnings, "storage");
+        let pals = build_unique_pals_from_container(
+            Some(container_id),
+            &world,
+            &mut warnings,
+            "storage",
+            &mut HashSet::new(),
+        );
 
         assert!(pals.is_empty());
         assert!(
@@ -2838,6 +2928,164 @@ mod tests {
             ),
             pal_prop("IsPlayer", PalValue::Bool(false)),
         ]
+    }
+
+    #[test]
+    fn base_worker_characters_are_included_in_the_needed_decode_set() {
+        let worker_container_id = guid_bytes_to_fguid(&synthetic_guid_bytes(30, 0));
+        let worker_instance_bytes = synthetic_guid_bytes(31, 0);
+        let base_id = guid_bytes_to_fguid(&synthetic_guid_bytes(32, 0));
+        let char_containers = HashMap::from([(
+            worker_container_id,
+            vec![CharacterContainerSlot {
+                player_uid: [0; 16],
+                instance_id: worker_instance_bytes,
+                trailing: Vec::new(),
+            }],
+        )]);
+        let base_worker_containers = HashMap::from([(base_id, worker_container_id)]);
+
+        let needed =
+            collect_needed_character_ids(&[], &char_containers, &[], &base_worker_containers);
+
+        assert_eq!(
+            needed,
+            HashSet::from([guid_bytes_to_fguid(&worker_instance_bytes)])
+        );
+    }
+
+    #[test]
+    fn pal_location_precedence_is_party_then_base_then_storage_with_deduplication() {
+        let party_and_everywhere = synthetic_guid_bytes(33, 0);
+        let base_and_storage = synthetic_guid_bytes(34, 0);
+        let storage_only = synthetic_guid_bytes(35, 0);
+        let party_container_id = guid_bytes_to_fguid(&synthetic_guid_bytes(36, 0));
+        let base_container_id = guid_bytes_to_fguid(&synthetic_guid_bytes(37, 0));
+        let storage_container_id = guid_bytes_to_fguid(&synthetic_guid_bytes(38, 0));
+        let base_id = guid_bytes_to_fguid(&synthetic_guid_bytes(39, 0));
+
+        let slot = |instance_id| CharacterContainerSlot {
+            player_uid: [0; 16],
+            instance_id,
+            trailing: Vec::new(),
+        };
+        let mut world = empty_world();
+        world.characters.extend([
+            (
+                guid_bytes_to_fguid(&party_and_everywhere),
+                character_entry(synthetic_pal_object(0)),
+            ),
+            (
+                guid_bytes_to_fguid(&base_and_storage),
+                character_entry(synthetic_pal_object(1)),
+            ),
+            (
+                guid_bytes_to_fguid(&storage_only),
+                character_entry(synthetic_pal_object(2)),
+            ),
+        ]);
+        world.char_containers.extend([
+            (party_container_id, vec![slot(party_and_everywhere)]),
+            (
+                base_container_id,
+                vec![
+                    slot(party_and_everywhere),
+                    slot(base_and_storage),
+                    slot(base_and_storage),
+                ],
+            ),
+            (
+                storage_container_id,
+                vec![
+                    slot(party_and_everywhere),
+                    slot(base_and_storage),
+                    slot(storage_only),
+                    slot(storage_only),
+                ],
+            ),
+        ]);
+        world.bases.insert(
+            base_id,
+            rawdata::BaseCamp {
+                base_id: synthetic_guid_bytes(39, 0),
+                name: "Precedence base".to_string(),
+                position: [0.0; 3],
+                guild_id: [0; 16],
+                trailing: Vec::new(),
+            },
+        );
+        world
+            .base_worker_containers
+            .insert(base_id, base_container_id);
+
+        let mut save_data = Properties::default();
+        save_data.insert(
+            "OtomoCharacterContainerId",
+            container_ref(party_container_id),
+        );
+        save_data.insert("PalStorageContainerId", container_ref(storage_container_id));
+        let player = player_save(save_data);
+
+        let sections = crate::build_sections_map(assemble_sections(
+            Overview::default(),
+            &world,
+            &[player],
+            Vec::new(),
+        ));
+        let ids = |section: &str| {
+            sections[section].data["pals"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|pal| pal["instanceId"].as_str().unwrap().to_string())
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(
+            ids("pals_party"),
+            [guid_bytes_to_fguid(&party_and_everywhere).to_string()]
+        );
+        assert_eq!(
+            ids("pals_base"),
+            [guid_bytes_to_fguid(&base_and_storage).to_string()]
+        );
+        assert_eq!(
+            sections["pals_base"].data["pals"][0]["baseId"],
+            base_id.to_string()
+        );
+        assert_eq!(
+            ids("pals_storage"),
+            [guid_bytes_to_fguid(&storage_only).to_string()]
+        );
+    }
+
+    #[test]
+    fn fixture_save_without_bases_emits_an_empty_pals_base_section() {
+        let mut level = crate::gvas::decode(
+            include_bytes!("../testdata/1FCE97C34D214643B96A23A20A9E27D1/Level.sav").to_vec(),
+        )
+        .expect("decode fixture Level.sav");
+        let world_save_data = level
+            .root
+            .properties
+            .0
+            .iter_mut()
+            .find(|(key, _)| key.1 == "worldSaveData")
+            .map(|(_, value)| value)
+            .expect("fixture worldSaveData");
+        let Property::Struct(StructValue::Struct(world_save_data)) = world_save_data else {
+            panic!("fixture worldSaveData must be a struct")
+        };
+        world_save_data
+            .0
+            .retain(|key, _| key.1 != "BaseCampSaveData");
+
+        let sections = crate::build_sections_map(build_all(&level, None, &[]));
+
+        assert_eq!(
+            sections["pals_base"].data,
+            serde_json::json!({ "pals": [] })
+        );
     }
 
     /// One synthetic player's full contribution to the P6 multi-player
