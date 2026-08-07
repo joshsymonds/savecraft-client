@@ -923,6 +923,38 @@ fn container_oversized_uncompressed_len_is_corrupt_file_before_allocation() {
 }
 
 #[test]
+fn level_sav_without_world_save_data_is_unsupported_version_naming_found_roots() {
+    // A Level.sav that decodes cleanly but has no worldSaveData at its
+    // root: the LevelMeta fixture is exactly that (valid PlM1 + GVAS,
+    // different root properties). Before 2026-08-06 this shipped as a
+    // "successful" result of seven empty sections, silently overwriting
+    // whatever good sections the server had for the world.
+    let level_meta = read_fixture("LevelMeta.sav");
+    let tar = build_tar(&[("Level.sav", &level_meta), ("LevelMeta.sav", &level_meta)]);
+
+    let out = run_plugin(&tar);
+    assert_eq!(out.code, 1, "lines: {:?}", out.lines);
+    let errors = out.of_type("error");
+    assert_eq!(errors.len(), 1, "lines: {:?}", out.lines);
+    assert_eq!(errors[0]["errorType"], "unsupported_version");
+    let message = errors[0]["message"].as_str().unwrap();
+    assert!(
+        message.contains("worldSaveData"),
+        "message should name the missing root: {message}"
+    );
+    assert!(
+        message.contains("root properties:"),
+        "message should list the roots that were present, so the error \
+         documents the unrecognized layout: {message}"
+    );
+    let results = out.of_type("result");
+    assert!(
+        results.is_empty(),
+        "no result may be emitted for a world with no worldSaveData: {results:?}"
+    );
+}
+
+#[test]
 fn container_unknown_variant_magic_is_unsupported_version_naming_member() {
     let mut level = read_fixture("Level.sav");
     level[8..12].copy_from_slice(b"PlM2");

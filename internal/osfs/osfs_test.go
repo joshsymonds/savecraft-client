@@ -1,6 +1,7 @@
 package osfs
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -148,5 +149,31 @@ func TestEvalSymlinks_NotFound(t *testing.T) {
 	osfs := New()
 	if _, err := osfs.EvalSymlinks("/nonexistent/symlink/path"); err == nil {
 		t.Fatal("expected error for nonexistent path")
+	}
+}
+
+func TestReadFileShared(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "save.dat")
+	want := []byte("live save bytes")
+	os.WriteFile(path, want, 0o644)
+
+	got, err := ReadFileShared(path)
+	if err != nil {
+		t.Fatalf("ReadFileShared: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Errorf("content = %q, want %q", got, want)
+	}
+}
+
+func TestReadFileShared_NotFound(t *testing.T) {
+	_, err := ReadFileShared(filepath.Join(t.TempDir(), "missing"))
+	if err == nil {
+		t.Fatal("expected error for missing file")
+	}
+	var pathErr *fs.PathError
+	if !errors.As(err, &pathErr) {
+		t.Fatalf("expected *fs.PathError, got %T: %v", err, err)
 	}
 }

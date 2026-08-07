@@ -1499,6 +1499,17 @@ pub struct BuildResult {
     /// hard `unsupported_version` error instead of emitting a near-empty
     /// "successful" result.
     pub critical_unsupported: bool,
+    /// `Some` when Level.sav decoded but has no `worldSaveData` property at
+    /// its root at all -- every section except overview would be empty, so
+    /// the caller (`lib.rs`) escalates to a hard `unsupported_version`
+    /// error instead of pushing an all-empty "successful" result that
+    /// overwrites whatever good sections the server already has. The value
+    /// is the comma-joined list of root property names that *were* present
+    /// (or `(none)`), so the error itself documents the unrecognized
+    /// layout -- observed live 2026-08-06, where a real world's Level.sav
+    /// decoded cleanly yet had no worldSaveData root and shipped as seven
+    /// empty sections.
+    pub missing_world_save_data: Option<String>,
 }
 
 /// Builds every section from a decoded Level.sav, optionally-decoded
@@ -1516,10 +1527,19 @@ pub fn build_all(
 
     let wsd = find_property(&level.root.properties, "worldSaveData").and_then(as_nested_struct);
     let Some(wsd) = wsd else {
-        warnings.push(
-            "worldSaveData missing from Level.sav; players/pals/guild/bases/inventory sections degraded"
-                .to_string(),
-        );
+        let mut found: Vec<String> = level
+            .root
+            .properties
+            .0
+            .iter()
+            .map(|(key, _)| key.1.clone())
+            .collect();
+        found.sort();
+        let found = if found.is_empty() {
+            "(none)".to_string()
+        } else {
+            found.join(", ")
+        };
         return BuildResult {
             overview,
             players: Vec::new(),
@@ -1531,6 +1551,7 @@ pub fn build_all(
             warnings,
             unsupported_paths: Vec::new(),
             critical_unsupported: false,
+            missing_world_save_data: Some(found),
         };
     };
 
@@ -1641,6 +1662,8 @@ fn assemble_sections(
         // accumulated unsupported-path list (see build_all).
         unsupported_paths: Vec::new(),
         critical_unsupported: false,
+        // Reaching assemble_sections at all means worldSaveData was found.
+        missing_world_save_data: None,
     }
 }
 
@@ -2524,8 +2547,11 @@ mod tests {
     // --- Degrade branches (GAP 2) ---------------------------------------
 
     #[test]
-    fn build_all_missing_world_save_data_degrades_to_six_empty_sections_and_one_warning() {
-        let level = synthetic_save(Properties::default());
+    fn build_all_missing_world_save_data_escalates_naming_found_root_properties() {
+        let mut root = Properties::default();
+        root.insert("Timestamp", Property::Str("2026".to_string()));
+        root.insert("SomeNewContainer", Property::Str("x".to_string()));
+        let level = synthetic_save(root);
 
         let result = build_all(&level, None, &[]);
 
@@ -2535,13 +2561,25 @@ mod tests {
         assert!(result.guild.is_empty());
         assert!(result.bases.is_empty());
         assert!(result.inventory.is_empty());
-        assert_eq!(
-            result.warnings,
-            vec![
-                "worldSaveData missing from Level.sav; players/pals/guild/bases/inventory sections degraded"
-                    .to_string()
-            ]
+        assert!(
+            result.warnings.is_empty(),
+            "escalation must not also warn: {:?}",
+            result.warnings
         );
+        assert_eq!(
+            result.missing_world_save_data.as_deref(),
+            Some("SomeNewContainer, Timestamp"),
+            "the found-roots list should name every root property, sorted"
+        );
+    }
+
+    #[test]
+    fn build_all_missing_world_save_data_escalates_with_none_marker_for_empty_root() {
+        let level = synthetic_save(Properties::default());
+
+        let result = build_all(&level, None, &[]);
+
+        assert_eq!(result.missing_world_save_data.as_deref(), Some("(none)"));
     }
 
     #[test]

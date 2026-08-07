@@ -14,6 +14,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 
 	"github.com/joshsymonds/savecraft-client/internal/daemon"
+	"github.com/joshsymonds/savecraft-client/internal/osfs"
 )
 
 const defaultDebounce = 500 * time.Millisecond
@@ -556,7 +557,11 @@ func (w *FSWatcher) fireDebounced(path string) {
 		return
 	}
 
-	data, err := os.ReadFile(filepath.Clean(path))
+	// osfs.ReadFileShared, not os.ReadFile: this read races the game
+	// process that just wrote the file, and on Windows an os.ReadFile
+	// handle blocks the game's rename-replace of it (no
+	// FILE_SHARE_DELETE), failing the game's own next save.
+	data, err := osfs.ReadFileShared(filepath.Clean(path))
 	if err != nil {
 		return
 	}
