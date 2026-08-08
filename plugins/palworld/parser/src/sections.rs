@@ -1355,15 +1355,13 @@ fn build_base_pals(
     located_pal_ids: &mut HashSet<FGuid>,
     warnings: &mut Vec<String>,
 ) -> Vec<BasePal> {
-    let mut base_ids: Vec<_> = world.bases.keys().copied().collect();
+    let mut base_ids: Vec<_> = world.base_worker_containers.keys().copied().collect();
     base_ids.sort_by_key(FGuid::to_string);
 
     base_ids
         .into_iter()
         .flat_map(|base_id| {
-            let Some(container_id) = world.base_worker_containers.get(&base_id).copied() else {
-                return Vec::new();
-            };
+            let container_id = world.base_worker_containers[&base_id];
             build_unique_pals_from_container(
                 Some(container_id),
                 world,
@@ -1376,7 +1374,7 @@ fn build_base_pals(
                 pal,
                 base_id: base_id.to_string(),
             })
-            .collect()
+            .collect::<Vec<_>>()
         })
         .collect()
 }
@@ -2951,6 +2949,115 @@ mod tests {
         assert_eq!(
             needed,
             HashSet::from([guid_bytes_to_fguid(&worker_instance_bytes)])
+        );
+    }
+
+    #[test]
+    fn base_worker_container_without_decoded_base_still_emits_its_workers() {
+        let base_id = guid_bytes_to_fguid(&synthetic_guid_bytes(40, 0));
+        let container_id = guid_bytes_to_fguid(&synthetic_guid_bytes(41, 0));
+        let worker_bytes = synthetic_guid_bytes(42, 0);
+        let worker_id = guid_bytes_to_fguid(&worker_bytes);
+        let mut world = empty_world();
+        world
+            .characters
+            .insert(worker_id, character_entry(synthetic_pal_object(3)));
+        world.char_containers.insert(
+            container_id,
+            vec![CharacterContainerSlot {
+                player_uid: [0; 16],
+                instance_id: worker_bytes,
+                trailing: Vec::new(),
+            }],
+        );
+        world.base_worker_containers.insert(base_id, container_id);
+
+        let pals = build_base_pals(&world, &mut HashSet::new(), &mut Vec::new());
+
+        assert_eq!(pals.len(), 1);
+        assert_eq!(pals[0].pal.instance_id, worker_id.to_string());
+        assert_eq!(pals[0].base_id, base_id.to_string());
+        assert_eq!(pals[0].pal.species_id, "SyntheticSpecies_0003");
+    }
+
+    #[test]
+    fn base_workers_each_carry_their_own_sorted_base_id() {
+        let first_base_bytes = synthetic_guid_bytes(43, 0);
+        let first_base_id = guid_bytes_to_fguid(&first_base_bytes);
+        let second_base_bytes = synthetic_guid_bytes(44, 0);
+        let second_base_id = guid_bytes_to_fguid(&second_base_bytes);
+        let first_container_id = guid_bytes_to_fguid(&synthetic_guid_bytes(45, 0));
+        let second_container_id = guid_bytes_to_fguid(&synthetic_guid_bytes(46, 0));
+        let first_worker_bytes = synthetic_guid_bytes(47, 0);
+        let second_worker_bytes = synthetic_guid_bytes(48, 0);
+        let mut world = empty_world();
+
+        for (base_id, base_bytes, name) in [
+            (second_base_id, second_base_bytes, "Second base"),
+            (first_base_id, first_base_bytes, "First base"),
+        ] {
+            world.bases.insert(
+                base_id,
+                rawdata::BaseCamp {
+                    base_id: base_bytes,
+                    name: name.to_string(),
+                    position: [0.0; 3],
+                    guild_id: [0; 16],
+                    trailing: Vec::new(),
+                },
+            );
+        }
+        world.characters.extend([
+            (
+                guid_bytes_to_fguid(&first_worker_bytes),
+                character_entry(synthetic_pal_object(4)),
+            ),
+            (
+                guid_bytes_to_fguid(&second_worker_bytes),
+                character_entry(synthetic_pal_object(5)),
+            ),
+        ]);
+        world.char_containers.extend([
+            (
+                first_container_id,
+                vec![CharacterContainerSlot {
+                    player_uid: [0; 16],
+                    instance_id: first_worker_bytes,
+                    trailing: Vec::new(),
+                }],
+            ),
+            (
+                second_container_id,
+                vec![CharacterContainerSlot {
+                    player_uid: [0; 16],
+                    instance_id: second_worker_bytes,
+                    trailing: Vec::new(),
+                }],
+            ),
+        ]);
+        world.base_worker_containers.extend([
+            (second_base_id, second_container_id),
+            (first_base_id, first_container_id),
+        ]);
+
+        let pals = build_base_pals(&world, &mut HashSet::new(), &mut Vec::new());
+
+        let mut expected = vec![
+            (
+                first_base_id.to_string(),
+                guid_bytes_to_fguid(&first_worker_bytes).to_string(),
+            ),
+            (
+                second_base_id.to_string(),
+                guid_bytes_to_fguid(&second_worker_bytes).to_string(),
+            ),
+        ];
+        expected.sort_by(|left, right| left.0.cmp(&right.0));
+        assert_eq!(
+            pals.iter()
+                .map(|pal| (pal.base_id.clone(), pal.pal.instance_id.clone()))
+                .collect::<Vec<_>>(),
+            expected
         );
     }
 
