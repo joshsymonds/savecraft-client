@@ -342,6 +342,10 @@ message SaveInfo {
   SaveIdentity identity = 2;
   string summary = 3;
   google.protobuf.Timestamp last_updated = 4;
+  // When the cloud last successfully proved the snapshot current upstream.
+  google.protobuf.Timestamp data_checked_at = 5;
+  // When proven content last actually changed.
+  google.protobuf.Timestamp data_changed_at = 6;
 }
 
 // --- User actions: UI → server → source ---

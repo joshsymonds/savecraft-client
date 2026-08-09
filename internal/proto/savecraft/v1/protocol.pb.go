@@ -2824,11 +2824,15 @@ func (x *GameInfo) GetError() string {
 }
 
 type SaveInfo struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SaveUuid      string                 `protobuf:"bytes,1,opt,name=save_uuid,json=saveUuid,proto3" json:"save_uuid,omitempty"`
-	Identity      *SaveIdentity          `protobuf:"bytes,2,opt,name=identity,proto3" json:"identity,omitempty"`
-	Summary       string                 `protobuf:"bytes,3,opt,name=summary,proto3" json:"summary,omitempty"`
-	LastUpdated   *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=last_updated,json=lastUpdated,proto3" json:"last_updated,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	SaveUuid    string                 `protobuf:"bytes,1,opt,name=save_uuid,json=saveUuid,proto3" json:"save_uuid,omitempty"`
+	Identity    *SaveIdentity          `protobuf:"bytes,2,opt,name=identity,proto3" json:"identity,omitempty"`
+	Summary     string                 `protobuf:"bytes,3,opt,name=summary,proto3" json:"summary,omitempty"`
+	LastUpdated *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=last_updated,json=lastUpdated,proto3" json:"last_updated,omitempty"`
+	// When the cloud last successfully proved the snapshot current upstream.
+	DataCheckedAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=data_checked_at,json=dataCheckedAt,proto3" json:"data_checked_at,omitempty"`
+	// When proven content last actually changed.
+	DataChangedAt *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=data_changed_at,json=dataChangedAt,proto3" json:"data_changed_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2887,6 +2891,20 @@ func (x *SaveInfo) GetSummary() string {
 func (x *SaveInfo) GetLastUpdated() *timestamppb.Timestamp {
 	if x != nil {
 		return x.LastUpdated
+	}
+	return nil
+}
+
+func (x *SaveInfo) GetDataCheckedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DataCheckedAt
+	}
+	return nil
+}
+
+func (x *SaveInfo) GetDataChangedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DataChangedAt
 	}
 	return nil
 }
@@ -4025,12 +4043,14 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\x05saves\x18\x04 \x03(\v2\x16.savecraft.v1.SaveInfoR\x05saves\x12?\n" +
 	"\rlast_activity\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\flastActivity\x12\x12\n" +
 	"\x04path\x18\x06 \x01(\tR\x04path\x12\x14\n" +
-	"\x05error\x18\a \x01(\tR\x05error\"\xb8\x01\n" +
+	"\x05error\x18\a \x01(\tR\x05error\"\xc0\x02\n" +
 	"\bSaveInfo\x12\x1b\n" +
 	"\tsave_uuid\x18\x01 \x01(\tR\bsaveUuid\x126\n" +
 	"\bidentity\x18\x02 \x01(\v2\x1a.savecraft.v1.SaveIdentityR\bidentity\x12\x18\n" +
 	"\asummary\x18\x03 \x01(\tR\asummary\x12=\n" +
-	"\flast_updated\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\vlastUpdated\"7\n" +
+	"\flast_updated\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\vlastUpdated\x12B\n" +
+	"\x0fdata_checked_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\rdataCheckedAt\x12B\n" +
+	"\x0fdata_changed_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\rdataChangedAt\"7\n" +
 	"\bTestPath\x12\x17\n" +
 	"\agame_id\x18\x01 \x01(\tR\x06gameId\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\"\x93\x01\n" +
@@ -4239,22 +4259,24 @@ var file_savecraft_v1_protocol_proto_depIdxs = []int32{
 	54, // 54: savecraft.v1.GameInfo.last_activity:type_name -> google.protobuf.Timestamp
 	51, // 55: savecraft.v1.SaveInfo.identity:type_name -> savecraft.v1.SaveIdentity
 	54, // 56: savecraft.v1.SaveInfo.last_updated:type_name -> google.protobuf.Timestamp
-	54, // 57: savecraft.v1.RegisterResult.link_code_expires_at:type_name -> google.protobuf.Timestamp
-	55, // 58: savecraft.v1.GameSection.data:type_name -> google.protobuf.Struct
-	51, // 59: savecraft.v1.PushSave.identity:type_name -> savecraft.v1.SaveIdentity
-	43, // 60: savecraft.v1.PushSave.sections:type_name -> savecraft.v1.GameSection
-	54, // 61: savecraft.v1.PushSave.parsed_at:type_name -> google.protobuf.Timestamp
-	54, // 62: savecraft.v1.PushSaveResult.snapshot_timestamp:type_name -> google.protobuf.Timestamp
-	2,  // 63: savecraft.v1.PushSaveResult.error:type_name -> savecraft.v1.PushSaveError
-	54, // 64: savecraft.v1.RefreshLinkCodeResult.expires_at:type_name -> google.protobuf.Timestamp
-	55, // 65: savecraft.v1.SaveIdentity.extra:type_name -> google.protobuf.Struct
-	26, // 66: savecraft.v1.ConfigUpdate.GamesEntry.value:type_name -> savecraft.v1.GameConfig
-	28, // 67: savecraft.v1.ConfigResult.ResultsEntry.value:type_name -> savecraft.v1.GameConfigResult
-	68, // [68:68] is the sub-list for method output_type
-	68, // [68:68] is the sub-list for method input_type
-	68, // [68:68] is the sub-list for extension type_name
-	68, // [68:68] is the sub-list for extension extendee
-	0,  // [0:68] is the sub-list for field type_name
+	54, // 57: savecraft.v1.SaveInfo.data_checked_at:type_name -> google.protobuf.Timestamp
+	54, // 58: savecraft.v1.SaveInfo.data_changed_at:type_name -> google.protobuf.Timestamp
+	54, // 59: savecraft.v1.RegisterResult.link_code_expires_at:type_name -> google.protobuf.Timestamp
+	55, // 60: savecraft.v1.GameSection.data:type_name -> google.protobuf.Struct
+	51, // 61: savecraft.v1.PushSave.identity:type_name -> savecraft.v1.SaveIdentity
+	43, // 62: savecraft.v1.PushSave.sections:type_name -> savecraft.v1.GameSection
+	54, // 63: savecraft.v1.PushSave.parsed_at:type_name -> google.protobuf.Timestamp
+	54, // 64: savecraft.v1.PushSaveResult.snapshot_timestamp:type_name -> google.protobuf.Timestamp
+	2,  // 65: savecraft.v1.PushSaveResult.error:type_name -> savecraft.v1.PushSaveError
+	54, // 66: savecraft.v1.RefreshLinkCodeResult.expires_at:type_name -> google.protobuf.Timestamp
+	55, // 67: savecraft.v1.SaveIdentity.extra:type_name -> google.protobuf.Struct
+	26, // 68: savecraft.v1.ConfigUpdate.GamesEntry.value:type_name -> savecraft.v1.GameConfig
+	28, // 69: savecraft.v1.ConfigResult.ResultsEntry.value:type_name -> savecraft.v1.GameConfigResult
+	70, // [70:70] is the sub-list for method output_type
+	70, // [70:70] is the sub-list for method input_type
+	70, // [70:70] is the sub-list for extension type_name
+	70, // [70:70] is the sub-list for extension extendee
+	0,  // [0:70] is the sub-list for field type_name
 }
 
 func init() { file_savecraft_v1_protocol_proto_init() }
