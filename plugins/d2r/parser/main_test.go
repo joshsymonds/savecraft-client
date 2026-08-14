@@ -5,7 +5,9 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/joshsymonds/savecraft-client/plugins/d2r/d2s"
@@ -142,7 +144,7 @@ func assertFixtureSectionSizes(t *testing.T, sections map[string]any) {
 			t.Fatalf("marshal d2r/%s data: %v", name, err)
 		}
 		if len(encoded) > RESULT_UNIT_BYTES {
-			t.Errorf("d2r/%s section data = %d bytes, exceeds RESULT_UNIT_BYTES = %d (expected failure pending section split)", name, len(encoded), RESULT_UNIT_BYTES)
+			t.Errorf("d2r/%s section data = %d bytes, exceeds RESULT_UNIT_BYTES = %d", name, len(encoded), RESULT_UNIT_BYTES)
 		}
 	}
 }
@@ -768,6 +770,67 @@ func TestBuildStashSectionsSplitsDenseTabIntoBoundedItemRanges(t *testing.T) {
 	wantJSON, _ := json.Marshal(wantItems)
 	if !bytes.Equal(gotJSON, wantJSON) {
 		t.Error("split item ranges do not reassemble to the original item list")
+	}
+}
+
+func TestBuildStashSectionsEmitsAndLogsSingleOversizedItem(t *testing.T) {
+	attributes := make([]d2s.MagicAttribute, 2_000)
+	for i := range attributes {
+		attributes[i] = d2s.MagicAttribute{
+			ID:     uint64(10_000 + i),
+			Name:   "+{0} to an intentionally verbose synthetic oversized-item property",
+			Values: []int64{int64(i)},
+		}
+	}
+	item := d2s.Item{
+		Code:            "big",
+		TypeID:          "armor",
+		TypeName:        "Synthetic Oversized Armor",
+		Identified:      true,
+		Quality:         d2s.QualityRare,
+		RareName:        "Oversized",
+		RareName2:       "Item",
+		MagicAttributes: attributes,
+	}
+
+	readStderr, writeStderr, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("create stderr pipe: %v", err)
+	}
+	originalStderr := os.Stderr
+	os.Stderr = writeStderr
+	sections := buildStashSections(&d2s.SharedStash{Tabs: []d2s.StashTab{{Items: []d2s.Item{item}}}})
+	os.Stderr = originalStderr
+	if err := writeStderr.Close(); err != nil {
+		t.Fatalf("close stderr writer: %v", err)
+	}
+	stderr, err := io.ReadAll(readStderr)
+	if err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	if err := readStderr.Close(); err != nil {
+		t.Fatalf("close stderr reader: %v", err)
+	}
+
+	section, ok := sections["tab1:p1"].(map[string]any)
+	if !ok {
+		t.Fatal("single oversized item missing tab1:p1 section")
+	}
+	data := section["data"].(map[string]any)
+	encoded, err := json.Marshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(encoded) <= RESULT_UNIT_BYTES {
+		t.Fatalf("synthetic item part = %d bytes, want > %d", len(encoded), RESULT_UNIT_BYTES)
+	}
+	partItems := data["items"].([]map[string]any)
+	if len(partItems) != 1 {
+		t.Fatalf("tab1:p1 item count = %d, want 1", len(partItems))
+	}
+	wantLog := fmt.Sprintf("tab1:p1 section data = %d bytes, exceeds RESULT_UNIT_BYTES = %d", len(encoded), RESULT_UNIT_BYTES)
+	if !strings.Contains(string(stderr), wantLog) {
+		t.Errorf("stderr = %q, want message containing %q", stderr, wantLog)
 	}
 }
 

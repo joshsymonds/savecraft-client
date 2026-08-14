@@ -621,6 +621,16 @@ func emitStashTabSections(sections map[string]any, tabNum int, tabType string, i
 			"description": description,
 			"data":        data,
 		}
+		if encoded, err := json.Marshal(data); err == nil && len(encoded) > RESULT_UNIT_BYTES {
+			fmt.Fprintf(
+				os.Stderr,
+				"%s:p%d section data = %d bytes, exceeds RESULT_UNIT_BYTES = %d\n",
+				baseName,
+				part,
+				len(encoded),
+				RESULT_UNIT_BYTES,
+			)
+		}
 		start = end
 	}
 }
