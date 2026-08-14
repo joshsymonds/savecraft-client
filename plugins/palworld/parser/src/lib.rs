@@ -338,14 +338,7 @@ pub(crate) fn build_sections_map(built: sections::BuildResult) -> HashMap<String
                 .unwrap_or_default(),
         },
     );
-    sections_map.insert(
-        "guild".to_string(),
-        ndjson::Section {
-            description: "Guild name and member roster".to_string(),
-            data: serde_json::to_value(&sections::GuildsSection { guilds: guild })
-                .unwrap_or_default(),
-        },
-    );
+    emit_guild_sections(&mut sections_map, guild);
     sections_map.insert(
         "bases".to_string(),
         ndjson::Section {
@@ -368,6 +361,72 @@ pub(crate) fn build_sections_map(built: sections::BuildResult) -> HashMap<String
         },
     );
     sections_map
+}
+
+fn guild_section_data_len(guilds: &[sections::Guild]) -> usize {
+    serde_json::to_vec(&sections::GuildsSection {
+        guilds: guilds.to_vec(),
+    })
+    .map_or(usize::MAX, |json| json.len())
+}
+
+/// Emits the historical `guild` section when it fits in one result unit.
+/// Oversized rosters are emitted deterministically as
+/// `guild:members-{guild}-{part}` units, making both the source guild and
+/// roster subdivision explicit to cloud and model consumers.
+fn emit_guild_sections(
+    sections_map: &mut HashMap<String, ndjson::Section>,
+    guilds: Vec<sections::Guild>,
+) {
+    if guild_section_data_len(&guilds) <= sections::RESULT_UNIT_BYTES {
+        sections_map.insert(
+            "guild".to_string(),
+            ndjson::Section {
+                description: "Guild name and member roster".to_string(),
+                data: serde_json::to_value(&sections::GuildsSection { guilds }).unwrap_or_default(),
+            },
+        );
+        return;
+    }
+
+    for (guild_index, guild) in guilds.into_iter().enumerate() {
+        let mut member_start = 0;
+        let mut part = 0;
+        while member_start < guild.members.len() || (guild.members.is_empty() && part == 0) {
+            let mut low = member_start;
+            let mut high = guild.members.len() + 1;
+            while low + 1 < high {
+                let middle = low + (high - low) / 2;
+                let mut candidate = guild.clone();
+                candidate.members = guild.members[member_start..middle].to_vec();
+                if guild_section_data_len(std::slice::from_ref(&candidate))
+                    <= sections::RESULT_UNIT_BYTES
+                {
+                    low = middle;
+                } else {
+                    high = middle;
+                }
+            }
+            let member_end = low.max((member_start + 1).min(guild.members.len()));
+            let mut unit = guild.clone();
+            unit.members = guild.members[member_start..member_end].to_vec();
+            let name = format!("guild:members-{guild_index:03}-{part:03}");
+            sections_map.insert(
+                name,
+                ndjson::Section {
+                    description: format!(
+                        "Guild name and member roster (guild {}, part {})",
+                        guild_index + 1,
+                        part + 1
+                    ),
+                    data: serde_json::to_value(&sections::GuildsSection { guilds: vec![unit] })
+                        .unwrap_or_default(),
+                },
+            );
+            member_start = member_end;
+            part += 1;
+        }
+    }
 }
 
 fn tar_error_type(e: &TarError) -> &'static str {
