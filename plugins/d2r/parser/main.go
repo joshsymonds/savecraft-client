@@ -15,6 +15,8 @@ import (
 	"github.com/joshsymonds/savecraft-client/plugins/d2r/d2s"
 )
 
+const RESULT_UNIT_BYTES = 10_240
+
 func main() {
 	enc := json.NewEncoder(os.Stdout)
 
@@ -580,18 +582,57 @@ func buildStashSections(stash *d2s.SharedStash) map[string]any {
 			tabType = "Advanced"
 		}
 
-		key := fmt.Sprintf("tab%d", tabNum)
-		sections[key] = map[string]any{
-			"description": fmt.Sprintf(
-				"Stash tab %d (%s) — full item list with properties, use to find specific items or evaluate stored gear",
-				tabNum,
-				tabType,
-			),
-			"data": map[string]any{"items": buildItemList(tab.Items)},
-		}
+		emitStashTabSections(sections, tabNum, tabType, buildItemList(tab.Items))
 	}
 
 	return sections
+}
+
+// emitStashTabSections preserves the tabN identity for ordinary tabs. Tabs
+// over RESULT_UNIT_BYTES become contiguous tabN:p1, tabN:p2, ... item ranges;
+// each part records its one-based tab and part plus a zero-based, end-exclusive
+// [itemStart,itemEnd) range so consumers can deterministically reassemble it.
+func emitStashTabSections(sections map[string]any, tabNum int, tabType string, items []map[string]any) {
+	baseName := fmt.Sprintf("tab%d", tabNum)
+	description := fmt.Sprintf(
+		"Stash tab %d (%s) — full item list with properties, use to find specific items or evaluate stored gear",
+		tabNum,
+		tabType,
+	)
+	fullData := map[string]any{"items": items}
+	if encoded, err := json.Marshal(fullData); err == nil && len(encoded) <= RESULT_UNIT_BYTES {
+		sections[baseName] = map[string]any{"description": description, "data": fullData}
+		return
+	}
+
+	for part, start := 1, 0; start < len(items); part++ {
+		end := start + 1
+		data := stashTabPartData(tabNum, part, start, end, items)
+		for end < len(items) {
+			candidate := stashTabPartData(tabNum, part, start, end+1, items)
+			encoded, err := json.Marshal(candidate)
+			if err != nil || len(encoded) > RESULT_UNIT_BYTES {
+				break
+			}
+			end++
+			data = candidate
+		}
+		sections[fmt.Sprintf("%s:p%d", baseName, part)] = map[string]any{
+			"description": description,
+			"data":        data,
+		}
+		start = end
+	}
+}
+
+func stashTabPartData(tabNum, part, start, end int, items []map[string]any) map[string]any {
+	return map[string]any{
+		"tab":       tabNum,
+		"part":      part,
+		"itemStart": start,
+		"itemEnd":   end,
+		"items":     items[start:end],
+	}
 }
 
 func writeStatusf(enc *json.Encoder, format string, args ...any) {
