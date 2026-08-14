@@ -260,6 +260,39 @@ func TestGoldenResultSizeMegafactory(t *testing.T) {
 	t.Logf("megafactory result line: %dKB", len(encoded)>>10)
 }
 
+func TestFixtureSectionSizeBudget(t *testing.T) {
+	const resultUnitBytes = 10_240
+	rawExceptions, err := os.ReadFile("../../../scripts/section-size-exceptions.json")
+	if err != nil {
+		t.Fatalf("read section-size exceptions: %v", err)
+	}
+	var exceptionEntries []struct{ Game, Section string }
+	if err := json.Unmarshal(rawExceptions, &exceptionEntries); err != nil {
+		t.Fatalf("parse section-size exceptions: %v", err)
+	}
+	exceptions := make(map[string]bool, len(exceptionEntries))
+	for _, entry := range exceptionEntries {
+		exceptions[entry.Game+"/"+entry.Section] = true
+	}
+	for _, fixture := range []string{"early_game.sav", "current_1_2.sav", "megafactory.sav", "current_sv60.sav"} {
+		t.Run(fixture, func(t *testing.T) {
+			sections := parseFixtureSections(t, fixture).buildResult()["sections"].(map[string]any)
+			for name, raw := range sections {
+				data := raw.(map[string]any)["data"]
+				encoded, err := json.Marshal(data)
+				if err != nil {
+					t.Fatalf("marshal satisfactory/%s data: %v", name, err)
+				}
+				if exceptions["satisfactory/"+name] {
+					t.Logf("section-size exception satisfactory/%s: %d bytes", name, len(encoded))
+				} else if len(encoded) > resultUnitBytes {
+					t.Errorf("satisfactory/%s section data = %d bytes, exceeds RESULT_UNIT_BYTES = %d", name, len(encoded), resultUnitBytes)
+				}
+			}
+		})
+	}
+}
+
 // current_sv60.sav is a real save from a later 1.2 patch (SaveVersion 60,
 // build 493833) — newer than the version ceiling shipped in v1.0.0, which
 // rejected it. It must parse cleanly: all sections populated, header

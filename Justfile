@@ -190,6 +190,16 @@ lint:
 test:
     just test-go
     just test-install-worker
+    just test-plugin-section-sizes
+
+# Enforce the 10 KiB serialized-data budget against each parser's fixtures.
+test-plugin-section-sizes:
+    cd plugins/d2r && go test ./parser -run TestFixtureSectionSizeBudget
+    cd plugins/factorio && go test ./parser -run TestValidExport
+    cd plugins/magic && go test ./parser -run TestFixtureSectionSizeBudget -v
+    cd plugins/satisfactory && go test ./parser -run TestFixtureSectionSizeBudget -v
+    cargo test -p palworld-parser fixture_section_size_budget -- --nocapture
+    cargo test -p stellaris-parser --test parse_save -- --nocapture
 
 public-boundary:
     bash scripts/check-public-boundary.test.sh

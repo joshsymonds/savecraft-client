@@ -133,6 +133,27 @@ func loadStash(t *testing.T) *d2s.SharedStash {
 	return stash
 }
 
+const resultUnitBytes = 10_240
+
+func assertFixtureSectionSizes(t *testing.T, sections map[string]any) {
+	t.Helper()
+	for name, raw := range sections {
+		section := raw.(map[string]any)
+		encoded, err := json.Marshal(section["data"])
+		if err != nil {
+			t.Fatalf("marshal d2r/%s data: %v", name, err)
+		}
+		if len(encoded) > resultUnitBytes {
+			t.Errorf("d2r/%s section data = %d bytes, exceeds RESULT_UNIT_BYTES = %d (expected failure pending section split)", name, len(encoded), resultUnitBytes)
+		}
+	}
+}
+
+func TestFixtureSectionSizeBudget(t *testing.T) {
+	assertFixtureSectionSizes(t, buildAllSections(loadAtmus(t)))
+	assertFixtureSectionSizes(t, buildStashSections(loadStash(t)))
+}
+
 // buildAllSections mirrors the section-building logic in handleCharacter
 // so we can test it without os.Stdout/os.Exit.
 func buildAllSections(save *d2s.D2S) map[string]any {

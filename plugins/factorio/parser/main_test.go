@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -98,6 +99,43 @@ func TestValidExport(t *testing.T) {
 	if data["hours_played"] != 16.7 {
 		t.Errorf("hours_played = %v, want 16.7", data["hours_played"])
 	}
+	assertSectionSizes(t, "factorio", sections)
+}
+
+const resultUnitBytes = 10_240
+
+func assertSectionSizes(t *testing.T, game string, sections map[string]any) {
+	t.Helper()
+	exceptions := loadSectionSizeExceptions(t)
+	for name, raw := range sections {
+		section := raw.(map[string]any)
+		encoded, err := json.Marshal(section["data"])
+		if err != nil {
+			t.Fatalf("marshal %s/%s data: %v", game, name, err)
+		}
+		if exceptions[game+"/"+name] {
+			t.Logf("section-size exception %s/%s: %d bytes", game, name, len(encoded))
+		} else if len(encoded) > resultUnitBytes {
+			t.Errorf("%s/%s section data = %d bytes, exceeds RESULT_UNIT_BYTES = %d", game, name, len(encoded), resultUnitBytes)
+		}
+	}
+}
+
+func loadSectionSizeExceptions(t *testing.T) map[string]bool {
+	t.Helper()
+	raw, err := os.ReadFile("../../../scripts/section-size-exceptions.json")
+	if err != nil {
+		t.Fatalf("read section-size exceptions: %v", err)
+	}
+	var entries []struct{ Game, Section string }
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		t.Fatalf("parse section-size exceptions: %v", err)
+	}
+	got := make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		got[entry.Game+"/"+entry.Section] = true
+	}
+	return got
 }
 
 func TestInvalidJSON(t *testing.T) {

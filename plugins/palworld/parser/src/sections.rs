@@ -3195,6 +3195,41 @@ mod tests {
         );
     }
 
+    #[test]
+    fn fixture_section_size_budget() {
+        let level = crate::gvas::decode(
+            include_bytes!("../testdata/1FCE97C34D214643B96A23A20A9E27D1/Level.sav").to_vec(),
+        )
+        .expect("decode fixture Level.sav");
+        let player = crate::gvas::decode(
+            include_bytes!("../testdata/1FCE97C34D214643B96A23A20A9E27D1/Players/00000000000000000000000000000001.sav").to_vec(),
+        )
+        .expect("decode fixture player save");
+        let sections = crate::build_sections_map(build_all(&level, None, &[player]));
+
+        const RESULT_UNIT_BYTES: usize = 10_240;
+        let exceptions: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+            "../../../../scripts/section-size-exceptions.json"
+        ))
+        .expect("parse section-size exceptions");
+        for (name, section) in sections {
+            let size = serde_json::to_vec(&section.data)
+                .expect("serialize emitted section data")
+                .len();
+            let excepted = exceptions
+                .iter()
+                .any(|entry| entry["game"] == "palworld" && entry["section"] == name.as_str());
+            if excepted {
+                eprintln!("section-size exception palworld/{name}: {size} bytes");
+            } else {
+                assert!(
+                    size <= RESULT_UNIT_BYTES,
+                    "palworld/{name} section data = {size} bytes, exceeds RESULT_UNIT_BYTES = {RESULT_UNIT_BYTES}"
+                );
+            }
+        }
+    }
+
     /// One synthetic player's full contribution to the P6 multi-player
     /// scale test below: a distinct player `Save` plus its own 3 party
     /// pals, 1,000 storage pals (each at the same full detail as
