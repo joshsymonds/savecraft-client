@@ -24,14 +24,23 @@ namespace SavecraftRimWorld.Tests
         public void LargeReportPartitionsPerColonistWithinCeilingAndReassembles(string reportName)
         {
             var source = Report("Alex", "Alex", "Bree", "Casey");
+            source.Fields["metadata"] = Value.ForString("preserved");
 
             var sections = ReportPartitioner.Partition(reportName, source);
 
             Assert.Equal(4, sections.Count);
             Assert.All(sections, section => Assert.InRange(JsonSize(section.Data), 1, ReportPartitioner.RESULT_UNIT_BYTES));
-            Assert.Equal(
-                new[] { "Alex:0", "Alex:1", "Bree:2", "Casey:3" },
-                sections.Select(section => Colonists(section.Data).Single().Fields["marker"].StringValue));
+            var reassembled = source.Clone();
+            reassembled.Fields["colonists"] = new Value
+            {
+                ListValue = new ListValue
+                {
+                    Values = { sections.Select(section => Value.ForStruct(Colonists(section.Data).Single().Clone())) }
+                }
+            };
+            reassembled.Fields["count"] = Value.ForNumber(sections.Count);
+            Assert.Equal(source, reassembled);
+            Assert.All(sections, section => Assert.Equal("preserved", section.Data.Fields["metadata"].StringValue));
         }
 
         [Theory]
@@ -74,6 +83,18 @@ namespace SavecraftRimWorld.Tests
         }
 
         [Fact]
+        public void NaturalNumericSuffixCollisionStillProducesUniqueNames()
+        {
+            var source = Report("Alex", "Alex-2", "Alex");
+
+            var names = ReportPartitioner.Partition("health_report", source)
+                .Select(section => section.Name)
+                .ToArray();
+
+            Assert.Equal(new[] { "health_report:alex", "health_report:alex-2", "health_report:alex-3" }, names);
+        }
+
+        [Fact]
         public void EmitsAColonistThatCannotFitWithinTheCeiling()
         {
             var source = Report("Alex", payloadBytes: ReportPartitioner.RESULT_UNIT_BYTES * 2);
@@ -82,6 +103,22 @@ namespace SavecraftRimWorld.Tests
 
             Assert.Equal("health_report:alex", section.Name);
             Assert.True(JsonSize(section.Data) > ReportPartitioner.RESULT_UNIT_BYTES);
+            var warning = Assert.Single(section.Warnings);
+            Assert.Equal(section.Name, warning.SectionName);
+            Assert.Equal(JsonSize(section.Data), warning.ByteSize);
+        }
+
+        [Fact]
+        public void StopsPartitioningAtTheSectionBudgetAndReturnsAWarning()
+        {
+            var source = Report("Alex", "Bree", "Casey");
+
+            var result = ReportPartitioner.Partition("health_report", source, 2);
+
+            Assert.Equal(2, result.Sections.Count);
+            var warning = Assert.Single(result.Warnings);
+            Assert.Equal("health_report", warning.SectionName);
+            Assert.Contains("section cap", warning.Message, StringComparison.OrdinalIgnoreCase);
         }
 
         static Struct Report(params string[] names) => Report(names, 4_000);
