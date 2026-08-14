@@ -3199,27 +3199,50 @@ mod tests {
 
     #[test]
     fn fixture_section_size_budget() {
-        let level = crate::gvas::decode(
+        assert_fixture_section_size_budget(
             include_bytes!("../testdata/1FCE97C34D214643B96A23A20A9E27D1/Level.sav").to_vec(),
-        )
-        .expect("decode fixture Level.sav");
-        let player = crate::gvas::decode(
-            include_bytes!("../testdata/1FCE97C34D214643B96A23A20A9E27D1/Players/00000000000000000000000000000001.sav").to_vec(),
-        )
-        .expect("decode fixture player save");
+            include_bytes!(
+                "../testdata/1FCE97C34D214643B96A23A20A9E27D1/Players/00000000000000000000000000000001.sav"
+            )
+            .to_vec(),
+        );
+        assert_fixture_section_size_budget(
+            include_bytes!("../testdata/live-20260731/Level.sav").to_vec(),
+            include_bytes!(
+                "../testdata/live-20260731/Players/00000000000000000000000000000001.sav"
+            )
+            .to_vec(),
+        );
+    }
+
+    fn assert_fixture_section_size_budget(level_bytes: Vec<u8>, player_bytes: Vec<u8>) {
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct SectionSizeException {
+            game: String,
+            section: String,
+        }
+
+        let level = crate::gvas::decode(level_bytes).expect("decode fixture Level.sav");
+        let player = crate::gvas::decode(player_bytes).expect("decode fixture player save");
         let sections = crate::build_sections_map(build_all(&level, None, &[player]));
 
-        let exceptions: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+        let exceptions: Vec<SectionSizeException> = serde_json::from_str(include_str!(
             "../../../../scripts/section-size-exceptions.json"
         ))
         .expect("parse section-size exceptions");
+        assert_eq!(exceptions.len(), 2, "exception list must remain closed");
+        assert_eq!(exceptions[0].game, "stellaris");
+        assert_eq!(exceptions[0].section, "species");
+        assert_eq!(exceptions[1].game, "satisfactory");
+        assert_eq!(exceptions[1].section, "production_lines");
         for (name, section) in sections {
             let size = serde_json::to_vec(&section.data)
                 .expect("serialize emitted section data")
                 .len();
             let excepted = exceptions
                 .iter()
-                .any(|entry| entry["game"] == "palworld" && entry["section"] == name.as_str());
+                .any(|entry| entry.game == "palworld" && entry.section == name);
             if excepted {
                 eprintln!("section-size exception palworld/{name}: {size} bytes");
             } else {
@@ -3356,6 +3379,38 @@ mod tests {
                 .len();
         }
         assert_eq!(actual_members, expected_members);
+    }
+
+    #[test]
+    fn guild_emitter_emits_and_warns_for_an_unfit_member() {
+        let mut guild = synthetic_guild(1);
+        guild.members[0].name = Some("x".repeat(RESULT_UNIT_BYTES));
+        let mut sections = HashMap::new();
+        let mut warnings = Vec::new();
+
+        crate::emit_guild_sections_with_logger(&mut sections, vec![guild], |warning| {
+            warnings.push(warning)
+        });
+
+        let (name, section) = sections.into_iter().next().expect("member is emitted");
+        let bytes = serde_json::to_vec(&section.data)
+            .expect("serialize oversized guild unit")
+            .len();
+        assert_eq!(name, "guild:members-000-000");
+        assert_eq!(
+            section.data["guilds"][0]["members"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(bytes > RESULT_UNIT_BYTES);
+        assert_eq!(
+            warnings,
+            [format!(
+                "palworld/{name} section data = {bytes} bytes, exceeds RESULT_UNIT_BYTES = {RESULT_UNIT_BYTES}"
+            )]
+        );
     }
 
     /// One synthetic player's full contribution to the P6 multi-player
