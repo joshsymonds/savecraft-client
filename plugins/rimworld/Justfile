@@ -1,6 +1,9 @@
 build:
     dotnet build SavecraftRimWorld/SavecraftRimWorld.csproj -c Release
 
+test:
+    dotnet test SavecraftRimWorld.Tests/SavecraftRimWorld.Tests.csproj
+
 clean:
     dotnet clean SavecraftRimWorld/SavecraftRimWorld.csproj
     rm -rf Assemblies/

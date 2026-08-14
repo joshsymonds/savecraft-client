@@ -191,6 +191,7 @@ test:
     just test-go
     just test-install-worker
     just test-plugin-section-sizes
+    cd plugins/rimworld && devenv shell -- just test
 
 # Enforce the 10 KiB serialized-data budget against each parser's fixtures.
 test-plugin-section-sizes:

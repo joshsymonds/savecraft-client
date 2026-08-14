@@ -49,12 +49,15 @@ namespace SavecraftRimWorld.Collectors
                 try
                 {
                     var data = collector.Collect();
-                    sections.Add(new GameSection
+                    foreach (var report in PartitionReport(collector.SectionName, data))
                     {
-                        Name = collector.SectionName,
-                        Description = collector.Description,
-                        Data = data
-                    });
+                        sections.Add(new GameSection
+                        {
+                            Name = report.Name,
+                            Description = collector.Description,
+                            Data = report.Data
+                        });
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -111,6 +114,23 @@ namespace SavecraftRimWorld.Collectors
             pushSave.Sections.AddRange(sections);
 
             return new Message { PushSave = pushSave };
+        }
+
+        static List<ReportPartitioner.ReportSection> PartitionReport(string sectionName, Struct data)
+        {
+            switch (sectionName)
+            {
+                case "health_report":
+                case "skills_and_work":
+                case "mood_report":
+                case "relationships":
+                    return ReportPartitioner.Partition(sectionName, data);
+                default:
+                    return new List<ReportPartitioner.ReportSection>
+                    {
+                        new ReportPartitioner.ReportSection { Name = sectionName, Data = data }
+                    };
+            }
         }
 
         /// <summary>
