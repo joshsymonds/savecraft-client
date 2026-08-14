@@ -1,9 +1,37 @@
+use serde::Deserialize;
+use std::collections::HashSet;
 use std::process::Command;
 
 const RESULT_UNIT_BYTES: usize = 10_240;
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SectionSizeException {
+    game: String,
+    section: String,
+}
+
+fn parse_section_size_exceptions(raw: &str) -> Result<HashSet<String>, String> {
+    let entries: Vec<SectionSizeException> =
+        serde_json::from_str(raw).map_err(|error| error.to_string())?;
+    let actual: HashSet<String> = entries
+        .iter()
+        .map(|entry| format!("{}/{}", entry.game, entry.section))
+        .collect();
+    let expected = HashSet::from([
+        "stellaris/species".to_owned(),
+        "satisfactory/production_lines".to_owned(),
+    ]);
+    if entries.len() != 2 || actual != expected {
+        return Err(format!(
+            "exception list must contain exactly {expected:?}, got {actual:?}"
+        ));
+    }
+    Ok(actual)
+}
+
 fn assert_section_sizes(sections: &serde_json::Value) {
-    let exceptions: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+    let exceptions = parse_section_size_exceptions(include_str!(
         "../../../../scripts/section-size-exceptions.json"
     ))
     .expect("parse section-size exceptions");
@@ -11,9 +39,7 @@ fn assert_section_sizes(sections: &serde_json::Value) {
         let size = serde_json::to_vec(&section["data"])
             .expect("serialize emitted section data")
             .len();
-        let excepted = exceptions
-            .iter()
-            .any(|entry| entry["game"] == "stellaris" && entry["section"] == name.as_str());
+        let excepted = exceptions.contains(&format!("stellaris/{name}"));
         if excepted {
             eprintln!("section-size exception stellaris/{name}: {size} bytes");
         } else {
@@ -25,6 +51,20 @@ fn assert_section_sizes(sections: &serde_json::Value) {
     }
 }
 
+#[test]
+fn exception_list_rejects_non_closed_sets() {
+    let valid = r#"[{"game":"stellaris","section":"species"},{"game":"satisfactory","section":"production_lines"}]"#;
+    assert_eq!(parse_section_size_exceptions(valid).unwrap().len(), 2);
+
+    for input in [
+        r#"[{"game":"stellaris","section":"species"}]"#,
+        r#"[{"game":"stellaris","section":"species"},{"game":"satisfactory","section":"production_lines"},{"game":"factorio","section":"power"}]"#,
+        r#"[{"game":"stellaris","section":"species","reason":"large"},{"game":"satisfactory","section":"production_lines"}]"#,
+    ] {
+        assert!(parse_section_size_exceptions(input).is_err());
+    }
+}
+
 /// Feed a real Stellaris save to the parser binary and verify ndjson output.
 #[test]
 fn parse_mid_game_save() {
@@ -33,7 +73,7 @@ fn parse_mid_game_save() {
         "/../testdata/autosave_2327.07.01.sav"
     );
     let Ok(save_data) = std::fs::read(save_path) else {
-        eprintln!("skipping absent gitignored fixture {save_path}");
+        eprintln!("[SKIP] parse_mid_game_save: absent gitignored fixture {save_path}");
         return;
     };
 
@@ -361,7 +401,7 @@ fn parse_mid_game_save() {
 fn parse_early_game_save() {
     let save_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../testdata/2200.01.01.sav");
     let Ok(save_data) = std::fs::read(save_path) else {
-        eprintln!("skipping absent gitignored fixture {save_path}");
+        eprintln!("[SKIP] parse_early_game_save: absent gitignored fixture {save_path}");
         return;
     };
 
