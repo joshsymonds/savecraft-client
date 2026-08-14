@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-const resultUnitBytes = 10_240
+const RESULT_UNIT_BYTES = 10_240
 
 func main() {
 	enc := json.NewEncoder(os.Stdout)
@@ -62,12 +62,6 @@ func buildIdentity(gs *GameState) (saveName, displayName string) {
 
 func buildOutputSections(gs *GameState) map[string]any {
 	sections := map[string]any{}
-
-	// Always emit player_summary — the compact overview for get_save.
-	sections["player_summary"] = map[string]any{
-		"description": "Player overview: rank, currencies (gold/gems/wildcards/boosters), deck names, match results, and game log index — start here to understand the player's current state. Note: Magic Arena does not log the player's card collection to Player.log, so owned-card queries cannot be answered from save data. The matches/games indexes only cover matches recorded in the current Player.log — MTGA truncates this log on client restart, so older matches roll off and disappear from these indexes. For cumulative match history (summary stats and trends across all recorded matches, not turn-by-turn logs for rolled-off matches), use the magic match_stats reference module.",
-		"data":        buildPlayerSummary(gs),
-	}
 
 	// Per-deck sections with full card lists.
 	if gs.ActiveDecks != nil {
@@ -132,13 +126,20 @@ func buildOutputSections(gs *GameState) map[string]any {
 		}
 	}
 
+	// Always emit player_summary — the compact overview for get_save. Build it
+	// after game sections so its pointers describe the names actually emitted.
+	sections["player_summary"] = map[string]any{
+		"description": "Player overview: rank, currencies (gold/gems/wildcards/boosters), deck names, match results, and game log index — start here to understand the player's current state. Note: Magic Arena does not log the player's card collection to Player.log, so owned-card queries cannot be answered from save data. The matches/games indexes only cover matches recorded in the current Player.log — MTGA truncates this log on client restart, so older matches roll off and disappear from these indexes. For cumulative match history (summary stats and trends across all recorded matches, not turn-by-turn logs for rolled-off matches), use the magic match_stats reference module.",
+		"data":        buildPlayerSummaryForSections(gs, sections),
+	}
+
 	return sections
 }
 
 func buildGameOutputSections(game GameLog) map[string]any {
 	baseName := "game:" + game.MatchID
 	fullData := buildV3bGameSectionData(game)
-	if serializedSize(fullData) <= resultUnitBytes {
+	if serializedSize(fullData) <= RESULT_UNIT_BYTES {
 		return map[string]any{baseName: map[string]any{
 			"description": buildV3bGameSectionDescription(game.MatchID),
 			"data":        fullData,
@@ -147,17 +148,48 @@ func buildGameOutputSections(game GameLog) map[string]any {
 
 	sections := map[string]any{}
 	landIDs := collectLandIds(game)
+	turns := make([]map[string]any, len(game.Turns))
+	cards := make([]map[int]string, len(game.Turns))
+	for i, turn := range game.Turns {
+		turns[i] = buildV3bTurn(turn, landIDs)
+		cards[i] = collectCardLookup(GameLog{Turns: []TurnLog{turn}})
+	}
 	start := 0
 	for phase := 1; start < len(game.Turns); phase++ {
 		end := start + 1
-		data := buildV3bGamePhaseData(game, landIDs, start, end, phase)
-		for end < len(game.Turns) {
-			candidate := buildV3bGamePhaseData(game, landIDs, start, end+1, phase)
-			if serializedSize(candidate) > resultUnitBytes {
-				break
+		data := buildV3bGamePhaseData(game, turns, cards, start, end, phase)
+		dataSize := serializedSize(data)
+		if dataSize > RESULT_UNIT_BYTES {
+			name := fmt.Sprintf("%s:p%d", baseName, phase)
+			fmt.Fprintf(os.Stderr, "warning: section %s (%d bytes) exceeds RESULT_UNIT_BYTES\n", name, dataSize)
+		} else if end < len(game.Turns) {
+			fitEnd, fitData := end, data
+			step := 1
+			failedEnd := len(game.Turns) + 1
+			for fitEnd < len(game.Turns) {
+				candidateEnd := fitEnd + step
+				if candidateEnd > len(game.Turns) {
+					candidateEnd = len(game.Turns)
+				}
+				candidate := buildV3bGamePhaseData(game, turns, cards, start, candidateEnd, phase)
+				if serializedSize(candidate) > RESULT_UNIT_BYTES {
+					failedEnd = candidateEnd
+					break
+				}
+				fitEnd, fitData = candidateEnd, candidate
+				step *= 2
 			}
-			end++
-			data = candidate
+			for low, high := fitEnd+1, failedEnd-1; low <= high; {
+				mid := low + (high-low)/2
+				candidate := buildV3bGamePhaseData(game, turns, cards, start, mid, phase)
+				if serializedSize(candidate) <= RESULT_UNIT_BYTES {
+					fitEnd, fitData = mid, candidate
+					low = mid + 1
+				} else {
+					high = mid - 1
+				}
+			}
+			end, data = fitEnd, fitData
 		}
 
 		name := fmt.Sprintf("%s:p%d", baseName, phase)
@@ -170,22 +202,22 @@ func buildGameOutputSections(game GameLog) map[string]any {
 	return sections
 }
 
-func buildV3bGamePhaseData(game GameLog, landIDs map[int]bool, start, end, phase int) map[string]any {
-	phaseGame := game
-	phaseGame.Turns = game.Turns[start:end]
-	phaseGame.End = nil
-
-	turns := make([]map[string]any, 0, len(phaseGame.Turns))
-	for _, turn := range phaseGame.Turns {
-		turns = append(turns, buildV3bTurn(turn, landIDs))
+func buildV3bGamePhaseData(game GameLog, turns []map[string]any, cardContributions []map[int]string, start, end, phase int) map[string]any {
+	cardLookup := map[int]string{}
+	for _, contribution := range cardContributions[start:end] {
+		for id, name := range contribution {
+			if existing, found := cardLookup[id]; !found || (existing == "" && name != "") {
+				cardLookup[id] = name
+			}
+		}
 	}
 	data := map[string]any{
 		"matchId":   game.MatchID,
 		"phase":     fmt.Sprintf("p%d", phase),
 		"turnStart": game.Turns[start].TurnNumber,
 		"turnEnd":   game.Turns[end-1].TurnNumber,
-		"cd":        collectCardLookup(phaseGame),
-		"tn":        turns,
+		"cd":        cardLookup,
+		"tn":        turns[start:end],
 	}
 	if end == len(game.Turns) && game.End != nil {
 		data["end"] = buildV3bGameEnd(game.End)
@@ -202,6 +234,16 @@ func serializedSize(value any) int {
 }
 
 func buildPlayerSummary(gs *GameState) map[string]any {
+	return buildPlayerSummaryForSections(gs, buildOutputSectionsWithoutSummary(gs))
+}
+
+func buildOutputSectionsWithoutSummary(gs *GameState) map[string]any {
+	sections := buildOutputSections(gs)
+	delete(sections, "player_summary")
+	return sections
+}
+
+func buildPlayerSummaryForSections(gs *GameState, sections map[string]any) map[string]any {
 	summary := map[string]any{}
 
 	if gs.DisplayName != "" {
@@ -259,10 +301,23 @@ func buildPlayerSummary(gs *GameState) map[string]any {
 			if game.MatchID == "" {
 				continue
 			}
+			baseName := "game:" + game.MatchID
 			entry := map[string]any{
 				"matchId": game.MatchID,
 				"turns":   maxTurnNumber(game.Turns),
-				"section": "game:" + game.MatchID,
+			}
+			if _, ok := sections[baseName]; ok {
+				entry["section"] = baseName
+			} else {
+				phaseNames := []string{}
+				for phase := 1; ; phase++ {
+					name := fmt.Sprintf("%s:p%d", baseName, phase)
+					if _, ok := sections[name]; !ok {
+						break
+					}
+					phaseNames = append(phaseNames, name)
+				}
+				entry["sections"] = phaseNames
 			}
 			// Cross-reference match data for opponent/result if available.
 			if gs.Matches != nil {

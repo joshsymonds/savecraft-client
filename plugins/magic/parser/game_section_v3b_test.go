@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -812,7 +813,6 @@ func TestFixtureSectionSizeBudget(t *testing.T) {
 		t.Fatalf("decode fixture: %v", err)
 	}
 	gs := &GameState{GameLogs: &GameLogSection{Games: []GameLog{game}}}
-	pendingSplits := map[string]bool{}
 	for name, rawSection := range buildOutputSections(gs) {
 		section := rawSection.(map[string]any)
 		compact, err := json.Marshal(section["data"])
@@ -820,14 +820,10 @@ func TestFixtureSectionSizeBudget(t *testing.T) {
 			t.Fatalf("marshal magic/%s data: %v", name, err)
 		}
 		size := len(compact)
-		if size <= resultUnitBytes {
+		if size <= RESULT_UNIT_BYTES {
 			continue
 		}
-		if pendingSplits[name] {
-			t.Logf("EXPECTED FAIL pending section split: magic/%s section data = %d bytes, exceeds RESULT_UNIT_BYTES = %d", name, size, resultUnitBytes)
-			continue
-		}
-		t.Errorf("magic/%s section data = %d bytes, exceeds RESULT_UNIT_BYTES = %d", name, size, resultUnitBytes)
+		t.Errorf("magic/%s section data = %d bytes, exceeds RESULT_UNIT_BYTES = %d", name, size, RESULT_UNIT_BYTES)
 	}
 }
 
@@ -840,6 +836,7 @@ func TestGameSectionsV3b_SplitsFixtureIntoContiguousBoundedPhases(t *testing.T) 
 	if err := json.Unmarshal(raw, &game); err != nil {
 		t.Fatalf("decode fixture: %v", err)
 	}
+	game.End = &GameEnd{WinningSeat: 2, Reason: "ResultReason_Game", Detail: "SBA_LifeTotal"}
 
 	sections := buildOutputSections(&GameState{GameLogs: &GameLogSection{Games: []GameLog{game}}})
 	repeated := buildOutputSections(&GameState{GameLogs: &GameLogSection{Games: []GameLog{game}}})
@@ -877,10 +874,23 @@ func TestGameSectionsV3b_SplitsFixtureIntoContiguousBoundedPhases(t *testing.T) 
 		if err != nil {
 			t.Fatalf("marshal %s: %v", name, err)
 		}
-		if len(encoded) > resultUnitBytes {
-			t.Errorf("%s data = %d bytes, exceeds RESULT_UNIT_BYTES = %d", name, len(encoded), resultUnitBytes)
+		if len(encoded) > RESULT_UNIT_BYTES {
+			t.Errorf("%s data = %d bytes, exceeds RESULT_UNIT_BYTES = %d", name, len(encoded), RESULT_UNIT_BYTES)
+		}
+		cards := data["cd"].(map[int]string)
+		for _, turn := range game.Turns[len(gotTurns) : len(gotTurns)+len(turns)] {
+			for id, cardName := range collectCardLookup(GameLog{Turns: []TurnLog{turn}}) {
+				if cards[id] != cardName {
+					t.Errorf("%s cd[%d]: want %q for its turns, got %q", name, id, cardName, cards[id])
+				}
+			}
 		}
 		gotTurns = append(gotTurns, turns...)
+		if phase > 1 {
+			if _, ok := data["end"]; ok && len(gotTurns) != len(wantTurns) {
+				t.Errorf("%s preserved end before the final phase", name)
+			}
+		}
 	}
 	if phaseCount < 2 {
 		t.Fatalf("fixture emitted %d phase sections; want multiple", phaseCount)
@@ -892,6 +902,77 @@ func TestGameSectionsV3b_SplitsFixtureIntoContiguousBoundedPhases(t *testing.T) 
 	gotJSON, _ := json.Marshal(gotTurns)
 	if !bytes.Equal(gotJSON, wantJSON) {
 		t.Error("reassembled phase turns do not exactly match the original compressed turn sequence")
+	}
+	last := sections[fmt.Sprintf("game:%s:p%d", game.MatchID, phaseCount)].(map[string]any)["data"].(map[string]any)
+	wantEnd := buildV3bGameEnd(game.End)
+	if gotEnd, ok := last["end"]; !ok {
+		t.Fatal("final phase did not preserve the game end object")
+	} else if gotJSON, wantJSON := mustJSON(t, gotEnd), mustJSON(t, wantEnd); !bytes.Equal(gotJSON, wantJSON) {
+		t.Errorf("final end object changed: want %s, got %s", wantJSON, gotJSON)
+	}
+
+	summary := sections["player_summary"].(map[string]any)["data"].(map[string]any)
+	gameSummary := summary["games"].([]map[string]any)[0]
+	if _, ok := gameSummary["section"]; ok {
+		t.Error("fragmented game summary advertises nonexistent unsuffixed section")
+	}
+	phaseNames := gameSummary["sections"].([]string)
+	if len(phaseNames) != phaseCount {
+		t.Fatalf("summary phase pointers: want %d, got %d", phaseCount, len(phaseNames))
+	}
+	for _, name := range phaseNames {
+		if _, ok := sections[name]; !ok {
+			t.Errorf("summary points to section %q, which was not emitted", name)
+		}
+	}
+}
+
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal value: %v", err)
+	}
+	return encoded
+}
+
+func TestGameSectionsV3b_OversizedSingleTurnEmitsAndWarns(t *testing.T) {
+	game := GameLog{MatchID: "huge", Turns: []TurnLog{{
+		TurnNumber: 1,
+		Phase:      "Phase_Main1",
+		Actions: []GameAction{{Player: 1, Cast: &CastAction{
+			CardID: 1, CardName: strings.Repeat("x", RESULT_UNIT_BYTES+1),
+		}}},
+	}}}
+
+	readEnd, writeEnd, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	originalStderr := os.Stderr
+	os.Stderr = writeEnd
+	sections := buildGameOutputSections(game)
+	os.Stderr = originalStderr
+	if err := writeEnd.Close(); err != nil {
+		t.Fatalf("close warning writer: %v", err)
+	}
+	warning, err := io.ReadAll(readEnd)
+	if err != nil {
+		t.Fatalf("read warning: %v", err)
+	}
+	_ = readEnd.Close()
+
+	raw, ok := sections["game:huge:p1"]
+	if !ok {
+		t.Fatal("oversized single turn was not emitted")
+	}
+	size := serializedSize(raw.(map[string]any)["data"])
+	if size <= RESULT_UNIT_BYTES {
+		t.Fatalf("test setup produced %d bytes; want over %d", size, RESULT_UNIT_BYTES)
+	}
+	want := fmt.Sprintf("game:huge:p1 (%d bytes)", size)
+	if !strings.Contains(string(warning), want) {
+		t.Errorf("warning %q does not name oversized section and byte size %q", warning, want)
 	}
 }
 
