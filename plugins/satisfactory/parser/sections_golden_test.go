@@ -5,6 +5,9 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"reflect"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/joshsymonds/savecraft-client/plugins/satisfactory/sav"
@@ -261,7 +264,6 @@ func TestGoldenResultSizeMegafactory(t *testing.T) {
 }
 
 func TestFixtureSectionSizeBudget(t *testing.T) {
-	const resultUnitBytes = 10_240
 	rawExceptions, err := os.ReadFile("../../../scripts/section-size-exceptions.json")
 	if err != nil {
 		t.Fatalf("read section-size exceptions: %v", err)
@@ -276,7 +278,14 @@ func TestFixtureSectionSizeBudget(t *testing.T) {
 	}
 	for _, fixture := range []string{"early_game.sav", "current_1_2.sav", "megafactory.sav", "current_sv60.sav"} {
 		t.Run(fixture, func(t *testing.T) {
-			sections := parseFixtureSections(t, fixture).buildResult()["sections"].(map[string]any)
+			state := parseFixtureSections(t, fixture)
+			originals := map[string]map[string]any{
+				"machines":           state.buildMachinesSection(),
+				"storage":            state.buildStorageSection(),
+				"flow_balance":       state.buildFlowBalanceSection(),
+				"production_summary": state.buildProductionSection(),
+			}
+			sections := state.buildResult()["sections"].(map[string]any)
 			for name, raw := range sections {
 				data := raw.(map[string]any)["data"]
 				encoded, err := json.Marshal(data)
@@ -285,11 +294,105 @@ func TestFixtureSectionSizeBudget(t *testing.T) {
 				}
 				if exceptions["satisfactory/"+name] {
 					t.Logf("section-size exception satisfactory/%s: %d bytes", name, len(encoded))
-				} else if len(encoded) > resultUnitBytes {
-					t.Errorf("satisfactory/%s section data = %d bytes, exceeds RESULT_UNIT_BYTES = %d", name, len(encoded), resultUnitBytes)
+				} else if len(encoded) > RESULT_UNIT_BYTES {
+					t.Errorf("satisfactory/%s section data = %d bytes, exceeds RESULT_UNIT_BYTES = %d", name, len(encoded), RESULT_UNIT_BYTES)
+				}
+			}
+			for name, original := range originals {
+				reassembled := reassembleResultSection(t, sections, name)
+				if !reflect.DeepEqual(reassembled, original) {
+					t.Errorf("%s reassembly differs from original", name)
+				}
+				encoded, err := json.Marshal(original)
+				if err != nil {
+					t.Fatalf("marshal original %s: %v", name, err)
+				}
+				_, single := sections[name]
+				if (len(encoded) <= RESULT_UNIT_BYTES) != single {
+					t.Errorf("%s single section = %v, original size = %d", name, single, len(encoded))
 				}
 			}
 		})
+	}
+}
+
+func TestOversizedResultSectionsSplitAndReassemble(t *testing.T) {
+	items := make([]map[string]any, 400)
+	for i := range items {
+		items[i] = map[string]any{"name": strings.Repeat("item", 8), "count": i}
+	}
+	cases := map[string]map[string]any{
+		"machines":           {"totalManufacturers": len(items), "manufacturers": items},
+		"production_summary": {"machinesWithoutRecipe": 0, "byRecipe": items},
+		"flow_balance":       {"bases": items},
+		"storage":            {"itemsInStorage": items, "containers": map[string]int{"Container": 1}},
+	}
+	for section, original := range cases {
+		t.Run(section, func(t *testing.T) {
+			sections := map[string]any{}
+			emitBoundedSection(sections, section, "test data", original)
+
+			if _, ok := sections[section]; ok {
+				t.Fatalf("oversized %s retained unsplit section", section)
+			}
+			for name, raw := range sections {
+				if !strings.HasPrefix(name, section+":") {
+					t.Errorf("split section name %q is not self-describing", name)
+				}
+				encoded, err := json.Marshal(raw.(map[string]any)["data"])
+				if err != nil {
+					t.Fatalf("marshal %s: %v", name, err)
+				}
+				if len(encoded) > RESULT_UNIT_BYTES {
+					t.Errorf("%s = %d bytes, exceeds %d", name, len(encoded), RESULT_UNIT_BYTES)
+				}
+			}
+			if got := reassembleResultSection(t, sections, section); !reflect.DeepEqual(got, original) {
+				t.Errorf("split %s did not reassemble exactly", section)
+			}
+		})
+	}
+}
+
+func reassembleResultSection(t *testing.T, sections map[string]any, name string) map[string]any {
+	t.Helper()
+	names := make([]string, 0)
+	for candidate := range sections {
+		if candidate == name || strings.HasPrefix(candidate, name+":") {
+			names = append(names, candidate)
+		}
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		t.Fatalf("no sections for %s", name)
+	}
+	out := map[string]any{}
+	for _, candidate := range names {
+		data := sections[candidate].(map[string]any)["data"].(map[string]any)
+		mergeResultData(t, out, data)
+	}
+	return out
+}
+
+func mergeResultData(t *testing.T, dst, src map[string]any) {
+	t.Helper()
+	for key, value := range src {
+		if existing, ok := dst[key]; ok {
+			aMap, aMapOK := existing.(map[string]any)
+			bMap, bMapOK := value.(map[string]any)
+			if aMapOK && bMapOK {
+				mergeResultData(t, aMap, bMap)
+				continue
+			}
+			a, aOK := existing.([]map[string]any)
+			b, bOK := value.([]map[string]any)
+			if !aOK || !bOK {
+				t.Fatalf("duplicate non-list field %s", key)
+			}
+			dst[key] = append(a, b...)
+			continue
+		}
+		dst[key] = value
 	}
 }
 

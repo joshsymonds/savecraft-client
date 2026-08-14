@@ -1,12 +1,16 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 
 	"github.com/joshsymonds/savecraft-client/plugins/satisfactory/sav"
 )
+
+const RESULT_UNIT_BYTES = 10_240
 
 // saveState accumulates the decoded objects the section builders need.
 // One streaming Extract pass fills it; builders read from it afterwards.
@@ -567,25 +571,9 @@ func (s *saveState) buildResult() map[string]any {
 			"description": "Player state: inventory items with counts, equipped gear, position, unlocked inventory size — use to check what materials are on hand",
 			"data":        s.buildPlayerSection(),
 		},
-		"machines": map[string]any{
-			"description": "Built production machines aggregated by building + recipe + clock speed, with producing counts, somersloop-amplified counts, measured productivity (rolling in-game window), and a status breakdown per group; extractors by type — use to assess factory layout and find idle machines. Status is derived from measured productivity, not the instantaneous producing flag (which reads false in saves taken while stopped). status keys: balanced (producing at capacity), input_limited (below capacity, constrained by a thin input — see the per-machine limitingInput in production_lines), output_limited (below capacity, output backing up), blocked_downstream (output fully backed up), starved_upstream (an ingredient ran out), unconfigured (no recipe set), idle (not producing, cause undetermined — the save has no power-outage flag, so a power cause is NOT asserted). A group with no status key is fully balanced.",
-			"data":        s.buildMachinesSection(),
-		},
 		"production_lines": map[string]any{
 			"description": "Belt/pipe-connected production lines — each a group of machines physically linked by conveyors/pipes, named by the nearest player map marker (or a compass sector when none is near). Per line: machines grouped by building+recipe with status counts, transport types (belt/pipe), boundary terminals it attaches to (storage, sinks, train docking stations — building type, not player station name yet), and individual problem machines (input_limited/output_limited/blocked_downstream/starved_upstream/idle) with position; an input_limited or starved machine carries limitingInput naming the constraining item (the decisive datum for 'which input is short'). inboundBeltCeiling is the slowest belt (items/min) feeding the line's machine inputs — the delivery throughput limit; deliveryLimited flags when the line's largest externally-supplied item demand (item + requiredPerMin) exceeds that ceiling, i.e. the feed belt physically cannot deliver enough — distinguishing a DELIVERY bottleneck (upgrade the belt) from a PRODUCTION shortfall (build more machines; see flow_balance). The delivery flag is conservative: it compares the heaviest required feed against the slowest inbound belt and cannot yet map a specific item to a specific belt, and a machine fed via a splitter has no direct belt edge so its line may report no ceiling. Two physically separate lines of the same recipe appear separately. unconnectedMachines counts machines with no belt/pipe link (see the machines section for those). Use to answer 'what are my production lines' and 'where is the problem'",
 			"data":        s.buildProductionLinesSection(),
-		},
-		"production_summary": map[string]any{
-			"description": "Machines aggregated per recipe with effective capacity (clock x somersloop boost, in 100%-clock machine equivalents), somersloop counts, measured productivity, and a status breakdown (see the machines section for status keys; idle means cause-undetermined, not a power claim). Do not invent per-minute item rates; effectiveCapacity x recipe base rate from the production_planner reference module gives max output. For a per-base supply/demand/buffer view with computed per-minute rates, use flow_balance instead",
-			"data":        s.buildProductionSection(),
-		},
-		"flow_balance": map[string]any{
-			"description": "Per-base item flow model — for each base (the same proximity clusters as geography), every item's computed production/min (rated AND measured throughput), consumption/min, net balance, in-base storage buffer, and the producing/consuming recipes with their rates. This is the section for 'why is my factory short on X' and 'where does the deficit land': net < 0 means in-base demand exceeds supply; consumers surfaces hidden draws (e.g. an alt recipe quietly eating wire). rawSupplied means an in-base extractor mines the item, so a negative net is fed by mining, not a shortfall. Rates come from recipe durations: somersloop boost amplifies output only, consumption is clock-only. Cross-base belts are not modeled, so a surplus in another base is not netted here. Items are ordered most-imbalanced first",
-			"data":        s.buildFlowBalanceSection(),
-		},
-		"storage": map[string]any{
-			"description": "Stored materials: per-item totals across all storage containers, container counts, and the dimensional depot's uploaded items — use to find available materials beyond the player's pockets",
-			"data":        s.buildStorageSection(),
 		},
 		"logistics": map[string]any{
 			"description": "Transport networks: trains with named stations and timetables, drone routes with station tags, trucks and truck stations — use to understand how materials move between factories",
@@ -604,6 +592,15 @@ func (s *saveState) buildResult() map[string]any {
 			"data":        s.buildPowerSection(),
 		},
 	}
+	// These high-cardinality sections are emitted whole for ordinary saves.
+	// When one crosses RESULT_UNIT_BYTES, it is partitioned deterministically
+	// along its natural top-level groups (machine/recipe groups, geography
+	// bases, and storage/depot item groups). Each partial map retains its field
+	// name, and the section suffix identifies that group and its ordinal.
+	emitBoundedSection(sections, "machines", "Built production machines aggregated by building + recipe + clock speed, with producing counts, somersloop-amplified counts, measured productivity (rolling in-game window), and a status breakdown per group; extractors by type — use to assess factory layout and find idle machines. Status is derived from measured productivity, not the instantaneous producing flag (which reads false in saves taken while stopped). status keys: balanced (producing at capacity), input_limited (below capacity, constrained by a thin input — see the per-machine limitingInput in production_lines), output_limited (below capacity, output backing up), blocked_downstream (output fully backed up), starved_upstream (an ingredient ran out), unconfigured (no recipe set), idle (not producing, cause undetermined — the save has no power-outage flag, so a power cause is NOT asserted). A group with no status key is fully balanced.", s.buildMachinesSection())
+	emitBoundedSection(sections, "production_summary", "Machines aggregated per recipe with effective capacity (clock x somersloop boost, in 100%-clock machine equivalents), somersloop counts, measured productivity, and a status breakdown (see the machines section for status keys; idle means cause-undetermined, not a power claim). Do not invent per-minute item rates; effectiveCapacity x recipe base rate from the production_planner reference module gives max output. For a per-base supply/demand/buffer view with computed per-minute rates, use flow_balance instead", s.buildProductionSection())
+	emitBoundedSection(sections, "flow_balance", "Per-base item flow model — for each base (the same proximity clusters as geography), every item's computed production/min (rated AND measured throughput), consumption/min, net balance, in-base storage buffer, and the producing/consuming recipes with their rates. This is the section for 'why is my factory short on X' and 'where does the deficit land': net < 0 means in-base demand exceeds supply; consumers surfaces hidden draws (e.g. an alt recipe quietly eating wire). rawSupplied means an in-base extractor mines the item, so a negative net is fed by mining, not a shortfall. Rates come from recipe durations: somersloop boost amplifies output only, consumption is clock-only. Cross-base belts are not modeled, so a surplus in another base is not netted here. Items are ordered most-imbalanced first", s.buildFlowBalanceSection())
+	emitBoundedSection(sections, "storage", "Stored materials: per-item totals across all storage containers, container counts, and the dimensional depot's uploaded items — use to find available materials beyond the player's pockets", s.buildStorageSection())
 	return map[string]any{
 		"type": "result",
 		"identity": map[string]any{
@@ -613,4 +610,100 @@ func (s *saveState) buildResult() map[string]any {
 		"summary":  s.buildSummary(),
 		"sections": sections,
 	}
+}
+
+func emitBoundedSection(sections map[string]any, name, description string, data map[string]any) {
+	if encoded, err := json.Marshal(data); err == nil && len(encoded) <= RESULT_UNIT_BYTES {
+		sections[name] = map[string]any{"description": description, "data": data}
+		return
+	}
+
+	fragments := splitSectionData(data)
+	for i, fragment := range fragments {
+		field := "part"
+		for key := range fragment {
+			field = strings.ReplaceAll(key, "_", "-")
+		}
+		sectionName := fmt.Sprintf("%s:%s:%04d", name, field, i+1)
+		sections[sectionName] = map[string]any{"description": description, "data": fragment}
+	}
+}
+
+func splitSectionData(data map[string]any) []map[string]any {
+	keys := make([]string, 0, len(data))
+	for key := range data {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	var fragments []map[string]any
+	for _, key := range keys {
+		fragments = append(fragments, splitSectionField(key, data[key])...)
+	}
+	return fragments
+}
+
+func splitSectionField(key string, value any) []map[string]any {
+	whole := map[string]any{key: value}
+	if encoded, err := json.Marshal(whole); err == nil && len(encoded) <= RESULT_UNIT_BYTES {
+		return []map[string]any{whole}
+	}
+
+	rv := reflect.ValueOf(value)
+	switch rv.Kind() {
+	case reflect.Slice:
+		return splitSectionSlice(key, rv)
+	case reflect.Map:
+		return splitSectionMap(key, rv)
+	default:
+		return []map[string]any{whole}
+	}
+}
+
+func splitSectionSlice(key string, value reflect.Value) []map[string]any {
+	var fragments []map[string]any
+	start := 0
+	for start < value.Len() {
+		end := start + 1
+		for end <= value.Len() {
+			candidate := map[string]any{key: value.Slice(start, end).Interface()}
+			encoded, err := json.Marshal(candidate)
+			if err != nil || len(encoded) > RESULT_UNIT_BYTES {
+				break
+			}
+			end++
+		}
+		if end == start+1 {
+			fragments = append(fragments, map[string]any{key: value.Slice(start, end).Interface()})
+			start = end
+			continue
+		}
+		end--
+		fragments = append(fragments, map[string]any{key: value.Slice(start, end).Interface()})
+		start = end
+	}
+	return fragments
+}
+
+func splitSectionMap(key string, value reflect.Value) []map[string]any {
+	if value.Type().Key().Kind() == reflect.String && value.Type().Elem().Kind() == reflect.Interface {
+		nested := value.Interface().(map[string]any)
+		parts := splitSectionData(nested)
+		fragments := make([]map[string]any, 0, len(parts))
+		for _, part := range parts {
+			fragments = append(fragments, map[string]any{key: part})
+		}
+		return fragments
+	}
+	mapKeys := value.MapKeys()
+	sort.Slice(mapKeys, func(i, j int) bool {
+		return fmt.Sprint(mapKeys[i].Interface()) < fmt.Sprint(mapKeys[j].Interface())
+	})
+	fragments := make([]map[string]any, 0, len(mapKeys))
+	for _, mapKey := range mapKeys {
+		part := reflect.MakeMap(value.Type())
+		part.SetMapIndex(mapKey, value.MapIndex(mapKey))
+		fragments = append(fragments, map[string]any{key: part.Interface()})
+	}
+	return fragments
 }
