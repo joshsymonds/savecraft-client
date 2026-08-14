@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+const resultUnitBytes = 10_240
+
 func main() {
 	enc := json.NewEncoder(os.Stdout)
 
@@ -94,15 +96,17 @@ func buildOutputSections(gs *GameState) map[string]any {
 	}
 
 	// Per-game sections with full turn-by-turn data (v3b compressed — see
-	// game_section_v3b.go for the transform rationale).
+	// game_section_v3b.go for the transform rationale). Games that exceed
+	// RESULT_UNIT_BYTES are emitted as contiguous `game:<matchId>:p<N>` phase
+	// sections, numbered from 1 in turn-sequence order; smaller games retain
+	// the unsuffixed `game:<matchId>` name.
 	if gs.GameLogs != nil {
 		for _, game := range gs.GameLogs.Games {
 			if game.MatchID == "" {
 				continue
 			}
-			sections["game:"+game.MatchID] = map[string]any{
-				"description": buildV3bGameSectionDescription(game.MatchID),
-				"data":        buildV3bGameSectionData(game),
+			for name, section := range buildGameOutputSections(game) {
+				sections[name] = section
 			}
 		}
 	}
@@ -129,6 +133,72 @@ func buildOutputSections(gs *GameState) map[string]any {
 	}
 
 	return sections
+}
+
+func buildGameOutputSections(game GameLog) map[string]any {
+	baseName := "game:" + game.MatchID
+	fullData := buildV3bGameSectionData(game)
+	if serializedSize(fullData) <= resultUnitBytes {
+		return map[string]any{baseName: map[string]any{
+			"description": buildV3bGameSectionDescription(game.MatchID),
+			"data":        fullData,
+		}}
+	}
+
+	sections := map[string]any{}
+	landIDs := collectLandIds(game)
+	start := 0
+	for phase := 1; start < len(game.Turns); phase++ {
+		end := start + 1
+		data := buildV3bGamePhaseData(game, landIDs, start, end, phase)
+		for end < len(game.Turns) {
+			candidate := buildV3bGamePhaseData(game, landIDs, start, end+1, phase)
+			if serializedSize(candidate) > resultUnitBytes {
+				break
+			}
+			end++
+			data = candidate
+		}
+
+		name := fmt.Sprintf("%s:p%d", baseName, phase)
+		sections[name] = map[string]any{
+			"description": buildV3bGameSectionDescription(game.MatchID),
+			"data":        data,
+		}
+		start = end
+	}
+	return sections
+}
+
+func buildV3bGamePhaseData(game GameLog, landIDs map[int]bool, start, end, phase int) map[string]any {
+	phaseGame := game
+	phaseGame.Turns = game.Turns[start:end]
+	phaseGame.End = nil
+
+	turns := make([]map[string]any, 0, len(phaseGame.Turns))
+	for _, turn := range phaseGame.Turns {
+		turns = append(turns, buildV3bTurn(turn, landIDs))
+	}
+	data := map[string]any{
+		"matchId":   game.MatchID,
+		"phase":     fmt.Sprintf("p%d", phase),
+		"turnStart": game.Turns[start].TurnNumber,
+		"turnEnd":   game.Turns[end-1].TurnNumber,
+		"cd":        collectCardLookup(phaseGame),
+		"tn":        turns,
+	}
+	if end == len(game.Turns) && game.End != nil {
+		data["end"] = buildV3bGameEnd(game.End)
+	}
+	return data
+}
+
+func serializedSize(value any) int {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		panic(fmt.Sprintf("serialize game section: %v", err))
+	}
+	return len(encoded)
 }
 
 func buildPlayerSummary(gs *GameState) map[string]any {

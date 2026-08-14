@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -810,10 +812,7 @@ func TestFixtureSectionSizeBudget(t *testing.T) {
 		t.Fatalf("decode fixture: %v", err)
 	}
 	gs := &GameState{GameLogs: &GameLogSection{Games: []GameLog{game}}}
-	const resultUnitBytes = 10_240
-	pendingSplits := map[string]bool{
-		"game:ed5759f4-d959-4c67-91a2-176aa9161ff1": true,
-	}
+	pendingSplits := map[string]bool{}
 	for name, rawSection := range buildOutputSections(gs) {
 		section := rawSection.(map[string]any)
 		compact, err := json.Marshal(section["data"])
@@ -829,5 +828,80 @@ func TestFixtureSectionSizeBudget(t *testing.T) {
 			continue
 		}
 		t.Errorf("magic/%s section data = %d bytes, exceeds RESULT_UNIT_BYTES = %d", name, size, resultUnitBytes)
+	}
+}
+
+func TestGameSectionsV3b_SplitsFixtureIntoContiguousBoundedPhases(t *testing.T) {
+	raw, err := os.ReadFile("testdata/uzimy-ed5759f4.json")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	var game GameLog
+	if err := json.Unmarshal(raw, &game); err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+
+	sections := buildOutputSections(&GameState{GameLogs: &GameLogSection{Games: []GameLog{game}}})
+	repeated := buildOutputSections(&GameState{GameLogs: &GameLogSection{Games: []GameLog{game}}})
+	firstJSON, _ := json.Marshal(sections)
+	repeatedJSON, _ := json.Marshal(repeated)
+	if !bytes.Equal(firstJSON, repeatedJSON) {
+		t.Fatal("same game input produced different phase partitions")
+	}
+	wantTurns := buildV3bGameSectionData(game)["tn"].([]map[string]any)
+	gotTurns := make([]map[string]any, 0, len(wantTurns))
+	phaseCount := 0
+	for phase := 1; ; phase++ {
+		name := fmt.Sprintf("game:%s:p%d", game.MatchID, phase)
+		rawSection, ok := sections[name]
+		if !ok {
+			break
+		}
+		phaseCount++
+		section := rawSection.(map[string]any)
+		data := section["data"].(map[string]any)
+		if data["matchId"] != game.MatchID {
+			t.Errorf("%s matchId: want %q, got %v", name, game.MatchID, data["matchId"])
+		}
+		if data["phase"] != fmt.Sprintf("p%d", phase) {
+			t.Errorf("%s phase: want p%d, got %v", name, phase, data["phase"])
+		}
+		turns := data["tn"].([]map[string]any)
+		if len(turns) == 0 {
+			t.Fatalf("%s has no turns", name)
+		}
+		if data["turnStart"] != turns[0]["t"] || data["turnEnd"] != turns[len(turns)-1]["t"] {
+			t.Errorf("%s turn range does not describe its turns: start=%v end=%v", name, data["turnStart"], data["turnEnd"])
+		}
+		encoded, err := json.Marshal(data)
+		if err != nil {
+			t.Fatalf("marshal %s: %v", name, err)
+		}
+		if len(encoded) > resultUnitBytes {
+			t.Errorf("%s data = %d bytes, exceeds RESULT_UNIT_BYTES = %d", name, len(encoded), resultUnitBytes)
+		}
+		gotTurns = append(gotTurns, turns...)
+	}
+	if phaseCount < 2 {
+		t.Fatalf("fixture emitted %d phase sections; want multiple", phaseCount)
+	}
+	if _, ok := sections["game:"+game.MatchID]; ok {
+		t.Error("fragmented game should not also emit an unsuffixed section")
+	}
+	wantJSON, _ := json.Marshal(wantTurns)
+	gotJSON, _ := json.Marshal(gotTurns)
+	if !bytes.Equal(gotJSON, wantJSON) {
+		t.Error("reassembled phase turns do not exactly match the original compressed turn sequence")
+	}
+}
+
+func TestGameSectionsV3b_SmallGameRemainsSingleSection(t *testing.T) {
+	game := GameLog{MatchID: "small", Turns: []TurnLog{{TurnNumber: 1, Phase: "Phase_Main1"}}}
+	sections := buildOutputSections(&GameState{GameLogs: &GameLogSection{Games: []GameLog{game}}})
+	if _, ok := sections["game:small"]; !ok {
+		t.Fatal("small game should retain its unsuffixed section name")
+	}
+	if _, ok := sections["game:small:p1"]; ok {
+		t.Error("small game should not be fragmented")
 	}
 }
