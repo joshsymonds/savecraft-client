@@ -12,6 +12,11 @@ import (
 
 const RESULT_UNIT_BYTES = 10_240
 
+// Leave room for the result envelope under the daemon's 2 MiB output limit.
+// A hostile save must not turn one logical section into an unbounded number of
+// protocol sections even when every map key is individually large.
+const maxSectionFragments = (2 << 20) / RESULT_UNIT_BYTES
+
 // saveState accumulates the decoded objects the section builders need.
 // One streaming Extract pass fills it; builders read from it afterwards.
 type saveState struct {
@@ -618,7 +623,7 @@ func emitBoundedSection(sections map[string]any, name, description string, data 
 		return
 	}
 
-	fragments := splitSectionData(data)
+	fragments := splitSectionData(name, data)
 	for i, fragment := range fragments {
 		field := "part"
 		for key := range fragment {
@@ -629,7 +634,7 @@ func emitBoundedSection(sections map[string]any, name, description string, data 
 	}
 }
 
-func splitSectionData(data map[string]any) []map[string]any {
+func splitSectionData(section string, data map[string]any) []map[string]any {
 	keys := make([]string, 0, len(data))
 	for key := range data {
 		keys = append(keys, key)
@@ -638,72 +643,147 @@ func splitSectionData(data map[string]any) []map[string]any {
 
 	var fragments []map[string]any
 	for _, key := range keys {
-		fragments = append(fragments, splitSectionField(key, data[key])...)
+		parts := splitSectionField(section, key, data[key])
+		for _, part := range parts {
+			if len(fragments) < maxSectionFragments {
+				fragments = append(fragments, part)
+				continue
+			}
+			mergeSectionFragment(fragments[len(fragments)-1], part)
+		}
 	}
 	return fragments
 }
 
-func splitSectionField(key string, value any) []map[string]any {
+func splitSectionField(section, key string, value any) []map[string]any {
 	whole := map[string]any{key: value}
-	if encoded, err := json.Marshal(whole); err == nil && len(encoded) <= RESULT_UNIT_BYTES {
+	encoded, marshalErr := json.Marshal(whole)
+	if marshalErr == nil && len(encoded) <= RESULT_UNIT_BYTES {
 		return []map[string]any{whole}
 	}
 
 	rv := reflect.ValueOf(value)
 	switch rv.Kind() {
 	case reflect.Slice:
-		return splitSectionSlice(key, rv)
+		return splitSectionSlice(section, key, rv)
 	case reflect.Map:
-		return splitSectionMap(key, rv)
+		return splitSectionMap(section, key, rv)
 	default:
+		if marshalErr == nil {
+			logOversizedAtomic(section, len(encoded))
+		}
 		return []map[string]any{whole}
 	}
 }
 
-func splitSectionSlice(key string, value reflect.Value) []map[string]any {
+func splitSectionSlice(section, key string, value reflect.Value) []map[string]any {
 	var fragments []map[string]any
 	start := 0
 	for start < value.Len() {
-		end := start + 1
-		for end <= value.Len() {
-			candidate := map[string]any{key: value.Slice(start, end).Interface()}
-			encoded, err := json.Marshal(candidate)
-			if err != nil || len(encoded) > RESULT_UNIT_BYTES {
-				break
-			}
-			end++
+		if len(fragments) == maxSectionFragments-1 {
+			fragments = append(fragments, map[string]any{key: value.Slice(start, value.Len()).Interface()})
+			break
 		}
-		if end == start+1 {
-			fragments = append(fragments, map[string]any{key: value.Slice(start, end).Interface()})
-			start = end
+
+		fits := func(end int) bool {
+			encoded, err := json.Marshal(map[string]any{key: value.Slice(start, end).Interface()})
+			return err == nil && len(encoded) <= RESULT_UNIT_BYTES
+		}
+		if !fits(start + 1) {
+			atomic := map[string]any{key: value.Slice(start, start+1).Interface()}
+			if encoded, err := json.Marshal(atomic); err == nil {
+				logOversizedAtomic(section, len(encoded))
+			}
+			fragments = append(fragments, atomic)
+			start++
 			continue
 		}
-		end--
+
+		low, high := start+1, start+2
+		for high <= value.Len() && fits(high) {
+			low = high
+			high = start + 2*(high-start)
+		}
+		if high > value.Len() {
+			high = value.Len() + 1
+		}
+		for low+1 < high {
+			mid := low + (high-low)/2
+			if fits(mid) {
+				low = mid
+			} else {
+				high = mid
+			}
+		}
+		end := low
+		// Verify the selected boundary exactly before emitting it.
+		if !fits(end) {
+			end = start + 1
+		}
 		fragments = append(fragments, map[string]any{key: value.Slice(start, end).Interface()})
 		start = end
 	}
 	return fragments
 }
 
-func splitSectionMap(key string, value reflect.Value) []map[string]any {
-	if value.Type().Key().Kind() == reflect.String && value.Type().Elem().Kind() == reflect.Interface {
-		nested := value.Interface().(map[string]any)
-		parts := splitSectionData(nested)
-		fragments := make([]map[string]any, 0, len(parts))
-		for _, part := range parts {
-			fragments = append(fragments, map[string]any{key: part})
-		}
-		return fragments
-	}
+func splitSectionMap(section, key string, value reflect.Value) []map[string]any {
 	mapKeys := value.MapKeys()
 	sort.Slice(mapKeys, func(i, j int) bool {
 		return fmt.Sprint(mapKeys[i].Interface()) < fmt.Sprint(mapKeys[j].Interface())
 	})
-	fragments := make([]map[string]any, 0, len(mapKeys))
+	fragments := make([]map[string]any, 0)
+	part := reflect.MakeMap(value.Type())
 	for _, mapKey := range mapKeys {
-		part := reflect.MakeMap(value.Type())
+		if len(fragments) == maxSectionFragments-1 {
+			part.SetMapIndex(mapKey, value.MapIndex(mapKey))
+			continue
+		}
+		candidate := reflect.MakeMap(value.Type())
+		iter := part.MapRange()
+		for iter.Next() {
+			candidate.SetMapIndex(iter.Key(), iter.Value())
+		}
+		candidate.SetMapIndex(mapKey, value.MapIndex(mapKey))
+		encoded, err := json.Marshal(map[string]any{key: candidate.Interface()})
+		if err == nil && len(encoded) <= RESULT_UNIT_BYTES {
+			part = candidate
+			continue
+		}
+		if part.Len() == 0 {
+			logOversizedAtomic(section, len(encoded))
+			part = candidate
+			continue
+		}
+		fragments = append(fragments, map[string]any{key: part.Interface()})
+		part = reflect.MakeMap(value.Type())
 		part.SetMapIndex(mapKey, value.MapIndex(mapKey))
+	}
+	if part.Len() > 0 {
 		fragments = append(fragments, map[string]any{key: part.Interface()})
 	}
 	return fragments
+}
+
+func mergeSectionFragment(dst, src map[string]any) {
+	for key, value := range src {
+		existing, ok := dst[key]
+		if !ok {
+			dst[key] = value
+			continue
+		}
+		a, b := reflect.ValueOf(existing), reflect.ValueOf(value)
+		switch {
+		case a.Kind() == reflect.Slice && b.Kind() == reflect.Slice:
+			dst[key] = reflect.AppendSlice(a, b).Interface()
+		case a.Kind() == reflect.Map && b.Kind() == reflect.Map:
+			iter := b.MapRange()
+			for iter.Next() {
+				a.SetMapIndex(iter.Key(), iter.Value())
+			}
+		}
+	}
+}
+
+func logOversizedAtomic(section string, bytes int) {
+	fmt.Fprintf(stderr(), "satisfactory: section %s atomic element is %d bytes (limit %d)\n", section, bytes, RESULT_UNIT_BYTES)
 }

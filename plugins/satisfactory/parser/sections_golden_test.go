@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"reflect"
@@ -268,9 +270,22 @@ func TestFixtureSectionSizeBudget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read section-size exceptions: %v", err)
 	}
-	var exceptionEntries []struct{ Game, Section string }
-	if err := json.Unmarshal(rawExceptions, &exceptionEntries); err != nil {
+	type exceptionEntry struct {
+		Game    string `json:"game"`
+		Section string `json:"section"`
+	}
+	var exceptionEntries []exceptionEntry
+	decoder := json.NewDecoder(bytes.NewReader(rawExceptions))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&exceptionEntries); err != nil {
 		t.Fatalf("parse section-size exceptions: %v", err)
+	}
+	wantExceptions := []exceptionEntry{
+		{Game: "stellaris", Section: "species"},
+		{Game: "satisfactory", Section: "production_lines"},
+	}
+	if !reflect.DeepEqual(exceptionEntries, wantExceptions) {
+		t.Fatalf("section-size exceptions = %#v, want exactly %#v", exceptionEntries, wantExceptions)
 	}
 	exceptions := make(map[string]bool, len(exceptionEntries))
 	for _, entry := range exceptionEntries {
@@ -354,6 +369,57 @@ func TestOversizedResultSectionsSplitAndReassemble(t *testing.T) {
 	}
 }
 
+func TestManyMapEntriesHaveBoundedFragmentCount(t *testing.T) {
+	entries := make(map[string]int, maxSectionFragments*2)
+	for i := 0; i < maxSectionFragments*2; i++ {
+		entries[fmt.Sprintf("container-%04d-%s", i, strings.Repeat("x", RESULT_UNIT_BYTES/2))] = i
+	}
+	sections := map[string]any{}
+	emitBoundedSection(sections, "storage", "test data", map[string]any{"containers": entries})
+
+	if len(sections) > maxSectionFragments {
+		t.Fatalf("many-key map emitted %d fragments, want at most %d", len(sections), maxSectionFragments)
+	}
+	if len(sections) >= len(entries) {
+		t.Fatalf("many-key map emitted one fragment per entry: %d fragments", len(sections))
+	}
+	if got := reassembleResultSection(t, sections, "storage"); !reflect.DeepEqual(got, map[string]any{"containers": entries}) {
+		t.Fatal("bounded map fragments did not reassemble exactly")
+	}
+}
+
+func TestOversizedAtomicElementIsEmittedAndLogged(t *testing.T) {
+	logFile, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatalf("create stderr capture: %v", err)
+	}
+	originalStderr := os.Stderr
+	os.Stderr = logFile
+	t.Cleanup(func() { os.Stderr = originalStderr })
+
+	data := map[string]any{"atomic": strings.Repeat("x", RESULT_UNIT_BYTES+1)}
+	sections := map[string]any{}
+	emitBoundedSection(sections, "storage", "test data", data)
+	if got := reassembleResultSection(t, sections, "storage"); !reflect.DeepEqual(got, data) {
+		t.Fatal("oversized atomic element was not emitted")
+	}
+	if err := logFile.Close(); err != nil {
+		t.Fatalf("close stderr capture: %v", err)
+	}
+	logged, err := os.ReadFile(logFile.Name())
+	if err != nil {
+		t.Fatalf("read stderr capture: %v", err)
+	}
+	encoded, err := json.Marshal(data)
+	if err != nil {
+		t.Fatalf("marshal atomic data: %v", err)
+	}
+	want := fmt.Sprintf("section storage atomic element is %d bytes", len(encoded))
+	if !strings.Contains(string(logged), want) {
+		t.Fatalf("stderr = %q, want text %q", logged, want)
+	}
+}
+
 func reassembleResultSection(t *testing.T, sections map[string]any, name string) map[string]any {
 	t.Helper()
 	names := make([]string, 0)
@@ -378,6 +444,18 @@ func mergeResultData(t *testing.T, dst, src map[string]any) {
 	t.Helper()
 	for key, value := range src {
 		if existing, ok := dst[key]; ok {
+			aValue, bValue := reflect.ValueOf(existing), reflect.ValueOf(value)
+			if aValue.Kind() == reflect.Map && bValue.Kind() == reflect.Map && aValue.Type() == bValue.Type() {
+				merged := reflect.MakeMapWithSize(aValue.Type(), aValue.Len()+bValue.Len())
+				for _, mapValue := range []reflect.Value{aValue, bValue} {
+					iter := mapValue.MapRange()
+					for iter.Next() {
+						merged.SetMapIndex(iter.Key(), iter.Value())
+					}
+				}
+				dst[key] = merged.Interface()
+				continue
+			}
 			aMap, aMapOK := existing.(map[string]any)
 			bMap, bMapOK := value.(map[string]any)
 			if aMapOK && bMapOK {
