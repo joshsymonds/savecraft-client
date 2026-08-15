@@ -338,14 +338,7 @@ pub(crate) fn build_sections_map(built: sections::BuildResult) -> HashMap<String
                 .unwrap_or_default(),
         },
     );
-    sections_map.insert(
-        "guild".to_string(),
-        ndjson::Section {
-            description: "Guild name and member roster".to_string(),
-            data: serde_json::to_value(&sections::GuildsSection { guilds: guild })
-                .unwrap_or_default(),
-        },
-    );
+    emit_guild_sections(&mut sections_map, guild);
     sections_map.insert(
         "bases".to_string(),
         ndjson::Section {
@@ -368,6 +361,108 @@ pub(crate) fn build_sections_map(built: sections::BuildResult) -> HashMap<String
         },
     );
     sections_map
+}
+
+fn guild_section_data_len(guilds: &[sections::Guild]) -> usize {
+    serde_json::to_vec(&sections::GuildsSection {
+        guilds: guilds.to_vec(),
+    })
+    .expect("serialize guild section while calculating result-unit size")
+    .len()
+}
+
+/// Emits the historical `guild` section when it fits in one result unit.
+/// Oversized rosters are emitted deterministically as
+/// `guild:members-{guild}-{part}` units, making both the source guild and
+/// roster subdivision explicit to cloud and model consumers.
+fn emit_guild_sections(
+    sections_map: &mut HashMap<String, ndjson::Section>,
+    guilds: Vec<sections::Guild>,
+) {
+    emit_guild_sections_with_logger(sections_map, guilds, |warning| eprintln!("{warning}"));
+}
+
+fn emit_guild_sections_with_logger(
+    sections_map: &mut HashMap<String, ndjson::Section>,
+    guilds: Vec<sections::Guild>,
+    mut warn: impl FnMut(String),
+) {
+    if guild_section_data_len(&guilds) <= sections::RESULT_UNIT_BYTES {
+        sections_map.insert(
+            "guild".to_string(),
+            ndjson::Section {
+                description: "Guild name and member roster".to_string(),
+                data: serde_json::to_value(&sections::GuildsSection { guilds })
+                    .expect("serialize bounded guild section"),
+            },
+        );
+        return;
+    }
+
+    for (guild_index, guild) in guilds.into_iter().enumerate() {
+        let sections::Guild {
+            guild_id,
+            name: guild_name,
+            member_count,
+            members,
+        } = guild;
+        let empty_unit = sections::Guild {
+            guild_id: guild_id.clone(),
+            name: guild_name.clone(),
+            member_count,
+            members: Vec::new(),
+        };
+        let fixed_overhead = guild_section_data_len(std::slice::from_ref(&empty_unit));
+        let mut parts: Vec<Vec<sections::GuildMember>> = vec![Vec::new()];
+        let mut part_size = fixed_overhead;
+        for member in members {
+            let member_size = serde_json::to_vec(&member)
+                .expect("serialize guild member while calculating result-unit size")
+                .len();
+            let separator_size = usize::from(!parts.last().expect("initial guild part").is_empty());
+            if !parts.last().expect("initial guild part").is_empty()
+                && part_size + separator_size + member_size > sections::RESULT_UNIT_BYTES
+            {
+                parts.push(Vec::new());
+                part_size = fixed_overhead;
+            }
+            part_size +=
+                usize::from(!parts.last().expect("current guild part").is_empty()) + member_size;
+            parts.last_mut().expect("current guild part").push(member);
+        }
+
+        for (part, members) in parts.into_iter().enumerate() {
+            let unit = sections::Guild {
+                guild_id: guild_id.clone(),
+                name: guild_name.clone(),
+                member_count,
+                members,
+            };
+            let name = format!("guild:members-{guild_index:03}-{part:03}");
+            let data = serde_json::to_value(&sections::GuildsSection { guilds: vec![unit] })
+                .expect("serialize fragmented guild section");
+            let bytes = serde_json::to_vec(&data)
+                .expect("serialize fragmented guild section value")
+                .len();
+            if bytes > sections::RESULT_UNIT_BYTES {
+                warn(format!(
+                    "palworld/{name} section data = {bytes} bytes, exceeds RESULT_UNIT_BYTES = {}",
+                    sections::RESULT_UNIT_BYTES
+                ));
+            }
+            sections_map.insert(
+                name,
+                ndjson::Section {
+                    description: format!(
+                        "Guild name and member roster (guild {}, part {})",
+                        guild_index + 1,
+                        part + 1
+                    ),
+                    data,
+                },
+            );
+        }
+    }
 }
 
 fn tar_error_type(e: &TarError) -> &'static str {

@@ -5,7 +5,9 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/joshsymonds/savecraft-client/plugins/d2r/d2s"
@@ -133,6 +135,25 @@ func loadStash(t *testing.T) *d2s.SharedStash {
 	return stash
 }
 
+func assertFixtureSectionSizes(t *testing.T, sections map[string]any) {
+	t.Helper()
+	for name, raw := range sections {
+		section := raw.(map[string]any)
+		encoded, err := json.Marshal(section["data"])
+		if err != nil {
+			t.Fatalf("marshal d2r/%s data: %v", name, err)
+		}
+		if len(encoded) > RESULT_UNIT_BYTES {
+			t.Errorf("d2r/%s section data = %d bytes, exceeds RESULT_UNIT_BYTES = %d", name, len(encoded), RESULT_UNIT_BYTES)
+		}
+	}
+}
+
+func TestFixtureSectionSizeBudget(t *testing.T) {
+	assertFixtureSectionSizes(t, buildAllSections(loadAtmus(t)))
+	assertFixtureSectionSizes(t, buildStashSections(loadStash(t)))
+}
+
 // buildAllSections mirrors the section-building logic in handleCharacter
 // so we can test it without os.Stdout/os.Exit.
 func buildAllSections(save *d2s.D2S) map[string]any {
@@ -157,6 +178,10 @@ func buildAllSections(save *d2s.D2S) map[string]any {
 			"description": "Items in inventory, personal stash, and Horadric Cube — use to find crafting materials, charms, or items to equip",
 			"data":        buildInventorySection(save),
 		},
+	}
+	sections["totals"] = map[string]any{
+		"description": "Aggregated character stats: resistances (per difficulty), magic find, gold find, faster cast rate, faster hit recovery, attack speed, run/walk speed, crushing blow, deadly strike, open wounds, life/mana leech, skill bonuses — with FCR/FHR/IAS breakpoints. Includes mercenary totals. Use to evaluate gear upgrades or check breakpoints.",
+		"data":        d2s.ComputeStats(save),
 	}
 
 	if len(save.MercItems) > 0 {
@@ -671,6 +696,211 @@ func TestBuildStashSections(t *testing.T) {
 	if !hasTabWithItems {
 		t.Error("no tab sections with items")
 	}
+}
+
+func TestBuildStashSectionsSplitsDenseTabIntoBoundedItemRanges(t *testing.T) {
+	attributeName := "+{0} to an intentionally verbose synthetic high-affix property"
+	attributes := make([]d2s.MagicAttribute, 40)
+	for i := range attributes {
+		attributes[i] = d2s.MagicAttribute{ID: uint64(1_000 + i), Name: attributeName, Values: []int64{int64(i)}}
+	}
+	items := make([]d2s.Item, 30)
+	for i := range items {
+		items[i] = d2s.Item{
+			Code:            fmt.Sprintf("x%02d", i),
+			TypeID:          "armor",
+			TypeName:        "Synthetic High-Affix Armor",
+			Identified:      true,
+			Quality:         d2s.QualityRare,
+			RareName:        "Dense",
+			RareName2:       fmt.Sprintf("Item %d", i),
+			MagicAttributes: attributes,
+		}
+	}
+	wantItems := buildItemList(items)
+	wantData, err := json.Marshal(map[string]any{"items": wantItems})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wantData) <= RESULT_UNIT_BYTES {
+		t.Fatalf("synthetic tab data = %d bytes, want > %d", len(wantData), RESULT_UNIT_BYTES)
+	}
+
+	sections := buildStashSections(&d2s.SharedStash{Tabs: []d2s.StashTab{{Items: items}}})
+	var reassembled []map[string]any
+	for part, start := 1, 0; ; part++ {
+		name := fmt.Sprintf("tab1:p%d", part)
+		raw, ok := sections[name]
+		if !ok {
+			if part == 1 {
+				t.Fatalf("missing split section %q", name)
+			}
+			break
+		}
+		section := raw.(map[string]any)
+		data := section["data"].(map[string]any)
+		encoded, err := json.Marshal(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(encoded) > RESULT_UNIT_BYTES {
+			t.Errorf("%s data = %d bytes, exceeds %d", name, len(encoded), RESULT_UNIT_BYTES)
+		}
+		partItems := data["items"].([]map[string]any)
+		if got := data["tab"]; got != 1 {
+			t.Errorf("%s tab = %v, want 1", name, got)
+		}
+		if got := data["part"]; got != part {
+			t.Errorf("%s part = %v, want %d", name, got, part)
+		}
+		if got := data["itemStart"]; got != start {
+			t.Errorf("%s itemStart = %v, want %d", name, got, start)
+		}
+		end := start + len(partItems)
+		if got := data["itemEnd"]; got != end {
+			t.Errorf("%s itemEnd = %v, want %d", name, got, end)
+		}
+		reassembled = append(reassembled, partItems...)
+		start = end
+	}
+	if _, ok := sections["tab1"]; ok {
+		t.Error("oversized tab retained unsuffixed tab1 section")
+	}
+	gotJSON, _ := json.Marshal(reassembled)
+	wantJSON, _ := json.Marshal(wantItems)
+	if !bytes.Equal(gotJSON, wantJSON) {
+		t.Error("split item ranges do not reassemble to the original item list")
+	}
+}
+
+func TestBuildStashSectionsEmitsAndLogsSingleOversizedItem(t *testing.T) {
+	attributes := make([]d2s.MagicAttribute, 2_000)
+	for i := range attributes {
+		attributes[i] = d2s.MagicAttribute{
+			ID:     uint64(10_000 + i),
+			Name:   "+{0} to an intentionally verbose synthetic oversized-item property",
+			Values: []int64{int64(i)},
+		}
+	}
+	item := d2s.Item{
+		Code:            "big",
+		TypeID:          "armor",
+		TypeName:        "Synthetic Oversized Armor",
+		Identified:      true,
+		Quality:         d2s.QualityRare,
+		RareName:        "Oversized",
+		RareName2:       "Item",
+		MagicAttributes: attributes,
+	}
+
+	readStderr, writeStderr, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("create stderr pipe: %v", err)
+	}
+	originalStderr := os.Stderr
+	os.Stderr = writeStderr
+	sections := buildStashSections(&d2s.SharedStash{Tabs: []d2s.StashTab{{Items: []d2s.Item{item}}}})
+	os.Stderr = originalStderr
+	if err := writeStderr.Close(); err != nil {
+		t.Fatalf("close stderr writer: %v", err)
+	}
+	stderr, err := io.ReadAll(readStderr)
+	if err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	if err := readStderr.Close(); err != nil {
+		t.Fatalf("close stderr reader: %v", err)
+	}
+
+	section, ok := sections["tab1:p1"].(map[string]any)
+	if !ok {
+		t.Fatal("single oversized item missing tab1:p1 section")
+	}
+	data := section["data"].(map[string]any)
+	encoded, err := json.Marshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(encoded) <= RESULT_UNIT_BYTES {
+		t.Fatalf("synthetic item part = %d bytes, want > %d", len(encoded), RESULT_UNIT_BYTES)
+	}
+	partItems := data["items"].([]map[string]any)
+	if len(partItems) != 1 {
+		t.Fatalf("tab1:p1 item count = %d, want 1", len(partItems))
+	}
+	wantLog := fmt.Sprintf("tab1:p1 section data = %d bytes, exceeds RESULT_UNIT_BYTES = %d", len(encoded), RESULT_UNIT_BYTES)
+	if !strings.Contains(string(stderr), wantLog) {
+		t.Errorf("stderr = %q, want message containing %q", stderr, wantLog)
+	}
+}
+
+func TestBuildStashSectionsKeepsNormalTabUnsplit(t *testing.T) {
+	item := d2s.Item{Code: "cap", TypeID: "armor", TypeName: "Cap", SimpleItem: true}
+	sections := buildStashSections(&d2s.SharedStash{Tabs: []d2s.StashTab{{Items: []d2s.Item{item}}}})
+	section, ok := sections["tab1"].(map[string]any)
+	if !ok {
+		t.Fatal("normal tab missing unsuffixed tab1 section")
+	}
+	if _, ok := sections["tab1:p1"]; ok {
+		t.Error("normal tab was fragmented")
+	}
+	want, _ := json.Marshal(map[string]any{"items": buildItemList([]d2s.Item{item})})
+	got, _ := json.Marshal(section["data"])
+	if !bytes.Equal(got, want) {
+		t.Errorf("normal tab data changed: got %s, want %s", got, want)
+	}
+}
+
+func TestRealFixturesRetainByteIdenticalNonSplitSections(t *testing.T) {
+	stash := loadStash(t)
+	stashSections := buildStashSections(stash)
+	tabNum := 0
+	for _, tab := range stash.Tabs {
+		if tab.Type == 2 {
+			continue
+		}
+		tabNum++
+		if len(tab.Items) == 0 {
+			continue
+		}
+		name := fmt.Sprintf("tab%d", tabNum)
+		section, ok := stashSections[name].(map[string]any)
+		if !ok {
+			continue // An oversized real tab is covered by the bounded-parts test.
+		}
+		want, _ := json.Marshal(map[string]any{"items": buildItemList(tab.Items)})
+		got, _ := json.Marshal(section["data"])
+		if !bytes.Equal(got, want) {
+			t.Errorf("ModernSharedStashSoftCoreV2.d2i %s data changed", name)
+		}
+	}
+
+	save := loadAtmus(t)
+	want, _ := json.Marshal(buildAllSections(save))
+	var output bytes.Buffer
+	handleCharacter(json.NewEncoder(&output), mustReadFixture(t, "../testdata/Atmus.d2s"))
+	var line struct {
+		Type     string          `json:"type"`
+		Sections json.RawMessage `json:"sections"`
+	}
+	decoder := json.NewDecoder(&output)
+	for decoder.More() {
+		if err := decoder.Decode(&line); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !bytes.Equal(line.Sections, want) {
+		t.Error("Atmus.d2s emitted sections changed")
+	}
+}
+
+func mustReadFixture(t *testing.T, name string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }
 
 func TestBuildPropertyList_SkipsInternalProps(t *testing.T) {

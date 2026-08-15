@@ -6,7 +6,7 @@ using Verse;
 namespace SavecraftRimWorld.Collectors
 {
     /// <summary>
-    /// Collects the colony social graph as a single section.
+    /// Collects the colony social graph grouped by colonist.
     /// Answers: "Who is bonded or feuding?", "Who is related to whom?",
     /// "What does X think of Y?"
     /// </summary>
@@ -23,40 +23,47 @@ namespace SavecraftRimWorld.Collectors
             var s = StructHelper.NewStruct();
             var colonists = Find.CurrentMap.mapPawns.FreeColonists.ToList();
 
-            var directRelations = new List<Struct>();
+            var reports = new List<Struct>();
             foreach (var pawn in colonists)
             {
+                var report = StructHelper.NewStruct();
+                report.Set("name", pawn.Name?.ToStringShort ?? "Unknown");
+
+                var directRelations = new List<Struct>();
                 var relations = pawn.relations?.DirectRelations;
-                if (relations == null) continue;
-
-                foreach (var rel in relations)
+                if (relations != null)
                 {
-                    var entry = StructHelper.NewStruct();
-                    entry.Set("pawn", pawn.Name?.ToStringShort ?? "Unknown");
-                    entry.Set("target", rel.otherPawn?.Name?.ToStringShort ?? rel.otherPawn?.LabelShort ?? "Unknown");
-                    entry.Set("relation", rel.def.label);
-                    directRelations.Add(entry);
+                    foreach (var rel in relations)
+                    {
+                        var entry = StructHelper.NewStruct();
+                        entry.Set("target", rel.otherPawn?.Name?.ToStringShort ?? rel.otherPawn?.LabelShort ?? "Unknown");
+                        entry.Set("relation", rel.def.label);
+                        directRelations.Add(entry);
+                    }
                 }
-            }
-            s.SetList("direct_relations", directRelations);
+                if (directRelations.Count > 0)
+                    report.SetList("direct_relations", directRelations);
 
-            var opinions = new List<Struct>();
-            foreach (var pawn in colonists)
-            {
-                if (pawn.relations == null) continue;
-
-                foreach (var other in colonists)
+                var opinions = new List<Struct>();
+                if (pawn.relations != null)
                 {
-                    if (other == pawn) continue;
+                    foreach (var other in colonists)
+                    {
+                        if (other == pawn) continue;
 
-                    var entry = StructHelper.NewStruct();
-                    entry.Set("pawn", pawn.Name?.ToStringShort ?? "Unknown");
-                    entry.Set("target", other.Name?.ToStringShort ?? "Unknown");
-                    entry.Set("opinion", pawn.relations.OpinionOf(other));
-                    opinions.Add(entry);
+                        var entry = StructHelper.NewStruct();
+                        entry.Set("target", other.Name?.ToStringShort ?? "Unknown");
+                        entry.Set("opinion", pawn.relations.OpinionOf(other));
+                        opinions.Add(entry);
+                    }
                 }
+                if (opinions.Count > 0)
+                    report.SetList("opinion_of", opinions);
+
+                reports.Add(report);
             }
-            s.SetList("opinion_of", opinions);
+            s.SetList("colonists", reports);
+            s.Set("count", reports.Count);
 
             return s;
         }

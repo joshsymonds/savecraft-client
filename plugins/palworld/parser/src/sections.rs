@@ -464,7 +464,9 @@ pub struct BasePalsSection {
 
 // --- Guild -------------------------------------------------------------------
 
-#[derive(Serialize)]
+pub const RESULT_UNIT_BYTES: usize = 10_240;
+
+#[derive(Clone, Serialize)]
 pub struct GuildMember {
     pub name: Option<String>,
     #[serde(rename = "speciesId")]
@@ -476,7 +478,7 @@ pub struct GuildMember {
     pub level: Option<i32>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct Guild {
     #[serde(rename = "guildId")]
     pub guild_id: String,
@@ -3192,6 +3194,222 @@ mod tests {
         assert_eq!(
             sections["pals_base"].data,
             serde_json::json!({ "pals": [] })
+        );
+    }
+
+    #[test]
+    fn fixture_section_size_budget() {
+        assert_fixture_section_size_budget(
+            include_bytes!("../testdata/1FCE97C34D214643B96A23A20A9E27D1/Level.sav").to_vec(),
+            include_bytes!(
+                "../testdata/1FCE97C34D214643B96A23A20A9E27D1/Players/00000000000000000000000000000001.sav"
+            )
+            .to_vec(),
+        );
+        assert_fixture_section_size_budget(
+            include_bytes!("../testdata/live-20260731/Level.sav").to_vec(),
+            include_bytes!(
+                "../testdata/live-20260731/Players/00000000000000000000000000000001.sav"
+            )
+            .to_vec(),
+        );
+    }
+
+    fn assert_fixture_section_size_budget(level_bytes: Vec<u8>, player_bytes: Vec<u8>) {
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct SectionSizeException {
+            game: String,
+            section: String,
+        }
+
+        let level = crate::gvas::decode(level_bytes).expect("decode fixture Level.sav");
+        let player = crate::gvas::decode(player_bytes).expect("decode fixture player save");
+        let sections = crate::build_sections_map(build_all(&level, None, &[player]));
+
+        let exceptions: Vec<SectionSizeException> = serde_json::from_str(include_str!(
+            "../../../../scripts/section-size-exceptions.json"
+        ))
+        .expect("parse section-size exceptions");
+        assert_eq!(exceptions.len(), 2, "exception list must remain closed");
+        assert_eq!(exceptions[0].game, "stellaris");
+        assert_eq!(exceptions[0].section, "species");
+        assert_eq!(exceptions[1].game, "satisfactory");
+        assert_eq!(exceptions[1].section, "production_lines");
+        for (name, section) in sections {
+            let size = serde_json::to_vec(&section.data)
+                .expect("serialize emitted section data")
+                .len();
+            let excepted = exceptions
+                .iter()
+                .any(|entry| entry.game == "palworld" && entry.section == name);
+            if excepted {
+                eprintln!("section-size exception palworld/{name}: {size} bytes");
+            } else {
+                assert!(
+                    size <= RESULT_UNIT_BYTES,
+                    "palworld/{name} section data = {size} bytes, exceeds RESULT_UNIT_BYTES = {RESULT_UNIT_BYTES}"
+                );
+            }
+        }
+    }
+
+    fn assert_fixture_guild_section_units(level_bytes: Vec<u8>, player_bytes: Vec<u8>) {
+        let level = crate::gvas::decode(level_bytes).expect("decode fixture Level.sav");
+        let player = crate::gvas::decode(player_bytes).expect("decode fixture player save");
+        let built = build_all(&level, None, &[player]);
+        let expected: Vec<_> = built
+            .guild
+            .iter()
+            .flat_map(|guild| {
+                guild.members.iter().map(move |member| {
+                    (
+                        guild.guild_id.clone(),
+                        serde_json::to_value(member).expect("serialize expected guild member"),
+                    )
+                })
+            })
+            .collect();
+        let sections = crate::build_sections_map(built);
+
+        let mut actual = Vec::new();
+        let mut guild_names: Vec<_> = sections
+            .keys()
+            .filter(|name| name.starts_with("guild"))
+            .cloned()
+            .collect();
+        guild_names.sort();
+        assert!(!guild_names.is_empty(), "fixture must emit a guild section");
+        for name in guild_names {
+            assert!(
+                name == "guild" || name.starts_with("guild:"),
+                "guild-derived section name must be guild-prefixed: {name}"
+            );
+            let section = &sections[&name];
+            let size = serde_json::to_vec(&section.data)
+                .expect("serialize emitted guild section data")
+                .len();
+            assert!(
+                size <= RESULT_UNIT_BYTES,
+                "palworld/{name} section data = {size} bytes, exceeds RESULT_UNIT_BYTES = {RESULT_UNIT_BYTES}"
+            );
+            for guild in section.data["guilds"]
+                .as_array()
+                .expect("guild section wraps guilds")
+            {
+                let guild_id = guild["guildId"]
+                    .as_str()
+                    .expect("emitted guild has guildId")
+                    .to_string();
+                actual.extend(
+                    guild["members"]
+                        .as_array()
+                        .expect("emitted guild has members")
+                        .iter()
+                        .cloned()
+                        .map(|member| (guild_id.clone(), member)),
+                );
+            }
+        }
+
+        assert_eq!(actual, expected, "guild units must preserve roster exactly");
+    }
+
+    #[test]
+    fn fixture_guild_sections_are_bounded_and_reassemble_exactly() {
+        assert_fixture_guild_section_units(
+            include_bytes!("../testdata/1FCE97C34D214643B96A23A20A9E27D1/Level.sav").to_vec(),
+            include_bytes!(
+                "../testdata/1FCE97C34D214643B96A23A20A9E27D1/Players/00000000000000000000000000000001.sav"
+            )
+            .to_vec(),
+        );
+        assert_fixture_guild_section_units(
+            include_bytes!("../testdata/live-20260731/Level.sav").to_vec(),
+            include_bytes!(
+                "../testdata/live-20260731/Players/00000000000000000000000000000001.sav"
+            )
+            .to_vec(),
+        );
+    }
+
+    fn synthetic_guild(member_count: usize) -> Guild {
+        Guild {
+            guild_id: "00000000-0000-0000-0000-000000000001".to_string(),
+            name: "Test Guild".to_string(),
+            member_count,
+            members: (0..member_count)
+                .map(|index| GuildMember {
+                    name: Some(format!(
+                        "Member {index:04} with a deterministic display name"
+                    )),
+                    species_id: Some("Human".to_string()),
+                    is_player: true,
+                    player_uid: Some(format!("00000000-0000-0000-0000-{index:012}")),
+                    level: Some(55),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn guild_emitter_fragments_only_oversized_rosters() {
+        let mut small_sections = HashMap::new();
+        crate::emit_guild_sections(&mut small_sections, vec![synthetic_guild(2)]);
+        assert_eq!(small_sections.len(), 1);
+        assert!(
+            small_sections.contains_key("guild"),
+            "a small save keeps the historical single guild section"
+        );
+
+        let expected_members = 200;
+        let mut sections = HashMap::new();
+        crate::emit_guild_sections(&mut sections, vec![synthetic_guild(expected_members)]);
+        assert!(sections.len() > 1, "oversized guild roster must fragment");
+        let mut actual_members = 0;
+        for (name, section) in sections {
+            assert!(name.starts_with("guild:members-"));
+            assert!(
+                serde_json::to_vec(&section.data).unwrap().len() <= RESULT_UNIT_BYTES,
+                "{name} exceeds the result-unit ceiling"
+            );
+            actual_members += section.data["guilds"][0]["members"]
+                .as_array()
+                .unwrap()
+                .len();
+        }
+        assert_eq!(actual_members, expected_members);
+    }
+
+    #[test]
+    fn guild_emitter_emits_and_warns_for_an_unfit_member() {
+        let mut guild = synthetic_guild(1);
+        guild.members[0].name = Some("x".repeat(RESULT_UNIT_BYTES));
+        let mut sections = HashMap::new();
+        let mut warnings = Vec::new();
+
+        crate::emit_guild_sections_with_logger(&mut sections, vec![guild], |warning| {
+            warnings.push(warning)
+        });
+
+        let (name, section) = sections.into_iter().next().expect("member is emitted");
+        let bytes = serde_json::to_vec(&section.data)
+            .expect("serialize oversized guild unit")
+            .len();
+        assert_eq!(name, "guild:members-000-000");
+        assert_eq!(
+            section.data["guilds"][0]["members"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(bytes > RESULT_UNIT_BYTES);
+        assert_eq!(
+            warnings,
+            [format!(
+                "palworld/{name} section data = {bytes} bytes, exceeds RESULT_UNIT_BYTES = {RESULT_UNIT_BYTES}"
+            )]
         );
     }
 

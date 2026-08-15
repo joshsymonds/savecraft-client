@@ -105,7 +105,12 @@ func (s *saveState) buildStorageSection() map[string]any {
 	for cls, count := range s.storedItems {
 		totals = append(totals, itemTotal{cls, count})
 	}
-	sort.Slice(totals, func(i, j int) bool { return totals[i].count > totals[j].count })
+	sort.Slice(totals, func(i, j int) bool {
+		if totals[i].count != totals[j].count {
+			return totals[i].count > totals[j].count
+		}
+		return totals[i].cls < totals[j].cls
+	})
 	items := make([]map[string]any, 0, len(totals))
 	for _, t := range totals {
 		items = append(items, map[string]any{
@@ -144,7 +149,12 @@ func (s *saveState) buildStorageSection() map[string]any {
 		sort.Slice(depot, func(i, j int) bool {
 			a, aOK := depot[i]["count"].(int64)
 			b, bOK := depot[j]["count"].(int64)
-			return aOK && bOK && a > b
+			if aOK && bOK && a != b {
+				return a > b
+			}
+			aPath, _ := depot[i]["classPath"].(string)
+			bPath, _ := depot[j]["classPath"].(string)
+			return aPath < bPath
 		})
 		data["dimensionalDepot"] = map[string]any{"items": depot}
 	}

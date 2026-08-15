@@ -46,15 +46,26 @@ namespace SavecraftRimWorld.Collectors
 
             foreach (var collector in collectors)
             {
+                if (sections.Count >= MaxSections)
+                {
+                    Log.Warning($"[Savecraft] Section cap ({MaxSections}) reached, skipping remaining sections.");
+                    break;
+                }
                 try
                 {
                     var data = collector.Collect();
-                    sections.Add(new GameSection
+                    var partition = PartitionReport(collector.SectionName, data, MaxSections - sections.Count);
+                    foreach (var warning in partition.Warnings)
+                        Log.Warning($"[Savecraft] {warning.Message}");
+                    foreach (var report in partition.Sections)
                     {
-                        Name = collector.SectionName,
-                        Description = collector.Description,
-                        Data = data
-                    });
+                        sections.Add(new GameSection
+                        {
+                            Name = report.Name,
+                            Description = collector.Description,
+                            Data = report.Data
+                        });
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -111,6 +122,23 @@ namespace SavecraftRimWorld.Collectors
             pushSave.Sections.AddRange(sections);
 
             return new Message { PushSave = pushSave };
+        }
+
+        static ReportPartitioner.PartitionResult PartitionReport(string sectionName, Struct data, int maxSections)
+        {
+            switch (sectionName)
+            {
+                case "health_report":
+                case "skills_and_work":
+                case "mood_report":
+                case "relationships":
+                    return ReportPartitioner.Partition(sectionName, data, maxSections);
+                default:
+                    var result = new ReportPartitioner.PartitionResult();
+                    if (maxSections > 0)
+                        result.Sections.Add(new ReportPartitioner.ReportSection { Name = sectionName, Data = data });
+                    return result;
+            }
         }
 
         /// <summary>

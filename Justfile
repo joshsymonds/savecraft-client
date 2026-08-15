@@ -190,6 +190,23 @@ lint:
 test:
     just test-go
     just test-install-worker
+    just test-plugin-section-sizes
+    cd plugins/rimworld && devenv shell -- just test
+
+# Enforce the 10 KiB serialized-data budget; each gate reports whether it ran or skipped.
+test-plugin-section-sizes:
+    @echo "[section-size gate] d2r: fixture test (RUN or explicit SKIP)"
+    cd plugins/d2r && go test ./parser -run TestFixtureSectionSizeBudget -v
+    @echo "[section-size gate] factorio: synthetic full export (RUN)"
+    cd plugins/factorio && go test ./parser -run TestValidExport -v
+    @echo "[section-size gate] magic: fixture test (RUN or explicit SKIP)"
+    cd plugins/magic && go test ./parser -run TestFixtureSectionSizeBudget -v
+    @echo "[section-size gate] satisfactory: fixture test (RUN or explicit SKIP)"
+    cd plugins/satisfactory && go test ./parser -run TestFixtureSectionSizeBudget -v
+    @echo "[section-size gate] palworld: fixture test (RUN or explicit SKIP)"
+    cargo test -p palworld-parser fixture_section_size_budget -- --nocapture
+    @echo "[section-size gate] stellaris: fixture tests (RUN or explicit [SKIP])"
+    cargo test -p stellaris-parser --test parse_save -- --nocapture
 
 public-boundary:
     bash scripts/check-public-boundary.test.sh
