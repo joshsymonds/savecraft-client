@@ -191,7 +191,7 @@ test:
     just test-go
     just test-install-worker
     just test-plugin-section-sizes
-    cd plugins/rimworld && devenv shell -- just test
+    cd plugins/rimworld && just test
 
 # Enforce the 10 KiB serialized-data budget; each gate reports whether it ran or skipped.
 test-plugin-section-sizes:

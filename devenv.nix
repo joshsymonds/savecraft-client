@@ -27,6 +27,9 @@
     pkgs.buf            # buf CLI (lint, generate, breaking)
     pkgs.protobuf       # protoc + well-known types
 
+    # RimWorld plugin
+    pkgs.dotnetCorePackages.sdk_9_0
+
     # Client distribution Worker
     pkgs.nodejs_22 # includes npm in this Nixpkgs revision
     pkgs.wrangler

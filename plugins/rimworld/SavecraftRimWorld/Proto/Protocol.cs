@@ -141,51 +141,53 @@ namespace Savecraft.V1 {
             "dGF0dXMYAyABKA4yHC5zYXZlY3JhZnQudjEuR2FtZVN0YXR1c0VudW0SJQoF",
             "c2F2ZXMYBCADKAsyFi5zYXZlY3JhZnQudjEuU2F2ZUluZm8SMQoNbGFzdF9h",
             "Y3Rpdml0eRgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDAoE",
-            "cGF0aBgGIAEoCRINCgVlcnJvchgHIAEoCSKOAQoIU2F2ZUluZm8SEQoJc2F2",
+            "cGF0aBgGIAEoCRINCgVlcnJvchgHIAEoCSL4AQoIU2F2ZUluZm8SEQoJc2F2",
             "ZV91dWlkGAEgASgJEiwKCGlkZW50aXR5GAIgASgLMhouc2F2ZWNyYWZ0LnYx",
             "LlNhdmVJZGVudGl0eRIPCgdzdW1tYXJ5GAMgASgJEjAKDGxhc3RfdXBkYXRl",
-            "ZBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiKQoIVGVzdFBh",
-            "dGgSDwoHZ2FtZV9pZBgBIAEoCRIMCgRwYXRoGAIgASgJImcKDlRlc3RQYXRo",
-            "UmVzdWx0Eg8KB2dhbWVfaWQYASABKAkSDAoEcGF0aBgCIAEoCRINCgV2YWxp",
-            "ZBgDIAEoCBITCgtmaWxlc19mb3VuZBgEIAEoBRISCgpmaWxlX25hbWVzGAUg",
-            "AygJIlwKFVNvdXJjZVVwZGF0ZUF2YWlsYWJsZRIPCgd2ZXJzaW9uGAEgASgJ",
-            "EgsKA3VybBgCIAEoCRIVCg1zaWduYXR1cmVfdXJsGAMgASgJEg4KBnNoYTI1",
-            "NhgEIAEoCSImChNTb3VyY2VVcGRhdGVTdGFydGVkEg8KB3ZlcnNpb24YASAB",
-            "KAkiNgoSU291cmNlVXBkYXRlRmFpbGVkEg8KB3ZlcnNpb24YASABKAkSDwoH",
-            "bWVzc2FnZRgCIAEoCSJGCghSZWdpc3RlchIQCghob3N0bmFtZRgBIAEoCRIK",
-            "CgJvcxgCIAEoCRIMCgRhcmNoGAMgASgJEg4KBmRldmljZRgEIAEoCSKIAQoO",
-            "UmVnaXN0ZXJSZXN1bHQSEwoLc291cmNlX3V1aWQYASABKAkSFAoMc291cmNl",
-            "X3Rva2VuGAIgASgJEhEKCWxpbmtfY29kZRgDIAEoCRI4ChRsaW5rX2NvZGVf",
-            "ZXhwaXJlc19hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAi",
-            "VwoLR2FtZVNlY3Rpb24SDAoEbmFtZRgBIAEoCRITCgtkZXNjcmlwdGlvbhgC",
-            "IAEoCRIlCgRkYXRhGAMgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdCLR",
-            "AQoIUHVzaFNhdmUSLAoIaWRlbnRpdHkYASABKAsyGi5zYXZlY3JhZnQudjEu",
-            "U2F2ZUlkZW50aXR5Eg8KB3N1bW1hcnkYAiABKAkSKwoIc2VjdGlvbnMYAyAD",
-            "KAsyGS5zYXZlY3JhZnQudjEuR2FtZVNlY3Rpb24SLQoJcGFyc2VkX2F0GAQg",
-            "ASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIPCgdnYW1lX2lkGAUg",
-            "ASgJEhkKEWFsbF9zZWN0aW9uX25hbWVzGAYgAygJIpgBCg5QdXNoU2F2ZVJl",
-            "c3VsdBIRCglzYXZlX3V1aWQYASABKAkSNgoSc25hcHNob3RfdGltZXN0YW1w",
-            "GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIqCgVlcnJvchgD",
-            "IAEoDjIbLnNhdmVjcmFmdC52MS5QdXNoU2F2ZUVycm9yEg8KB2dhbWVfaWQY",
-            "BCABKAkiEQoPUmVmcmVzaExpbmtDb2RlIloKFVJlZnJlc2hMaW5rQ29kZVJl",
-            "c3VsdBIRCglsaW5rX2NvZGUYASABKAkSLgoKZXhwaXJlc19hdBgCIAEoCzIa",
-            "Lmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiIQoMU291cmNlTGlua2VkEhEK",
-            "CXVzZXJfdXVpZBgBIAEoCSIOCgxVbmxpbmtTb3VyY2UiEgoQRGVyZWdpc3Rl",
-            "clNvdXJjZSJaCgxTYXZlSWRlbnRpdHkSDAoEbmFtZRgBIAEoCRImCgVleHRy",
-            "YRgCIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSFAoMZGlzcGxheV9u",
-            "YW1lGAMgASgJKqEBCg5QYXJzZUVycm9yVHlwZRIgChxQQVJTRV9FUlJPUl9U",
-            "WVBFX1VOU1BFQ0lGSUVEEAASKAokUEFSU0VfRVJST1JfVFlQRV9VTlNVUFBP",
-            "UlRFRF9WRVJTSU9OEAESIQodUEFSU0VfRVJST1JfVFlQRV9DT1JSVVBUX0ZJ",
-            "TEUQAhIgChxQQVJTRV9FUlJPUl9UWVBFX1BBUlNFX0VSUk9SEAMqzQEKDkdh",
-            "bWVTdGF0dXNFbnVtEiAKHEdBTUVfU1RBVFVTX0VOVU1fVU5TUEVDSUZJRUQQ",
-            "ABIdChlHQU1FX1NUQVRVU19FTlVNX0RFVEVDVEVEEAESHQoZR0FNRV9TVEFU",
-            "VVNfRU5VTV9XQVRDSElORxACEhoKFkdBTUVfU1RBVFVTX0VOVU1fRVJST1IQ",
-            "AxIeChpHQU1FX1NUQVRVU19FTlVNX05PVF9GT1VORBAEEh8KG0dBTUVfU1RB",
-            "VFVTX0VOVU1fQUNUSVZBVElORxAFKnQKDVB1c2hTYXZlRXJyb3ISHwobUFVT",
-            "SF9TQVZFX0VSUk9SX1VOU1BFQ0lGSUVEEAASIAocUFVTSF9TQVZFX0VSUk9S",
-            "X0dBTUVfUkVNT1ZFRBABEiAKHFBVU0hfU0FWRV9FUlJPUl9TQVZFX1JFTU9W",
-            "RUQQAkI4WjZnaXRodWIuY29tL2pvc2hzeW1vbmRzL3NhdmVjcmFmdC1jbGll",
-            "bnQvaW50ZXJuYWwvcHJvdG9iBnByb3RvMw=="));
+            "ZBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASMwoPZGF0YV9j",
+            "aGVja2VkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIz",
+            "Cg9kYXRhX2NoYW5nZWRfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGlt",
+            "ZXN0YW1wIikKCFRlc3RQYXRoEg8KB2dhbWVfaWQYASABKAkSDAoEcGF0aBgC",
+            "IAEoCSJnCg5UZXN0UGF0aFJlc3VsdBIPCgdnYW1lX2lkGAEgASgJEgwKBHBh",
+            "dGgYAiABKAkSDQoFdmFsaWQYAyABKAgSEwoLZmlsZXNfZm91bmQYBCABKAUS",
+            "EgoKZmlsZV9uYW1lcxgFIAMoCSJcChVTb3VyY2VVcGRhdGVBdmFpbGFibGUS",
+            "DwoHdmVyc2lvbhgBIAEoCRILCgN1cmwYAiABKAkSFQoNc2lnbmF0dXJlX3Vy",
+            "bBgDIAEoCRIOCgZzaGEyNTYYBCABKAkiJgoTU291cmNlVXBkYXRlU3RhcnRl",
+            "ZBIPCgd2ZXJzaW9uGAEgASgJIjYKElNvdXJjZVVwZGF0ZUZhaWxlZBIPCgd2",
+            "ZXJzaW9uGAEgASgJEg8KB21lc3NhZ2UYAiABKAkiRgoIUmVnaXN0ZXISEAoI",
+            "aG9zdG5hbWUYASABKAkSCgoCb3MYAiABKAkSDAoEYXJjaBgDIAEoCRIOCgZk",
+            "ZXZpY2UYBCABKAkiiAEKDlJlZ2lzdGVyUmVzdWx0EhMKC3NvdXJjZV91dWlk",
+            "GAEgASgJEhQKDHNvdXJjZV90b2tlbhgCIAEoCRIRCglsaW5rX2NvZGUYAyAB",
+            "KAkSOAoUbGlua19jb2RlX2V4cGlyZXNfYXQYBCABKAsyGi5nb29nbGUucHJv",
+            "dG9idWYuVGltZXN0YW1wIlcKC0dhbWVTZWN0aW9uEgwKBG5hbWUYASABKAkS",
+            "EwoLZGVzY3JpcHRpb24YAiABKAkSJQoEZGF0YRgDIAEoCzIXLmdvb2dsZS5w",
+            "cm90b2J1Zi5TdHJ1Y3Qi0QEKCFB1c2hTYXZlEiwKCGlkZW50aXR5GAEgASgL",
+            "Mhouc2F2ZWNyYWZ0LnYxLlNhdmVJZGVudGl0eRIPCgdzdW1tYXJ5GAIgASgJ",
+            "EisKCHNlY3Rpb25zGAMgAygLMhkuc2F2ZWNyYWZ0LnYxLkdhbWVTZWN0aW9u",
+            "Ei0KCXBhcnNlZF9hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3Rh",
+            "bXASDwoHZ2FtZV9pZBgFIAEoCRIZChFhbGxfc2VjdGlvbl9uYW1lcxgGIAMo",
+            "CSKYAQoOUHVzaFNhdmVSZXN1bHQSEQoJc2F2ZV91dWlkGAEgASgJEjYKEnNu",
+            "YXBzaG90X3RpbWVzdGFtcBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1l",
+            "c3RhbXASKgoFZXJyb3IYAyABKA4yGy5zYXZlY3JhZnQudjEuUHVzaFNhdmVF",
+            "cnJvchIPCgdnYW1lX2lkGAQgASgJIhEKD1JlZnJlc2hMaW5rQ29kZSJaChVS",
+            "ZWZyZXNoTGlua0NvZGVSZXN1bHQSEQoJbGlua19jb2RlGAEgASgJEi4KCmV4",
+            "cGlyZXNfYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIiEK",
+            "DFNvdXJjZUxpbmtlZBIRCgl1c2VyX3V1aWQYASABKAkiDgoMVW5saW5rU291",
+            "cmNlIhIKEERlcmVnaXN0ZXJTb3VyY2UiWgoMU2F2ZUlkZW50aXR5EgwKBG5h",
+            "bWUYASABKAkSJgoFZXh0cmEYAiABKAsyFy5nb29nbGUucHJvdG9idWYuU3Ry",
+            "dWN0EhQKDGRpc3BsYXlfbmFtZRgDIAEoCSqhAQoOUGFyc2VFcnJvclR5cGUS",
+            "IAocUEFSU0VfRVJST1JfVFlQRV9VTlNQRUNJRklFRBAAEigKJFBBUlNFX0VS",
+            "Uk9SX1RZUEVfVU5TVVBQT1JURURfVkVSU0lPThABEiEKHVBBUlNFX0VSUk9S",
+            "X1RZUEVfQ09SUlVQVF9GSUxFEAISIAocUEFSU0VfRVJST1JfVFlQRV9QQVJT",
+            "RV9FUlJPUhADKs0BCg5HYW1lU3RhdHVzRW51bRIgChxHQU1FX1NUQVRVU19F",
+            "TlVNX1VOU1BFQ0lGSUVEEAASHQoZR0FNRV9TVEFUVVNfRU5VTV9ERVRFQ1RF",
+            "RBABEh0KGUdBTUVfU1RBVFVTX0VOVU1fV0FUQ0hJTkcQAhIaChZHQU1FX1NU",
+            "QVRVU19FTlVNX0VSUk9SEAMSHgoaR0FNRV9TVEFUVVNfRU5VTV9OT1RfRk9V",
+            "TkQQBBIfChtHQU1FX1NUQVRVU19FTlVNX0FDVElWQVRJTkcQBSp0Cg1QdXNo",
+            "U2F2ZUVycm9yEh8KG1BVU0hfU0FWRV9FUlJPUl9VTlNQRUNJRklFRBAAEiAK",
+            "HFBVU0hfU0FWRV9FUlJPUl9HQU1FX1JFTU9WRUQQARIgChxQVVNIX1NBVkVf",
+            "RVJST1JfU0FWRV9SRU1PVkVEEAJCOFo2Z2l0aHViLmNvbS9qb3Noc3ltb25k",
+            "cy9zYXZlY3JhZnQtY2xpZW50L2ludGVybmFsL3Byb3RvYgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.TimestampReflection.Descriptor, global::Google.Protobuf.WellKnownTypes.StructReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Savecraft.V1.ParseErrorType), typeof(global::Savecraft.V1.GameStatusEnum), typeof(global::Savecraft.V1.PushSaveError), }, null, new pbr::GeneratedClrTypeInfo[] {
@@ -221,7 +223,7 @@ namespace Savecraft.V1 {
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SourceState), global::Savecraft.V1.SourceState.Parser, new[]{ "Sources" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SourceInfo), global::Savecraft.V1.SourceInfo.Parser, new[]{ "SourceId", "Online", "LastSeen", "Games", "SourceKind", "Hostname", "CanRescan", "CanReceiveConfig", "Platform", "Os", "Arch", "Device" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.GameInfo), global::Savecraft.V1.GameInfo.Parser, new[]{ "GameId", "GameName", "Status", "Saves", "LastActivity", "Path", "Error" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SaveInfo), global::Savecraft.V1.SaveInfo.Parser, new[]{ "SaveUuid", "Identity", "Summary", "LastUpdated" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SaveInfo), global::Savecraft.V1.SaveInfo.Parser, new[]{ "SaveUuid", "Identity", "Summary", "LastUpdated", "DataCheckedAt", "DataChangedAt" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.TestPath), global::Savecraft.V1.TestPath.Parser, new[]{ "GameId", "Path" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.TestPathResult), global::Savecraft.V1.TestPathResult.Parser, new[]{ "GameId", "Path", "Valid", "FilesFound", "FileNames" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SourceUpdateAvailable), global::Savecraft.V1.SourceUpdateAvailable.Parser, new[]{ "Version", "Url", "SignatureUrl", "Sha256" }, null, null, null, null),
@@ -11304,6 +11306,8 @@ namespace Savecraft.V1 {
       identity_ = other.identity_ != null ? other.identity_.Clone() : null;
       summary_ = other.summary_;
       lastUpdated_ = other.lastUpdated_ != null ? other.lastUpdated_.Clone() : null;
+      dataCheckedAt_ = other.dataCheckedAt_ != null ? other.dataCheckedAt_.Clone() : null;
+      dataChangedAt_ = other.dataChangedAt_ != null ? other.dataChangedAt_.Clone() : null;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -11361,6 +11365,36 @@ namespace Savecraft.V1 {
       }
     }
 
+    /// <summary>Field number for the "data_checked_at" field.</summary>
+    public const int DataCheckedAtFieldNumber = 5;
+    private global::Google.Protobuf.WellKnownTypes.Timestamp dataCheckedAt_;
+    /// <summary>
+    /// When the cloud last successfully proved the snapshot current upstream.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::Google.Protobuf.WellKnownTypes.Timestamp DataCheckedAt {
+      get { return dataCheckedAt_; }
+      set {
+        dataCheckedAt_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "data_changed_at" field.</summary>
+    public const int DataChangedAtFieldNumber = 6;
+    private global::Google.Protobuf.WellKnownTypes.Timestamp dataChangedAt_;
+    /// <summary>
+    /// When proven content last actually changed.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::Google.Protobuf.WellKnownTypes.Timestamp DataChangedAt {
+      get { return dataChangedAt_; }
+      set {
+        dataChangedAt_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -11380,6 +11414,8 @@ namespace Savecraft.V1 {
       if (!object.Equals(Identity, other.Identity)) return false;
       if (Summary != other.Summary) return false;
       if (!object.Equals(LastUpdated, other.LastUpdated)) return false;
+      if (!object.Equals(DataCheckedAt, other.DataCheckedAt)) return false;
+      if (!object.Equals(DataChangedAt, other.DataChangedAt)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -11391,6 +11427,8 @@ namespace Savecraft.V1 {
       if (identity_ != null) hash ^= Identity.GetHashCode();
       if (Summary.Length != 0) hash ^= Summary.GetHashCode();
       if (lastUpdated_ != null) hash ^= LastUpdated.GetHashCode();
+      if (dataCheckedAt_ != null) hash ^= DataCheckedAt.GetHashCode();
+      if (dataChangedAt_ != null) hash ^= DataChangedAt.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -11425,6 +11463,14 @@ namespace Savecraft.V1 {
         output.WriteRawTag(34);
         output.WriteMessage(LastUpdated);
       }
+      if (dataCheckedAt_ != null) {
+        output.WriteRawTag(42);
+        output.WriteMessage(DataCheckedAt);
+      }
+      if (dataChangedAt_ != null) {
+        output.WriteRawTag(50);
+        output.WriteMessage(DataChangedAt);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -11451,6 +11497,14 @@ namespace Savecraft.V1 {
         output.WriteRawTag(34);
         output.WriteMessage(LastUpdated);
       }
+      if (dataCheckedAt_ != null) {
+        output.WriteRawTag(42);
+        output.WriteMessage(DataCheckedAt);
+      }
+      if (dataChangedAt_ != null) {
+        output.WriteRawTag(50);
+        output.WriteMessage(DataChangedAt);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -11472,6 +11526,12 @@ namespace Savecraft.V1 {
       }
       if (lastUpdated_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(LastUpdated);
+      }
+      if (dataCheckedAt_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(DataCheckedAt);
+      }
+      if (dataChangedAt_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(DataChangedAt);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -11502,6 +11562,18 @@ namespace Savecraft.V1 {
           LastUpdated = new global::Google.Protobuf.WellKnownTypes.Timestamp();
         }
         LastUpdated.MergeFrom(other.LastUpdated);
+      }
+      if (other.dataCheckedAt_ != null) {
+        if (dataCheckedAt_ == null) {
+          DataCheckedAt = new global::Google.Protobuf.WellKnownTypes.Timestamp();
+        }
+        DataCheckedAt.MergeFrom(other.DataCheckedAt);
+      }
+      if (other.dataChangedAt_ != null) {
+        if (dataChangedAt_ == null) {
+          DataChangedAt = new global::Google.Protobuf.WellKnownTypes.Timestamp();
+        }
+        DataChangedAt.MergeFrom(other.DataChangedAt);
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -11544,6 +11616,20 @@ namespace Savecraft.V1 {
             input.ReadMessage(LastUpdated);
             break;
           }
+          case 42: {
+            if (dataCheckedAt_ == null) {
+              DataCheckedAt = new global::Google.Protobuf.WellKnownTypes.Timestamp();
+            }
+            input.ReadMessage(DataCheckedAt);
+            break;
+          }
+          case 50: {
+            if (dataChangedAt_ == null) {
+              DataChangedAt = new global::Google.Protobuf.WellKnownTypes.Timestamp();
+            }
+            input.ReadMessage(DataChangedAt);
+            break;
+          }
         }
       }
     #endif
@@ -11583,6 +11669,20 @@ namespace Savecraft.V1 {
               LastUpdated = new global::Google.Protobuf.WellKnownTypes.Timestamp();
             }
             input.ReadMessage(LastUpdated);
+            break;
+          }
+          case 42: {
+            if (dataCheckedAt_ == null) {
+              DataCheckedAt = new global::Google.Protobuf.WellKnownTypes.Timestamp();
+            }
+            input.ReadMessage(DataCheckedAt);
+            break;
+          }
+          case 50: {
+            if (dataChangedAt_ == null) {
+              DataChangedAt = new global::Google.Protobuf.WellKnownTypes.Timestamp();
+            }
+            input.ReadMessage(DataChangedAt);
             break;
           }
         }
