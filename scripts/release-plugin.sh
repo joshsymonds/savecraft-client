@@ -19,7 +19,8 @@ validate_plugin() {
 validate_version() {
     local version=$1
 
-    [[ $version =~ ^[0-9]+(\.[0-9]+)*$ ]] || fail "version must be dotted numeric: $version"
+    # Keep every accepted segment within internal/version.IsNewer's Atoi range.
+    [[ $version =~ ^[0-9]{1,18}(\.[0-9]{1,18})*$ ]] || fail "version segments must be 1-18 digits: $version"
 }
 
 normalize_segment() {
@@ -81,21 +82,24 @@ validate_newer_version() {
 }
 
 find_workflow_run() {
-    local tag=$1 sha=$2 run_id attempt
+    local tag=$1 sha=$2 run_id
 
-    for ((attempt = 1; attempt <= 24; attempt++)); do
-        run_id=$(gh run list \
+    SECONDS=0
+    while ((SECONDS < 120)); do
+        if ! run_id=$(timeout 20 gh run list \
             --workflow deploy-plugin.yml \
             --event push \
             --branch "$tag" \
             --json databaseId,headSha,status,conclusion,createdAt \
             --limit 10 \
-            --jq ".[] | select(.headSha == \"$sha\") | .databaseId" | head -n 1)
+            --jq ".[] | select(.headSha == \"$sha\") | .databaseId" | head -n 1); then
+            run_id=
+        fi
         if [[ -n $run_id ]]; then
             printf '%s' "$run_id"
             return
         fi
-        ((attempt < 24)) && sleep 5
+        sleep 5
     done
     fail "no deploy-plugin.yml push run found for $tag at $sha"
 }

@@ -1666,8 +1666,64 @@ func TestEnsurePlugin_CacheHit_LoaderError_NoEvictNoRedownload(t *testing.T) {
 	if reg.downloadCount != 0 {
 		t.Fatalf("downloads = %d, want 0", reg.downloadCount)
 	}
+	gotWasm, gotSig, gotVersion, err := cache.Read("d2r")
+	if err != nil {
+		t.Fatalf("read cache after loader error: %v", err)
+	}
+	if !bytes.Equal(gotWasm, wasm) {
+		t.Fatalf("cached wasm = %q, want %q", gotWasm, wasm)
+	}
+	if !bytes.Equal(gotSig, sig) {
+		t.Fatalf("cached signature = %q, want %q", gotSig, sig)
+	}
+	if gotVersion != "1.0.0" {
+		t.Fatalf("cached version = %q, want %q", gotVersion, "1.0.0")
+	}
+	if gotHash := cache.SHA256("d2r"); gotHash != hash {
+		t.Fatalf("cached SHA256 = %q, want %q", gotHash, hash)
+	}
 	if _, err := os.Stat(filepath.Join(dir, "d2r")); err != nil {
 		t.Fatalf("cache evicted after loader error: %v", err)
+	}
+}
+
+func TestEnsurePlugin_CacheHit_EvictionFailure_IsFatal_NoDownload(t *testing.T) {
+	pub, priv := generateTestKeys(t)
+	gameID := "d2r/legacy"
+	wasm := []byte("cached wasm")
+	sig, _ := signAndHash(t, priv, wasm)
+	cache := NewCache(t.TempDir())
+	if err := cache.Write(gameID, "1.0.0", wasm, sig); err != nil {
+		t.Fatal(err)
+	}
+
+	freshWasm := []byte("fresh wasm")
+	freshSig, freshHash := signAndHash(t, priv, freshWasm)
+	reg := &countingRegistry{fakeRegistry: fakeRegistry{
+		manifest: map[string]PluginInfo{gameID: {
+			GameID: gameID, Version: "1.0.0", SHA256: freshHash, URL: pluginURL,
+		}},
+		files: map[string][]byte{pluginURL: freshWasm, pluginURL + ".sig": freshSig},
+	}}
+	loader := &fakeLoader{}
+	mgr := NewManager(reg, cache, loader, pub, testLogger())
+
+	err := mgr.EnsurePlugin(context.Background(), gameID)
+	if err == nil || !strings.Contains(err.Error(), "invalid game ID") {
+		t.Fatalf("EnsurePlugin error = %v, want invalid game ID", err)
+	}
+	if reg.downloadCount != 0 {
+		t.Fatalf("downloads = %d, want 0", reg.downloadCount)
+	}
+	if len(loader.loaded) != 0 {
+		t.Fatalf("loader invoked %d times, want 0", len(loader.loaded))
+	}
+	gotWasm, gotSig, gotVersion, readErr := cache.Read(gameID)
+	if readErr != nil {
+		t.Fatalf("read cache after failed eviction: %v", readErr)
+	}
+	if !bytes.Equal(gotWasm, wasm) || !bytes.Equal(gotSig, sig) || gotVersion != "1.0.0" {
+		t.Fatalf("cached files changed after failed eviction: wasm=%q sig=%q version=%q", gotWasm, gotSig, gotVersion)
 	}
 }
 

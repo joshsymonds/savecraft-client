@@ -73,7 +73,7 @@ fetch_url() {
     local output=$2
     local code
 
-    if ! code=$(curl -sS -o "$output" -w '%{http_code}' "$url"); then
+    if ! code=$(curl -sS --connect-timeout 10 --max-time 60 -o "$output" -w '%{http_code}' "$url"); then
         fail "network error fetching $url"
     fi
     printf '%s' "$code"
@@ -232,8 +232,8 @@ publish_mode() {
 
     mapfile -t built_keys < <(printf '%s\n' "${!built_set[@]}" | LC_ALL=C sort)
     for ((attempt = 1; attempt <= 10; attempt++)); do
-        if manifest_code=$(curl -sS -o "$tmp_dir/verify.json" -w '%{http_code}' "${SERVER_URL}/plugins/manifest.json") \
-            && signature_code=$(curl -sS -o "$tmp_dir/verify.json.sig" -w '%{http_code}' "${SERVER_URL}/plugins/manifest.json.sig") \
+        if manifest_code=$(curl -sS --connect-timeout 10 --max-time 60 -o "$tmp_dir/verify.json" -w '%{http_code}' "${SERVER_URL}/plugins/manifest.json") \
+            && signature_code=$(curl -sS --connect-timeout 10 --max-time 60 -o "$tmp_dir/verify.json.sig" -w '%{http_code}' "${SERVER_URL}/plugins/manifest.json.sig") \
             && [[ $manifest_code == 200 && $signature_code == 200 ]] \
             && cmp -s dist/plugins-manifest.json "$tmp_dir/verify.json" \
             && cmp -s dist/plugins-manifest.json.sig "$tmp_dir/verify.json.sig" \

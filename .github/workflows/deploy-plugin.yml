@@ -77,6 +77,10 @@ jobs:
             echo "ERROR: exactly one of plugin or rebuild_only must be provided"
             exit 1
           fi
+          if [ -n "$PLUGIN" ] && [[ ! "$PLUGIN" =~ ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$ ]]; then
+            echo "ERROR: plugin must match ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$"
+            exit 1
+          fi
           if [[ "$REF_NAME" == plugin-*-v* ]] && [ -n "$PLUGIN" ]; then
             tag_game_id="${REF_NAME#plugin-}"
             tag_game_id="${tag_game_id%-v*}"
@@ -88,6 +92,8 @@ jobs:
 
   environment:
     name: Detect environment
+    permissions:
+      contents: read
     needs: [validate-dispatch]
     if: always() && github.event_name != 'pull_request' && (needs.validate-dispatch.result == 'success' || needs.validate-dispatch.result == 'skipped')
     runs-on: ubuntu-latest
@@ -101,6 +107,8 @@ jobs:
       tag_prefix: ${{ steps.parse.outputs.tag_prefix }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Parse tag for game_id
         id: parse
@@ -113,6 +121,10 @@ jobs:
             game_id="${temp%-v*}"
           else
             game_id="$MANUAL_PLUGIN"
+          fi
+          if [ -n "$game_id" ] && [[ ! "$game_id" =~ ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$ ]]; then
+            echo "ERROR: game_id must match ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$"
+            exit 1
           fi
           if [ -n "$game_id" ]; then
             tag_prefix="plugin-${game_id}-v"
@@ -249,7 +261,7 @@ jobs:
           node-version: "22"
 
       - name: Install wrangler
-        run: npm install -g wrangler
+        run: npm install -g wrangler@4.95.0
 
       - name: Decode signing key
         env:
@@ -321,6 +333,8 @@ jobs:
 
   aggregate:
     name: Build signed aggregate
+    permissions:
+      contents: read
     needs: [environment, deploy, test]
     if: always() && needs.environment.result == 'success' && (needs.deploy.result == 'success' || (needs.deploy.result == 'skipped' && github.event_name == 'workflow_dispatch' && inputs.rebuild_only))
     runs-on: ubuntu-latest
@@ -329,6 +343,8 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-go@v5
         with:
@@ -339,7 +355,7 @@ jobs:
           node-version: "22"
 
       - name: Install wrangler
-        run: npm install -g wrangler
+        run: npm install -g wrangler@4.95.0
 
       - name: Decode signing key
         env:
