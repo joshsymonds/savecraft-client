@@ -239,7 +239,9 @@ jobs:
   deploy:
     name: Sign and upload
     needs: [environment, test]
-    if: github.event_name != 'pull_request' && !(github.event_name == 'workflow_dispatch' && inputs.rebuild_only) && needs.test.outputs.plugins != ''
+    # always() is required: validate-dispatch is skipped on push events, and GitHub skips every
+    # transitive dependent of a skipped job unless its condition uses a status check function.
+    if: always() && needs.environment.result == 'success' && needs.test.result == 'success' && github.event_name != 'pull_request' && !(github.event_name == 'workflow_dispatch' && inputs.rebuild_only) && needs.test.outputs.plugins != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -408,7 +410,8 @@ jobs:
   release:
     name: Release plugin
     needs: [environment, aggregate]
-    if: needs.environment.outputs.is_production == 'true' && github.event_name == 'push'
+    # always() for the same reason as deploy; gate explicitly on aggregate success.
+    if: always() && needs.aggregate.result == 'success' && needs.environment.outputs.is_production == 'true' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
