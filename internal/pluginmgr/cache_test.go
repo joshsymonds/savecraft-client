@@ -137,6 +137,37 @@ func TestCache_SHA256_Missing(t *testing.T) {
 	}
 }
 
+func TestCache_Evict_RemovesGameDir(t *testing.T) {
+	dir := t.TempDir()
+	cache := NewCache(dir)
+	if err := cache.Write("d2r", "1.0.0", []byte("wasm"), []byte("sig")); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	if err := cache.Evict("d2r"); err != nil {
+		t.Fatalf("Evict: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "d2r")); !os.IsNotExist(err) {
+		t.Fatalf("game cache dir still exists after Evict: %v", err)
+	}
+}
+
+func TestCache_Evict_MissingIsNoop(t *testing.T) {
+	cache := NewCache(t.TempDir())
+	if err := cache.Evict("d2r"); err != nil {
+		t.Fatalf("Evict missing game: %v", err)
+	}
+}
+
+func TestCache_Evict_RejectsUnsafeGameIDs(t *testing.T) {
+	cache := NewCache(t.TempDir())
+	for _, gameID := range []string{"", ".", "..", "a/b", `a\b`} {
+		if err := cache.Evict(gameID); err == nil {
+			t.Errorf("Evict(%q) = nil, want error", gameID)
+		}
+	}
+}
+
 func TestCache_UpdateVersion(t *testing.T) {
 	dir := t.TempDir()
 	cache := NewCache(dir)

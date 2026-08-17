@@ -104,6 +104,24 @@ func (c *Cache) SHA256(gameID string) string {
 	return strings.TrimSpace(string(data))
 }
 
+// Evict removes all cached files for a game.
+func (c *Cache) Evict(gameID string) error {
+	if err := validateGameID(gameID); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(filepath.Join(c.dir, gameID)); err != nil {
+		return fmt.Errorf("evict cached plugin %s: %w", gameID, err)
+	}
+	return nil
+}
+
+func validateGameID(gameID string) error {
+	if gameID == "" || gameID == "." || gameID == ".." || strings.ContainsAny(gameID, `/\`) {
+		return fmt.Errorf("invalid game ID %q", gameID)
+	}
+	return nil
+}
+
 // UpdateVersion updates version.txt and sha256.txt without touching wasm/sig.
 func (c *Cache) UpdateVersion(gameID, version, sha256Hash string) error {
 	gameDir := filepath.Join(c.dir, gameID)

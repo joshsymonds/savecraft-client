@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -32,6 +34,7 @@ type Manager struct {
 	loader        PluginLoader
 	publicKey     ed25519.PublicKey
 	manifest      map[string]PluginInfo
+	rawManifest   map[string]PluginInfo
 	localDir      string
 	localHashes   map[string]string // SHA-256 of last-loaded local WASM per gameID
 	logger        *slog.Logger
@@ -135,7 +138,7 @@ func (m *Manager) Manifests(
 	if err != nil {
 		return nil, fmt.Errorf("fetch manifest: %w", err)
 	}
-	m.manifest = m.filterMinDaemonVersion(ctx, manifest)
+	m.setManifest(ctx, manifest)
 	return m.manifest, nil
 }
 
@@ -153,15 +156,22 @@ func (m *Manager) EnsurePlugin(ctx context.Context, gameID string) error {
 		}
 	}
 
-	info, err := m.resolveManifestEntry(ctx, gameID)
+	info, lookup, err := m.resolveManifestEntry(ctx, gameID)
 	if err != nil {
 		return err
+	}
+	if lookup == lookupFiltered {
+		return fmt.Errorf("unknown plugin: %s", gameID)
+	}
+	if lookup == lookupAbsent {
+		return m.loadCachedManifestFallback(ctx, gameID)
 	}
 
 	// Check cache (exact version match).
 	if m.cache.HasVersion(gameID, info.Version) {
-		if handled, cacheErr := m.loadFromCache(ctx, gameID, info); handled {
-			return cacheErr
+		outcome, cacheErr := m.loadFromCache(ctx, gameID, info)
+		if handled, resultErr := m.handleCacheOutcome(ctx, gameID, outcome, cacheErr); handled {
+			return resultErr
 		}
 		// Cache unreadable — fall through to download.
 	}
@@ -178,8 +188,9 @@ func (m *Manager) EnsurePlugin(ctx context.Context, gameID string) error {
 				slog.String("game_id", gameID),
 				slog.String("version", info.Version),
 			)
-			if handled, cacheErr := m.loadFromCache(ctx, gameID, info); handled {
-				return cacheErr
+			outcome, cacheErr := m.loadFromCache(ctx, gameID, info)
+			if handled, resultErr := m.handleCacheOutcome(ctx, gameID, outcome, cacheErr); handled {
+				return resultErr
 			}
 		}
 	}
@@ -261,7 +272,7 @@ func (m *Manager) checkRemotePlugins(
 	if err != nil {
 		return nil, fmt.Errorf("fetch manifest: %w", err)
 	}
-	m.manifest = m.filterMinDaemonVersion(ctx, manifest)
+	m.setManifest(ctx, manifest)
 
 	var updated []string
 	for gameID, info := range m.manifest {
@@ -358,46 +369,61 @@ func (m *Manager) checkLocalPlugins(ctx context.Context) []string {
 	return updated
 }
 
-// loadFromCache reads gameID from the on-disk cache and loads it, verifying
-// the cached bytes + signature against info BEFORE use (finding 1.1 / R4).
-// handled=true means the cache satisfied the request — either successfully or
-// with a fatal verification error returned in err (a poisoned/corrupt cache
-// is fail-closed, never a silent re-download). handled=false means the cache
-// could not be read and the caller should fall through to download.
+type cacheOutcome uint8
+
+const (
+	cacheMiss cacheOutcome = iota
+	cacheVerifyFailed
+	cacheLoaderFailed
+	cacheLoaded
+)
+
+// loadFromCache verifies cached bytes before passing them to the loader.
 func (m *Manager) loadFromCache(
 	ctx context.Context, gameID string, info PluginInfo,
-) (handled bool, err error) {
+) (cacheOutcome, error) {
 	wasm, sig, _, readErr := m.cache.Read(gameID)
 	if readErr != nil {
 		// A cache-read failure is not propagated: it means "cache miss",
 		// and the caller falls through to a fresh (verified) download.
-		return false, nil //nolint:nilerr // intentional: cache miss, not an error to surface
+		return cacheMiss, readErr
 	}
 	if verifyErr := m.verifyPlugin(gameID, wasm, sig, info.SHA256); verifyErr != nil {
-		return true, verifyErr
+		return cacheVerifyFailed, verifyErr
 	}
 	m.logger.InfoContext(
 		ctx, "loading plugin from cache",
 		slog.String("game_id", gameID),
 		slog.String("version", info.Version),
 	)
-	return true, m.loadPlugin(ctx, gameID, wasm, sig)
+	if loadErr := m.loadPlugin(ctx, gameID, wasm, sig); loadErr != nil {
+		return cacheLoaderFailed, loadErr
+	}
+	return cacheLoaded, nil
 }
+
+type manifestLookup uint8
+
+const (
+	lookupFound manifestLookup = iota
+	lookupFiltered
+	lookupAbsent
+)
 
 func (m *Manager) resolveManifestEntry(
 	ctx context.Context, gameID string,
-) (PluginInfo, error) {
+) (PluginInfo, manifestLookup, error) {
 	if m.manifest == nil {
 		manifest, err := m.registry.FetchManifest(ctx)
 		if err != nil {
-			return PluginInfo{}, fmt.Errorf("fetch manifest: %w", err)
+			return PluginInfo{}, lookupAbsent, fmt.Errorf("fetch manifest: %w", err)
 		}
-		m.manifest = m.filterMinDaemonVersion(ctx, manifest)
+		m.setManifest(ctx, manifest)
 	}
 
 	info, ok := m.manifest[gameID]
 	if ok {
-		return info, nil
+		return info, lookupFound, nil
 	}
 
 	// Game not in cached manifest — re-fetch in case a new plugin was
@@ -407,15 +433,70 @@ func (m *Manager) resolveManifestEntry(
 	)
 	manifest, err := m.registry.FetchManifest(ctx)
 	if err != nil {
-		return PluginInfo{}, fmt.Errorf("fetch manifest: %w", err)
+		return PluginInfo{}, lookupAbsent, fmt.Errorf("fetch manifest: %w", err)
 	}
-	m.manifest = m.filterMinDaemonVersion(ctx, manifest)
+	m.setManifest(ctx, manifest)
 
 	info, ok = m.manifest[gameID]
-	if !ok {
-		return PluginInfo{}, fmt.Errorf("unknown plugin: %s", gameID)
+	if ok {
+		return info, lookupFound, nil
 	}
-	return info, nil
+	if _, raw := m.rawManifest[gameID]; raw {
+		return PluginInfo{}, lookupFiltered, nil
+	}
+	return PluginInfo{}, lookupAbsent, nil
+}
+
+func (m *Manager) setManifest(ctx context.Context, manifest map[string]PluginInfo) {
+	m.rawManifest = manifest
+	m.manifest = m.filterMinDaemonVersion(ctx, manifest)
+}
+
+func (m *Manager) loadCachedManifestFallback(ctx context.Context, gameID string) error {
+	if err := validateGameID(gameID); err != nil {
+		return fmt.Errorf("unknown plugin: %s", gameID)
+	}
+	wasm, sig, cachedVersion, readErr := m.cache.Read(gameID)
+	if readErr != nil {
+		if !errors.Is(readErr, fs.ErrNotExist) {
+			m.logger.WarnContext(ctx, "failed to read cached plugin missing from manifest",
+				slog.String("game_id", gameID), slog.String("error", readErr.Error()))
+		}
+		return fmt.Errorf("unknown plugin: %s", gameID)
+	}
+	if verifyErr := m.verifyPlugin(gameID, wasm, sig, m.cache.SHA256(gameID)); verifyErr != nil {
+		m.logger.WarnContext(ctx, "plugin missing from manifest; cached verification failed",
+			slog.String("game_id", gameID), slog.String("error", verifyErr.Error()))
+		return fmt.Errorf("unknown plugin: %s", gameID)
+	}
+	m.logger.WarnContext(ctx, "plugin missing from manifest; loading cached",
+		slog.String("game_id", gameID), slog.String("version", cachedVersion))
+	return m.loadPlugin(ctx, gameID, wasm, sig)
+}
+
+func (m *Manager) evictFailedCache(ctx context.Context, gameID string, reason error) error {
+	m.logger.WarnContext(ctx, "cached plugin failed verification; evicting and re-downloading",
+		slog.String("game_id", gameID), slog.String("reason", reason.Error()))
+	return m.cache.Evict(gameID)
+}
+
+func (m *Manager) handleCacheOutcome(
+	ctx context.Context, gameID string, outcome cacheOutcome, outcomeErr error,
+) (bool, error) {
+	switch outcome {
+	case cacheMiss:
+		return false, nil
+	case cacheVerifyFailed:
+		if err := m.evictFailedCache(ctx, gameID, outcomeErr); err != nil {
+			return true, err
+		}
+		return false, nil
+	case cacheLoaderFailed:
+		return true, outcomeErr
+	case cacheLoaded:
+		return true, nil
+	}
+	return true, fmt.Errorf("unknown cache outcome: %d", outcome)
 }
 
 func (m *Manager) downloadAndLoad(
