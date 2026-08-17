@@ -430,6 +430,11 @@ message PushSave {
   // (the plugin stopped emitting them). When empty, no deletion occurs
   // — this preserves backwards compatibility with older daemons.
   repeated string all_section_names = 6;
+
+  // Base name of the save file (or directory unit) this push came from — the
+  // same value ParseFailed.file_name reports — so the server can clear a
+  // stored parse failure once the file parses again. Empty from older daemons.
+  string file_name = 7;
 }
 
 // Server response to PushSave with the resolved save UUID.

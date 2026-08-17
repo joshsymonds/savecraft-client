@@ -3424,8 +3424,12 @@ type PushSave struct {
 	// (the plugin stopped emitting them). When empty, no deletion occurs
 	// — this preserves backwards compatibility with older daemons.
 	AllSectionNames []string `protobuf:"bytes,6,rep,name=all_section_names,json=allSectionNames,proto3" json:"all_section_names,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Base name of the save file (or directory unit) this push came from — the
+	// same value ParseFailed.file_name reports — so the server can clear a
+	// stored parse failure once the file parses again. Empty from older daemons.
+	FileName      string `protobuf:"bytes,7,opt,name=file_name,json=fileName,proto3" json:"file_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PushSave) Reset() {
@@ -3498,6 +3502,13 @@ func (x *PushSave) GetAllSectionNames() []string {
 		return x.AllSectionNames
 	}
 	return nil
+}
+
+func (x *PushSave) GetFileName() string {
+	if x != nil {
+		return x.FileName
+	}
+	return ""
 }
 
 // Server response to PushSave with the resolved save UUID.
@@ -4091,14 +4102,15 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\vGameSection\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12+\n" +
-	"\x04data\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x04data\"\x91\x02\n" +
+	"\x04data\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x04data\"\xae\x02\n" +
 	"\bPushSave\x126\n" +
 	"\bidentity\x18\x01 \x01(\v2\x1a.savecraft.v1.SaveIdentityR\bidentity\x12\x18\n" +
 	"\asummary\x18\x02 \x01(\tR\asummary\x125\n" +
 	"\bsections\x18\x03 \x03(\v2\x19.savecraft.v1.GameSectionR\bsections\x127\n" +
 	"\tparsed_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bparsedAt\x12\x17\n" +
 	"\agame_id\x18\x05 \x01(\tR\x06gameId\x12*\n" +
-	"\x11all_section_names\x18\x06 \x03(\tR\x0fallSectionNames\"\xc4\x01\n" +
+	"\x11all_section_names\x18\x06 \x03(\tR\x0fallSectionNames\x12\x1b\n" +
+	"\tfile_name\x18\a \x01(\tR\bfileName\"\xc4\x01\n" +
 	"\x0ePushSaveResult\x12\x1b\n" +
 	"\tsave_uuid\x18\x01 \x01(\tR\bsaveUuid\x12I\n" +
 	"\x12snapshot_timestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x11snapshotTimestamp\x121\n" +

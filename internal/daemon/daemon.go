@@ -2050,6 +2050,7 @@ func (d *Daemon) sendState(
 		GameId:          gameID,
 		ParsedAt:        timestamppb.Now(),
 		AllSectionNames: allNames,
+		FileName:        filepath.Base(filePath),
 	}
 	opts := proto.MarshalOptions{Deterministic: true}
 	msg := &pb.Message{Payload: &pb.Message_PushSave{PushSave: pushSave}}

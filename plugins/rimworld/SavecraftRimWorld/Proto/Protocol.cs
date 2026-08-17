@@ -161,34 +161,35 @@ namespace Savecraft.V1 {
             "KAkSOAoUbGlua19jb2RlX2V4cGlyZXNfYXQYBCABKAsyGi5nb29nbGUucHJv",
             "dG9idWYuVGltZXN0YW1wIlcKC0dhbWVTZWN0aW9uEgwKBG5hbWUYASABKAkS",
             "EwoLZGVzY3JpcHRpb24YAiABKAkSJQoEZGF0YRgDIAEoCzIXLmdvb2dsZS5w",
-            "cm90b2J1Zi5TdHJ1Y3Qi0QEKCFB1c2hTYXZlEiwKCGlkZW50aXR5GAEgASgL",
+            "cm90b2J1Zi5TdHJ1Y3Qi5AEKCFB1c2hTYXZlEiwKCGlkZW50aXR5GAEgASgL",
             "Mhouc2F2ZWNyYWZ0LnYxLlNhdmVJZGVudGl0eRIPCgdzdW1tYXJ5GAIgASgJ",
             "EisKCHNlY3Rpb25zGAMgAygLMhkuc2F2ZWNyYWZ0LnYxLkdhbWVTZWN0aW9u",
             "Ei0KCXBhcnNlZF9hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3Rh",
             "bXASDwoHZ2FtZV9pZBgFIAEoCRIZChFhbGxfc2VjdGlvbl9uYW1lcxgGIAMo",
-            "CSKYAQoOUHVzaFNhdmVSZXN1bHQSEQoJc2F2ZV91dWlkGAEgASgJEjYKEnNu",
-            "YXBzaG90X3RpbWVzdGFtcBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1l",
-            "c3RhbXASKgoFZXJyb3IYAyABKA4yGy5zYXZlY3JhZnQudjEuUHVzaFNhdmVF",
-            "cnJvchIPCgdnYW1lX2lkGAQgASgJIhEKD1JlZnJlc2hMaW5rQ29kZSJaChVS",
-            "ZWZyZXNoTGlua0NvZGVSZXN1bHQSEQoJbGlua19jb2RlGAEgASgJEi4KCmV4",
-            "cGlyZXNfYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIiEK",
-            "DFNvdXJjZUxpbmtlZBIRCgl1c2VyX3V1aWQYASABKAkiDgoMVW5saW5rU291",
-            "cmNlIhIKEERlcmVnaXN0ZXJTb3VyY2UiWgoMU2F2ZUlkZW50aXR5EgwKBG5h",
-            "bWUYASABKAkSJgoFZXh0cmEYAiABKAsyFy5nb29nbGUucHJvdG9idWYuU3Ry",
-            "dWN0EhQKDGRpc3BsYXlfbmFtZRgDIAEoCSrGAQoOUGFyc2VFcnJvclR5cGUS",
-            "IAocUEFSU0VfRVJST1JfVFlQRV9VTlNQRUNJRklFRBAAEigKJFBBUlNFX0VS",
-            "Uk9SX1RZUEVfVU5TVVBQT1JURURfVkVSU0lPThABEiEKHVBBUlNFX0VSUk9S",
-            "X1RZUEVfQ09SUlVQVF9GSUxFEAISIAocUEFSU0VfRVJST1JfVFlQRV9QQVJT",
-            "RV9FUlJPUhADEiMKH1BBUlNFX0VSUk9SX1RZUEVfUkVTT1VSQ0VfTElNSVQQ",
-            "BCrNAQoOR2FtZVN0YXR1c0VudW0SIAocR0FNRV9TVEFUVVNfRU5VTV9VTlNQ",
-            "RUNJRklFRBAAEh0KGUdBTUVfU1RBVFVTX0VOVU1fREVURUNURUQQARIdChlH",
-            "QU1FX1NUQVRVU19FTlVNX1dBVENISU5HEAISGgoWR0FNRV9TVEFUVVNfRU5V",
-            "TV9FUlJPUhADEh4KGkdBTUVfU1RBVFVTX0VOVU1fTk9UX0ZPVU5EEAQSHwob",
-            "R0FNRV9TVEFUVVNfRU5VTV9BQ1RJVkFUSU5HEAUqdAoNUHVzaFNhdmVFcnJv",
-            "chIfChtQVVNIX1NBVkVfRVJST1JfVU5TUEVDSUZJRUQQABIgChxQVVNIX1NB",
-            "VkVfRVJST1JfR0FNRV9SRU1PVkVEEAESIAocUFVTSF9TQVZFX0VSUk9SX1NB",
-            "VkVfUkVNT1ZFRBACQjhaNmdpdGh1Yi5jb20vam9zaHN5bW9uZHMvc2F2ZWNy",
-            "YWZ0LWNsaWVudC9pbnRlcm5hbC9wcm90b2IGcHJvdG8z"));
+            "CRIRCglmaWxlX25hbWUYByABKAkimAEKDlB1c2hTYXZlUmVzdWx0EhEKCXNh",
+            "dmVfdXVpZBgBIAEoCRI2ChJzbmFwc2hvdF90aW1lc3RhbXAYAiABKAsyGi5n",
+            "b29nbGUucHJvdG9idWYuVGltZXN0YW1wEioKBWVycm9yGAMgASgOMhsuc2F2",
+            "ZWNyYWZ0LnYxLlB1c2hTYXZlRXJyb3ISDwoHZ2FtZV9pZBgEIAEoCSIRCg9S",
+            "ZWZyZXNoTGlua0NvZGUiWgoVUmVmcmVzaExpbmtDb2RlUmVzdWx0EhEKCWxp",
+            "bmtfY29kZRgBIAEoCRIuCgpleHBpcmVzX2F0GAIgASgLMhouZ29vZ2xlLnBy",
+            "b3RvYnVmLlRpbWVzdGFtcCIhCgxTb3VyY2VMaW5rZWQSEQoJdXNlcl91dWlk",
+            "GAEgASgJIg4KDFVubGlua1NvdXJjZSISChBEZXJlZ2lzdGVyU291cmNlIloK",
+            "DFNhdmVJZGVudGl0eRIMCgRuYW1lGAEgASgJEiYKBWV4dHJhGAIgASgLMhcu",
+            "Z29vZ2xlLnByb3RvYnVmLlN0cnVjdBIUCgxkaXNwbGF5X25hbWUYAyABKAkq",
+            "xgEKDlBhcnNlRXJyb3JUeXBlEiAKHFBBUlNFX0VSUk9SX1RZUEVfVU5TUEVD",
+            "SUZJRUQQABIoCiRQQVJTRV9FUlJPUl9UWVBFX1VOU1VQUE9SVEVEX1ZFUlNJ",
+            "T04QARIhCh1QQVJTRV9FUlJPUl9UWVBFX0NPUlJVUFRfRklMRRACEiAKHFBB",
+            "UlNFX0VSUk9SX1RZUEVfUEFSU0VfRVJST1IQAxIjCh9QQVJTRV9FUlJPUl9U",
+            "WVBFX1JFU09VUkNFX0xJTUlUEAQqzQEKDkdhbWVTdGF0dXNFbnVtEiAKHEdB",
+            "TUVfU1RBVFVTX0VOVU1fVU5TUEVDSUZJRUQQABIdChlHQU1FX1NUQVRVU19F",
+            "TlVNX0RFVEVDVEVEEAESHQoZR0FNRV9TVEFUVVNfRU5VTV9XQVRDSElORxAC",
+            "EhoKFkdBTUVfU1RBVFVTX0VOVU1fRVJST1IQAxIeChpHQU1FX1NUQVRVU19F",
+            "TlVNX05PVF9GT1VORBAEEh8KG0dBTUVfU1RBVFVTX0VOVU1fQUNUSVZBVElO",
+            "RxAFKnQKDVB1c2hTYXZlRXJyb3ISHwobUFVTSF9TQVZFX0VSUk9SX1VOU1BF",
+            "Q0lGSUVEEAASIAocUFVTSF9TQVZFX0VSUk9SX0dBTUVfUkVNT1ZFRBABEiAK",
+            "HFBVU0hfU0FWRV9FUlJPUl9TQVZFX1JFTU9WRUQQAkI4WjZnaXRodWIuY29t",
+            "L2pvc2hzeW1vbmRzL3NhdmVjcmFmdC1jbGllbnQvaW50ZXJuYWwvcHJvdG9i",
+            "BnByb3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.TimestampReflection.Descriptor, global::Google.Protobuf.WellKnownTypes.StructReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Savecraft.V1.ParseErrorType), typeof(global::Savecraft.V1.GameStatusEnum), typeof(global::Savecraft.V1.PushSaveError), }, null, new pbr::GeneratedClrTypeInfo[] {
@@ -233,7 +234,7 @@ namespace Savecraft.V1 {
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.Register), global::Savecraft.V1.Register.Parser, new[]{ "Hostname", "Os", "Arch", "Device" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.RegisterResult), global::Savecraft.V1.RegisterResult.Parser, new[]{ "SourceUuid", "SourceToken", "LinkCode", "LinkCodeExpiresAt" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.GameSection), global::Savecraft.V1.GameSection.Parser, new[]{ "Name", "Description", "Data" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.PushSave), global::Savecraft.V1.PushSave.Parser, new[]{ "Identity", "Summary", "Sections", "ParsedAt", "GameId", "AllSectionNames" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.PushSave), global::Savecraft.V1.PushSave.Parser, new[]{ "Identity", "Summary", "Sections", "ParsedAt", "GameId", "AllSectionNames", "FileName" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.PushSaveResult), global::Savecraft.V1.PushSaveResult.Parser, new[]{ "SaveUuid", "SnapshotTimestamp", "Error", "GameId" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.RefreshLinkCode), global::Savecraft.V1.RefreshLinkCode.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.RefreshLinkCodeResult), global::Savecraft.V1.RefreshLinkCodeResult.Parser, new[]{ "LinkCode", "ExpiresAt" }, null, null, null, null),
@@ -13987,6 +13988,7 @@ namespace Savecraft.V1 {
       parsedAt_ = other.parsedAt_ != null ? other.parsedAt_.Clone() : null;
       gameId_ = other.gameId_;
       allSectionNames_ = other.allSectionNames_.Clone();
+      fileName_ = other.fileName_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -14072,6 +14074,23 @@ namespace Savecraft.V1 {
       get { return allSectionNames_; }
     }
 
+    /// <summary>Field number for the "file_name" field.</summary>
+    public const int FileNameFieldNumber = 7;
+    private string fileName_ = "";
+    /// <summary>
+    /// Base name of the save file (or directory unit) this push came from — the
+    /// same value ParseFailed.file_name reports — so the server can clear a
+    /// stored parse failure once the file parses again. Empty from older daemons.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string FileName {
+      get { return fileName_; }
+      set {
+        fileName_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -14093,6 +14112,7 @@ namespace Savecraft.V1 {
       if (!object.Equals(ParsedAt, other.ParsedAt)) return false;
       if (GameId != other.GameId) return false;
       if(!allSectionNames_.Equals(other.allSectionNames_)) return false;
+      if (FileName != other.FileName) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -14106,6 +14126,7 @@ namespace Savecraft.V1 {
       if (parsedAt_ != null) hash ^= ParsedAt.GetHashCode();
       if (GameId.Length != 0) hash ^= GameId.GetHashCode();
       hash ^= allSectionNames_.GetHashCode();
+      if (FileName.Length != 0) hash ^= FileName.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -14142,6 +14163,10 @@ namespace Savecraft.V1 {
         output.WriteString(GameId);
       }
       allSectionNames_.WriteTo(output, _repeated_allSectionNames_codec);
+      if (FileName.Length != 0) {
+        output.WriteRawTag(58);
+        output.WriteString(FileName);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -14170,6 +14195,10 @@ namespace Savecraft.V1 {
         output.WriteString(GameId);
       }
       allSectionNames_.WriteTo(ref output, _repeated_allSectionNames_codec);
+      if (FileName.Length != 0) {
+        output.WriteRawTag(58);
+        output.WriteString(FileName);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -14194,6 +14223,9 @@ namespace Savecraft.V1 {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(GameId);
       }
       size += allSectionNames_.CalculateSize(_repeated_allSectionNames_codec);
+      if (FileName.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(FileName);
+      }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -14226,6 +14258,9 @@ namespace Savecraft.V1 {
         GameId = other.GameId;
       }
       allSectionNames_.Add(other.allSectionNames_);
+      if (other.FileName.Length != 0) {
+        FileName = other.FileName;
+      }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
@@ -14275,6 +14310,10 @@ namespace Savecraft.V1 {
             allSectionNames_.AddEntriesFrom(input, _repeated_allSectionNames_codec);
             break;
           }
+          case 58: {
+            FileName = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -14322,6 +14361,10 @@ namespace Savecraft.V1 {
           }
           case 50: {
             allSectionNames_.AddEntriesFrom(ref input, _repeated_allSectionNames_codec);
+            break;
+          }
+          case 58: {
+            FileName = input.ReadString();
             break;
           }
         }
