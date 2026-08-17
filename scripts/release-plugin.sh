@@ -82,11 +82,13 @@ validate_newer_version() {
 }
 
 find_workflow_run() {
-    local tag=$1 sha=$2 run_id
+    local tag=$1 sha=$2 run_id remaining remaining2
 
     SECONDS=0
     while ((SECONDS < 120)); do
-        if ! run_id=$(timeout 20 gh run list \
+        remaining=$((120 - SECONDS))
+        ((remaining > 0)) || break
+        if ! run_id=$(timeout "$((remaining < 20 ? remaining : 20))" gh run list \
             --workflow deploy-plugin.yml \
             --event push \
             --branch "$tag" \
@@ -99,7 +101,9 @@ find_workflow_run() {
             printf '%s' "$run_id"
             return
         fi
-        sleep 5
+        remaining2=$((120 - SECONDS))
+        ((remaining2 > 0)) || break
+        sleep "$((remaining2 < 5 ? remaining2 : 5))"
     done
     fail "no deploy-plugin.yml push run found for $tag at $sha"
 }
