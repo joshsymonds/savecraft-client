@@ -78,6 +78,10 @@ build-plugins:
 plugin-registry name version="dev":
     GOEXPERIMENT=jsonv2 go run ./cmd/plugin-registry/ --version {{version}} plugins/{{name}}
 
+# Release one plugin tag and verify its production deployment.
+release-plugin game version:
+    bash scripts/release-plugin.sh {{game}} {{version}}
+
 # Package the Factorio in-game mod.
 factorio-mod:
     #!/usr/bin/env bash
@@ -166,13 +170,13 @@ build-msi version="1.0.0" app_name="savecraft":
         install/windows/savecraft.wxs
 
 lint-sh:
-    shellcheck install/install.sh install/test/run-test.sh scripts/check-public-boundary.sh scripts/check-public-boundary.test.sh scripts/build-plugin-aggregate.sh
+    shellcheck install/install.sh install/test/run-test.sh scripts/check-public-boundary.sh scripts/check-public-boundary.test.sh scripts/build-plugin-aggregate.sh scripts/release-plugin.sh
 
 fmt-sh:
-    shfmt -w -i 4 -bn -ci install/install.sh install/test/run-test.sh scripts/check-public-boundary.sh scripts/check-public-boundary.test.sh scripts/build-plugin-aggregate.sh
+    shfmt -w -i 4 -bn -ci install/install.sh install/test/run-test.sh scripts/check-public-boundary.sh scripts/check-public-boundary.test.sh scripts/build-plugin-aggregate.sh scripts/release-plugin.sh
 
 fmt-sh-check:
-    shfmt -d -i 4 -bn -ci install/install.sh install/test/run-test.sh scripts/check-public-boundary.sh scripts/check-public-boundary.test.sh scripts/build-plugin-aggregate.sh
+    shfmt -d -i 4 -bn -ci install/install.sh install/test/run-test.sh scripts/check-public-boundary.sh scripts/check-public-boundary.test.sh scripts/build-plugin-aggregate.sh scripts/release-plugin.sh
 
 test-install-worker:
     cd install/worker && npm test
