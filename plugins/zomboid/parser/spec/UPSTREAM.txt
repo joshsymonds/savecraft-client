@@ -1,0 +1,5 @@
+source: https://github.com/cff29546/pzdataspec
+commit: 2a343e4c3dc942d451e1741895737a3a0efafcfa
+release: v1.12.249 (world version 249 = Project Zomboid 42.20.x)
+license: MIT (see LICENSE.pzdataspec)
+files: the .ksy closure needed to decode the localPlayers.data blob (iso_object class 1 = player); copied verbatim, unmodified
