@@ -1,0 +1,50 @@
+# Best-effort hourly detection for aggregate manifest drift. On failure, dispatch
+# deploy-plugin.yml with rebuild_only=true at an existing production plugin tag.
+name: Plugin Manifest Canary
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check production plugin manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Check manifest
+        id: manifest
+        env:
+          MODE: check
+          SERVER_URL: https://api.savecraft.gg
+          PLUGINS_DIR: plugins
+        run: |
+          set +e
+          scripts/build-plugin-aggregate.sh 2>&1 | tee manifest-check.log
+          check_status=${PIPESTATUS[0]}
+          summary=$(tail -n 1 manifest-check.log)
+          echo "summary=${summary}" >> "$GITHUB_OUTPUT"
+          exit "$check_status"
+
+      - name: Notify Discord
+        if: failure()
+        continue-on-error: true
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_DEPLOY_WEBHOOK }}
+          SUMMARY: ${{ steps.manifest.outputs.summary }}
+        run: |
+          jq -n \
+            --arg summary "$SUMMARY" \
+            '{embeds: [{title: "Plugin manifest canary FAILED", description: $summary, color: 15158332}]}' \
+            | curl -sS -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" -d @-

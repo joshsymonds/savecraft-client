@@ -1,3 +1,7 @@
+# Modes: pull request = test only; push or dispatch with plugin = environment, test, deploy,
+# aggregate, then release on production tag pushes; dispatch with rebuild_only = aggregate only.
+# For rebuild_only, --ref main targets staging and --ref plugin-<game>-v<ver> (an existing tag)
+# targets production.
 name: Deploy Plugin
 
 on:
@@ -14,6 +18,7 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'cmd/plugin-registry/**'
+      - 'scripts/build-plugin-aggregate.sh'
       - '.github/workflows/deploy-plugin.yml'
   pull_request:
     paths:
@@ -26,17 +31,28 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'cmd/plugin-registry/**'
+      - 'scripts/build-plugin-aggregate.sh'
       - '.github/workflows/deploy-plugin.yml'
   workflow_dispatch:
     inputs:
       plugin:
         description: "Plugin game_id to release (e.g. d2r)"
-        required: true
+        required: false
+        type: string
+      rebuild_only:
+        description: "Rebuild the aggregate from deployed descriptors only"
+        required: false
+        default: false
+        type: boolean
+      allow_remove:
+        description: "Comma-separated deployed games allowed to be removed, or *"
+        required: false
+        default: ''
         type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: write
@@ -45,8 +61,98 @@ env:
   GOEXPERIMENT: jsonv2
 
 jobs:
+  validate-dispatch:
+    name: Validate dispatch inputs
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require exactly one dispatch mode
+        env:
+          PLUGIN: ${{ inputs.plugin }}
+          REBUILD_ONLY: ${{ inputs.rebuild_only }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if { [ -z "$PLUGIN" ] && [ "$REBUILD_ONLY" = "false" ]; } || \
+             { [ -n "$PLUGIN" ] && [ "$REBUILD_ONLY" = "true" ]; }; then
+            echo "ERROR: exactly one of plugin or rebuild_only must be provided"
+            exit 1
+          fi
+          if [[ "$REF_NAME" == plugin-*-v* ]] && [ -n "$PLUGIN" ]; then
+            tag_game_id="${REF_NAME#plugin-}"
+            tag_game_id="${tag_game_id%-v*}"
+            if [ "$PLUGIN" != "$tag_game_id" ]; then
+              echo "ERROR: plugin input must match the tag game_id when dispatching at a plugin tag"
+              exit 1
+            fi
+          fi
+
+  environment:
+    name: Detect environment
+    needs: [validate-dispatch]
+    if: always() && github.event_name != 'pull_request' && (needs.validate-dispatch.result == 'success' || needs.validate-dispatch.result == 'skipped')
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.version.outputs.environment }}
+      is_production: ${{ steps.config.outputs.is_production }}
+      r2_bucket: ${{ steps.config.outputs.r2_bucket }}
+      server_url: ${{ steps.config.outputs.server_url }}
+      version: ${{ steps.version.outputs.version }}
+      game_id: ${{ steps.parse.outputs.game_id }}
+      tag_prefix: ${{ steps.parse.outputs.tag_prefix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse tag for game_id
+        id: parse
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          MANUAL_PLUGIN: ${{ inputs.plugin }}
+        run: |
+          if [[ "$REF_NAME" == plugin-*-v* ]]; then
+            temp="${REF_NAME#plugin-}"
+            game_id="${temp%-v*}"
+          else
+            game_id="$MANUAL_PLUGIN"
+          fi
+          if [ -n "$game_id" ]; then
+            tag_prefix="plugin-${game_id}-v"
+          else
+            tag_prefix="plugin-v"
+          fi
+          {
+            echo "game_id=${game_id}"
+            echo "tag_prefix=${tag_prefix}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Compute version
+        id: version
+        uses: ./.github/actions/compute-version
+        with:
+          tag_prefix: ${{ steps.parse.outputs.tag_prefix }}
+
+      - name: Set plugin configuration
+        id: config
+        env:
+          DETECTED_ENV: ${{ steps.version.outputs.environment }}
+        run: |
+          if [ "$DETECTED_ENV" = "production" ]; then
+            {
+              echo "is_production=true"
+              echo "r2_bucket=savecraft-plugins"
+              echo "server_url=https://api.savecraft.gg"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "is_production=false"
+              echo "r2_bucket=savecraft-plugins-staging"
+              echo "server_url=https://staging-api.savecraft.gg"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
   test:
     name: Build plugins
+    needs: [validate-dispatch]
+    if: always() && (needs.validate-dispatch.result == 'success' || needs.validate-dispatch.result == 'skipped') && !(github.event_name == 'workflow_dispatch' && inputs.rebuild_only)
     runs-on: ubuntu-latest
     outputs:
       plugins: ${{ steps.changed.outputs.plugins }}
@@ -120,54 +226,13 @@ jobs:
 
   deploy:
     name: Sign and upload
-    needs: test
-    if: github.event_name != 'pull_request' && needs.test.outputs.plugins != ''
+    needs: [environment, test]
+    if: github.event_name != 'pull_request' && !(github.event_name == 'workflow_dispatch' && inputs.rebuild_only) && needs.test.outputs.plugins != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Parse tag for game_id
-        id: parse
-        env:
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          if [[ "$REF_NAME" == plugin-*-v* ]]; then
-            # Extract game_id: plugin-{game_id}-v{version} → game_id
-            temp="${REF_NAME#plugin-}"
-            game_id="${temp%-v*}"
-            echo "game_id=${game_id}" >> "$GITHUB_OUTPUT"
-            echo "tag_prefix=plugin-${game_id}-v" >> "$GITHUB_OUTPUT"
-          else
-            echo "game_id=" >> "$GITHUB_OUTPUT"
-            echo "tag_prefix=plugin-v" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Compute version
-        id: version
-        uses: ./.github/actions/compute-version
-        with:
-          tag_prefix: ${{ steps.parse.outputs.tag_prefix }}
-
-      - name: Set plugin configuration
-        id: config
-        env:
-          DETECTED_ENV: ${{ steps.version.outputs.environment }}
-        run: |
-          if [ "$DETECTED_ENV" = "production" ]; then
-            {
-              echo "is_production=true"
-              echo "r2_bucket=savecraft-plugins"
-              echo "server_url=https://api.savecraft.gg"
-            } >> "$GITHUB_OUTPUT"
-          else
-            {
-              echo "is_production=false"
-              echo "r2_bucket=savecraft-plugins-staging"
-              echo "server_url=https://staging-api.savecraft.gg"
-            } >> "$GITHUB_OUTPUT"
-          fi
 
       - uses: actions/setup-go@v5
         with:
@@ -187,18 +252,18 @@ jobs:
         run: npm install -g wrangler
 
       - name: Decode signing key
-        run: echo "$SIGNING_KEY" | base64 -d > /tmp/signing_key.priv
         env:
           SIGNING_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
+        run: echo "$SIGNING_KEY" | base64 -d > "${RUNNER_TEMP}/signing_key.priv"
 
       - name: Build, sign, and upload plugins
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           ALL_PLUGINS: ${{ needs.test.outputs.plugins }}
-          TAG_GAME_ID: ${{ steps.parse.outputs.game_id }}
-          R2_BUCKET: ${{ steps.config.outputs.r2_bucket }}
-          VERSION: ${{ steps.version.outputs.version }}
+          TAG_GAME_ID: ${{ needs.environment.outputs.game_id }}
+          R2_BUCKET: ${{ needs.environment.outputs.r2_bucket }}
+          VERSION: ${{ needs.environment.outputs.version }}
         run: |
           # Production: deploy only the tagged game. Staging: deploy all.
           if [ -n "$TAG_GAME_ID" ]; then
@@ -230,7 +295,7 @@ jobs:
             # WASM plugins: sign and upload parser.wasm
             if echo "$plugin_sources" | grep -qw "wasm"; then
               parser_file="plugins/${game_id}/parser.wasm"
-              go run ./cmd/savecraft-sign/ "$parser_file" /tmp/signing_key.priv
+              go run ./cmd/savecraft-sign/ "$parser_file" "${RUNNER_TEMP}/signing_key.priv"
               wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/parser.wasm" --file "$parser_file" --remote &
               pids+=($!)
               wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/parser.wasm.sig" --file "${parser_file}.sig" --remote &
@@ -239,7 +304,7 @@ jobs:
 
             # Upload the client descriptor + detached signature over its literal bytes.
             client_manifest="plugins/${game_id}/client-manifest.json"
-            go run ./cmd/savecraft-sign/ "$client_manifest" /tmp/signing_key.priv
+            go run ./cmd/savecraft-sign/ "$client_manifest" "${RUNNER_TEMP}/signing_key.priv"
             wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/client-manifest.json" --file "$client_manifest" --remote &
             pids+=($!)
             wrangler r2 object put "${R2_BUCKET}/plugins/${game_id}/client-manifest.json.sig" --file "${client_manifest}.sig" --remote &
@@ -250,61 +315,63 @@ jobs:
             echo "    Published ${game_id} v${VERSION}"
           done
 
-      - name: Build signed aggregate plugin manifest
+      - name: Clean up signing key
+        if: always()
+        run: rm -f "${RUNNER_TEMP}/signing_key.priv"
+
+  aggregate:
+    name: Build signed aggregate
+    needs: [environment, deploy, test]
+    if: always() && needs.environment.result == 'success' && (needs.deploy.result == 'success' || (needs.deploy.result == 'skipped' && github.event_name == 'workflow_dispatch' && inputs.rebuild_only))
+    runs-on: ubuntu-latest
+    concurrency:
+      group: plugin-aggregate-${{ needs.environment.outputs.environment }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install wrangler
+        run: npm install -g wrangler
+
+      - name: Decode signing key
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
+        run: echo "$SIGNING_KEY" | base64 -d > "${RUNNER_TEMP}/signing_key.priv"
+
+      - name: Build and publish aggregate manifest
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          R2_BUCKET: ${{ steps.config.outputs.r2_bucket }}
-          SERVER_URL: ${{ steps.config.outputs.server_url }}
-          ALL_PLUGINS: ${{ needs.test.outputs.plugins }}
-        run: |
-          # Conclusion job: rebuild the WHOLE aggregate from each plugin's
-          # CURRENT published client descriptor in R2 (not a rebuild-all), so
-          # a partial deploy still produces a complete, consistent manifest.
-          # Every URL points at the
-          # server origin (the Worker serves both the binaries and this signed
-          # aggregate verbatim from R2 — all plugin delivery on one origin).
-          # Sign the literal bytes; the daemon verifies this against the
-          # embedded key (it no longer trusts the Worker).
-          mkdir -p dist
-          agg='{"plugins":{}}'
-          for game_id in $ALL_PLUGINS; do
-            if ! wrangler r2 object get "${R2_BUCKET}/plugins/${game_id}/client-manifest.json" \
-                --file "dist/${game_id}.json" --remote 2>/dev/null; then
-              echo "::warning::no published client manifest for ${game_id}; excluded from aggregate"
-              continue
-            fi
-            base="${SERVER_URL}/plugins/${game_id}"
-            entry="$(jq -c --arg base "$base" '
-              . + (if .url then {url: ($base + "/parser.wasm")} else {} end)
-              + (if (.icon == "icon.png" or .icon == "icon.svg")
-                   then {icon_url: ($base + "/" + .icon)} else {} end)
-            ' "dist/${game_id}.json")"
-            agg="$(jq -c --arg id "$game_id" --argjson e "$entry" \
-              '.plugins[$id] = $e' <<<"$agg")"
-          done
-          # Write the literal bytes ONCE, sign exactly those bytes, upload the
-          # same file unchanged (signed bytes == served bytes).
-          printf '%s' "$agg" > dist/plugins-manifest.json
-          go run ./cmd/savecraft-sign/ dist/plugins-manifest.json /tmp/signing_key.priv
-          wrangler r2 object put "${R2_BUCKET}/plugins/manifest.json" \
-            --file dist/plugins-manifest.json --remote
-          wrangler r2 object put "${R2_BUCKET}/plugins/manifest.json.sig" \
-            --file dist/plugins-manifest.json.sig --remote
+          MODE: publish
+          SERVER_URL: ${{ needs.environment.outputs.server_url }}
+          R2_BUCKET: ${{ needs.environment.outputs.r2_bucket }}
+          PLUGINS_DIR: plugins
+          DEPLOYED_PLUGIN: ${{ needs.environment.outputs.game_id }}
+          ALLOW_REMOVE: ${{ inputs.allow_remove }}
+          SIGNING_KEY_PATH: ${{ runner.temp }}/signing_key.priv
+        run: scripts/build-plugin-aggregate.sh
 
       - name: Clean up signing key
         if: always()
-        run: rm -f /tmp/signing_key.priv
+        run: rm -f "${RUNNER_TEMP}/signing_key.priv"
 
       - name: Notify Discord (deploy)
-        if: success()
+        if: success() && needs.deploy.result == 'success'
         continue-on-error: true
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_DEPLOY_WEBHOOK }}
           ALL_PLUGINS: ${{ needs.test.outputs.plugins }}
-          TAG_GAME_ID: ${{ steps.parse.outputs.game_id }}
-          IS_PROD: ${{ steps.config.outputs.is_production }}
-          VERSION: ${{ steps.version.outputs.version }}
+          TAG_GAME_ID: ${{ needs.environment.outputs.game_id }}
+          IS_PROD: ${{ needs.environment.outputs.is_production }}
+          VERSION: ${{ needs.environment.outputs.version }}
         run: |
           env_label="staging"
           if [ "$IS_PROD" = "true" ]; then env_label="production"; fi
@@ -322,22 +389,40 @@ jobs:
               | curl -s -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" -d @-
           done
 
+  release:
+    name: Release plugin
+    needs: [environment, aggregate]
+    if: needs.environment.outputs.is_production == 'true' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Find previous plugin tag
-        if: steps.config.outputs.is_production == 'true'
         id: prev
         env:
-          TAG_GAME_ID: ${{ steps.parse.outputs.game_id }}
+          TAG_GAME_ID: ${{ needs.environment.outputs.game_id }}
         run: |
           prev_tag=$(git tag -l "plugin-${TAG_GAME_ID}-v*" --sort=-v:refname | sed -n '2p')
           echo "tag=${prev_tag}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
-        if: steps.config.outputs.is_production == 'true'
+        id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
           PREV_TAG: ${{ steps.prev.outputs.tag }}
         run: |
+          if view_output=$(gh release view "$TAG" 2>&1); then
+            echo "release exists, skipping"
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! grep -qi 'release not found' <<<"$view_output"; then
+            echo "$view_output" >&2
+            exit 1
+          fi
           notes_args=()
           if [ -n "$PREV_TAG" ]; then
             notes_args=(--notes-start-tag "$PREV_TAG")
@@ -346,13 +431,15 @@ jobs:
             --title "$TAG" \
             --generate-notes \
             "${notes_args[@]}"
+          echo "created=true" >> "$GITHUB_OUTPUT"
 
       - name: Notify Discord (release)
-        if: success() && steps.config.outputs.is_production == 'true'
+        if: steps.release.outputs.created == 'true'
+        continue-on-error: true
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
-          TAG_GAME_ID: ${{ steps.parse.outputs.game_id }}
-          VERSION: ${{ steps.version.outputs.version }}
+          TAG_GAME_ID: ${{ needs.environment.outputs.game_id }}
+          VERSION: ${{ needs.environment.outputs.version }}
         run: |
           jq -n \
             --arg gid "$TAG_GAME_ID" \

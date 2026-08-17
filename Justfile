@@ -166,13 +166,13 @@ build-msi version="1.0.0" app_name="savecraft":
         install/windows/savecraft.wxs
 
 lint-sh:
-    shellcheck install/install.sh install/test/run-test.sh scripts/check-public-boundary.sh scripts/check-public-boundary.test.sh
+    shellcheck install/install.sh install/test/run-test.sh scripts/check-public-boundary.sh scripts/check-public-boundary.test.sh scripts/build-plugin-aggregate.sh
 
 fmt-sh:
-    shfmt -w -i 4 -bn -ci install/install.sh install/test/run-test.sh scripts/check-public-boundary.sh scripts/check-public-boundary.test.sh
+    shfmt -w -i 4 -bn -ci install/install.sh install/test/run-test.sh scripts/check-public-boundary.sh scripts/check-public-boundary.test.sh scripts/build-plugin-aggregate.sh
 
 fmt-sh-check:
-    shfmt -d -i 4 -bn -ci install/install.sh install/test/run-test.sh scripts/check-public-boundary.sh scripts/check-public-boundary.test.sh
+    shfmt -d -i 4 -bn -ci install/install.sh install/test/run-test.sh scripts/check-public-boundary.sh scripts/check-public-boundary.test.sh scripts/build-plugin-aggregate.sh
 
 test-install-worker:
     cd install/worker && npm test
