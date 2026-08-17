@@ -23,3 +23,24 @@ sha256sum tutorial-42.20.2/players.db \
   tutorial-42.20.2/WorldDictionaryReadable.lua \
   tutorial-42.20.2/mods.txt jane-doe-249.blob
 ```
+
+Synthetic databases are generated once with this script (using the fixture
+schema and blob):
+
+```python
+import sqlite3, pathlib
+root=pathlib.Path('plugins/zomboid/parser/testdata'); blob=(root/'jane-doe-249.blob').read_bytes(); ddl='CREATE TABLE localPlayers (id INTEGER PRIMARY KEY NOT NULL,name STRING,wx INTEGER,wy INTEGER,x FLOAT,y FLOAT,z FLOAT,worldversion INTEGER,data BLOB,isDead BOOLEAN)'
+def make(name, rows):
+ p=root/name; c=sqlite3.connect(p); c.execute(ddl)
+ for row in rows:c.execute('insert into localPlayers values (?,?,?,?,?,?,?,?,?,?)',row)
+ c.commit();c.close()
+make('players-v245.db',[(1,'Jane Doe',22,18,178.5625,147.0225,0,245,blob,0)])
+make('players-two-rows.db',[(1,'Jane Doe',22,18,178.5625,147.0225,0,249,blob,0),(2,'Old Jane',22,18,178.5625,147.0225,0,249,blob,1)])
+p=root/'players-empty.db';c=sqlite3.connect(p);c.execute(ddl);c.commit();c.close()
+```
+
+| File | SHA-256 |
+| --- | --- |
+| `players-v245.db` | `572cd9df3a9ea6bed8135ec6a14548ca13c91bf64cea4a1afec74f891c2c5932` |
+| `players-two-rows.db` | `1128d008a992f69fec0d4f173e3da2a2d425cd5492e5d1284f92db61f6e741b5` |
+| `players-empty.db` | `27215e34927acd86171a1a5362a82213b492aaca26ba76c09d2b36e6ef0e39c6` |

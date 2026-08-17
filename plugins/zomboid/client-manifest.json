@@ -1,0 +1,49 @@
+{
+  "game_id": "zomboid",
+  "sources": [
+    "wasm"
+  ],
+  "icon": "icon.png",
+  "name": "Project Zomboid",
+  "description": "Reads Project Zomboid Build 42 saves directly — character sheet: skills, XP, traits, health, worn and carried items",
+  "channel": "alpha",
+  "coverage": "partial",
+  "file_extensions": null,
+  "exclude_dirs": [
+    "Multiplayer"
+  ],
+  "homepage": "https://savecraft.gg/plugins/zomboid",
+  "limitations": [
+    "Build 42 saves only (world version 249, game 42.20.x); Build 41 saves are reported as unsupported",
+    "Fixture-verified against vanilla 42.20.2 — saves with mods that add serialized character data fail closed",
+    "Singleplayer and locally hosted saves only",
+    "This version reads the character sheet only (skills, traits, health summary, worn and carried items); vitals, vehicles, and base contents come later"
+  ],
+  "unit": "directory",
+  "members": [
+    "players.db",
+    "players.db-journal",
+    "WorldDictionaryReadable.lua",
+    "mods.txt"
+  ],
+  "min_daemon_version": "2.1.0",
+  "license": "MIT",
+  "source_url": "https://github.com/joshsymonds/savecraft-client",
+  "attribution": {
+    "sources": [
+      "theindiestone"
+    ]
+  },
+  "author": {
+    "name": "Josh Symonds",
+    "github": "joshsymonds"
+  },
+  "default_paths": {
+    "windows": "%USERPROFILE%/Zomboid/Saves/*/*",
+    "linux": "~/Zomboid/Saves/*/*",
+    "darwin": "~/Zomboid/Saves/*/*"
+  },
+  "version": "dev",
+  "sha256": "2c24ffd77fc5b9583fcb51eeb84b1d9c5ea6c97f52fd140a3f054a523806dd83",
+  "url": "plugins/zomboid/parser.wasm"
+}

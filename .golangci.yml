@@ -581,6 +581,22 @@ linters:
           - goconst
           - gochecknoglobals
 
+      # Binary format parser (same rationale as d2r above).
+      - path: plugins/zomboid/.*\.go
+        linters:
+          - gocognit
+          - gocyclo
+          - cyclop
+          - funlen
+          - mnd
+          - varnamelen
+          - gosec
+          - govet
+          - nestif
+          - ireturn
+          - goconst
+          - gochecknoglobals
+
       # Entrypoints — ldflags injection targets must be package-level vars
       - path: cmd/savecraftd/main\.go
         linters:

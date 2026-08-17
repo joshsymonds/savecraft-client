@@ -10,6 +10,15 @@ closed. The parser currently reports skills, XP, traits, a health summary,
 and worn and carried items. Vitals, vehicles, and base contents are not yet
 included.
 
+## What the character section contains
+
+- identity, profession, gender, and alive/dead state
+- health summary and body-part injuries
+- position, survival time, zombie and survivor kills
+- perks, XP, traits, and XP boosts
+- nutrition, worn items, and carried item counts
+- active mods and other characters in the save
+
 ## Save layout and members
 
 The daemon's default paths are:
