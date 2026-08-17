@@ -329,6 +329,19 @@ message GameInfo {
   string path = 6;
   // Human-readable error message when status is ERROR (e.g. "token_expired: Battle.net token expired").
   string error = 7;
+  // Most recent parse failure for this game on this source, filled in by the
+  // server from ParseFailed and cleared once the same file parses again.
+  // Daemons never send it. Does not change `status`: other files of the game
+  // may still be parsing fine.
+  ParseFailure last_parse_failure = 8;
+}
+
+// A stored parse failure (see GameInfo.last_parse_failure).
+message ParseFailure {
+  string file_name = 1;
+  ParseErrorType error_type = 2;
+  string message = 3;
+  google.protobuf.Timestamp at = 4;
 }
 
 enum GameStatusEnum {
