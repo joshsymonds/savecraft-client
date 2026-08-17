@@ -136,58 +136,64 @@ namespace Savecraft.V1 {
             "MhYuc2F2ZWNyYWZ0LnYxLkdhbWVJbmZvEhMKC3NvdXJjZV9raW5kGAUgASgJ",
             "EhAKCGhvc3RuYW1lGAYgASgJEhIKCmNhbl9yZXNjYW4YByABKAgSGgoSY2Fu",
             "X3JlY2VpdmVfY29uZmlnGAggASgIEhAKCHBsYXRmb3JtGAkgASgJEgoKAm9z",
-            "GAogASgJEgwKBGFyY2gYCyABKAkSDgoGZGV2aWNlGAwgASgJItMBCghHYW1l",
+            "GAogASgJEgwKBGFyY2gYCyABKAkSDgoGZGV2aWNlGAwgASgJIosCCghHYW1l",
             "SW5mbxIPCgdnYW1lX2lkGAEgASgJEhEKCWdhbWVfbmFtZRgCIAEoCRIsCgZz",
             "dGF0dXMYAyABKA4yHC5zYXZlY3JhZnQudjEuR2FtZVN0YXR1c0VudW0SJQoF",
             "c2F2ZXMYBCADKAsyFi5zYXZlY3JhZnQudjEuU2F2ZUluZm8SMQoNbGFzdF9h",
             "Y3Rpdml0eRgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDAoE",
-            "cGF0aBgGIAEoCRINCgVlcnJvchgHIAEoCSL4AQoIU2F2ZUluZm8SEQoJc2F2",
-            "ZV91dWlkGAEgASgJEiwKCGlkZW50aXR5GAIgASgLMhouc2F2ZWNyYWZ0LnYx",
-            "LlNhdmVJZGVudGl0eRIPCgdzdW1tYXJ5GAMgASgJEjAKDGxhc3RfdXBkYXRl",
-            "ZBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASMwoPZGF0YV9j",
-            "aGVja2VkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIz",
-            "Cg9kYXRhX2NoYW5nZWRfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGlt",
-            "ZXN0YW1wIikKCFRlc3RQYXRoEg8KB2dhbWVfaWQYASABKAkSDAoEcGF0aBgC",
-            "IAEoCSJnCg5UZXN0UGF0aFJlc3VsdBIPCgdnYW1lX2lkGAEgASgJEgwKBHBh",
-            "dGgYAiABKAkSDQoFdmFsaWQYAyABKAgSEwoLZmlsZXNfZm91bmQYBCABKAUS",
-            "EgoKZmlsZV9uYW1lcxgFIAMoCSJcChVTb3VyY2VVcGRhdGVBdmFpbGFibGUS",
-            "DwoHdmVyc2lvbhgBIAEoCRILCgN1cmwYAiABKAkSFQoNc2lnbmF0dXJlX3Vy",
-            "bBgDIAEoCRIOCgZzaGEyNTYYBCABKAkiJgoTU291cmNlVXBkYXRlU3RhcnRl",
-            "ZBIPCgd2ZXJzaW9uGAEgASgJIjYKElNvdXJjZVVwZGF0ZUZhaWxlZBIPCgd2",
-            "ZXJzaW9uGAEgASgJEg8KB21lc3NhZ2UYAiABKAkiRgoIUmVnaXN0ZXISEAoI",
-            "aG9zdG5hbWUYASABKAkSCgoCb3MYAiABKAkSDAoEYXJjaBgDIAEoCRIOCgZk",
-            "ZXZpY2UYBCABKAkiiAEKDlJlZ2lzdGVyUmVzdWx0EhMKC3NvdXJjZV91dWlk",
-            "GAEgASgJEhQKDHNvdXJjZV90b2tlbhgCIAEoCRIRCglsaW5rX2NvZGUYAyAB",
-            "KAkSOAoUbGlua19jb2RlX2V4cGlyZXNfYXQYBCABKAsyGi5nb29nbGUucHJv",
-            "dG9idWYuVGltZXN0YW1wIlcKC0dhbWVTZWN0aW9uEgwKBG5hbWUYASABKAkS",
-            "EwoLZGVzY3JpcHRpb24YAiABKAkSJQoEZGF0YRgDIAEoCzIXLmdvb2dsZS5w",
-            "cm90b2J1Zi5TdHJ1Y3Qi0QEKCFB1c2hTYXZlEiwKCGlkZW50aXR5GAEgASgL",
-            "Mhouc2F2ZWNyYWZ0LnYxLlNhdmVJZGVudGl0eRIPCgdzdW1tYXJ5GAIgASgJ",
-            "EisKCHNlY3Rpb25zGAMgAygLMhkuc2F2ZWNyYWZ0LnYxLkdhbWVTZWN0aW9u",
-            "Ei0KCXBhcnNlZF9hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3Rh",
-            "bXASDwoHZ2FtZV9pZBgFIAEoCRIZChFhbGxfc2VjdGlvbl9uYW1lcxgGIAMo",
-            "CSKYAQoOUHVzaFNhdmVSZXN1bHQSEQoJc2F2ZV91dWlkGAEgASgJEjYKEnNu",
-            "YXBzaG90X3RpbWVzdGFtcBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1l",
-            "c3RhbXASKgoFZXJyb3IYAyABKA4yGy5zYXZlY3JhZnQudjEuUHVzaFNhdmVF",
-            "cnJvchIPCgdnYW1lX2lkGAQgASgJIhEKD1JlZnJlc2hMaW5rQ29kZSJaChVS",
-            "ZWZyZXNoTGlua0NvZGVSZXN1bHQSEQoJbGlua19jb2RlGAEgASgJEi4KCmV4",
-            "cGlyZXNfYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIiEK",
-            "DFNvdXJjZUxpbmtlZBIRCgl1c2VyX3V1aWQYASABKAkiDgoMVW5saW5rU291",
-            "cmNlIhIKEERlcmVnaXN0ZXJTb3VyY2UiWgoMU2F2ZUlkZW50aXR5EgwKBG5h",
-            "bWUYASABKAkSJgoFZXh0cmEYAiABKAsyFy5nb29nbGUucHJvdG9idWYuU3Ry",
-            "dWN0EhQKDGRpc3BsYXlfbmFtZRgDIAEoCSqhAQoOUGFyc2VFcnJvclR5cGUS",
-            "IAocUEFSU0VfRVJST1JfVFlQRV9VTlNQRUNJRklFRBAAEigKJFBBUlNFX0VS",
-            "Uk9SX1RZUEVfVU5TVVBQT1JURURfVkVSU0lPThABEiEKHVBBUlNFX0VSUk9S",
-            "X1RZUEVfQ09SUlVQVF9GSUxFEAISIAocUEFSU0VfRVJST1JfVFlQRV9QQVJT",
-            "RV9FUlJPUhADKs0BCg5HYW1lU3RhdHVzRW51bRIgChxHQU1FX1NUQVRVU19F",
-            "TlVNX1VOU1BFQ0lGSUVEEAASHQoZR0FNRV9TVEFUVVNfRU5VTV9ERVRFQ1RF",
-            "RBABEh0KGUdBTUVfU1RBVFVTX0VOVU1fV0FUQ0hJTkcQAhIaChZHQU1FX1NU",
-            "QVRVU19FTlVNX0VSUk9SEAMSHgoaR0FNRV9TVEFUVVNfRU5VTV9OT1RfRk9V",
-            "TkQQBBIfChtHQU1FX1NUQVRVU19FTlVNX0FDVElWQVRJTkcQBSp0Cg1QdXNo",
-            "U2F2ZUVycm9yEh8KG1BVU0hfU0FWRV9FUlJPUl9VTlNQRUNJRklFRBAAEiAK",
-            "HFBVU0hfU0FWRV9FUlJPUl9HQU1FX1JFTU9WRUQQARIgChxQVVNIX1NBVkVf",
-            "RVJST1JfU0FWRV9SRU1PVkVEEAJCOFo2Z2l0aHViLmNvbS9qb3Noc3ltb25k",
-            "cy9zYXZlY3JhZnQtY2xpZW50L2ludGVybmFsL3Byb3RvYgZwcm90bzM="));
+            "cGF0aBgGIAEoCRINCgVlcnJvchgHIAEoCRI2ChJsYXN0X3BhcnNlX2ZhaWx1",
+            "cmUYCCABKAsyGi5zYXZlY3JhZnQudjEuUGFyc2VGYWlsdXJlIowBCgxQYXJz",
+            "ZUZhaWx1cmUSEQoJZmlsZV9uYW1lGAEgASgJEjAKCmVycm9yX3R5cGUYAiAB",
+            "KA4yHC5zYXZlY3JhZnQudjEuUGFyc2VFcnJvclR5cGUSDwoHbWVzc2FnZRgD",
+            "IAEoCRImCgJhdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAi",
+            "+AEKCFNhdmVJbmZvEhEKCXNhdmVfdXVpZBgBIAEoCRIsCghpZGVudGl0eRgC",
+            "IAEoCzIaLnNhdmVjcmFmdC52MS5TYXZlSWRlbnRpdHkSDwoHc3VtbWFyeRgD",
+            "IAEoCRIwCgxsYXN0X3VwZGF0ZWQYBCABKAsyGi5nb29nbGUucHJvdG9idWYu",
+            "VGltZXN0YW1wEjMKD2RhdGFfY2hlY2tlZF9hdBgFIAEoCzIaLmdvb2dsZS5w",
+            "cm90b2J1Zi5UaW1lc3RhbXASMwoPZGF0YV9jaGFuZ2VkX2F0GAYgASgLMhou",
+            "Z29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCIpCghUZXN0UGF0aBIPCgdnYW1l",
+            "X2lkGAEgASgJEgwKBHBhdGgYAiABKAkiZwoOVGVzdFBhdGhSZXN1bHQSDwoH",
+            "Z2FtZV9pZBgBIAEoCRIMCgRwYXRoGAIgASgJEg0KBXZhbGlkGAMgASgIEhMK",
+            "C2ZpbGVzX2ZvdW5kGAQgASgFEhIKCmZpbGVfbmFtZXMYBSADKAkiXAoVU291",
+            "cmNlVXBkYXRlQXZhaWxhYmxlEg8KB3ZlcnNpb24YASABKAkSCwoDdXJsGAIg",
+            "ASgJEhUKDXNpZ25hdHVyZV91cmwYAyABKAkSDgoGc2hhMjU2GAQgASgJIiYK",
+            "E1NvdXJjZVVwZGF0ZVN0YXJ0ZWQSDwoHdmVyc2lvbhgBIAEoCSI2ChJTb3Vy",
+            "Y2VVcGRhdGVGYWlsZWQSDwoHdmVyc2lvbhgBIAEoCRIPCgdtZXNzYWdlGAIg",
+            "ASgJIkYKCFJlZ2lzdGVyEhAKCGhvc3RuYW1lGAEgASgJEgoKAm9zGAIgASgJ",
+            "EgwKBGFyY2gYAyABKAkSDgoGZGV2aWNlGAQgASgJIogBCg5SZWdpc3RlclJl",
+            "c3VsdBITCgtzb3VyY2VfdXVpZBgBIAEoCRIUCgxzb3VyY2VfdG9rZW4YAiAB",
+            "KAkSEQoJbGlua19jb2RlGAMgASgJEjgKFGxpbmtfY29kZV9leHBpcmVzX2F0",
+            "GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJXCgtHYW1lU2Vj",
+            "dGlvbhIMCgRuYW1lGAEgASgJEhMKC2Rlc2NyaXB0aW9uGAIgASgJEiUKBGRh",
+            "dGEYAyABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0IuQBCghQdXNoU2F2",
+            "ZRIsCghpZGVudGl0eRgBIAEoCzIaLnNhdmVjcmFmdC52MS5TYXZlSWRlbnRp",
+            "dHkSDwoHc3VtbWFyeRgCIAEoCRIrCghzZWN0aW9ucxgDIAMoCzIZLnNhdmVj",
+            "cmFmdC52MS5HYW1lU2VjdGlvbhItCglwYXJzZWRfYXQYBCABKAsyGi5nb29n",
+            "bGUucHJvdG9idWYuVGltZXN0YW1wEg8KB2dhbWVfaWQYBSABKAkSGQoRYWxs",
+            "X3NlY3Rpb25fbmFtZXMYBiADKAkSEQoJZmlsZV9uYW1lGAcgASgJIpgBCg5Q",
+            "dXNoU2F2ZVJlc3VsdBIRCglzYXZlX3V1aWQYASABKAkSNgoSc25hcHNob3Rf",
+            "dGltZXN0YW1wGAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIq",
+            "CgVlcnJvchgDIAEoDjIbLnNhdmVjcmFmdC52MS5QdXNoU2F2ZUVycm9yEg8K",
+            "B2dhbWVfaWQYBCABKAkiEQoPUmVmcmVzaExpbmtDb2RlIloKFVJlZnJlc2hM",
+            "aW5rQ29kZVJlc3VsdBIRCglsaW5rX2NvZGUYASABKAkSLgoKZXhwaXJlc19h",
+            "dBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiIQoMU291cmNl",
+            "TGlua2VkEhEKCXVzZXJfdXVpZBgBIAEoCSIOCgxVbmxpbmtTb3VyY2UiEgoQ",
+            "RGVyZWdpc3RlclNvdXJjZSJaCgxTYXZlSWRlbnRpdHkSDAoEbmFtZRgBIAEo",
+            "CRImCgVleHRyYRgCIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSFAoM",
+            "ZGlzcGxheV9uYW1lGAMgASgJKsYBCg5QYXJzZUVycm9yVHlwZRIgChxQQVJT",
+            "RV9FUlJPUl9UWVBFX1VOU1BFQ0lGSUVEEAASKAokUEFSU0VfRVJST1JfVFlQ",
+            "RV9VTlNVUFBPUlRFRF9WRVJTSU9OEAESIQodUEFSU0VfRVJST1JfVFlQRV9D",
+            "T1JSVVBUX0ZJTEUQAhIgChxQQVJTRV9FUlJPUl9UWVBFX1BBUlNFX0VSUk9S",
+            "EAMSIwofUEFSU0VfRVJST1JfVFlQRV9SRVNPVVJDRV9MSU1JVBAEKs0BCg5H",
+            "YW1lU3RhdHVzRW51bRIgChxHQU1FX1NUQVRVU19FTlVNX1VOU1BFQ0lGSUVE",
+            "EAASHQoZR0FNRV9TVEFUVVNfRU5VTV9ERVRFQ1RFRBABEh0KGUdBTUVfU1RB",
+            "VFVTX0VOVU1fV0FUQ0hJTkcQAhIaChZHQU1FX1NUQVRVU19FTlVNX0VSUk9S",
+            "EAMSHgoaR0FNRV9TVEFUVVNfRU5VTV9OT1RfRk9VTkQQBBIfChtHQU1FX1NU",
+            "QVRVU19FTlVNX0FDVElWQVRJTkcQBSp0Cg1QdXNoU2F2ZUVycm9yEh8KG1BV",
+            "U0hfU0FWRV9FUlJPUl9VTlNQRUNJRklFRBAAEiAKHFBVU0hfU0FWRV9FUlJP",
+            "Ul9HQU1FX1JFTU9WRUQQARIgChxQVVNIX1NBVkVfRVJST1JfU0FWRV9SRU1P",
+            "VkVEEAJCOFo2Z2l0aHViLmNvbS9qb3Noc3ltb25kcy9zYXZlY3JhZnQtY2xp",
+            "ZW50L2ludGVybmFsL3Byb3RvYgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.TimestampReflection.Descriptor, global::Google.Protobuf.WellKnownTypes.StructReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Savecraft.V1.ParseErrorType), typeof(global::Savecraft.V1.GameStatusEnum), typeof(global::Savecraft.V1.PushSaveError), }, null, new pbr::GeneratedClrTypeInfo[] {
@@ -222,7 +228,8 @@ namespace Savecraft.V1 {
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.DiscoverGames), global::Savecraft.V1.DiscoverGames.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SourceState), global::Savecraft.V1.SourceState.Parser, new[]{ "Sources" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SourceInfo), global::Savecraft.V1.SourceInfo.Parser, new[]{ "SourceId", "Online", "LastSeen", "Games", "SourceKind", "Hostname", "CanRescan", "CanReceiveConfig", "Platform", "Os", "Arch", "Device" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.GameInfo), global::Savecraft.V1.GameInfo.Parser, new[]{ "GameId", "GameName", "Status", "Saves", "LastActivity", "Path", "Error" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.GameInfo), global::Savecraft.V1.GameInfo.Parser, new[]{ "GameId", "GameName", "Status", "Saves", "LastActivity", "Path", "Error", "LastParseFailure" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.ParseFailure), global::Savecraft.V1.ParseFailure.Parser, new[]{ "FileName", "ErrorType", "Message", "At" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.SaveInfo), global::Savecraft.V1.SaveInfo.Parser, new[]{ "SaveUuid", "Identity", "Summary", "LastUpdated", "DataCheckedAt", "DataChangedAt" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.TestPath), global::Savecraft.V1.TestPath.Parser, new[]{ "GameId", "Path" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.TestPathResult), global::Savecraft.V1.TestPathResult.Parser, new[]{ "GameId", "Path", "Valid", "FilesFound", "FileNames" }, null, null, null, null),
@@ -232,7 +239,7 @@ namespace Savecraft.V1 {
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.Register), global::Savecraft.V1.Register.Parser, new[]{ "Hostname", "Os", "Arch", "Device" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.RegisterResult), global::Savecraft.V1.RegisterResult.Parser, new[]{ "SourceUuid", "SourceToken", "LinkCode", "LinkCodeExpiresAt" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.GameSection), global::Savecraft.V1.GameSection.Parser, new[]{ "Name", "Description", "Data" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.PushSave), global::Savecraft.V1.PushSave.Parser, new[]{ "Identity", "Summary", "Sections", "ParsedAt", "GameId", "AllSectionNames" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.PushSave), global::Savecraft.V1.PushSave.Parser, new[]{ "Identity", "Summary", "Sections", "ParsedAt", "GameId", "AllSectionNames", "FileName" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.PushSaveResult), global::Savecraft.V1.PushSaveResult.Parser, new[]{ "SaveUuid", "SnapshotTimestamp", "Error", "GameId" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.RefreshLinkCode), global::Savecraft.V1.RefreshLinkCode.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Savecraft.V1.RefreshLinkCodeResult), global::Savecraft.V1.RefreshLinkCodeResult.Parser, new[]{ "LinkCode", "ExpiresAt" }, null, null, null, null),
@@ -251,6 +258,11 @@ namespace Savecraft.V1 {
     [pbr::OriginalName("PARSE_ERROR_TYPE_UNSUPPORTED_VERSION")] UnsupportedVersion = 1,
     [pbr::OriginalName("PARSE_ERROR_TYPE_CORRUPT_FILE")] CorruptFile = 2,
     [pbr::OriginalName("PARSE_ERROR_TYPE_PARSE_ERROR")] ParseError = 3,
+    /// <summary>
+    /// The save is well-formed but exceeds a size or memory cap of the plugin
+    /// version / daemon that tried to parse it (not corruption).
+    /// </summary>
+    [pbr::OriginalName("PARSE_ERROR_TYPE_RESOURCE_LIMIT")] ResourceLimit = 4,
   }
 
   public enum GameStatusEnum {
@@ -10888,6 +10900,7 @@ namespace Savecraft.V1 {
       lastActivity_ = other.lastActivity_ != null ? other.lastActivity_.Clone() : null;
       path_ = other.path_;
       error_ = other.error_;
+      lastParseFailure_ = other.lastParseFailure_ != null ? other.lastParseFailure_.Clone() : null;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -10983,6 +10996,24 @@ namespace Savecraft.V1 {
       }
     }
 
+    /// <summary>Field number for the "last_parse_failure" field.</summary>
+    public const int LastParseFailureFieldNumber = 8;
+    private global::Savecraft.V1.ParseFailure lastParseFailure_;
+    /// <summary>
+    /// Most recent parse failure for this game on this source, filled in by the
+    /// server from ParseFailed and cleared once the same file parses again.
+    /// Daemons never send it. Does not change `status`: other files of the game
+    /// may still be parsing fine.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::Savecraft.V1.ParseFailure LastParseFailure {
+      get { return lastParseFailure_; }
+      set {
+        lastParseFailure_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -11005,6 +11036,7 @@ namespace Savecraft.V1 {
       if (!object.Equals(LastActivity, other.LastActivity)) return false;
       if (Path != other.Path) return false;
       if (Error != other.Error) return false;
+      if (!object.Equals(LastParseFailure, other.LastParseFailure)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -11019,6 +11051,7 @@ namespace Savecraft.V1 {
       if (lastActivity_ != null) hash ^= LastActivity.GetHashCode();
       if (Path.Length != 0) hash ^= Path.GetHashCode();
       if (Error.Length != 0) hash ^= Error.GetHashCode();
+      if (lastParseFailure_ != null) hash ^= LastParseFailure.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -11062,6 +11095,10 @@ namespace Savecraft.V1 {
         output.WriteRawTag(58);
         output.WriteString(Error);
       }
+      if (lastParseFailure_ != null) {
+        output.WriteRawTag(66);
+        output.WriteMessage(LastParseFailure);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -11097,6 +11134,10 @@ namespace Savecraft.V1 {
         output.WriteRawTag(58);
         output.WriteString(Error);
       }
+      if (lastParseFailure_ != null) {
+        output.WriteRawTag(66);
+        output.WriteMessage(LastParseFailure);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -11125,6 +11166,9 @@ namespace Savecraft.V1 {
       }
       if (Error.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Error);
+      }
+      if (lastParseFailure_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(LastParseFailure);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -11159,6 +11203,12 @@ namespace Savecraft.V1 {
       }
       if (other.Error.Length != 0) {
         Error = other.Error;
+      }
+      if (other.lastParseFailure_ != null) {
+        if (lastParseFailure_ == null) {
+          LastParseFailure = new global::Savecraft.V1.ParseFailure();
+        }
+        LastParseFailure.MergeFrom(other.LastParseFailure);
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -11208,6 +11258,13 @@ namespace Savecraft.V1 {
           }
           case 58: {
             Error = input.ReadString();
+            break;
+          }
+          case 66: {
+            if (lastParseFailure_ == null) {
+              LastParseFailure = new global::Savecraft.V1.ParseFailure();
+            }
+            input.ReadMessage(LastParseFailure);
             break;
           }
         }
@@ -11260,6 +11317,334 @@ namespace Savecraft.V1 {
             Error = input.ReadString();
             break;
           }
+          case 66: {
+            if (lastParseFailure_ == null) {
+              LastParseFailure = new global::Savecraft.V1.ParseFailure();
+            }
+            input.ReadMessage(LastParseFailure);
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  /// <summary>
+  /// A stored parse failure (see GameInfo.last_parse_failure).
+  /// </summary>
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class ParseFailure : pb::IMessage<ParseFailure>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<ParseFailure> _parser = new pb::MessageParser<ParseFailure>(() => new ParseFailure());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<ParseFailure> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[32]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ParseFailure() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ParseFailure(ParseFailure other) : this() {
+      fileName_ = other.fileName_;
+      errorType_ = other.errorType_;
+      message_ = other.message_;
+      at_ = other.at_ != null ? other.at_.Clone() : null;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ParseFailure Clone() {
+      return new ParseFailure(this);
+    }
+
+    /// <summary>Field number for the "file_name" field.</summary>
+    public const int FileNameFieldNumber = 1;
+    private string fileName_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string FileName {
+      get { return fileName_; }
+      set {
+        fileName_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "error_type" field.</summary>
+    public const int ErrorTypeFieldNumber = 2;
+    private global::Savecraft.V1.ParseErrorType errorType_ = global::Savecraft.V1.ParseErrorType.Unspecified;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::Savecraft.V1.ParseErrorType ErrorType {
+      get { return errorType_; }
+      set {
+        errorType_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "message" field.</summary>
+    public const int MessageFieldNumber = 3;
+    private string message_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Message {
+      get { return message_; }
+      set {
+        message_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "at" field.</summary>
+    public const int AtFieldNumber = 4;
+    private global::Google.Protobuf.WellKnownTypes.Timestamp at_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::Google.Protobuf.WellKnownTypes.Timestamp At {
+      get { return at_; }
+      set {
+        at_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as ParseFailure);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(ParseFailure other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (FileName != other.FileName) return false;
+      if (ErrorType != other.ErrorType) return false;
+      if (Message != other.Message) return false;
+      if (!object.Equals(At, other.At)) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (FileName.Length != 0) hash ^= FileName.GetHashCode();
+      if (ErrorType != global::Savecraft.V1.ParseErrorType.Unspecified) hash ^= ErrorType.GetHashCode();
+      if (Message.Length != 0) hash ^= Message.GetHashCode();
+      if (at_ != null) hash ^= At.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (FileName.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(FileName);
+      }
+      if (ErrorType != global::Savecraft.V1.ParseErrorType.Unspecified) {
+        output.WriteRawTag(16);
+        output.WriteEnum((int) ErrorType);
+      }
+      if (Message.Length != 0) {
+        output.WriteRawTag(26);
+        output.WriteString(Message);
+      }
+      if (at_ != null) {
+        output.WriteRawTag(34);
+        output.WriteMessage(At);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (FileName.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(FileName);
+      }
+      if (ErrorType != global::Savecraft.V1.ParseErrorType.Unspecified) {
+        output.WriteRawTag(16);
+        output.WriteEnum((int) ErrorType);
+      }
+      if (Message.Length != 0) {
+        output.WriteRawTag(26);
+        output.WriteString(Message);
+      }
+      if (at_ != null) {
+        output.WriteRawTag(34);
+        output.WriteMessage(At);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (FileName.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(FileName);
+      }
+      if (ErrorType != global::Savecraft.V1.ParseErrorType.Unspecified) {
+        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) ErrorType);
+      }
+      if (Message.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Message);
+      }
+      if (at_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(At);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(ParseFailure other) {
+      if (other == null) {
+        return;
+      }
+      if (other.FileName.Length != 0) {
+        FileName = other.FileName;
+      }
+      if (other.ErrorType != global::Savecraft.V1.ParseErrorType.Unspecified) {
+        ErrorType = other.ErrorType;
+      }
+      if (other.Message.Length != 0) {
+        Message = other.Message;
+      }
+      if (other.at_ != null) {
+        if (at_ == null) {
+          At = new global::Google.Protobuf.WellKnownTypes.Timestamp();
+        }
+        At.MergeFrom(other.At);
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            FileName = input.ReadString();
+            break;
+          }
+          case 16: {
+            ErrorType = (global::Savecraft.V1.ParseErrorType) input.ReadEnum();
+            break;
+          }
+          case 26: {
+            Message = input.ReadString();
+            break;
+          }
+          case 34: {
+            if (at_ == null) {
+              At = new global::Google.Protobuf.WellKnownTypes.Timestamp();
+            }
+            input.ReadMessage(At);
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            FileName = input.ReadString();
+            break;
+          }
+          case 16: {
+            ErrorType = (global::Savecraft.V1.ParseErrorType) input.ReadEnum();
+            break;
+          }
+          case 26: {
+            Message = input.ReadString();
+            break;
+          }
+          case 34: {
+            if (at_ == null) {
+              At = new global::Google.Protobuf.WellKnownTypes.Timestamp();
+            }
+            input.ReadMessage(At);
+            break;
+          }
         }
       }
     }
@@ -11282,7 +11667,7 @@ namespace Savecraft.V1 {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[32]; }
+      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[33]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -11710,7 +12095,7 @@ namespace Savecraft.V1 {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[33]; }
+      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[34]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -11948,7 +12333,7 @@ namespace Savecraft.V1 {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[34]; }
+      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[35]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -12286,7 +12671,7 @@ namespace Savecraft.V1 {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[35]; }
+      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[36]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -12598,7 +12983,7 @@ namespace Savecraft.V1 {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[36]; }
+      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[37]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -12799,7 +13184,7 @@ namespace Savecraft.V1 {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[37]; }
+      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[38]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -13037,7 +13422,7 @@ namespace Savecraft.V1 {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[38]; }
+      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[39]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -13349,7 +13734,7 @@ namespace Savecraft.V1 {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[39]; }
+      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[40]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -13671,7 +14056,7 @@ namespace Savecraft.V1 {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[40]; }
+      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[41]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -13955,7 +14340,7 @@ namespace Savecraft.V1 {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[41]; }
+      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[42]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -13981,6 +14366,7 @@ namespace Savecraft.V1 {
       parsedAt_ = other.parsedAt_ != null ? other.parsedAt_.Clone() : null;
       gameId_ = other.gameId_;
       allSectionNames_ = other.allSectionNames_.Clone();
+      fileName_ = other.fileName_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -14066,6 +14452,23 @@ namespace Savecraft.V1 {
       get { return allSectionNames_; }
     }
 
+    /// <summary>Field number for the "file_name" field.</summary>
+    public const int FileNameFieldNumber = 7;
+    private string fileName_ = "";
+    /// <summary>
+    /// Base name of the save file (or directory unit) this push came from — the
+    /// same value ParseFailed.file_name reports — so the server can clear a
+    /// stored parse failure once the file parses again. Empty from older daemons.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string FileName {
+      get { return fileName_; }
+      set {
+        fileName_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -14087,6 +14490,7 @@ namespace Savecraft.V1 {
       if (!object.Equals(ParsedAt, other.ParsedAt)) return false;
       if (GameId != other.GameId) return false;
       if(!allSectionNames_.Equals(other.allSectionNames_)) return false;
+      if (FileName != other.FileName) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -14100,6 +14504,7 @@ namespace Savecraft.V1 {
       if (parsedAt_ != null) hash ^= ParsedAt.GetHashCode();
       if (GameId.Length != 0) hash ^= GameId.GetHashCode();
       hash ^= allSectionNames_.GetHashCode();
+      if (FileName.Length != 0) hash ^= FileName.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -14136,6 +14541,10 @@ namespace Savecraft.V1 {
         output.WriteString(GameId);
       }
       allSectionNames_.WriteTo(output, _repeated_allSectionNames_codec);
+      if (FileName.Length != 0) {
+        output.WriteRawTag(58);
+        output.WriteString(FileName);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -14164,6 +14573,10 @@ namespace Savecraft.V1 {
         output.WriteString(GameId);
       }
       allSectionNames_.WriteTo(ref output, _repeated_allSectionNames_codec);
+      if (FileName.Length != 0) {
+        output.WriteRawTag(58);
+        output.WriteString(FileName);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -14188,6 +14601,9 @@ namespace Savecraft.V1 {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(GameId);
       }
       size += allSectionNames_.CalculateSize(_repeated_allSectionNames_codec);
+      if (FileName.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(FileName);
+      }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -14220,6 +14636,9 @@ namespace Savecraft.V1 {
         GameId = other.GameId;
       }
       allSectionNames_.Add(other.allSectionNames_);
+      if (other.FileName.Length != 0) {
+        FileName = other.FileName;
+      }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
@@ -14267,6 +14686,10 @@ namespace Savecraft.V1 {
           }
           case 50: {
             allSectionNames_.AddEntriesFrom(input, _repeated_allSectionNames_codec);
+            break;
+          }
+          case 58: {
+            FileName = input.ReadString();
             break;
           }
         }
@@ -14318,6 +14741,10 @@ namespace Savecraft.V1 {
             allSectionNames_.AddEntriesFrom(ref input, _repeated_allSectionNames_codec);
             break;
           }
+          case 58: {
+            FileName = input.ReadString();
+            break;
+          }
         }
       }
     }
@@ -14344,7 +14771,7 @@ namespace Savecraft.V1 {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[42]; }
+      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[43]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -14665,7 +15092,7 @@ namespace Savecraft.V1 {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[43]; }
+      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[44]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -14829,7 +15256,7 @@ namespace Savecraft.V1 {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[44]; }
+      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[45]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -15077,7 +15504,7 @@ namespace Savecraft.V1 {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[45]; }
+      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[46]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -15278,7 +15705,7 @@ namespace Savecraft.V1 {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[46]; }
+      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[47]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -15442,7 +15869,7 @@ namespace Savecraft.V1 {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[47]; }
+      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[48]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -15607,7 +16034,7 @@ namespace Savecraft.V1 {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[48]; }
+      get { return global::Savecraft.V1.ProtocolReflection.Descriptor.MessageTypes[49]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]

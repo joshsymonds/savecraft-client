@@ -11,8 +11,11 @@ use std::fmt;
 
 /// Reject uncompressed sizes above this before ever allocating an output
 /// buffer for them. A hostile or corrupt header could otherwise claim an
-/// enormous `uncompressed_len` and blow the process's memory budget.
-pub const MAX_UNCOMPRESSED_LEN: usize = 256 * 1024 * 1024;
+/// enormous `uncompressed_len` and blow the process's memory budget. Sized
+/// against the 3 GiB wasm budget together with `tarball::MAX_TOTAL_SIZE`
+/// (see the rationale there); a real save past this is a `resource_limit`,
+/// not corruption.
+pub const MAX_UNCOMPRESSED_LEN: usize = 768 * 1024 * 1024;
 
 const MAGIC: &[u8; 4] = b"PlM1";
 const HEADER_LEN: usize = 12;

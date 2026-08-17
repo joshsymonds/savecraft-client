@@ -1104,6 +1104,11 @@ func TestToParseErrorType(t *testing.T) {
 			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR,
 		},
 		{
+			name:  "resource limit",
+			input: "resource_limit",
+			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_RESOURCE_LIMIT,
+		},
+		{
 			name:  "read error",
 			input: "read_error",
 			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR,
@@ -1208,6 +1213,33 @@ func TestPushState_SkipsNonObjectSections(t *testing.T) {
 	}
 	if push.Sections[0].Name != "valid_object" {
 		t.Errorf("got section %q, want %q", push.Sections[0].Name, "valid_object")
+	}
+}
+
+func TestPushState_CarriesFileName(t *testing.T) {
+	ws := newFakeWSClient()
+	cfg := d2rConfig()
+
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, nil, testLogger())
+
+	state := &GameState{
+		Identity: Identity{SaveName: "Test", GameID: "d2r"},
+		Summary:  "test",
+		Sections: map[string]Section{
+			"valid_object": {Description: "An object section", Data: jsontext.Value(`{"key":"value"}`)},
+		},
+	}
+
+	d.pushState(context.Background(), "d2r", "/saves/d2r/test.d2s", state)
+
+	msg := ws.sentProto("pushSave", 0)
+	if msg == nil {
+		t.Fatal("missing pushSave message")
+	}
+	// The same file name ParseFailed reports (the path's base name), so the
+	// server can clear a stored parse failure on the file's next good push.
+	if got := msg.GetPushSave().GetFileName(); got != "test.d2s" {
+		t.Fatalf("PushSave.FileName = %q, want %q", got, "test.d2s")
 	}
 }
 

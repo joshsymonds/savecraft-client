@@ -25,8 +25,12 @@ Plugins write one JSON object per line to stdout:
 - `{"type":"error","errorType":"parse_error","message":"..."}` is the
   final line for a failed parse.
 
-Valid error types are `unsupported_version`, `corrupt_file`, and
-`parse_error`. stderr is reserved for diagnostics.
+Valid error types are `unsupported_version`, `corrupt_file`, `parse_error`,
+and `resource_limit` (a well-formed save that exceeds a size or memory cap of
+this plugin version — not corruption; daemons before 2.4.0 report it as a
+generic parse error). A plugin that dies allocating past the daemon's Wasm
+memory cap is reported as `resource_limit` by the daemon itself. stderr is
+reserved for diagnostics.
 
 Each entry in `sections` contains a string `description` and an object-valued
 `data` field. Arrays and scalar values must be nested under a descriptive key:

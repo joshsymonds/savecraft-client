@@ -2,8 +2,12 @@ package runner
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/joshsymonds/savecraft-client/internal/daemon"
 )
 
 // echoStillWorks proves the runner (and thus the long-lived daemon) survives a
@@ -71,6 +75,19 @@ func TestWazeroRunner_MemoryHog_FailsGracefully(t *testing.T) {
 	_, runErr := runner.Run(ctx, "hog", "x.sav", []byte("data"), nil)
 	if runErr == nil {
 		t.Fatal("expected an error when plugin exceeds the memory cap")
+	}
+	// The cap hit must surface as a structured resource_limit error (the
+	// daemon forwards it as PARSE_ERROR_TYPE_RESOURCE_LIMIT), not as an
+	// opaque trap that would be reported as a generic parse error.
+	var pluginErr *daemon.PluginError
+	if !errors.As(runErr, &pluginErr) {
+		t.Fatalf("expected *daemon.PluginError, got %T: %v", runErr, runErr)
+	}
+	if pluginErr.Type != daemon.PluginErrorTypeResourceLimit {
+		t.Fatalf("errorType = %q, want %q (%v)", pluginErr.Type, daemon.PluginErrorTypeResourceLimit, runErr)
+	}
+	if !strings.Contains(pluginErr.Message, "128 MiB") {
+		t.Fatalf("message should name the cap: %q", pluginErr.Message)
 	}
 
 	// The over-allocation must not have killed the daemon.

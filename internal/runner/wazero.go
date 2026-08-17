@@ -30,11 +30,30 @@ const maxBufferedPluginLineSize = maxResultSize + 64*1024
 var errPluginProducedNoResult = errors.New("plugin produced no result")
 
 // defaultMaxMemoryPages caps a plugin's Wasm linear memory. 1 page = 64 KiB,
-// so 16384 pages = 1 GiB. This is far below the wasm32 ceiling of 65536 pages
-// (4 GiB, above which wazero panics) yet generous enough for the largest real
-// parser workloads (e.g. multi-hundred-MiB grand-strategy saves). A plugin
-// that grows past this traps instead of OOM-killing the long-lived daemon.
-const defaultMaxMemoryPages uint32 = 16384
+// so 49152 pages = 3 GiB. This stays below the wasm32 ceiling of 65536 pages
+// (4 GiB, above which wazero panics) while leaving room for the largest real
+// parser workloads: whole-world saves that are decoded into an in-memory
+// property tree (Palworld's Level.sav — see plugins/palworld/parser/src/
+// tarball.rs, whose caps are sized against this budget) and multi-hundred-MiB
+// grand-strategy saves. Pages are committed only as the guest grows, so a
+// small save costs nothing extra; a plugin that grows past the cap traps
+// instead of OOM-killing the long-lived daemon, and Run reports that trap as
+// a structured resource_limit error (see oomFromStderr).
+const defaultMaxMemoryPages uint32 = 49152
+
+// wasmPagesPerMiB converts a page count (64 KiB pages) to MiB.
+const wasmPagesPerMiB = 16
+
+// oomFromStderr reports whether a plugin's stderr shows it died allocating,
+// i.e. it hit the wasm memory cap rather than crashing for another reason.
+// The guest allocators print a fixed marker just before aborting on a failed
+// allocation: Rust's default alloc-error handler writes "memory allocation
+// of N bytes failed"; the Go runtime writes "fatal error: out of memory" /
+// "runtime: out of memory".
+func oomFromStderr(stderr []byte) bool {
+	return bytes.Contains(stderr, []byte("memory allocation of")) ||
+		bytes.Contains(stderr, []byte("out of memory"))
+}
 
 // defaultParseTimeout bounds a single plugin execution. Combined with
 // WithCloseOnContextDone, a wedged or infinite-looping plugin is unwound
@@ -212,6 +231,18 @@ func (wr *WazeroRunner) Run(
 			instantiateErr = nil
 		}
 		if instantiateErr != nil {
+			// A guest that died allocating hit the memory cap: report it as a
+			// structured resource_limit error so the daemon forwards a
+			// RESOURCE_LIMIT ParseFailed instead of a generic parse error.
+			if oomFromStderr(stderr.Bytes()) {
+				return nil, &daemon.PluginError{
+					Type: daemon.PluginErrorTypeResourceLimit,
+					Message: fmt.Sprintf(
+						"plugin ran out of memory parsing %s: exceeded the %d MiB limit (%v)",
+						fileName, wr.maxMemoryPages/wasmPagesPerMiB, instantiateErr,
+					),
+				}
+			}
 			return nil, fmt.Errorf("plugin execution failed: %w (stderr: %s)", instantiateErr, stderr.String())
 		}
 	}

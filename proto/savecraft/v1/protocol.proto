@@ -205,6 +205,9 @@ enum ParseErrorType {
   PARSE_ERROR_TYPE_UNSUPPORTED_VERSION = 1;
   PARSE_ERROR_TYPE_CORRUPT_FILE = 2;
   PARSE_ERROR_TYPE_PARSE_ERROR = 3;
+  // The save is well-formed but exceeds a size or memory cap of the plugin
+  // version / daemon that tried to parse it (not corruption).
+  PARSE_ERROR_TYPE_RESOURCE_LIMIT = 4;
 }
 
 // --- Push lifecycle ---
@@ -326,6 +329,19 @@ message GameInfo {
   string path = 6;
   // Human-readable error message when status is ERROR (e.g. "token_expired: Battle.net token expired").
   string error = 7;
+  // Most recent parse failure for this game on this source, filled in by the
+  // server from ParseFailed and cleared once the same file parses again.
+  // Daemons never send it. Does not change `status`: other files of the game
+  // may still be parsing fine.
+  ParseFailure last_parse_failure = 8;
+}
+
+// A stored parse failure (see GameInfo.last_parse_failure).
+message ParseFailure {
+  string file_name = 1;
+  ParseErrorType error_type = 2;
+  string message = 3;
+  google.protobuf.Timestamp at = 4;
 }
 
 enum GameStatusEnum {
@@ -427,6 +443,11 @@ message PushSave {
   // (the plugin stopped emitting them). When empty, no deletion occurs
   // — this preserves backwards compatibility with older daemons.
   repeated string all_section_names = 6;
+
+  // Base name of the save file (or directory unit) this push came from — the
+  // same value ParseFailed.file_name reports — so the server can clear a
+  // stored parse failure once the file parses again. Empty from older daemons.
+  string file_name = 7;
 }
 
 // Server response to PushSave with the resolved save UUID.

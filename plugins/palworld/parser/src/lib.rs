@@ -103,7 +103,7 @@ pub fn run() -> i32 {
     // directory's base name as argv[1] separately (see world_id below) — the
     // full stdin buffer is never needed again once its contents are copied
     // into `members`, so free it before decompression adds its own memory
-    // pressure (256 MiB Kraken cap) on top.
+    // pressure (`container::MAX_UNCOMPRESSED_LEN` Kraken cap) on top.
     drop(input);
 
     // The daemon tars members RELATIVE to the save directory (Level.sav,
@@ -469,12 +469,11 @@ fn tar_error_type(e: &TarError) -> &'static str {
     match e {
         TarError::Malformed(_) => "corrupt_file",
         TarError::UnsafePath(_) => "corrupt_file",
-        // Not "resource_limit": the daemon's proto ParseErrorType enum has no
-        // such variant (toParseErrorType in internal/daemon/daemon.go falls
-        // through to PARSE_ERROR_TYPE_PARSE_ERROR for anything unrecognized),
-        // so these caps were silently downgraded to a misleading parse error.
-        TarError::MemberTooLarge { .. } => "corrupt_file",
-        TarError::TotalTooLarge { .. } => "corrupt_file",
+        // A well-formed save past this plugin version's caps: the daemon maps
+        // "resource_limit" to PARSE_ERROR_TYPE_RESOURCE_LIMIT (daemon >= 2.4.0;
+        // older daemons fall through to a generic parse error).
+        TarError::MemberTooLarge { .. } => "resource_limit",
+        TarError::TotalTooLarge { .. } => "resource_limit",
     }
 }
 
@@ -483,8 +482,9 @@ fn gvas_error_type(e: &GvasError) -> &'static str {
         GvasError::Container(container::ContainerError::UnsupportedVariant { .. }) => {
             "unsupported_version"
         }
-        // Includes UncompressedTooLarge: not "resource_limit", for the same
-        // reason as tar_error_type's caps above.
+        GvasError::Container(container::ContainerError::UncompressedTooLarge { .. }) => {
+            "resource_limit"
+        }
         GvasError::Container(_) => "corrupt_file",
         GvasError::Decompress(_) => "corrupt_file",
         GvasError::Parse { .. } => "parse_error",
