@@ -5179,3 +5179,97 @@ func TestAggregateHash_NoDelimiterCollision(t *testing.T) {
 		t.Fatal("aggregateHash collided between two distinct member snapshots (delimiter-ambiguous serialization)")
 	}
 }
+
+func TestDiscoverGames_ZomboidDirectoryLayout(t *testing.T) {
+	pluginTOML, err := os.ReadFile("../../plugins/zomboid/plugin.toml")
+	if err != nil {
+		t.Fatalf("read zomboid plugin.toml: %v", err)
+	}
+	if !strings.Contains(string(pluginTOML), `exclude_dirs = ["Multiplayer"]`) {
+		t.Fatal(`zomboid plugin.toml must exclude the Multiplayer save directory`)
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("UserHomeDir: %v", err)
+	}
+	saveRoot := filepath.Join(home, "Zomboid", "Saves")
+	tutorial := filepath.Join(saveRoot, "Tutorial", "1789228836736670246")
+	apocalypse := filepath.Join(saveRoot, "Apocalypse", "MyWorld")
+	multiplayer := filepath.Join(saveRoot, "Multiplayer", "127.0.0.1_josh")
+
+	memberNames := []string{"players.db", "players.db-journal", "WorldDictionaryReadable.lua", "mods.txt"}
+	memberDirs := func(saveDir string) map[string][]string {
+		return map[string][]string{
+			saveDir:                       append(append([]string{}, memberNames...), "map"),
+			filepath.Join(saveDir, "map"): {"10_10.bin"},
+		}
+	}
+	dirs := map[string][]string{
+		saveRoot:                               {"Tutorial", "Apocalypse", "Multiplayer"},
+		filepath.Join(saveRoot, "Tutorial"):    {"1789228836736670246"},
+		filepath.Join(saveRoot, "Apocalypse"):  {"MyWorld"},
+		filepath.Join(saveRoot, "Multiplayer"): {"127.0.0.1_josh"},
+	}
+	files := map[string][]byte{}
+	for _, saveDir := range []string{tutorial, apocalypse, multiplayer} {
+		for path, names := range memberDirs(saveDir) {
+			dirs[path] = names
+		}
+		for _, name := range memberNames {
+			files[filepath.Join(saveDir, name)] = []byte(name)
+		}
+		files[filepath.Join(saveDir, "map", "10_10.bin")] = []byte("map chunk")
+	}
+
+	fsys := &fakeFS{dirs: dirs, files: files}
+	info := pluginmgr.PluginInfo{
+		GameID:       "zomboid",
+		Name:         "Project Zomboid",
+		Unit:         "directory",
+		Members:      memberNames,
+		ExcludeDirs:  []string{"Multiplayer"},
+		DefaultPaths: map[string]string{runtime.GOOS: "~/Zomboid/Saves/*/*"},
+	}
+	resolved := resolveGlob(fsys, filepath.Join(saveRoot, "*", "*"), info.ExcludeDirs)
+	wantResolved := []string{apocalypse, tutorial}
+	if !slices.Equal(resolved, wantResolved) {
+		t.Fatalf("resolved zomboid saves = %v, want %v (Multiplayer excluded at discovery)", resolved, wantResolved)
+	}
+
+	ws := newFakeWSClient()
+	d := New(
+		Config{Games: map[string]GameConfig{}}, fsys, newFakeWatcher(), &fakeRunner{}, ws,
+		&fakePluginManager{manifests: map[string]pluginmgr.PluginInfo{"zomboid": info}},
+		nil, testLogger(),
+	)
+	d.discoverGames(context.Background())
+	games := ws.sentProto("gamesDiscovered", 0).GetGamesDiscovered().Games
+	if len(games) != 1 {
+		t.Fatalf("discovered games = %d, want one zomboid game", len(games))
+	}
+	if games[0].Path != filepath.Join(saveRoot, "*", "*") || games[0].FileCount != 2 {
+		t.Fatalf(
+			"discovered zomboid game = path %q, file count %d; want %q, 2",
+			games[0].Path,
+			games[0].FileCount,
+			filepath.Join(saveRoot, "*", "*"),
+		)
+	}
+
+	wantMembers := []string{"WorldDictionaryReadable.lua", "mods.txt", "players.db", "players.db-journal"}
+	for _, saveDir := range wantResolved {
+		members := d.directoryUnitMembers(saveDir, info.Members, info.ExcludeDirs)
+		if !slices.Equal(members, wantMembers) {
+			t.Errorf("members for %s = %v, want %v", saveDir, members, wantMembers)
+		}
+		for _, member := range members {
+			if strings.HasPrefix(member, "map/") || member == "map" {
+				t.Errorf("map content leaked into members for %s: %q", saveDir, member)
+			}
+		}
+	}
+	if _, err := fsys.Stat(multiplayer); err != nil {
+		t.Fatalf("fake Multiplayer fixture missing: %v", err)
+	}
+}

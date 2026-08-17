@@ -1,0 +1,7 @@
+Project Zomboid plugin
+Copyright (C) Josh Symonds
+
+The player-blob decoder ports the player path from cff29546/pzdataspec,
+licensed under the MIT License, commit
+2a343e4c3dc942d451e1741895737a3a0efafcfa (release v1.12.249).
+The upstream license text is committed at parser/spec/LICENSE.pzdataspec.
