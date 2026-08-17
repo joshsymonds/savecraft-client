@@ -61,6 +61,10 @@ const (
 	pluginErrorTypeUnsupportedVersion = "unsupported_version"
 	pluginErrorTypeCorruptFile        = "corrupt_file"
 	pluginErrorTypeParseError         = "parse_error"
+	// PluginErrorTypeResourceLimit is the plugin errorType for a well-formed
+	// save that exceeds a size or memory cap (not corruption). Exported because
+	// the runner synthesizes it when a plugin dies of an out-of-memory trap.
+	PluginErrorTypeResourceLimit = "resource_limit"
 )
 
 // --- Domain types ---
@@ -2774,6 +2778,8 @@ func toParseErrorType(errorType string) pb.ParseErrorType {
 		return pb.ParseErrorType_PARSE_ERROR_TYPE_CORRUPT_FILE
 	case pluginErrorTypeParseError:
 		return pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR
+	case PluginErrorTypeResourceLimit:
+		return pb.ParseErrorType_PARSE_ERROR_TYPE_RESOURCE_LIMIT
 	}
 	if v, ok := pb.ParseErrorType_value[errorType]; ok {
 		return pb.ParseErrorType(v)

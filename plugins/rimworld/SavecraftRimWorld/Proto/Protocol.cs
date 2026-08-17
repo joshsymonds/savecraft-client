@@ -175,19 +175,20 @@ namespace Savecraft.V1 {
             "DFNvdXJjZUxpbmtlZBIRCgl1c2VyX3V1aWQYASABKAkiDgoMVW5saW5rU291",
             "cmNlIhIKEERlcmVnaXN0ZXJTb3VyY2UiWgoMU2F2ZUlkZW50aXR5EgwKBG5h",
             "bWUYASABKAkSJgoFZXh0cmEYAiABKAsyFy5nb29nbGUucHJvdG9idWYuU3Ry",
-            "dWN0EhQKDGRpc3BsYXlfbmFtZRgDIAEoCSqhAQoOUGFyc2VFcnJvclR5cGUS",
+            "dWN0EhQKDGRpc3BsYXlfbmFtZRgDIAEoCSrGAQoOUGFyc2VFcnJvclR5cGUS",
             "IAocUEFSU0VfRVJST1JfVFlQRV9VTlNQRUNJRklFRBAAEigKJFBBUlNFX0VS",
             "Uk9SX1RZUEVfVU5TVVBQT1JURURfVkVSU0lPThABEiEKHVBBUlNFX0VSUk9S",
             "X1RZUEVfQ09SUlVQVF9GSUxFEAISIAocUEFSU0VfRVJST1JfVFlQRV9QQVJT",
-            "RV9FUlJPUhADKs0BCg5HYW1lU3RhdHVzRW51bRIgChxHQU1FX1NUQVRVU19F",
-            "TlVNX1VOU1BFQ0lGSUVEEAASHQoZR0FNRV9TVEFUVVNfRU5VTV9ERVRFQ1RF",
-            "RBABEh0KGUdBTUVfU1RBVFVTX0VOVU1fV0FUQ0hJTkcQAhIaChZHQU1FX1NU",
-            "QVRVU19FTlVNX0VSUk9SEAMSHgoaR0FNRV9TVEFUVVNfRU5VTV9OT1RfRk9V",
-            "TkQQBBIfChtHQU1FX1NUQVRVU19FTlVNX0FDVElWQVRJTkcQBSp0Cg1QdXNo",
-            "U2F2ZUVycm9yEh8KG1BVU0hfU0FWRV9FUlJPUl9VTlNQRUNJRklFRBAAEiAK",
-            "HFBVU0hfU0FWRV9FUlJPUl9HQU1FX1JFTU9WRUQQARIgChxQVVNIX1NBVkVf",
-            "RVJST1JfU0FWRV9SRU1PVkVEEAJCOFo2Z2l0aHViLmNvbS9qb3Noc3ltb25k",
-            "cy9zYXZlY3JhZnQtY2xpZW50L2ludGVybmFsL3Byb3RvYgZwcm90bzM="));
+            "RV9FUlJPUhADEiMKH1BBUlNFX0VSUk9SX1RZUEVfUkVTT1VSQ0VfTElNSVQQ",
+            "BCrNAQoOR2FtZVN0YXR1c0VudW0SIAocR0FNRV9TVEFUVVNfRU5VTV9VTlNQ",
+            "RUNJRklFRBAAEh0KGUdBTUVfU1RBVFVTX0VOVU1fREVURUNURUQQARIdChlH",
+            "QU1FX1NUQVRVU19FTlVNX1dBVENISU5HEAISGgoWR0FNRV9TVEFUVVNfRU5V",
+            "TV9FUlJPUhADEh4KGkdBTUVfU1RBVFVTX0VOVU1fTk9UX0ZPVU5EEAQSHwob",
+            "R0FNRV9TVEFUVVNfRU5VTV9BQ1RJVkFUSU5HEAUqdAoNUHVzaFNhdmVFcnJv",
+            "chIfChtQVVNIX1NBVkVfRVJST1JfVU5TUEVDSUZJRUQQABIgChxQVVNIX1NB",
+            "VkVfRVJST1JfR0FNRV9SRU1PVkVEEAESIAocUFVTSF9TQVZFX0VSUk9SX1NB",
+            "VkVfUkVNT1ZFRBACQjhaNmdpdGh1Yi5jb20vam9zaHN5bW9uZHMvc2F2ZWNy",
+            "YWZ0LWNsaWVudC9pbnRlcm5hbC9wcm90b2IGcHJvdG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.TimestampReflection.Descriptor, global::Google.Protobuf.WellKnownTypes.StructReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Savecraft.V1.ParseErrorType), typeof(global::Savecraft.V1.GameStatusEnum), typeof(global::Savecraft.V1.PushSaveError), }, null, new pbr::GeneratedClrTypeInfo[] {
@@ -251,6 +252,11 @@ namespace Savecraft.V1 {
     [pbr::OriginalName("PARSE_ERROR_TYPE_UNSUPPORTED_VERSION")] UnsupportedVersion = 1,
     [pbr::OriginalName("PARSE_ERROR_TYPE_CORRUPT_FILE")] CorruptFile = 2,
     [pbr::OriginalName("PARSE_ERROR_TYPE_PARSE_ERROR")] ParseError = 3,
+    /// <summary>
+    /// The save is well-formed but exceeds a size or memory cap of the plugin
+    /// version / daemon that tried to parse it (not corruption).
+    /// </summary>
+    [pbr::OriginalName("PARSE_ERROR_TYPE_RESOURCE_LIMIT")] ResourceLimit = 4,
   }
 
   public enum GameStatusEnum {

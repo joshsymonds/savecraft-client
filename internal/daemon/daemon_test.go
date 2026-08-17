@@ -1104,6 +1104,11 @@ func TestToParseErrorType(t *testing.T) {
 			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR,
 		},
 		{
+			name:  "resource limit",
+			input: "resource_limit",
+			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_RESOURCE_LIMIT,
+		},
+		{
 			name:  "read error",
 			input: "read_error",
 			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR,

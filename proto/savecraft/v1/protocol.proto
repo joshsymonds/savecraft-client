@@ -205,6 +205,9 @@ enum ParseErrorType {
   PARSE_ERROR_TYPE_UNSUPPORTED_VERSION = 1;
   PARSE_ERROR_TYPE_CORRUPT_FILE = 2;
   PARSE_ERROR_TYPE_PARSE_ERROR = 3;
+  // The save is well-formed but exceeds a size or memory cap of the plugin
+  // version / daemon that tried to parse it (not corruption).
+  PARSE_ERROR_TYPE_RESOURCE_LIMIT = 4;
 }
 
 // --- Push lifecycle ---

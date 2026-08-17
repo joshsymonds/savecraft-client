@@ -30,6 +30,9 @@ const (
 	ParseErrorType_PARSE_ERROR_TYPE_UNSUPPORTED_VERSION ParseErrorType = 1
 	ParseErrorType_PARSE_ERROR_TYPE_CORRUPT_FILE        ParseErrorType = 2
 	ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR         ParseErrorType = 3
+	// The save is well-formed but exceeds a size or memory cap of the plugin
+	// version / daemon that tried to parse it (not corruption).
+	ParseErrorType_PARSE_ERROR_TYPE_RESOURCE_LIMIT ParseErrorType = 4
 )
 
 // Enum value maps for ParseErrorType.
@@ -39,12 +42,14 @@ var (
 		1: "PARSE_ERROR_TYPE_UNSUPPORTED_VERSION",
 		2: "PARSE_ERROR_TYPE_CORRUPT_FILE",
 		3: "PARSE_ERROR_TYPE_PARSE_ERROR",
+		4: "PARSE_ERROR_TYPE_RESOURCE_LIMIT",
 	}
 	ParseErrorType_value = map[string]int32{
 		"PARSE_ERROR_TYPE_UNSPECIFIED":         0,
 		"PARSE_ERROR_TYPE_UNSUPPORTED_VERSION": 1,
 		"PARSE_ERROR_TYPE_CORRUPT_FILE":        2,
 		"PARSE_ERROR_TYPE_PARSE_ERROR":         3,
+		"PARSE_ERROR_TYPE_RESOURCE_LIMIT":      4,
 	}
 )
 
@@ -4111,12 +4116,13 @@ const file_savecraft_v1_protocol_proto_rawDesc = "" +
 	"\fSaveIdentity\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12-\n" +
 	"\x05extra\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05extra\x12!\n" +
-	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName*\xa1\x01\n" +
+	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName*\xc6\x01\n" +
 	"\x0eParseErrorType\x12 \n" +
 	"\x1cPARSE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$PARSE_ERROR_TYPE_UNSUPPORTED_VERSION\x10\x01\x12!\n" +
 	"\x1dPARSE_ERROR_TYPE_CORRUPT_FILE\x10\x02\x12 \n" +
-	"\x1cPARSE_ERROR_TYPE_PARSE_ERROR\x10\x03*\xcd\x01\n" +
+	"\x1cPARSE_ERROR_TYPE_PARSE_ERROR\x10\x03\x12#\n" +
+	"\x1fPARSE_ERROR_TYPE_RESOURCE_LIMIT\x10\x04*\xcd\x01\n" +
 	"\x0eGameStatusEnum\x12 \n" +
 	"\x1cGAME_STATUS_ENUM_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19GAME_STATUS_ENUM_DETECTED\x10\x01\x12\x1d\n" +
