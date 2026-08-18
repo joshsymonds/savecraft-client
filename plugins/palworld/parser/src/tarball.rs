@@ -4,31 +4,34 @@
 use std::io::Read;
 
 /// Reject any single tar member whose declared size exceeds this. These are
-/// PlM1-wrapped, still-compressed save files — real ones are well under a
-/// megabyte, so this leaves generous headroom while still bounding a hostile
-/// or corrupt tar header.
-pub const MAX_MEMBER_SIZE: u64 = 64 * 1024 * 1024;
+/// PlM1-wrapped, still-compressed save files. `Level.sav` -- the whole world
+/// -- is the only one that grows with playtime (tens of MiB compressed on
+/// long-running worlds); everything else is well under a megabyte. The cap
+/// bounds a hostile or corrupt tar header while leaving room for the largest
+/// `Level.sav` that `MAX_UNCOMPRESSED_LEN` can decode (Kraken on GVAS runs at
+/// roughly 10x, so ~75 MiB compressed already saturates the decompress cap).
+pub const MAX_MEMBER_SIZE: u64 = 192 * 1024 * 1024;
 
 /// Reject an archive whose members sum past this total. Sized against the
-/// 1 GiB wasm memory limit (`defaultMaxMemoryPages` in
+/// 3 GiB wasm memory limit (`defaultMaxMemoryPages` in
 /// internal/runner/wazero.go), which this cap shares with several other
 /// things that are live *at the same time*, not in sequence -- at Level.sav
 /// decode time (the last member decoded, see `lib.rs`'s `run()`), the
 /// worst-case peak is this cap's own bytes (up to `MAX_TOTAL_SIZE`, until
-/// `lib.rs` drops each already-decoded member's buffer) plus the 256 MiB
+/// `lib.rs` drops each already-decoded member's buffer) plus the 768 MiB
 /// Kraken decompress cap (`container::MAX_UNCOMPRESSED_LEN`) plus the
 /// resulting uesave `Save` property tree -- which is not free-riding on the
 /// decompressed bytes but its own heap-allocated structure (a `String`/`Vec`
 /// per field), roughly on par with or larger than the flat byte count --
 /// plus `error_to_raw`'s worst case, where every unparseable property keeps
 /// an *additional* raw byte copy of itself inside `Property::Raw` on top of
-/// being part of that tree. A 512 MiB total cap left no headroom against
-/// that combination and was unreachable in practice; the 128 MiB here (like
-/// the 256 MiB Kraken cap) is a hard ceiling this plugin version cannot
-/// raise without exceeding the 1 GiB budget (see P1+P2's disposition: very
-/// large late-game worlds are expected to fail with a clear size error
-/// rather than be silently truncated).
-pub const MAX_TOTAL_SIZE: u64 = 128 * 1024 * 1024;
+/// being part of that tree. The three caps keep the same 1:2:6 proportions
+/// (total : decompress : budget) that were measured to hold under the old
+/// 1 GiB budget (128 MiB : 256 MiB : 1 GiB); worlds past them fail with a
+/// `resource_limit` error rather than being silently truncated. Removing the
+/// ceiling altogether needs a selective GVAS reader that does not
+/// materialize the whole Level.sav tree.
+pub const MAX_TOTAL_SIZE: u64 = 384 * 1024 * 1024;
 
 pub struct Member {
     /// Member path as stored in the tar, relative to the save directory

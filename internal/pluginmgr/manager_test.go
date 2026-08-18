@@ -1,6 +1,7 @@
 package pluginmgr
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
@@ -43,17 +44,22 @@ func (r *fakeRegistry) Download(
 }
 
 type fakeLoader struct {
-	loaded  []string
-	loadErr map[string]error
-	mu      sync.Mutex
+	loaded      []string
+	loadedBytes map[string][][]byte
+	loadErr     map[string]error
+	mu          sync.Mutex
 }
 
 func (l *fakeLoader) LoadPlugin(
-	_ context.Context, gameID string, _, _ []byte,
+	_ context.Context, gameID string, wasm, _ []byte,
 ) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.loaded = append(l.loaded, gameID)
+	if l.loadedBytes == nil {
+		l.loadedBytes = make(map[string][][]byte)
+	}
+	l.loadedBytes[gameID] = append(l.loadedBytes[gameID], append([]byte(nil), wasm...))
 	if l.loadErr != nil {
 		if err, ok := l.loadErr[gameID]; ok {
 			return err
@@ -87,6 +93,12 @@ func (r *countingRegistry) Download(
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(
 		os.Stderr, &slog.HandlerOptions{Level: slog.LevelError},
+	))
+}
+
+func warningLogger(output *bytes.Buffer) *slog.Logger {
+	return slog.New(slog.NewTextHandler(
+		output, &slog.HandlerOptions{Level: slog.LevelWarn},
 	))
 }
 
@@ -1392,7 +1404,8 @@ func TestEnsurePlugin_CacheHit_TamperedRejected(t *testing.T) {
 		manifest: map[string]PluginInfo{
 			"d2r": {GameID: "d2r", Version: "1.0.0", SHA256: hash, URL: pluginURL},
 		},
-		// No files — must not fall back to a download for a poisoned cache.
+		// With no valid download available, EnsurePlugin errors and the loader
+		// never sees the poisoned cached bytes.
 	}
 	loader := &fakeLoader{}
 	mgr := NewManager(reg, cache, loader, pub, testLogger())
@@ -1421,7 +1434,8 @@ func TestEnsurePlugin_CacheHit_SHA256Mismatch(t *testing.T) {
 	reg := &fakeRegistry{
 		manifest: map[string]PluginInfo{
 			// Signature is valid, but the manifest SHA256 disagrees: the
-			// cache-hit path must still run verifyPlugin and reject.
+			// cache-hit path must reject it. With no valid download available,
+			// EnsurePlugin errors and the loader never sees the cached bytes.
 			"d2r": {GameID: "d2r", Version: "1.0.0", SHA256: "deadbeef", URL: pluginURL},
 		},
 	}
@@ -1436,6 +1450,280 @@ func TestEnsurePlugin_CacheHit_SHA256Mismatch(t *testing.T) {
 	loader.mu.Unlock()
 	if n != 0 {
 		t.Errorf("loader invoked %d times despite sha256 mismatch; want 0", n)
+	}
+}
+
+func TestEnsurePlugin_MissingFromManifest_LoadsVerifiedCache(t *testing.T) {
+	pub, priv := generateTestKeys(t)
+	wasm := []byte("cached d2r wasm")
+	sig, _ := signAndHash(t, priv, wasm)
+	cache := NewCache(t.TempDir())
+	if err := cache.Write("d2r", "1.0.0", wasm, sig); err != nil {
+		t.Fatalf("cache Write: %v", err)
+	}
+	loader := &fakeLoader{}
+	var logs bytes.Buffer
+	mgr := NewManager(&fakeRegistry{manifest: map[string]PluginInfo{}}, cache, loader, pub, warningLogger(&logs))
+
+	if err := mgr.EnsurePlugin(context.Background(), "d2r"); err != nil {
+		t.Fatalf("EnsurePlugin: %v", err)
+	}
+	if got := loader.loadedBytes["d2r"]; len(got) != 1 || !bytes.Equal(got[0], wasm) {
+		t.Fatalf("loaded bytes = %q, want exactly %q", got, wasm)
+	}
+	if !strings.Contains(logs.String(), "missing from manifest") {
+		t.Fatalf("logs = %q, want missing-from-manifest warning", logs.String())
+	}
+}
+
+func TestEnsurePlugin_MissingFromManifest_NoCache_UnknownPlugin(t *testing.T) {
+	pub, _ := generateTestKeys(t)
+	loader := &fakeLoader{}
+	mgr := NewManager(
+		&fakeRegistry{manifest: map[string]PluginInfo{}},
+		NewCache(t.TempDir()), loader, pub, testLogger(),
+	)
+
+	err := mgr.EnsurePlugin(context.Background(), "d2r")
+	if err == nil || !strings.Contains(err.Error(), "unknown plugin: d2r") {
+		t.Fatalf("EnsurePlugin error = %v, want unknown plugin", err)
+	}
+	if len(loader.loaded) != 0 {
+		t.Fatalf("loader invoked %d times, want 0", len(loader.loaded))
+	}
+}
+
+func TestEnsurePlugin_MissingFromManifest_UnsafeGameID_NoCacheAccess(t *testing.T) {
+	pub, priv := generateTestKeys(t)
+	wasm := []byte("escaped cached wasm")
+	sig, _ := signAndHash(t, priv, wasm)
+	root := t.TempDir()
+	cache := NewCache(filepath.Join(root, "cache"))
+	if err := cache.Write("../escape", "1.0.0", wasm, sig); err != nil {
+		t.Fatalf("write escaped cache fixture: %v", err)
+	}
+	loader := &fakeLoader{}
+	mgr := NewManager(
+		&fakeRegistry{manifest: map[string]PluginInfo{}},
+		cache, loader, pub, testLogger(),
+	)
+
+	err := mgr.EnsurePlugin(context.Background(), "../escape")
+	if err == nil || !strings.Contains(err.Error(), "unknown plugin: ../escape") {
+		t.Fatalf("EnsurePlugin error = %v, want unknown plugin", err)
+	}
+	if len(loader.loaded) != 0 {
+		t.Fatalf("loader invoked %d times, want 0", len(loader.loaded))
+	}
+}
+
+func TestEnsurePlugin_MissingFromManifest_CacheReadErrorWarns(t *testing.T) {
+	pub, _ := generateTestKeys(t)
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "d2r", "parser.wasm"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	var logs bytes.Buffer
+	mgr := NewManager(
+		&fakeRegistry{manifest: map[string]PluginInfo{}},
+		NewCache(dir), &fakeLoader{}, pub, warningLogger(&logs),
+	)
+
+	if err := mgr.EnsurePlugin(context.Background(), "d2r"); err == nil {
+		t.Fatal("EnsurePlugin = nil, want unknown plugin error")
+	}
+	if !strings.Contains(logs.String(), "failed to read cached plugin") {
+		t.Fatalf("logs = %q, want cache read warning", logs.String())
+	}
+}
+
+func TestEnsurePlugin_MissingFromManifest_CorruptCache_Fails(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		corrupt func(t *testing.T, dir string)
+	}{
+		{"signature", func(t *testing.T, dir string) {
+			t.Helper()
+			if err := os.WriteFile(filepath.Join(dir, "d2r", "parser.wasm"), []byte("tampered"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"hash", func(t *testing.T, dir string) {
+			t.Helper()
+			if err := os.WriteFile(filepath.Join(dir, "d2r", "sha256.txt"), []byte("deadbeef\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pub, priv := generateTestKeys(t)
+			wasm := []byte("cached wasm")
+			sig, _ := signAndHash(t, priv, wasm)
+			dir := t.TempDir()
+			cache := NewCache(dir)
+			if err := cache.Write("d2r", "1.0.0", wasm, sig); err != nil {
+				t.Fatal(err)
+			}
+			tc.corrupt(t, dir)
+			loader := &fakeLoader{}
+			mgr := NewManager(&fakeRegistry{manifest: map[string]PluginInfo{}}, cache, loader, pub, testLogger())
+			if err := mgr.EnsurePlugin(context.Background(), "d2r"); err == nil {
+				t.Fatal("EnsurePlugin = nil, want error")
+			}
+			if len(loader.loaded) != 0 {
+				t.Fatalf("loader invoked %d times, want 0", len(loader.loaded))
+			}
+		})
+	}
+}
+
+func TestEnsurePlugin_MinDaemonVersionGuard_FailsSafeEvenWithCache(t *testing.T) {
+	pub, priv := generateTestKeys(t)
+	wasm := []byte("cached palworld wasm")
+	sig, _ := signAndHash(t, priv, wasm)
+	cache := NewCache(t.TempDir())
+	if err := cache.Write("palworld", "1.0.0", wasm, sig); err != nil {
+		t.Fatal(err)
+	}
+	loader := &fakeLoader{}
+	mgr := NewManager(
+		&fakeRegistry{manifest: twoGamesManifest("2.0.0")},
+		cache, loader, pub, testLogger(), WithDaemonVersion("1.5.0"),
+	)
+	if err := mgr.EnsurePlugin(context.Background(), "palworld"); err == nil {
+		t.Fatal("EnsurePlugin = nil, want gated error")
+	}
+	if len(loader.loaded) != 0 {
+		t.Fatalf("loader invoked %d times, want 0", len(loader.loaded))
+	}
+}
+
+func TestEnsurePlugin_CacheHit_SHA256Mismatch_RedownloadsFreshBytes(t *testing.T) {
+	testCacheHitRedownloadsFreshBytes(t, false)
+}
+
+func TestEnsurePlugin_CacheHit_BadSignature_RedownloadsFreshBytes(t *testing.T) {
+	testCacheHitRedownloadsFreshBytes(t, true)
+}
+
+func testCacheHitRedownloadsFreshBytes(t *testing.T, corruptSignature bool) {
+	t.Helper()
+	pub, priv := generateTestKeys(t)
+	oldWasm := []byte("old wasm")
+	oldSig, _ := signAndHash(t, priv, oldWasm)
+	newWasm := []byte("new wasm")
+	newSig, newHash := signAndHash(t, priv, newWasm)
+	if corruptSignature {
+		oldSig = []byte("bad signature")
+	}
+	cache := NewCache(t.TempDir())
+	if err := cache.Write("d2r", "1.0.0", oldWasm, oldSig); err != nil {
+		t.Fatal(err)
+	}
+	stalePath := filepath.Join(cache.dir, "d2r", "stale.txt")
+	if err := os.WriteFile(stalePath, []byte("stale"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reg := &fakeRegistry{
+		manifest: map[string]PluginInfo{"d2r": {GameID: "d2r", Version: "1.0.0", SHA256: newHash, URL: pluginURL}},
+		files:    map[string][]byte{pluginURL: newWasm, pluginURL + ".sig": newSig},
+	}
+	loader := &fakeLoader{}
+	mgr := NewManager(reg, cache, loader, pub, testLogger())
+	if err := mgr.EnsurePlugin(context.Background(), "d2r"); err != nil {
+		t.Fatalf("EnsurePlugin: %v", err)
+	}
+	if got := loader.loadedBytes["d2r"]; len(got) != 1 || !bytes.Equal(got[0], newWasm) {
+		t.Fatalf("loaded bytes = %q, want exactly fresh %q", got, newWasm)
+	}
+	if got := cache.SHA256("d2r"); got != newHash {
+		t.Fatalf("cache SHA256 = %q, want %q", got, newHash)
+	}
+	if _, err := os.Stat(stalePath); !os.IsNotExist(err) {
+		t.Fatalf("stale cache file survived eviction: %v", err)
+	}
+}
+
+func TestEnsurePlugin_CacheHit_LoaderError_NoEvictNoRedownload(t *testing.T) {
+	pub, priv := generateTestKeys(t)
+	wasm := []byte("cached wasm")
+	sig, hash := signAndHash(t, priv, wasm)
+	dir := t.TempDir()
+	cache := NewCache(dir)
+	if err := cache.Write("d2r", "1.0.0", wasm, sig); err != nil {
+		t.Fatal(err)
+	}
+	reg := &countingRegistry{fakeRegistry: fakeRegistry{manifest: map[string]PluginInfo{
+		"d2r": {GameID: "d2r", Version: "1.0.0", SHA256: hash, URL: pluginURL},
+	}}}
+	loadErr := fmt.Errorf("runtime rejected plugin")
+	loader := &fakeLoader{loadErr: map[string]error{"d2r": loadErr}}
+	mgr := NewManager(reg, cache, loader, pub, testLogger())
+	err := mgr.EnsurePlugin(context.Background(), "d2r")
+	if err == nil || !strings.Contains(err.Error(), loadErr.Error()) {
+		t.Fatalf("EnsurePlugin error = %v, want %v", err, loadErr)
+	}
+	if reg.downloadCount != 0 {
+		t.Fatalf("downloads = %d, want 0", reg.downloadCount)
+	}
+	gotWasm, gotSig, gotVersion, err := cache.Read("d2r")
+	if err != nil {
+		t.Fatalf("read cache after loader error: %v", err)
+	}
+	if !bytes.Equal(gotWasm, wasm) {
+		t.Fatalf("cached wasm = %q, want %q", gotWasm, wasm)
+	}
+	if !bytes.Equal(gotSig, sig) {
+		t.Fatalf("cached signature = %q, want %q", gotSig, sig)
+	}
+	if gotVersion != "1.0.0" {
+		t.Fatalf("cached version = %q, want %q", gotVersion, "1.0.0")
+	}
+	if gotHash := cache.SHA256("d2r"); gotHash != hash {
+		t.Fatalf("cached SHA256 = %q, want %q", gotHash, hash)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "d2r")); err != nil {
+		t.Fatalf("cache evicted after loader error: %v", err)
+	}
+}
+
+func TestEnsurePlugin_CacheHit_EvictionFailure_IsFatal_NoDownload(t *testing.T) {
+	pub, priv := generateTestKeys(t)
+	gameID := "d2r/legacy"
+	wasm := []byte("cached wasm")
+	sig, _ := signAndHash(t, priv, wasm)
+	cache := NewCache(t.TempDir())
+	if err := cache.Write(gameID, "1.0.0", wasm, sig); err != nil {
+		t.Fatal(err)
+	}
+
+	freshWasm := []byte("fresh wasm")
+	freshSig, freshHash := signAndHash(t, priv, freshWasm)
+	reg := &countingRegistry{fakeRegistry: fakeRegistry{
+		manifest: map[string]PluginInfo{gameID: {
+			GameID: gameID, Version: "1.0.0", SHA256: freshHash, URL: pluginURL,
+		}},
+		files: map[string][]byte{pluginURL: freshWasm, pluginURL + ".sig": freshSig},
+	}}
+	loader := &fakeLoader{}
+	mgr := NewManager(reg, cache, loader, pub, testLogger())
+
+	err := mgr.EnsurePlugin(context.Background(), gameID)
+	if err == nil || !strings.Contains(err.Error(), "invalid game ID") {
+		t.Fatalf("EnsurePlugin error = %v, want invalid game ID", err)
+	}
+	if reg.downloadCount != 0 {
+		t.Fatalf("downloads = %d, want 0", reg.downloadCount)
+	}
+	if len(loader.loaded) != 0 {
+		t.Fatalf("loader invoked %d times, want 0", len(loader.loaded))
+	}
+	gotWasm, gotSig, gotVersion, readErr := cache.Read(gameID)
+	if readErr != nil {
+		t.Fatalf("read cache after failed eviction: %v", readErr)
+	}
+	if !bytes.Equal(gotWasm, wasm) || !bytes.Equal(gotSig, sig) || gotVersion != "1.0.0" {
+		t.Fatalf("cached files changed after failed eviction: wasm=%q sig=%q version=%q", gotWasm, gotSig, gotVersion)
 	}
 }
 

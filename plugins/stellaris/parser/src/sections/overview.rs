@@ -1,4 +1,4 @@
-use jomini::Windows1252Encoding;
+use jomini::Utf8Encoding;
 use jomini::text::ObjectReader;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -38,10 +38,7 @@ pub struct Overview {
 }
 
 /// Extract the overview section from parsed meta and the player's country object.
-pub fn extract(
-    meta: &Meta,
-    player_country: &ObjectReader<'_, '_, Windows1252Encoding>,
-) -> Overview {
+pub fn extract(meta: &Meta, player_country: &ObjectReader<'_, '_, Utf8Encoding>) -> Overview {
     let mut overview = Overview {
         empire_name: meta.name.clone(),
         date: meta.date.clone(),

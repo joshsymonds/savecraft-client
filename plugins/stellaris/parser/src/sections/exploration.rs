@@ -1,4 +1,4 @@
-use jomini::Windows1252Encoding;
+use jomini::Utf8Encoding;
 use jomini::text::ObjectReader;
 use serde::Serialize;
 
@@ -21,7 +21,7 @@ pub struct Exploration {
 
 /// Extract the exploration section from the top-level archaeological_sites block.
 pub fn extract(
-    gamestate: &ObjectReader<'_, '_, Windows1252Encoding>,
+    gamestate: &ObjectReader<'_, '_, Utf8Encoding>,
     player_country_id: i64,
 ) -> Exploration {
     let mut result = Exploration {

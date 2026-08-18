@@ -1,4 +1,4 @@
-use jomini::Windows1252Encoding;
+use jomini::Utf8Encoding;
 use jomini::text::ObjectReader;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -28,7 +28,7 @@ pub struct Technology {
 }
 
 /// Extract the technology section from the player's country object.
-pub fn extract(country: &ObjectReader<'_, '_, Windows1252Encoding>) -> Technology {
+pub fn extract(country: &ObjectReader<'_, '_, Utf8Encoding>) -> Technology {
     let mut tech = Technology {
         researched: Vec::new(),
         researched_count: 0,

@@ -1003,28 +1003,28 @@ fn container_clen_mismatch_vs_payload_length_is_corrupt_file() {
 }
 
 #[test]
-fn container_oversized_uncompressed_len_is_corrupt_file_before_allocation() {
-    // 300 MiB, over the 256 MiB cap. clen and payload agree (4 bytes) so
+fn container_oversized_uncompressed_len_is_resource_limit_before_allocation() {
+    // 900 MiB, over the 768 MiB cap. clen and payload agree (4 bytes) so
     // only the uncompressed-size cap is exercised, not a truncation error.
-    // Not "resource_limit": the daemon's proto ParseErrorType enum has no
-    // such variant (see main.rs's tar_error_type/gvas_error_type comments).
-    let oversized = build_container(300 * 1024 * 1024, &[0u8; 4], b"PlM1");
+    // "resource_limit": a well-formed save past this plugin version's cap,
+    // which the daemon forwards as PARSE_ERROR_TYPE_RESOURCE_LIMIT.
+    let oversized = build_container(900 * 1024 * 1024, &[0u8; 4], b"PlM1");
     let tar = build_tar(&[("Level.sav", &oversized)]);
 
     let out = run_plugin(&tar);
     assert_eq!(out.code, 1, "lines: {:?}", out.lines);
     let errors = out.of_type("error");
     assert_eq!(errors.len(), 1, "lines: {:?}", out.lines);
-    assert_eq!(errors[0]["errorType"], "corrupt_file");
+    assert_eq!(errors[0]["errorType"], "resource_limit");
     // Names both the actual size and this plugin version's cap, and makes
     // clear this is a size limit, not corruption (see P1+P2).
     let message = errors[0]["message"].as_str().unwrap();
     assert!(
-        message.contains("300.0 MiB"),
+        message.contains("900.0 MiB"),
         "message should name the actual size: {message}"
     );
     assert!(
-        message.contains("256 MiB"),
+        message.contains("768 MiB"),
         "message should name this plugin version's cap: {message}"
     );
     assert!(
@@ -1240,18 +1240,18 @@ fn unsafe_dotdot_member_path_is_rejected() {
 }
 
 #[test]
-fn tar_member_exceeding_size_cap_is_corrupt_file() {
+fn tar_member_exceeding_size_cap_is_resource_limit() {
     // One byte past MAX_MEMBER_SIZE; real content (not just a header claim)
     // so the archive itself is well-formed and only the cap is exercised.
-    // Not "resource_limit": see main.rs's tar_error_type comment.
-    let oversized_content = vec![0u8; 64 * 1024 * 1024 + 1];
+    // "resource_limit": see lib.rs's tar_error_type comment.
+    let oversized_content = vec![0u8; 192 * 1024 * 1024 + 1];
     let tar = build_tar(&[("Level.sav", &oversized_content)]);
 
     let out = run_plugin(&tar);
     assert_eq!(out.code, 1, "lines: {:?}", out.lines);
     let errors = out.of_type("error");
     assert_eq!(errors.len(), 1, "lines: {:?}", out.lines);
-    assert_eq!(errors[0]["errorType"], "corrupt_file");
+    assert_eq!(errors[0]["errorType"], "resource_limit");
     // Same clarity as the container-level uncompressed-size cap (see
     // P1+P2): the message should make clear this is a size limit, not
     // corruption.

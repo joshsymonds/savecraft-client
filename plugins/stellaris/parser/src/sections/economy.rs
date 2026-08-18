@@ -1,4 +1,4 @@
-use jomini::Windows1252Encoding;
+use jomini::Utf8Encoding;
 use jomini::text::ObjectReader;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -21,7 +21,7 @@ pub struct Economy {
 }
 
 /// Extract the economy section from the player's country object.
-pub fn extract(country: &ObjectReader<'_, '_, Windows1252Encoding>) -> Economy {
+pub fn extract(country: &ObjectReader<'_, '_, Utf8Encoding>) -> Economy {
     let mut economy = Economy {
         income: HashMap::new(),
         expenses: HashMap::new(),
@@ -90,7 +90,7 @@ pub fn extract(country: &ObjectReader<'_, '_, Windows1252Encoding>) -> Economy {
 ///
 /// Structure: `{ category_name={ resource=amount resource=amount } category_name={...} }`
 fn aggregate_categories(
-    obj: &ObjectReader<'_, '_, Windows1252Encoding>,
+    obj: &ObjectReader<'_, '_, Utf8Encoding>,
     totals: &mut HashMap<String, f64>,
     by_category: &mut HashMap<String, HashMap<String, f64>>,
 ) {

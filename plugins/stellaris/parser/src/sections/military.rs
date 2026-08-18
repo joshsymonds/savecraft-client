@@ -1,4 +1,4 @@
-use jomini::Windows1252Encoding;
+use jomini::Utf8Encoding;
 use jomini::text::ObjectReader;
 use serde::Serialize;
 
@@ -18,7 +18,7 @@ pub struct Military {
 /// For now this extracts the summary stats from the country block.
 /// Deep fleet/ship composition parsing will be added when we implement
 /// cross-referencing with the top-level fleet block.
-pub fn extract(country: &ObjectReader<'_, '_, Windows1252Encoding>) -> Military {
+pub fn extract(country: &ObjectReader<'_, '_, Utf8Encoding>) -> Military {
     Military {
         military_power: read_f64(country, "military_power"),
         fleet_size: read_i64(country, "fleet_size"),

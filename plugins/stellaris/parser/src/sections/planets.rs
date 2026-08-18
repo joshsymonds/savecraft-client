@@ -1,4 +1,4 @@
-use jomini::Windows1252Encoding;
+use jomini::Utf8Encoding;
 use jomini::text::ObjectReader;
 use serde::Serialize;
 use std::collections::HashSet;
@@ -31,8 +31,8 @@ pub struct Planets {
 /// Extract the planets section from the top-level planets block,
 /// filtered to the player's owned planets.
 pub fn extract(
-    gamestate: &ObjectReader<'_, '_, Windows1252Encoding>,
-    country: &ObjectReader<'_, '_, Windows1252Encoding>,
+    gamestate: &ObjectReader<'_, '_, Utf8Encoding>,
+    country: &ObjectReader<'_, '_, Utf8Encoding>,
 ) -> Planets {
     let mut result = Planets {
         colonies: Vec::new(),

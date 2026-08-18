@@ -1,4 +1,4 @@
-use jomini::Windows1252Encoding;
+use jomini::Utf8Encoding;
 use jomini::text::ObjectReader;
 use serde::Serialize;
 
@@ -82,7 +82,7 @@ fn is_special_country(country_type: &str) -> bool {
 
 /// Extract casus belli entries from a country's standard_diplomacy_module.
 fn extract_casus_belli(
-    country_obj: &ObjectReader<'_, '_, Windows1252Encoding>,
+    country_obj: &ObjectReader<'_, '_, Utf8Encoding>,
     target_country_id: i64,
 ) -> Vec<String> {
     let mut cb_types = Vec::new();
@@ -127,10 +127,7 @@ fn extract_casus_belli(
 }
 
 /// Extract the threats section by scanning all non-player countries.
-pub fn extract(
-    gamestate: &ObjectReader<'_, '_, Windows1252Encoding>,
-    player_country_id: i64,
-) -> Threats {
+pub fn extract(gamestate: &ObjectReader<'_, '_, Utf8Encoding>, player_country_id: i64) -> Threats {
     let mut threats = Threats {
         crisis_active: false,
         crisis_type: None,

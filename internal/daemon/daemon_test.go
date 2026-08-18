@@ -79,6 +79,7 @@ type fakeFS struct {
 	dirs          map[string][]string // dir path -> file names
 	symlinks      map[string]string   // path -> resolved target (symlink escape tests)
 	readFileCount int                 // number of ReadFile calls (for verifying bypass)
+	readErrs      map[string]error    // full path -> error ReadFile returns for a present-but-unreadable file
 	readDirCalls  []string            // paths passed to ReadDir, in call order (for verifying recursion never attempted)
 }
 
@@ -135,6 +136,9 @@ func (f *fakeFS) ReadDir(path string) ([]fs.DirEntry, error) {
 
 func (f *fakeFS) ReadFile(path string) ([]byte, error) {
 	f.readFileCount++
+	if err, ok := f.readErrs[path]; ok {
+		return nil, err
+	}
 	data, ok := f.files[path]
 	if !ok {
 		return nil, os.ErrNotExist
@@ -637,6 +641,7 @@ type fakeUpdater struct {
 	checkErr    error
 	applyErr    error
 	applyCalls  []applyCall
+	applyGate   chan struct{} // when set, Apply blocks until it is closed
 	mu          sync.Mutex
 }
 
@@ -651,8 +656,12 @@ func (u *fakeUpdater) Check(_ context.Context, _, _ string) (*CheckResult, error
 
 func (u *fakeUpdater) Apply(_ context.Context, info *UpdateInfo, binaryPath string) error {
 	u.mu.Lock()
-	defer u.mu.Unlock()
 	u.applyCalls = append(u.applyCalls, applyCall{Info: info, BinaryPath: binaryPath})
+	gate := u.applyGate
+	u.mu.Unlock()
+	if gate != nil {
+		<-gate
+	}
 	return u.applyErr
 }
 
@@ -1104,6 +1113,11 @@ func TestToParseErrorType(t *testing.T) {
 			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR,
 		},
 		{
+			name:  "resource limit",
+			input: "resource_limit",
+			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_RESOURCE_LIMIT,
+		},
+		{
 			name:  "read error",
 			input: "read_error",
 			want:  pb.ParseErrorType_PARSE_ERROR_TYPE_PARSE_ERROR,
@@ -1164,11 +1178,13 @@ func TestParseAndPush_PluginError(t *testing.T) {
 
 func TestParseAndPush_FileReadError(t *testing.T) {
 	ws := newFakeWSClient()
-	fsys := &fakeFS{files: map[string][]byte{}} // file doesn't exist
+	// Present but unreadable (permission denied, sharing violation): unlike a
+	// vanished file, this IS reported — the save exists and could not be read.
+	fsys := &fakeFS{readErrs: map[string]error{"/saves/d2r/locked.d2s": os.ErrPermission}}
 	cfg := d2rConfig()
 
 	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, nil, testLogger())
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/missing.d2s", "missing.d2s", nil, false)
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/locked.d2s", "locked.d2s", nil, false)
 
 	types := ws.sentEventTypes()
 	if !slices.Contains(types, "parseFailed") {
@@ -1208,6 +1224,33 @@ func TestPushState_SkipsNonObjectSections(t *testing.T) {
 	}
 	if push.Sections[0].Name != "valid_object" {
 		t.Errorf("got section %q, want %q", push.Sections[0].Name, "valid_object")
+	}
+}
+
+func TestPushState_CarriesFileName(t *testing.T) {
+	ws := newFakeWSClient()
+	cfg := d2rConfig()
+
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, nil, testLogger())
+
+	state := &GameState{
+		Identity: Identity{SaveName: "Test", GameID: "d2r"},
+		Summary:  "test",
+		Sections: map[string]Section{
+			"valid_object": {Description: "An object section", Data: jsontext.Value(`{"key":"value"}`)},
+		},
+	}
+
+	d.pushState(context.Background(), "d2r", "/saves/d2r/test.d2s", state)
+
+	msg := ws.sentProto("pushSave", 0)
+	if msg == nil {
+		t.Fatal("missing pushSave message")
+	}
+	// The same file name ParseFailed reports (the path's base name), so the
+	// server can clear a stored parse failure on the file's next good push.
+	if got := msg.GetPushSave().GetFileName(); got != "test.d2s" {
+		t.Fatalf("PushSave.FileName = %q, want %q", got, "test.d2s")
 	}
 }
 
@@ -2755,6 +2798,67 @@ func TestCheckSelfUpdate_NilUpdater(_ *testing.T) {
 
 	// Should not panic
 	d.checkSelfUpdate(context.Background())
+}
+
+// A reconnect storm (worker deploy) delivers several sourceUpdateAvailable
+// pushes seconds apart; the 6h poll can land in the same window. Each used to
+// start its own Apply on the same daemon-update.tmp — prod 2026-08-18: Windows
+// daemons failing "rename new binary: ... being used by another process" /
+// "cannot find the file" while a sibling attempt won. Only one update may be
+// in flight; later requests while it runs are dropped.
+func TestApplyDaemonUpdate_SingleFlight(t *testing.T) {
+	ws := newFakeWSClient()
+	updater := &fakeUpdater{applyGate: make(chan struct{})}
+	cfg := Config{
+		SourceID:   "deck",
+		Version:    "0.1.0",
+		BinaryPath: "/usr/local/bin/savecraft-daemon",
+		Games:      map[string]GameConfig{},
+	}
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, updater, testLogger())
+	d.exitFunc = func(int) {}
+	d.restartFunc = func(_, _ string) error { return nil }
+
+	result := &CheckResult{Daemon: &UpdateInfo{Version: "0.2.0", URL: "https://example.com/daemon", SHA256: "abc"}}
+	first := make(chan struct{})
+	go func() {
+		defer close(first)
+		d.applyDaemonUpdate(context.Background(), result)
+	}()
+	waitFor(t, func() bool {
+		updater.mu.Lock()
+		defer updater.mu.Unlock()
+		return len(updater.applyCalls) == 1
+	})
+
+	// Second request while the first is still applying: must not start
+	// another Apply. Run it concurrently so a regression (a second Apply
+	// blocking on the gate) still terminates once the gate opens.
+	second := make(chan struct{})
+	go func() {
+		defer close(second)
+		d.applyDaemonUpdate(context.Background(), result)
+	}()
+	waitFor(t, func() bool {
+		select {
+		case <-second:
+			return true // dropped immediately: the desired behavior
+		default:
+		}
+		updater.mu.Lock()
+		defer updater.mu.Unlock()
+		return len(updater.applyCalls) == 2 // regression: a second Apply started
+	})
+	close(updater.applyGate)
+	<-first
+	<-second
+
+	updater.mu.Lock()
+	calls := len(updater.applyCalls)
+	updater.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("updater.Apply called %d times for two overlapping requests, want 1", calls)
+	}
 }
 
 func TestApplyDaemonUpdate_UpdatesTrayBinary(t *testing.T) {
@@ -5271,5 +5375,23 @@ func TestDiscoverGames_ZomboidDirectoryLayout(t *testing.T) {
 	}
 	if _, err := fsys.Stat(multiplayer); err != nil {
 		t.Fatalf("fake Multiplayer fixture missing: %v", err)
+	}
+}
+
+// A save that disappears between discovery and read (Stellaris rotating an
+// autosave between the scan's ReadDir and ReadFile) is not a parse failure:
+// there is no file for the plugin to have failed on. Nothing is announced —
+// no ParseStarted the UI would wait on, no ParseFailed the server would
+// persist as a "read file: ... cannot find" parse_error.
+func TestParseAndPush_VanishedFile_ReportsNothing(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := &fakeRunner{results: map[string]*GameState{"d2r": newD2RState()}}
+	fsys := &fakeFS{files: map[string][]byte{}} // file listed by the scan, gone by the read
+	d := New(d2rConfig(), fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/gone.d2s", "gone.d2s", nil, false)
+
+	if got := ws.sentEventTypes(); len(got) != 0 {
+		t.Fatalf("vanished file sent %v, want no messages at all", got)
 	}
 }

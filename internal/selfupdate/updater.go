@@ -55,10 +55,15 @@ func WithHTTPClient(c *http.Client) Option {
 	return func(u *HTTPUpdater) { u.client = c }
 }
 
-type manifestResponse struct {
-	Version   string                       `json:"version"`
-	Platforms map[string]daemon.UpdateInfo `json:"platforms"`
-	Tray      map[string]daemon.UpdateInfo `json:"tray"`
+// Manifest is the daemon update manifest served at
+// <install>/daemon/manifest.json (built by BuildManifest at release time).
+// Platforms and Tray are keyed by runtime.GOOS-runtime.GOARCH — the key a
+// daemon computes for itself in Check — never by artifact file name.
+type Manifest struct {
+	Version          string                       `json:"version"`
+	Ed25519PublicKey string                       `json:"ed25519PublicKey,omitempty"`
+	Platforms        map[string]daemon.UpdateInfo `json:"platforms"`
+	Tray             map[string]daemon.UpdateInfo `json:"tray"`
 }
 
 // New creates an HTTPUpdater that checks installURL for updates.
@@ -96,7 +101,7 @@ func (u *HTTPUpdater) Check(ctx context.Context, currentVersion, platform string
 
 	// Verify the detached signature over the literal manifest bytes BEFORE
 	// reading any field (R2: verify-then-parse, never the reverse).
-	parsed, err := manifest.VerifyAndParse[manifestResponse](u.manifestPubKey, manifestBytes, sigBytes)
+	parsed, err := manifest.VerifyAndParse[Manifest](u.manifestPubKey, manifestBytes, sigBytes)
 	if err != nil {
 		return nil, fmt.Errorf("verify manifest: %w", err)
 	}

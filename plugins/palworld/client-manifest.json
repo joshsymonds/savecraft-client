@@ -15,7 +15,7 @@
   "homepage": "https://savecraft.gg/plugins/palworld",
   "limitations": [
     "Steam builds only — no Xbox Game Pass (WGS) save support",
-    "Very large late-game worlds (roughly \u003e20 MB compressed Level.sav) exceed this version's memory budget and fail with a clear size error"
+    "Very large late-game worlds (roughly \u003e60 MB compressed Level.sav) exceed this version's memory budget and fail with a clear size error"
   ],
   "unit": "directory",
   "members": [
