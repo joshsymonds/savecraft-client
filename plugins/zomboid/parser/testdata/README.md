@@ -30,17 +30,23 @@ schema and blob):
 ```python
 import sqlite3, pathlib
 root=pathlib.Path('plugins/zomboid/parser/testdata'); blob=(root/'jane-doe-249.blob').read_bytes(); ddl='CREATE TABLE localPlayers (id INTEGER PRIMARY KEY NOT NULL,name STRING,wx INTEGER,wy INTEGER,x FLOAT,y FLOAT,z FLOAT,worldversion INTEGER,data BLOB,isDead BOOLEAN)'
+# has_descriptor cleared and the survivor_desc it guards (bytes 185..283) removed
+nodesc=blob[:184]+b'\x00'+blob[283:]
 def make(name, rows):
  p=root/name; c=sqlite3.connect(p); c.execute(ddl)
  for row in rows:c.execute('insert into localPlayers values (?,?,?,?,?,?,?,?,?,?)',row)
  c.commit();c.close()
 make('players-v245.db',[(1,'Jane Doe',22,18,178.5625,147.0225,0,245,blob,0)])
 make('players-two-rows.db',[(1,'Jane Doe',22,18,178.5625,147.0225,0,249,blob,0),(2,'Old Jane',22,18,178.5625,147.0225,0,249,blob,1)])
+make('players-mixed.db',[(1,'Jane Doe',22,18,178.5625,147.0225,0,249,blob,0),(2,'Old Jane',22,18,178.5625,147.0225,0,245,blob,1)])
+make('players-no-descriptor.db',[(1,'Jane Doe',22,18,178.5625,147.0225,0,249,nodesc,0)])
 p=root/'players-empty.db';c=sqlite3.connect(p);c.execute(ddl);c.commit();c.close()
 ```
 
-| File | SHA-256 |
-| --- | --- |
-| `players-v245.db` | `572cd9df3a9ea6bed8135ec6a14548ca13c91bf64cea4a1afec74f891c2c5932` |
-| `players-two-rows.db` | `1128d008a992f69fec0d4f173e3da2a2d425cd5492e5d1284f92db61f6e741b5` |
-| `players-empty.db` | `27215e34927acd86171a1a5362a82213b492aaca26ba76c09d2b36e6ef0e39c6` |
+| File | SHA-256 | Contents |
+| --- | --- | --- |
+| `players-v245.db` | `572cd9df3a9ea6bed8135ec6a14548ca13c91bf64cea4a1afec74f891c2c5932` | one row at world version 245 |
+| `players-two-rows.db` | `1128d008a992f69fec0d4f173e3da2a2d425cd5492e5d1284f92db61f6e741b5` | two rows at world version 249, the second dead |
+| `players-empty.db` | `27215e34927acd86171a1a5362a82213b492aaca26ba76c09d2b36e6ef0e39c6` | `localPlayers` with no rows |
+| `players-mixed.db` | `f963f211a6e0a7800dc1c4448f53d7b02e0e280b47230ddf97afc2381e03d4cf` | row 1 at world version 249, row 2 at 245 |
+| `players-no-descriptor.db` | `a730277e326f46d79455cc262bda7ad36a42f5110942f7de455a4808d38cd4b0` | one row at world version 249 whose blob has no `survivor_desc` |

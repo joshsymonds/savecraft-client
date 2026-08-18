@@ -294,7 +294,7 @@ func decodeContainer(r *reader) []InventoryItem {
 func decodeItemGroup(r *reader) InventoryItem {
 	var item InventoryItem
 	identical := r.count()
-	item.Count = int32(identical)
+	item.Count = identical
 	size := r.byteLen() // sized_blob.len_data
 	end := r.pos + size
 	item.RegistryID = r.u16()

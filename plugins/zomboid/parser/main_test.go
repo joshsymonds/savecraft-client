@@ -4,40 +4,33 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
+	"errors"
+	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/joshsymonds/savecraft-client/internal/runner"
+	"github.com/joshsymonds/savecraft-client/plugins/zomboid/parser/blob"
+	"github.com/joshsymonds/savecraft-client/plugins/zomboid/parser/dict"
 )
 
-var nativeParser struct {
-	sync.Once
-	path   string
-	err    error
-	output []byte
-}
-
-func buildNativeParser(t *testing.T) string {
+// buildParser compiles the parser for the host so a test can drive it the way
+// the daemon does, over stdin and stdout.
+func buildParser(t *testing.T) string {
 	t.Helper()
-	nativeParser.Do(func() {
-		directory, err := os.MkdirTemp("", "zomboid-parser-")
-		if err != nil {
-			nativeParser.err = err
-			return
-		}
-		nativeParser.path = filepath.Join(directory, "parser")
-		command := exec.Command("go", "build", "-o", nativeParser.path, ".")
-		nativeParser.output, nativeParser.err = command.CombinedOutput()
-	})
-	if nativeParser.err != nil {
-		t.Fatalf("build parser: %v\n%s", nativeParser.err, nativeParser.output)
+	path := filepath.Join(t.TempDir(), "parser")
+	output, err := exec.Command("go", "build", "-o", path, ".").CombinedOutput()
+	if err != nil {
+		t.Fatalf("build parser: %v\n%s", err, output)
 	}
-	return nativeParser.path
+	return path
 }
 
 func readTestdata(t *testing.T, name string) []byte {
@@ -51,7 +44,11 @@ func readTestdata(t *testing.T, name string) []byte {
 
 func fixtureMembers(t *testing.T, database string) map[string][]byte {
 	t.Helper()
-	return map[string][]byte{"players.db": readTestdata(t, database), "WorldDictionaryReadable.lua": readTestdata(t, "tutorial-42.20.2/WorldDictionaryReadable.lua"), "mods.txt": readTestdata(t, "tutorial-42.20.2/mods.txt")}
+	return map[string][]byte{
+		"players.db":                  readTestdata(t, database),
+		"WorldDictionaryReadable.lua": readTestdata(t, "tutorial-42.20.2/WorldDictionaryReadable.lua"),
+		"mods.txt":                    readTestdata(t, "tutorial-42.20.2/mods.txt"),
+	}
 }
 
 func makeTar(t *testing.T, members map[string][]byte) []byte {
@@ -76,9 +73,9 @@ func makeTar(t *testing.T, members map[string][]byte) []byte {
 	return archive.Bytes()
 }
 
-func runParser(t *testing.T, input []byte, arguments ...string) ([]byte, int) {
+func runParser(t *testing.T, parser string, input []byte, arguments ...string) ([]byte, int) {
 	t.Helper()
-	command := exec.Command(buildNativeParser(t), arguments...)
+	command := exec.Command(parser, arguments...)
 	command.Stdin = bytes.NewReader(input)
 	var output bytes.Buffer
 	command.Stdout = &output
@@ -86,11 +83,17 @@ func runParser(t *testing.T, input []byte, arguments ...string) ([]byte, int) {
 	if err == nil {
 		return output.Bytes(), 0
 	}
-	exitErr, ok := err.(*exec.ExitError)
-	if !ok {
+	return output.Bytes(), exitCode(t, err)
+}
+
+// exitCode reports the status a finished parser run exited with.
+func exitCode(t *testing.T, err error) int {
+	t.Helper()
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
 		t.Fatal(err)
 	}
-	return output.Bytes(), exitErr.ExitCode()
+	return exitErr.ExitCode()
 }
 
 func line(t *testing.T, output []byte, kind string) map[string]any {
@@ -127,17 +130,34 @@ func array(t *testing.T, value any) []any {
 	}
 	return result
 }
+func text(t *testing.T, value any) string {
+	t.Helper()
+	result, ok := value.(string)
+	if !ok {
+		t.Fatalf("got %T, want string", value)
+	}
+	return result
+}
+func number(t *testing.T, value any) float64 {
+	t.Helper()
+	result, ok := value.(float64)
+	if !ok {
+		t.Fatalf("got %T, want number", value)
+	}
+	return result
+}
 
 func TestGoldenCharacterSectionAndDeterminism(t *testing.T) {
+	parser := buildParser(t)
 	input := makeTar(t, fixtureMembers(t, "tutorial-42.20.2/players.db"))
-	first, code := runParser(t, input, "tutorial-save")
+	first, code := runParser(t, parser, input, "tutorial-save")
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, first)
 	}
 	if len(line(t, first, "result")) == 0 {
 		t.Fatal("empty result")
 	}
-	second, code := runParser(t, input, "tutorial-save")
+	second, code := runParser(t, parser, input, "tutorial-save")
 	if code != 0 || !bytes.Equal(first, second) {
 		t.Fatalf("parser output is not deterministic: exit=%d", code)
 	}
@@ -161,15 +181,25 @@ func TestGoldenCharacterSectionAndDeterminism(t *testing.T) {
 	for key, want := range map[string]any{"x": 178.56251525878906, "y": 147.0225372314453, "z": float64(0), "cellX": float64(22), "cellY": float64(18)} {
 		requireEqual(t, position[key], want)
 	}
-	if len(array(t, character["traits"])) != 0 || len(array(t, character["activeMods"])) != 0 || len(array(t, character["otherCharacters"])) != 0 {
+	if len(array(t, character["traits"])) != 0 || len(array(t, character["activeMods"])) != 0 ||
+		len(array(t, character["otherCharacters"])) != 0 {
 		t.Fatal("expected empty traits, activeMods, and otherCharacters")
 	}
 	perks := make(map[string]map[string]any)
 	for _, value := range array(t, character["perks"]) {
 		perk := object(t, value)
-		perks[perk["name"].(string)] = perk
+		perks[text(t, perk["name"])] = perk
 	}
-	expectedPerks := map[string]struct{ level, xp float64 }{"Strength": {5, 37507}, "Fitness": {5, 37503}, "Aiming": {8, 0}, "SmallBlade": {0, 0.24347273}, "Maintenance": {0, 0.33333334}, "Doctor": {0, 1.25}, "SmallBlunt": {0, 0.795}, "Nimble": {0, 0.25}}
+	expectedPerks := map[string]struct{ level, xp float64 }{
+		"Strength":    {5, 37507},
+		"Fitness":     {5, 37503},
+		"Aiming":      {8, 0},
+		"SmallBlade":  {0, 0.24347273},
+		"Maintenance": {0, 0.33333334},
+		"Doctor":      {0, 1.25},
+		"SmallBlunt":  {0, 0.795},
+		"Nimble":      {0, 0.25},
+	}
 	requireEqual(t, len(perks), len(expectedPerks))
 	for name, expected := range expectedPerks {
 		requireEqual(t, perks[name]["level"], expected.level)
@@ -184,21 +214,32 @@ func TestGoldenCharacterSectionAndDeterminism(t *testing.T) {
 	for key, want := range map[string]any{"calories": 1116.2328, "proteins": 39.75924, "lipids": 15.695856, "carbohydrates": -0.9328311, "weight": 80.000755} {
 		requireEqual(t, nutrition[key], want)
 	}
-	wornItems := array(t, character["wornItems"])
-	requireEqual(t, len(wornItems), 7)
-	expectedWorn := map[string]string{"base:back": "Base.Bag_ALICEpack", "base:bandage": "Base.Bandage_LeftHand", "base:shoes": "Base.Shoes_BlueTrainers", "base:shortsshort": "Base.Shorts_ShortDenim", "base:socks": "Base.Socks_Ankle", "base:tshirt": "Base.Tshirt_DefaultTEXTURE_TINT"}
-	for _, value := range wornItems {
+	// The whole worn list, in emitted order. The fixture wears the bandage
+	// twice, so a lenient per-location check would not notice either copy going
+	// missing.
+	wantWorn := [][2]string{
+		{"base:back", "Base.Bag_ALICEpack"},
+		{"base:bandage", "Base.Bandage_LeftHand"},
+		{"base:bandage", "Base.Bandage_LeftHand"},
+		{"base:shoes", "Base.Shoes_BlueTrainers"},
+		{"base:shortsshort", "Base.Shorts_ShortDenim"},
+		{"base:socks", "Base.Socks_Ankle"},
+		{"base:tshirt", "Base.Tshirt_DefaultTEXTURE_TINT"},
+	}
+	gotWorn := make([][2]string, 0, len(wantWorn))
+	for _, value := range array(t, character["wornItems"]) {
 		item := object(t, value)
-		if want, ok := expectedWorn[item["bodyLocation"].(string)]; ok {
-			requireEqual(t, item["fulltype"], want)
-		}
+		gotWorn = append(gotWorn, [2]string{text(t, item["bodyLocation"]), text(t, item["fulltype"])})
+	}
+	if !reflect.DeepEqual(gotWorn, wantWorn) {
+		t.Fatalf("worn items %v, want %v", gotWorn, wantWorn)
 	}
 	carriedItems := array(t, character["carriedItems"])
 	requireEqual(t, len(carriedItems), 10)
 	counts := make(map[string]float64)
 	for _, value := range carriedItems {
 		item := object(t, value)
-		counts[item["fulltype"].(string)] = item["count"].(float64)
+		counts[text(t, item["fulltype"])] = number(t, item["count"])
 	}
 	requireEqual(t, counts["Base.Bandage_LeftHand"], float64(2))
 	for _, fulltype := range []string{"Base.Pan", "Base.Tshirt_DefaultTEXTURE_TINT", "Base.EmptyJar", "Base.Shorts_ShortDenim", "Base.Bag_ALICEpack", "Base.Shotgun", "Base.Socks_Ankle", "Base.HuntingKnife", "Base.Shoes_BlueTrainers"} {
@@ -207,6 +248,7 @@ func TestGoldenCharacterSectionAndDeterminism(t *testing.T) {
 }
 
 func TestErrorOutputs(t *testing.T) {
+	parser := buildParser(t)
 	missingPlayers := fixtureMembers(t, "tutorial-42.20.2/players.db")
 	delete(missingPlayers, "players.db")
 	missingDictionary := fixtureMembers(t, "tutorial-42.20.2/players.db")
@@ -216,21 +258,31 @@ func TestErrorOutputs(t *testing.T) {
 	truncated := fixtureMembers(t, "tutorial-42.20.2/players.db")
 	truncated["players.db"] = truncated["players.db"][:12000]
 	missingShotgun := fixtureMembers(t, "tutorial-42.20.2/players.db")
-	missingShotgun["WorldDictionaryReadable.lua"] = removeShotgunRecord(t, missingShotgun["WorldDictionaryReadable.lua"])
+	missingShotgun["WorldDictionaryReadable.lua"] = removeShotgunRecord(
+		t,
+		missingShotgun["WorldDictionaryReadable.lua"],
+	)
+	truncatedDictionary := fixtureMembers(t, "tutorial-42.20.2/players.db")
+	truncatedDictionary["WorldDictionaryReadable.lua"] = truncateLastRecord(
+		t,
+		truncatedDictionary["WorldDictionaryReadable.lua"],
+	)
+	nonFinitePosition := fixtureMembers(t, "tutorial-42.20.2/players.db")
+	nonFinitePosition["players.db"] = nonFiniteX(t, nonFinitePosition["players.db"])
 	cases := []struct {
 		name                string
 		input               []byte
 		errorType, contains string
-	}{{"old version", makeTar(t, fixtureMembers(t, "players-v245.db")), "unsupported_version", "245"}, {"empty", makeTar(t, fixtureMembers(t, "players-empty.db")), "parse_error", "localPlayers has no rows"}, {"missing players", makeTar(t, missingPlayers), "corrupt_file", "missing member players.db"}, {"missing dictionary", makeTar(t, missingDictionary), "corrupt_file", "missing member WorldDictionaryReadable.lua"}, {"journal", makeTar(t, journal), "corrupt_file", "players.db-journal is non-empty"}, {"truncated", makeTar(t, truncated), "corrupt_file", "sqlite corrupt"}, {"missing registry", makeTar(t, missingShotgun), "corrupt_file", "registry id 3651"}}
+	}{{"old version", makeTar(t, fixtureMembers(t, "players-v245.db")), "unsupported_version", "245"}, {"mixed versions", makeTar(t, fixtureMembers(t, "players-mixed.db")), "unsupported_version", "row 2 has world version 245"}, {"no descriptor", makeTar(t, fixtureMembers(t, "players-no-descriptor.db")), "corrupt_file", "row 1: player has no descriptor"}, {"non-finite position", makeTar(t, nonFinitePosition), "corrupt_file", "non-finite column x"}, {"empty", makeTar(t, fixtureMembers(t, "players-empty.db")), "parse_error", "localPlayers has no rows"}, {"missing players", makeTar(t, missingPlayers), "corrupt_file", "missing member players.db"}, {"missing dictionary", makeTar(t, missingDictionary), "corrupt_file", "missing member WorldDictionaryReadable.lua"}, {"journal", makeTar(t, journal), "corrupt_file", "players.db-journal is non-empty"}, {"truncated", makeTar(t, truncated), "corrupt_file", "sqlite corrupt"}, {"missing registry", makeTar(t, missingShotgun), "corrupt_file", "registry id 3651"}, {"truncated dictionary", makeTar(t, truncatedDictionary), "corrupt_file", "malformed WorldDictionaryReadable.lua"}}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
-			output, code := runParser(t, test.input)
+			output, code := runParser(t, parser, test.input)
 			if code == 0 {
 				t.Fatal("expected non-zero exit")
 			}
 			errorLine := line(t, output, "error")
 			requireEqual(t, errorLine["errorType"], test.errorType)
-			message := errorLine["message"].(string)
+			message := text(t, errorLine["message"])
 			if !strings.Contains(message, test.contains) {
 				t.Fatalf("message %q does not contain %q", message, test.contains)
 			}
@@ -242,7 +294,7 @@ func TestErrorOutputs(t *testing.T) {
 }
 
 func TestOtherCharacters(t *testing.T) {
-	output, code := runParser(t, makeTar(t, fixtureMembers(t, "players-two-rows.db")))
+	output, code := runParser(t, buildParser(t), makeTar(t, fixtureMembers(t, "players-two-rows.db")))
 	if code != 0 {
 		t.Fatal(string(output))
 	}
@@ -275,7 +327,13 @@ func TestWazeroEndToEnd(t *testing.T) {
 	if err := wazero.LoadPlugin(context, "zomboid", wasm, nil); err != nil {
 		t.Fatal(err)
 	}
-	state, err := wazero.Run(context, "zomboid", "wazero-save", makeTar(t, fixtureMembers(t, "tutorial-42.20.2/players.db")), nil)
+	state, err := wazero.Run(
+		context,
+		"zomboid",
+		"wazero-save",
+		makeTar(t, fixtureMembers(t, "tutorial-42.20.2/players.db")),
+		nil,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,6 +342,171 @@ func TestWazeroEndToEnd(t *testing.T) {
 	if _, ok := state.Sections["character"]; !ok {
 		t.Fatal("missing character section")
 	}
+}
+
+// TestActiveMods pins the two mods.txt shapes a save can have: a list, which is
+// emitted sorted so the result does not inherit the game's write order, and no
+// mods.txt at all, which is an empty JSON array rather than null.
+func TestActiveMods(t *testing.T) {
+	parser := buildParser(t)
+	t.Run("sorted", func(t *testing.T) {
+		members := fixtureMembers(t, "tutorial-42.20.2/players.db")
+		members["mods.txt"] = []byte(
+			"VERSION = 1,\n\nmods\n{\n  \"zebra\",\n  \"alpha\",\n  \"Mango\",\n}\n\nmaps\n{\n}\n",
+		)
+		output, code := runParser(t, parser, makeTar(t, members))
+		if code != 0 {
+			t.Fatal(string(output))
+		}
+		character := object(t, object(t, object(t, line(t, output, "result")["sections"])["character"])["data"])
+		mods := array(t, character["activeMods"])
+		got := make([]string, 0, len(mods))
+		for _, value := range mods {
+			got = append(got, text(t, value))
+		}
+		if want := []string{"Mango", "alpha", "zebra"}; !reflect.DeepEqual(got, want) {
+			t.Fatalf("active mods %v, want %v", got, want)
+		}
+	})
+	t.Run("absent", func(t *testing.T) {
+		members := fixtureMembers(t, "tutorial-42.20.2/players.db")
+		delete(members, "mods.txt")
+		output, code := runParser(t, parser, makeTar(t, members))
+		if code != 0 {
+			t.Fatal(string(output))
+		}
+		if !bytes.Contains(output, []byte(`"activeMods":[]`)) {
+			t.Fatal("result does not carry an empty activeMods array")
+		}
+	})
+}
+
+// TestWriteToReportsFailures covers the two ways an ndjson line can be lost:
+// the encoder refusing a value, and stdout refusing the bytes. Both used to be
+// discarded, which turned a failed run into a silent success.
+func TestWriteToReportsFailures(t *testing.T) {
+	notFinite := output{
+		Type:     "result",
+		Sections: &outputSections{Character: section{Data: character{HoursSurvived: math.NaN()}}},
+	}
+	if err := writeTo(io.Discard, notFinite); err == nil {
+		t.Error("a NaN encoded without error")
+	}
+	if err := writeTo(errorWriter{}, output{Type: "status", Message: "Reading players.db…"}); err == nil {
+		t.Error("a failing writer reported success")
+	}
+}
+
+// TestUnwritableStdoutFailsTheRun is the end-to-end half of the same contract:
+// with nowhere to put its lines the parser exits non-zero and says why on
+// stderr instead of finishing as though it had reported a result.
+func TestUnwritableStdoutFailsTheRun(t *testing.T) {
+	readOnly, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer readOnly.Close()
+	command := exec.Command(buildParser(t), "tutorial-save")
+	command.Stdin = bytes.NewReader(makeTar(t, fixtureMembers(t, "tutorial-42.20.2/players.db")))
+	command.Stdout = readOnly
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	err = command.Run()
+	if err == nil {
+		t.Fatalf("parser exited 0 with an unwritable stdout; stderr %q", stderr.String())
+	}
+	requireEqual(t, exitCode(t, err), 1)
+	if !strings.Contains(stderr.String(), "parse_error") {
+		t.Fatalf("stderr %q does not name the failure", stderr.String())
+	}
+}
+
+// TestMakeCharacterRejectsNonFiniteFloats walks every float the character sheet
+// carries out of the blob. JSON cannot represent NaN or an infinity, so one
+// reaching the encoder would fail the run only after the status lines had
+// promised a result.
+func TestMakeCharacterRejectsNonFiniteFloats(t *testing.T) {
+	items, err := dict.ParseItems(readTestdata(t, "tutorial-42.20.2/WorldDictionaryReadable.lua"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixturePlayer := func() *blob.Player {
+		player, decodeErr := blob.Decode(readTestdata(t, "jane-doe-249.blob"), 249)
+		if decodeErr != nil {
+			t.Fatal(decodeErr)
+		}
+		return player
+	}
+	rows := func() (rawCharacter, []rawCharacter) {
+		return rawCharacter{id: 1, name: "Jane Doe", player: fixturePlayer()},
+			[]rawCharacter{{id: 2, name: "Old Jane", player: fixturePlayer()}}
+	}
+	primary, remaining := rows()
+	if _, err = makeCharacter(primary, remaining, items, []string{}); err != nil {
+		t.Fatalf("unmutated fixture: %v", err)
+	}
+	for name, mutate := range map[string]struct {
+		contains string
+		apply    func(primary rawCharacter, remaining []rawCharacter)
+	}{
+		"hours survived": {"row 1: non-finite hoursSurvived", func(p rawCharacter, _ []rawCharacter) { p.player.HoursSurvived = math.NaN() }},
+		"calories":       {"row 1: non-finite nutrition.calories", func(p rawCharacter, _ []rawCharacter) { p.player.Nutrition.Calories = nan32() }},
+		"proteins":       {"row 1: non-finite nutrition.proteins", func(p rawCharacter, _ []rawCharacter) { p.player.Nutrition.Proteins = nan32() }},
+		"lipids":         {"row 1: non-finite nutrition.lipids", func(p rawCharacter, _ []rawCharacter) { p.player.Nutrition.Lipids = nan32() }},
+		"carbohydrates":  {"row 1: non-finite nutrition.carbohydrates", func(p rawCharacter, _ []rawCharacter) { p.player.Nutrition.Carbohydrates = nan32() }},
+		"weight":         {"row 1: non-finite nutrition.weight", func(p rawCharacter, _ []rawCharacter) { p.player.Nutrition.Weight = nan32() }},
+		"body part health": {"row 1: non-finite health of body part 3", func(p rawCharacter, _ []rawCharacter) {
+			p.player.BodyDamage.Parts[3].Health = float32(math.Inf(1))
+		}},
+		"perk xp": {"row 1: non-finite xp for perk", func(p rawCharacter, _ []rawCharacter) {
+			p.player.XP.Entries[0].XP = float32(math.Inf(-1))
+		}},
+		"other character": {"row 2: non-finite hoursSurvived", func(_ rawCharacter, r []rawCharacter) {
+			r[0].player.HoursSurvived = math.NaN()
+		}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			primary, remaining := rows()
+			mutate.apply(primary, remaining)
+			_, err := makeCharacter(primary, remaining, items, []string{})
+			if err == nil {
+				t.Fatal("non-finite float accepted")
+			}
+			if !strings.Contains(err.Error(), mutate.contains) {
+				t.Fatalf("error %q does not contain %q", err, mutate.contains)
+			}
+		})
+	}
+}
+
+func nan32() float32 { return float32(math.NaN()) }
+
+// errorWriter stands in for a stdout that will not take the parser's bytes.
+type errorWriter struct{}
+
+func (errorWriter) Write([]byte) (int, error) { return 0, os.ErrClosed }
+
+// nonFiniteX rewrites the fixture's x column to a NaN, which the SQLite record
+// format can store and JSON cannot represent.
+func nonFiniteX(t *testing.T, database []byte) []byte {
+	t.Helper()
+	stored := binary.BigEndian.AppendUint64(nil, math.Float64bits(178.56251525878906))
+	if count := bytes.Count(database, stored); count != 1 {
+		t.Fatalf("the x column's bytes appear %d times, want 1", count)
+	}
+	return bytes.Replace(database, stored, binary.BigEndian.AppendUint64(nil, math.Float64bits(math.NaN())), 1)
+}
+
+// truncateLastRecord cuts the dictionary inside its final ITEMS record, the
+// shape a half-written or clipped WorldDictionaryReadable.lua has.
+func truncateLastRecord(t *testing.T, source []byte) []byte {
+	t.Helper()
+	const last = `fulltype = "Base.FishingHook"`
+	cut := strings.Index(string(source), last)
+	if cut < 0 {
+		t.Fatal("FishingHook record missing")
+	}
+	return source[:cut+len(last)]
 }
 
 func removeShotgunRecord(t *testing.T, source []byte) []byte {

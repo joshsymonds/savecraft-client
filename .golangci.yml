@@ -581,8 +581,15 @@ linters:
           - goconst
           - gochecknoglobals
 
-      # Binary format parser (same rationale as d2r above).
-      - path: plugins/zomboid/.*\.go
+      # Binary format decoders (same rationale as d2r above), narrowed to the two
+      # packages that walk raw bytes: the file formats' field offsets, widths and
+      # tag values are magic numbers, their cursors are short-named, and a page
+      # walk that validates every bound in sequence is long and branchy by
+      # nature. Everything else under plugins/zomboid — the entrypoint, the
+      # dictionary reader, the tests — is ordinary Go and is linted as such. Only
+      # the linters that still report here are listed; the rest, gosec and govet
+      # among them, apply to these packages too.
+      - path: plugins/zomboid/parser/(sqlite|blob)/.*\.go
         linters:
           - gocognit
           - gocyclo
@@ -590,12 +597,7 @@ linters:
           - funlen
           - mnd
           - varnamelen
-          - gosec
-          - govet
           - nestif
-          - ireturn
-          - goconst
-          - gochecknoglobals
 
       # Entrypoints — ldflags injection targets must be package-level vars
       - path: cmd/savecraftd/main\.go

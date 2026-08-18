@@ -44,6 +44,6 @@
     "darwin": "~/Zomboid/Saves/*/*"
   },
   "version": "dev",
-  "sha256": "2c24ffd77fc5b9583fcb51eeb84b1d9c5ea6c97f52fd140a3f054a523806dd83",
+  "sha256": "4abcb896014d2a5615daa6d466659bf690ff5cef12e3905866a83752f7043e25",
   "url": "plugins/zomboid/parser.wasm"
 }

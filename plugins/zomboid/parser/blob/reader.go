@@ -77,8 +77,18 @@ func (r *reader) boolean() bool {
 	return v == 1
 }
 
+// i8 reads the format's s1: a two's-complement byte whose low seven bits carry
+// the magnitude and whose top bit contributes int8's minimum.
 func (r *reader) i8() int8 {
-	return int8(r.u8())
+	raw := r.bytes(1)
+	if raw == nil {
+		return 0
+	}
+	value := int8(raw[0] & math.MaxInt8)
+	if raw[0] > math.MaxInt8 {
+		value += math.MinInt8
+	}
+	return value
 }
 
 func (r *reader) u16() uint16 {
@@ -89,8 +99,14 @@ func (r *reader) u16() uint16 {
 	return binary.BigEndian.Uint16(raw)
 }
 
+// i16 and i32 accumulate their big-endian bytes into the signed type the spec
+// declares, so the sign comes out of the bytes themselves.
 func (r *reader) i16() int16 {
-	return int16(r.u16())
+	raw := r.bytes(sizeU16)
+	if raw == nil {
+		return 0
+	}
+	return int16(raw[0])<<8 | int16(raw[1])
 }
 
 func (r *reader) u32() uint32 {
@@ -102,23 +118,31 @@ func (r *reader) u32() uint32 {
 }
 
 func (r *reader) i32() int32 {
-	return int32(r.u32())
-}
-
-func (r *reader) i64() int64 {
-	raw := r.bytes(sizeU64)
+	raw := r.bytes(sizeU32)
 	if raw == nil {
 		return 0
 	}
-	return int64(binary.BigEndian.Uint64(raw))
+	var value int32
+	for _, b := range raw {
+		value = value<<8 | int32(b)
+	}
+	return value
 }
+
+// i64 consumes the format's s8. No field the character sheet carries is one, so
+// only its width and the bounds check matter and the value is dropped.
+func (r *reader) i64() { r.bytes(sizeU64) }
 
 func (r *reader) f32() float32 {
 	return math.Float32frombits(r.u32())
 }
 
 func (r *reader) f64() float64 {
-	return math.Float64frombits(uint64(r.i64()))
+	raw := r.bytes(sizeU64)
+	if raw == nil {
+		return 0
+	}
+	return math.Float64frombits(binary.BigEndian.Uint64(raw))
 }
 
 // stringUTF reads common::string_utf: a u2 byte length and UTF-8 bytes.
@@ -157,9 +181,10 @@ func (r *reader) byteLen() int {
 	if r.err != nil {
 		return 0
 	}
-	if uint64(size) > uint64(len(r.data)-r.pos) {
+	remaining := len(r.data) - r.pos
+	if size > math.MaxInt32 || int(size) > remaining {
 		r.fail(fmt.Errorf("%w: length %d at offset %d exceeds %d remaining bytes",
-			ErrShortRead, size, r.pos-sizeU32, len(r.data)-r.pos))
+			ErrShortRead, size, r.pos-sizeU32, remaining))
 		return 0
 	}
 	return int(size)

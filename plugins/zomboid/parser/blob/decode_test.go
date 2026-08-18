@@ -174,7 +174,7 @@ func TestDecodeInventory(t *testing.T) {
 
 	flattened := 0
 	for _, item := range player.Inventory {
-		flattened += int(item.Count)
+		flattened += item.Count
 	}
 	if flattened != 11 {
 		t.Fatalf("flattened items: %d, want 11", flattened)

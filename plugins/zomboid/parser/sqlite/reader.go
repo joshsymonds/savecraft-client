@@ -25,6 +25,19 @@ import (
 // failed, whenever the file does not conform to the SQLite file format.
 var ErrCorrupt = errors.New("sqlite corrupt")
 
+const (
+	// maxPageSize is the largest page SQLite supports, and the value a zero cell
+	// content area offset stands for, since 65536 does not fit the u16 the header
+	// stores it in (file format, "B-tree Pages").
+	maxPageSize = 65536
+	// maxVarint is the widest a varint gets; its ninth byte contributes all 8 of
+	// its bits (file format, "A variable-length integer").
+	maxVarint = 9
+	// masterColumns is how many columns a sqlite_master row has: type, name,
+	// tbl_name, rootpage, sql.
+	masterColumns = 5
+)
+
 // ErrNoSuchTable is returned, wrapped with the requested name, when Rows is
 // asked for a table that is not in the database schema.
 var ErrNoSuchTable = errors.New("sqlite table not found")
@@ -105,6 +118,16 @@ func (d *DB) Tables() []string {
 // bad wraps ErrCorrupt with the specific integrity check that failed.
 func bad(s string) error { return fmt.Errorf("%w: %s", ErrCorrupt, s) }
 
+// rowID reinterprets a rowid varint as the two's-complement signed integer
+// SQLite stores it as. Masking the sign bit off keeps the conversion inside
+// int64's range; the bit is added back as int64's minimum.
+func rowID(v uint64) int64 {
+	if v > math.MaxInt64 {
+		return math.MinInt64 + int64(v&math.MaxInt64)
+	}
+	return int64(v)
+}
+
 // Open validates the 100-byte database header, then reads the schema so that
 // Tables and Rows can be served. The data slice is retained and must not be
 // modified for the lifetime of the returned DB. It returns an error wrapping
@@ -179,13 +202,9 @@ func (d *DB) page(n uint32) ([]byte, error) {
 // its bits (file format, "A variable-length integer").
 func readVarint(b []byte) (uint64, int, error) {
 	var v uint64
-	for i := 0; i < 9; i++ {
-		if i >= len(b) {
-			return 0, 0, bad("malformed varint")
-		}
-		c := b[i]
-		if i == 8 {
-			return (v << 8) | uint64(c), 9, nil
+	for i, c := range b {
+		if i == maxVarint-1 {
+			return (v << 8) | uint64(c), maxVarint, nil
 		}
 		v = (v << 7) | uint64(c&127)
 		if c < 128 {
@@ -198,24 +217,27 @@ func readVarint(b []byte) (uint64, int, error) {
 // loadMaster walks the sqlite_master b-tree, which always roots at page 1, and
 // records each table's root page and column names.
 func (d *DB) loadMaster() error {
-	return d.walk(1, func(rowid int64, payload []byte) error {
+	return d.walk(1, func(_ int64, payload []byte) error {
 		vals, e := record(payload)
 		if e != nil {
 			return e
 		}
-		if len(vals) < 5 || vals[0].Text() != "table" {
+		if len(vals) < masterColumns || vals[0].Text() != "table" {
 			return nil
 		}
-		root := uint32(vals[3].Int64())
+		root := vals[3].Int64()
+		if root < 1 || root > math.MaxUint32 {
+			return bad("schema root page out of range")
+		}
 		sql := vals[4].Text()
 		open := strings.Index(sql, "(")
-		close := strings.LastIndex(sql, ")")
-		if open < 0 || close < open {
+		closing := strings.LastIndex(sql, ")")
+		if open < 0 || closing < open {
 			return bad("malformed schema")
 		}
 		var cols []string
 		pk := -1
-		for _, part := range splitCols(sql[open+1 : close]) {
+		for _, part := range splitCols(sql[open+1 : closing]) {
 			f := strings.Fields(part)
 			if len(f) == 0 || strings.EqualFold(f[0], "constraint") {
 				continue
@@ -228,7 +250,7 @@ func (d *DB) loadMaster() error {
 				pk = len(cols) - 1
 			}
 		}
-		d.names[vals[1].Text()] = table{root, cols, pk}
+		d.names[vals[1].Text()] = table{uint32(root), cols, pk}
 		return nil
 	})
 }
@@ -313,19 +335,36 @@ func (d *DB) walkSeen(n uint32, visit func(int64, []byte) error, seen map[uint32
 	if typ == 5 {
 		ptrStart = 12
 	}
-	if int(binary.BigEndian.Uint16(p[5:7]))-base > len(p) || ptrStart+2*cnt > len(p) {
+	ptrEnd := ptrStart + 2*cnt
+	// Cells occupy the cell content area, which runs from the offset at header
+	// offset 5 — zero meaning 65536 — to the usable size; below it lie the page
+	// header, the cell pointer array, and free space, none of which a cell may
+	// start in (file format, "B-tree Pages").
+	content := int(binary.BigEndian.Uint16(p[5:7]))
+	if content == 0 {
+		content = maxPageSize
+	}
+	content -= base
+	usableEnd := d.usable - base
+	if ptrEnd > len(p) || (cnt > 0 && (content < ptrEnd || content >= usableEnd)) {
 		return bad(fmt.Sprintf("invalid cell pointers on page %d", n))
 	}
 	if typ == 5 {
-		for i := 0; i < cnt; i++ {
-			// A pointer into the page header — or, on page 1, below the database
-			// header, which makes the shifted offset negative — is corrupt.
+		for i := range cnt {
+			// A pointer into the header or the pointer array — or, on page 1,
+			// below the database header, which makes the shifted offset negative
+			// — is corrupt.
 			o := int(binary.BigEndian.Uint16(p[ptrStart+2*i:])) - base
-			if o < ptrStart || o+4 > len(p) {
-				return bad("cell pointer beyond page")
+			if o < ptrEnd || o < content || o+4 > usableEnd {
+				return bad("cell pointer outside the cell content area")
 			}
-			if e = d.walkSeen(binary.BigEndian.Uint32(p[o:]), visit, seen); e != nil {
-				return e
+			// An interior cell is a child page number followed by the rowid
+			// varint, which has to terminate inside the usable page.
+			if _, _, err := readVarint(p[o+4 : usableEnd]); err != nil {
+				return err
+			}
+			if err := d.walkSeen(binary.BigEndian.Uint32(p[o:]), visit, seen); err != nil {
+				return err
 			}
 		}
 		return d.walkSeen(binary.BigEndian.Uint32(p[8:12]), visit, seen)
@@ -333,21 +372,23 @@ func (d *DB) walkSeen(n uint32, visit func(int64, []byte) error, seen map[uint32
 	if typ != 13 {
 		return bad("unsupported b-tree page")
 	}
-	for i := 0; i < cnt; i++ {
+	for i := range cnt {
 		o := int(binary.BigEndian.Uint16(p[ptrStart+2*i:])) - base
-		if o < ptrStart || o >= len(p) {
-			return bad("cell pointer beyond page")
+		if o < ptrEnd || o < content || o >= usableEnd {
+			return bad("cell pointer outside the cell content area")
 		}
-		sz, nv, e := readVarint(p[o:])
-		if e != nil {
-			return e
+		sz, nv, sizeErr := readVarint(p[o:])
+		if sizeErr != nil {
+			return sizeErr
 		}
-		rid, nr, e := readVarint(p[o+nv:])
-		if e != nil {
-			return e
+		rid, nr, rowidErr := readVarint(p[o+nv:])
+		if rowidErr != nil {
+			return rowidErr
 		}
 		payload := p[o+nv+nr:]
-		if sz > uint64(len(d.data)) {
+		// A payload longer than the file cannot be reassembled, and the bound
+		// keeps the length inside int on the way to the overflow walk.
+		if sz > math.MaxInt32 || int(sz) > len(d.data) {
 			return bad("payload length exceeds file size")
 		}
 		full := int(sz)
@@ -372,14 +413,14 @@ func (d *DB) walkSeen(n uint32, visit func(int64, []byte) error, seen map[uint32
 				return bad("truncated overflow pointer")
 			}
 			q := binary.BigEndian.Uint32(payload[local:])
-			x, e := d.overflow(q, full-local)
-			if e != nil {
-				return e
+			x, overflowErr := d.overflow(q, full-local)
+			if overflowErr != nil {
+				return overflowErr
 			}
 			buf = append(buf, x...)
 		}
-		if e = visit(int64(rid), buf); e != nil {
-			return e
+		if err := visit(rowID(rid), buf); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -432,23 +473,27 @@ func (d *DB) overflow(n uint32, want int) ([]byte, error) {
 // Format").
 func record(p []byte) ([]Value, error) {
 	hs, n, e := readVarint(p)
-	if e != nil || hs < uint64(n) || hs > uint64(len(p)) {
+	if e != nil || hs > math.MaxInt32 {
+		return nil, bad("invalid record header")
+	}
+	headerSize := int(hs)
+	if headerSize < n || headerSize > len(p) {
 		return nil, bad("invalid record header")
 	}
 	types := []uint64{}
 	at := n
-	for at < int(hs) {
-		x, k, e := readVarint(p[at:])
-		if e != nil {
-			return nil, e
+	for at < headerSize {
+		x, k, typeErr := readVarint(p[at:])
+		if typeErr != nil {
+			return nil, typeErr
 		}
 		types = append(types, x)
 		at += k
 	}
-	if at != int(hs) {
+	if at != headerSize {
 		return nil, bad("invalid record header")
 	}
-	pos := int(hs)
+	pos := headerSize
 	out := make([]Value, 0, len(types))
 	for _, x := range types {
 		v := Value{}
@@ -485,28 +530,32 @@ func record(p []byte) ([]Value, error) {
 		default:
 			// Even serial types >= 12 are blobs of (x-12)/2 bytes; odd types
 			// >= 13 are text of (x-13)/2 bytes.
-			var n int
-			if x >= 12 && x%2 == 0 {
-				v.kind = Blob
-				n = int((x - 12) / 2)
-			} else if x >= 13 {
-				v.kind = Text
-				n = int((x - 13) / 2)
-			} else {
+			if x < 12 {
 				return nil, bad("unknown serial type")
 			}
+			var size uint64
+			if x%2 == 0 {
+				v.kind, size = Blob, (x-12)/2
+			} else {
+				v.kind, size = Text, (x-13)/2
+			}
 			// A nine-byte serial type can encode a length near the top of the
-			// uint64 range, so compare against the bytes remaining instead of
-			// adding an attacker-chosen length to the read position.
-			if n > len(p)-pos {
+			// uint64 range, so bound it before it becomes an int and compare
+			// against the bytes remaining instead of adding an attacker-chosen
+			// length to the read position.
+			if size > math.MaxInt32 {
+				return nil, bad("truncated value")
+			}
+			width := int(size)
+			if width > len(p)-pos {
 				return nil, bad("truncated value")
 			}
 			if v.kind == Blob {
-				v.b = append([]byte{}, p[pos:pos+n]...)
+				v.b = append([]byte{}, p[pos:pos+width]...)
 			} else {
-				v.s = string(p[pos : pos+n])
+				v.s = string(p[pos : pos+width])
 			}
-			pos += n
+			pos += width
 		}
 		out = append(out, v)
 	}

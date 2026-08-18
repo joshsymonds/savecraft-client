@@ -123,7 +123,7 @@ type BodyPart struct {
 // type and name is a dictionary lookup the caller owns.
 type InventoryItem struct {
 	RegistryID uint16
-	Count      int32
+	Count      int
 }
 
 // WornItem is character_shared::worn_item_entry. ItemIndex points into the

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -33,13 +34,23 @@ func TestFixtureLocalPlayers(t *testing.T) {
 	if len(rows[0].Values[8].Blob()) != 4312 {
 		t.Fatalf("blob length %d", len(rows[0].Values[8].Blob()))
 	}
-	if !reflect.DeepEqual(rows[0].Columns, []string{"id", "name", "wx", "wy", "x", "y", "z", "worldversion", "data", "isDead"}) {
+	if !reflect.DeepEqual(
+		rows[0].Columns,
+		[]string{"id", "name", "wx", "wy", "x", "y", "z", "worldversion", "data", "isDead"},
+	) {
 		t.Fatalf("columns %v", rows[0].Columns)
 	}
-	if rows[0].Values[3].Int64() != 18 || rows[0].Values[4].Float64() != 178.56251525878906 || rows[0].Values[5].Float64() != 147.0225372314453 || rows[0].Values[6].Float64() != 0 || rows[0].Values[7].Int64() != 249 || rows[0].Values[9].Int64() != 0 {
+	if rows[0].Values[3].Int64() != 18 || rows[0].Values[4].Float64() != 178.56251525878906 ||
+		rows[0].Values[5].Float64() != 147.0225372314453 ||
+		rows[0].Values[6].Float64() != 0 ||
+		rows[0].Values[7].Int64() != 249 ||
+		rows[0].Values[9].Int64() != 0 {
 		t.Fatalf("values %#v", rows[0].Values)
 	}
-	if got := fmt.Sprintf("%x", sha256.Sum256(rows[0].Values[8].Blob())); got != "de011b2d120dab1a945ddf860a1bdc42537c3a1f377279d3c9f78a78557ccc70" {
+	if got := fmt.Sprintf(
+		"%x",
+		sha256.Sum256(rows[0].Values[8].Blob()),
+	); got != "de011b2d120dab1a945ddf860a1bdc42537c3a1f377279d3c9f78a78557ccc70" {
 		t.Fatal(got)
 	}
 	if r, e := db.Rows("networkPlayers"); e != nil || len(r) != 0 {
@@ -90,16 +101,19 @@ func TestMultipage(t *testing.T) {
 		if row.Values[2].Kind() != Blob || !bytes.Equal(row.Values[2].Blob(), wantBlob) {
 			t.Fatalf("row %d blob length %d", i, len(row.Values[2].Blob()))
 		}
-		if i%7 == 0 {
+		switch {
+		case i%7 == 0:
 			if row.Values[3].Kind() != Null {
 				t.Fatalf("row %d f: %#v", i, row.Values[3])
 			}
-		} else if i%3 == 0 {
+		case i%3 == 0:
 			if row.Values[3].Kind() != Int64 || row.Values[3].Int64() != int64(i/3) {
 				t.Fatalf("row %d f: %#v", i, row.Values[3])
 			}
-		} else if row.Values[3].Kind() != Float64 || row.Values[3].Float64() != float64(i)/3 {
-			t.Fatalf("row %d f: %#v", i, row.Values[3])
+		default:
+			if row.Values[3].Kind() != Float64 || row.Values[3].Float64() != float64(i)/3 {
+				t.Fatalf("row %d f: %#v", i, row.Values[3])
+			}
 		}
 		if i%5 == 0 {
 			if row.Values[4].Kind() != Null {
@@ -229,7 +243,7 @@ func TestCorruptCellsAndOverflow(t *testing.T) {
 		{"cyclic overflow", func(x []byte) { binary.BigEndian.PutUint32(x[(int(first)-1)*db.ps:], first) }},
 		{"unknown serial type", func(x []byte) { x[payload+1] = 10 }},
 		{"oversized payload varint", func(x []byte) {
-			for i := 0; i < 9; i++ {
+			for i := range maxVarint {
 				x[cell+i] = 0xff
 			}
 		}},
@@ -246,20 +260,86 @@ func TestCorruptCellsAndOverflow(t *testing.T) {
 			}
 		})
 	}
+}
 
-	x := append([]byte(nil), b...)
-	root := db.names["t"].root
-	ptr := (int(root)-1)*db.ps + 12
-	binary.BigEndian.PutUint16(x[ptr:], uint16(db.ps-1))
-	for i := 0; i < 8; i++ {
-		x[(int(root)-1)*db.ps+db.ps-8+i] = 0x80
-	}
-	d, err := Open(x)
+// cellPointerMessage is the integrity check every out-of-bounds cell pointer
+// must fail; asserting on it keeps these cases from passing because the walk
+// tripped over something else further in.
+const cellPointerMessage = "cell pointer outside the cell content area"
+
+// TestCellPointerBounds pins where a cell is allowed to start: at or after the
+// end of the cell pointer array, at or after the cell content area the page
+// header declares at offset 5, and wholly inside the usable page. It also pins
+// that an interior cell's rowid varint has to terminate inside the page — the
+// cell is a child page number followed by that varint, and neither used to be
+// checked.
+func TestCellPointerBounds(t *testing.T) {
+	b, err := os.ReadFile("testdata/multipage.db")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = d.Rows("t"); !errors.Is(err, ErrCorrupt) {
-		t.Fatalf("malformed varint: %v", err)
+	db, err := Open(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	interior := (int(db.names["t"].root) - 1) * db.ps
+	if b[interior] != 5 {
+		t.Fatalf("table root is page type %d, want an interior page", b[interior])
+	}
+	firstCell := int(binary.BigEndian.Uint16(b[interior+12:]))
+	leaf := (int(binary.BigEndian.Uint32(b[interior+firstCell:])) - 1) * db.ps
+	if b[leaf] != 13 {
+		t.Fatalf("first child is page type %d, want a leaf page", b[leaf])
+	}
+	interiorPointers := 12 + 2*int(binary.BigEndian.Uint16(b[interior+3:]))
+	interiorContent := int(binary.BigEndian.Uint16(b[interior+5:]))
+	leafPointers := 8 + 2*int(binary.BigEndian.Uint16(b[leaf+3:]))
+	leafContent := int(binary.BigEndian.Uint16(b[leaf+5:]))
+	if interiorPointers >= interiorContent || leafPointers >= leafContent || interiorContent > db.usable-6 {
+		t.Fatalf("fixture has no free space to point at: interior %d..%d, leaf %d..%d, usable %d",
+			interiorPointers, interiorContent, leafPointers, leafContent, db.usable)
+	}
+
+	for _, tc := range []struct {
+		name     string
+		contains string
+		patch    func([]byte)
+	}{
+		{"interior pointer into the pointer array", cellPointerMessage, func(x []byte) {
+			binary.BigEndian.PutUint16(x[interior+12:], 12)
+		}},
+		{"interior pointer below the content area", cellPointerMessage, func(x []byte) {
+			binary.BigEndian.PutUint16(x[interior+12:], uint16(interiorPointers))
+		}},
+		{"interior pointer past the usable page", cellPointerMessage, func(x []byte) {
+			binary.BigEndian.PutUint16(x[interior+12:], uint16(db.usable-3))
+		}},
+		{"interior rowid varint runs off the page", "malformed varint", func(x []byte) {
+			binary.BigEndian.PutUint16(x[interior+12:], uint16(db.usable-6))
+			x[interior+db.usable-2], x[interior+db.usable-1] = 0x80, 0x80
+		}},
+		{"leaf pointer into the pointer array", cellPointerMessage, func(x []byte) {
+			binary.BigEndian.PutUint16(x[leaf+8:], 8)
+		}},
+		{"leaf pointer below the content area", cellPointerMessage, func(x []byte) {
+			binary.BigEndian.PutUint16(x[leaf+8:], uint16(leafPointers))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			x := append([]byte(nil), b...)
+			tc.patch(x)
+			d, err := Open(x)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = d.Rows("t")
+			if !errors.Is(err, ErrCorrupt) {
+				t.Fatalf("error = %v, want ErrCorrupt", err)
+			}
+			if !strings.Contains(err.Error(), tc.contains) {
+				t.Fatalf("error = %v, want it to name %q", err, tc.contains)
+			}
+		})
 	}
 }
 
@@ -423,7 +503,7 @@ func tableCell(db *DB, name string, target int64) (int, int, error) {
 		if p[0] == 5 {
 			ptrStart = 12
 			count := int(binary.BigEndian.Uint16(p[3:5]))
-			for i := 0; i < count; i++ {
+			for i := range count {
 				o := int(binary.BigEndian.Uint16(p[ptrStart+2*i:])) - base
 				key, _, err := readVarint(p[o+4:])
 				if err != nil {
@@ -437,7 +517,7 @@ func tableCell(db *DB, name string, target int64) (int, int, error) {
 			n = binary.BigEndian.Uint32(p[8:12])
 			goto next
 		}
-		for i := 0; i < int(binary.BigEndian.Uint16(p[3:5])); i++ {
+		for i := range int(binary.BigEndian.Uint16(p[3:5])) {
 			o := int(binary.BigEndian.Uint16(p[ptrStart+2*i:])) - base
 			_, nv, err := readVarint(p[o:])
 			if err != nil {
@@ -461,10 +541,10 @@ func localPayload(usable, total int) int {
 	if total <= usable-35 {
 		return total
 	}
-	min := ((usable-12)*32)/255 - 23
-	local := min + (total-min)%(usable-4)
+	smallest := ((usable-12)*32)/255 - 23
+	local := smallest + (total-smallest)%(usable-4)
 	if local > usable-35 {
-		return min
+		return smallest
 	}
 	return local
 }
