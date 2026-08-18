@@ -1,4 +1,4 @@
-use jomini::Windows1252Encoding;
+use jomini::Utf8Encoding;
 use jomini::text::ObjectReader;
 use serde::Serialize;
 
@@ -23,8 +23,8 @@ pub struct SpeciesSection {
 /// Extract the species section from the top-level species_db,
 /// filtered to species referenced by the player's founder_species_ref.
 pub fn extract(
-    gamestate: &ObjectReader<'_, '_, Windows1252Encoding>,
-    country: &ObjectReader<'_, '_, Windows1252Encoding>,
+    gamestate: &ObjectReader<'_, '_, Utf8Encoding>,
+    country: &ObjectReader<'_, '_, Utf8Encoding>,
 ) -> SpeciesSection {
     let founder_species_id = read_i64(country, "founder_species_ref");
 

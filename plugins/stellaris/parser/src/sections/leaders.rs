@@ -1,4 +1,4 @@
-use jomini::Windows1252Encoding;
+use jomini::Utf8Encoding;
 use jomini::text::ObjectReader;
 use serde::Serialize;
 
@@ -24,10 +24,7 @@ pub struct Leaders {
 
 /// Extract the leaders section by looking up the player's leader IDs
 /// in the top-level `leaders` block.
-pub fn extract(
-    gamestate: &ObjectReader<'_, '_, Windows1252Encoding>,
-    player_country_id: i64,
-) -> Leaders {
+pub fn extract(gamestate: &ObjectReader<'_, '_, Utf8Encoding>, player_country_id: i64) -> Leaders {
     let mut result = Leaders {
         leaders: Vec::new(),
     };

@@ -1,4 +1,4 @@
-use jomini::Windows1252Encoding;
+use jomini::Utf8Encoding;
 use jomini::text::ObjectReader;
 use serde::Serialize;
 
@@ -21,10 +21,7 @@ pub struct Factions {
 
 /// Extract the factions section from the top-level pop_factions block,
 /// filtered by the player's country.
-pub fn extract(
-    gamestate: &ObjectReader<'_, '_, Windows1252Encoding>,
-    player_country_id: i64,
-) -> Factions {
+pub fn extract(gamestate: &ObjectReader<'_, '_, Utf8Encoding>, player_country_id: i64) -> Factions {
     let mut result = Factions {
         factions: Vec::new(),
     };

@@ -1,4 +1,4 @@
-use jomini::Windows1252Encoding;
+use jomini::Utf8Encoding;
 use jomini::text::ObjectReader;
 use serde::Serialize;
 
@@ -20,7 +20,7 @@ pub struct Progression {
 }
 
 /// Extract the progression section from the player's country object.
-pub fn extract(country: &ObjectReader<'_, '_, Windows1252Encoding>) -> Progression {
+pub fn extract(country: &ObjectReader<'_, '_, Utf8Encoding>) -> Progression {
     let mut progression = Progression {
         traditions: Vec::new(),
         ascension_perks: Vec::new(),

@@ -41,7 +41,7 @@ fn main() {
             std::process::exit(1);
         }
     };
-    let reader = tape.windows1252_reader();
+    let reader = tape.utf8_reader();
 
     // Find the player's country ID
     let player_country_id = match find_player_country_id(&reader) {
@@ -248,7 +248,7 @@ fn prettify_key(key: &str) -> String {
 
 /// Find the player's country ID from the `player` block.
 fn find_player_country_id(
-    reader: &jomini::text::ObjectReader<'_, '_, jomini::Windows1252Encoding>,
+    reader: &jomini::text::ObjectReader<'_, '_, jomini::Utf8Encoding>,
 ) -> Option<i64> {
     let player_val = find_field(reader, "player")?;
     let player_arr = player_val.read_array().ok()?;
