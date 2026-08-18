@@ -79,6 +79,7 @@ type fakeFS struct {
 	dirs          map[string][]string // dir path -> file names
 	symlinks      map[string]string   // path -> resolved target (symlink escape tests)
 	readFileCount int                 // number of ReadFile calls (for verifying bypass)
+	readErrs      map[string]error    // full path -> error ReadFile returns for a present-but-unreadable file
 	readDirCalls  []string            // paths passed to ReadDir, in call order (for verifying recursion never attempted)
 }
 
@@ -135,6 +136,9 @@ func (f *fakeFS) ReadDir(path string) ([]fs.DirEntry, error) {
 
 func (f *fakeFS) ReadFile(path string) ([]byte, error) {
 	f.readFileCount++
+	if err, ok := f.readErrs[path]; ok {
+		return nil, err
+	}
 	data, ok := f.files[path]
 	if !ok {
 		return nil, os.ErrNotExist
@@ -1169,11 +1173,13 @@ func TestParseAndPush_PluginError(t *testing.T) {
 
 func TestParseAndPush_FileReadError(t *testing.T) {
 	ws := newFakeWSClient()
-	fsys := &fakeFS{files: map[string][]byte{}} // file doesn't exist
+	// Present but unreadable (permission denied, sharing violation): unlike a
+	// vanished file, this IS reported — the save exists and could not be read.
+	fsys := &fakeFS{readErrs: map[string]error{"/saves/d2r/locked.d2s": os.ErrPermission}}
 	cfg := d2rConfig()
 
 	d := New(cfg, fsys, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, nil, testLogger())
-	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/missing.d2s", "missing.d2s", nil, false)
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/locked.d2s", "locked.d2s", nil, false)
 
 	types := ws.sentEventTypes()
 	if !slices.Contains(types, "parseFailed") {
@@ -5209,5 +5215,23 @@ func TestAggregateHash_NoDelimiterCollision(t *testing.T) {
 
 	if aggregateHash(setA) == aggregateHash(setB) {
 		t.Fatal("aggregateHash collided between two distinct member snapshots (delimiter-ambiguous serialization)")
+	}
+}
+
+// A save that disappears between discovery and read (Stellaris rotating an
+// autosave between the scan's ReadDir and ReadFile) is not a parse failure:
+// there is no file for the plugin to have failed on. Nothing is announced —
+// no ParseStarted the UI would wait on, no ParseFailed the server would
+// persist as a "read file: ... cannot find" parse_error.
+func TestParseAndPush_VanishedFile_ReportsNothing(t *testing.T) {
+	ws := newFakeWSClient()
+	runner := &fakeRunner{results: map[string]*GameState{"d2r": newD2RState()}}
+	fsys := &fakeFS{files: map[string][]byte{}} // file listed by the scan, gone by the read
+	d := New(d2rConfig(), fsys, newFakeWatcher(), runner, ws, &fakePluginManager{}, nil, testLogger())
+
+	d.parseAndPush(context.Background(), "d2r", "/saves/d2r/gone.d2s", "gone.d2s", nil, false)
+
+	if got := ws.sentEventTypes(); len(got) != 0 {
+		t.Fatalf("vanished file sent %v, want no messages at all", got)
 	}
 }
