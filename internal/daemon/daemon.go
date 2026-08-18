@@ -208,7 +208,7 @@ type Updater interface {
 
 // UpdateInfo describes an available update for a single binary.
 type UpdateInfo struct {
-	Version      string `json:"version"`
+	Version      string `json:"version,omitempty"`
 	URL          string `json:"url"`
 	SignatureURL string `json:"signatureUrl"`
 	SHA256       string `json:"sha256"`
