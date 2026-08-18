@@ -641,6 +641,7 @@ type fakeUpdater struct {
 	checkErr    error
 	applyErr    error
 	applyCalls  []applyCall
+	applyGate   chan struct{} // when set, Apply blocks until it is closed
 	mu          sync.Mutex
 }
 
@@ -655,8 +656,12 @@ func (u *fakeUpdater) Check(_ context.Context, _, _ string) (*CheckResult, error
 
 func (u *fakeUpdater) Apply(_ context.Context, info *UpdateInfo, binaryPath string) error {
 	u.mu.Lock()
-	defer u.mu.Unlock()
 	u.applyCalls = append(u.applyCalls, applyCall{Info: info, BinaryPath: binaryPath})
+	gate := u.applyGate
+	u.mu.Unlock()
+	if gate != nil {
+		<-gate
+	}
 	return u.applyErr
 }
 
@@ -2793,6 +2798,67 @@ func TestCheckSelfUpdate_NilUpdater(_ *testing.T) {
 
 	// Should not panic
 	d.checkSelfUpdate(context.Background())
+}
+
+// A reconnect storm (worker deploy) delivers several sourceUpdateAvailable
+// pushes seconds apart; the 6h poll can land in the same window. Each used to
+// start its own Apply on the same daemon-update.tmp — prod 2026-08-18: Windows
+// daemons failing "rename new binary: ... being used by another process" /
+// "cannot find the file" while a sibling attempt won. Only one update may be
+// in flight; later requests while it runs are dropped.
+func TestApplyDaemonUpdate_SingleFlight(t *testing.T) {
+	ws := newFakeWSClient()
+	updater := &fakeUpdater{applyGate: make(chan struct{})}
+	cfg := Config{
+		SourceID:   "deck",
+		Version:    "0.1.0",
+		BinaryPath: "/usr/local/bin/savecraft-daemon",
+		Games:      map[string]GameConfig{},
+	}
+	d := New(cfg, &fakeFS{}, newFakeWatcher(), &fakeRunner{}, ws, &fakePluginManager{}, updater, testLogger())
+	d.exitFunc = func(int) {}
+	d.restartFunc = func(_, _ string) error { return nil }
+
+	result := &CheckResult{Daemon: &UpdateInfo{Version: "0.2.0", URL: "https://example.com/daemon", SHA256: "abc"}}
+	first := make(chan struct{})
+	go func() {
+		defer close(first)
+		d.applyDaemonUpdate(context.Background(), result)
+	}()
+	waitFor(t, func() bool {
+		updater.mu.Lock()
+		defer updater.mu.Unlock()
+		return len(updater.applyCalls) == 1
+	})
+
+	// Second request while the first is still applying: must not start
+	// another Apply. Run it concurrently so a regression (a second Apply
+	// blocking on the gate) still terminates once the gate opens.
+	second := make(chan struct{})
+	go func() {
+		defer close(second)
+		d.applyDaemonUpdate(context.Background(), result)
+	}()
+	waitFor(t, func() bool {
+		select {
+		case <-second:
+			return true // dropped immediately: the desired behavior
+		default:
+		}
+		updater.mu.Lock()
+		defer updater.mu.Unlock()
+		return len(updater.applyCalls) == 2 // regression: a second Apply started
+	})
+	close(updater.applyGate)
+	<-first
+	<-second
+
+	updater.mu.Lock()
+	calls := len(updater.applyCalls)
+	updater.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("updater.Apply called %d times for two overlapping requests, want 1", calls)
+	}
 }
 
 func TestApplyDaemonUpdate_UpdatesTrayBinary(t *testing.T) {

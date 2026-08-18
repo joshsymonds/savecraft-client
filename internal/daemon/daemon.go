@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -369,6 +370,12 @@ type Daemon struct {
 	// Set by checkSelfUpdate, consumed by ApplyPendingUpdate or the
 	// auto-apply timer. Protected by mu.
 	pendingUpdate *CheckResult
+
+	// updateInFlight is set while applyDaemonUpdate is downloading and
+	// installing. A reconnect storm delivers several sourceUpdateAvailable
+	// pushes seconds apart (and the 6h poll can land in the same window);
+	// concurrent applies race on one daemon-update.tmp and fail each other.
+	updateInFlight atomic.Bool
 
 	// autoApplyTimer fires after the grace period to auto-apply a pending
 	// update if the user hasn't manually restarted. Nil when no update pending.
@@ -803,6 +810,12 @@ func (d *Daemon) applyDaemonUpdate(ctx context.Context, result *CheckResult) {
 	if d.updater == nil || result.Daemon == nil {
 		return
 	}
+	if !d.updateInFlight.CompareAndSwap(false, true) {
+		d.log.InfoContext(ctx, "daemon update already in progress; ignoring duplicate request",
+			slog.String("version", result.Daemon.Version))
+		return
+	}
+	defer d.updateInFlight.Store(false)
 	d.sendMessage(
 		ctx,
 		&pb.Message{Payload: &pb.Message_SourceUpdateStarted{SourceUpdateStarted: &pb.SourceUpdateStarted{
