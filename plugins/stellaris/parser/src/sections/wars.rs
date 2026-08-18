@@ -1,4 +1,4 @@
-use jomini::Windows1252Encoding;
+use jomini::Utf8Encoding;
 use jomini::text::ObjectReader;
 use serde::Serialize;
 
@@ -34,10 +34,7 @@ pub struct Wars {
 
 /// Extract the wars section from the top-level gamestate.
 /// Filters for wars involving the player country.
-pub fn extract(
-    gamestate: &ObjectReader<'_, '_, Windows1252Encoding>,
-    player_country_id: i64,
-) -> Wars {
+pub fn extract(gamestate: &ObjectReader<'_, '_, Utf8Encoding>, player_country_id: i64) -> Wars {
     let mut wars = Wars {
         active_wars: Vec::new(),
         player_at_war: false,
@@ -102,7 +99,7 @@ pub fn extract(
 }
 
 fn parse_participants(
-    war_obj: &ObjectReader<'_, '_, Windows1252Encoding>,
+    war_obj: &ObjectReader<'_, '_, Utf8Encoding>,
     field: &str,
 ) -> Vec<WarParticipant> {
     let mut participants = Vec::new();

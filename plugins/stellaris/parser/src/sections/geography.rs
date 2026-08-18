@@ -1,4 +1,4 @@
-use jomini::Windows1252Encoding;
+use jomini::Utf8Encoding;
 use jomini::text::ObjectReader;
 use serde::Serialize;
 
@@ -12,14 +12,14 @@ pub struct Geography {
 }
 
 /// Extract the geography section from the player's country object.
-pub fn extract(country: &ObjectReader<'_, '_, Windows1252Encoding>) -> Geography {
+pub fn extract(country: &ObjectReader<'_, '_, Utf8Encoding>) -> Geography {
     Geography {
         owned_planet_ids: read_id_array(country, "owned_planets"),
         controlled_planet_ids: read_id_array(country, "controlled_planets"),
     }
 }
 
-fn read_id_array(obj: &ObjectReader<'_, '_, Windows1252Encoding>, field: &str) -> Vec<i64> {
+fn read_id_array(obj: &ObjectReader<'_, '_, Utf8Encoding>, field: &str) -> Vec<i64> {
     let mut result = Vec::new();
     if let Some(val) = find_field(obj, field)
         && let Ok(arr) = val.read_array()

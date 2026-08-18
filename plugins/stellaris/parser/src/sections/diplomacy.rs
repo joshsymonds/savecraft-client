@@ -1,4 +1,4 @@
-use jomini::Windows1252Encoding;
+use jomini::Utf8Encoding;
 use jomini::text::ObjectReader;
 use serde::Serialize;
 
@@ -30,7 +30,7 @@ pub struct CasusBelli {
 }
 
 /// Extract the diplomacy section from the player's country object.
-pub fn extract(country: &ObjectReader<'_, '_, Windows1252Encoding>) -> Diplomacy {
+pub fn extract(country: &ObjectReader<'_, '_, Utf8Encoding>) -> Diplomacy {
     let mut diplomacy = Diplomacy {
         relations: Vec::new(),
         casus_belli: Vec::new(),

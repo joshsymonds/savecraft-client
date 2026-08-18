@@ -36,7 +36,7 @@ func TestNew_WithHTTPClient(t *testing.T) {
 }
 
 func TestCheck_NewerVersionAvailable(t *testing.T) {
-	manifest := manifestResponse{
+	manifest := Manifest{
 		Version: "0.2.0",
 		Platforms: map[string]daemon.UpdateInfo{
 			"linux-amd64": {
@@ -76,7 +76,7 @@ func TestCheck_NewerVersionAvailable(t *testing.T) {
 }
 
 func TestCheck_WithTrayInfo(t *testing.T) {
-	manifest := manifestResponse{
+	manifest := Manifest{
 		Version: "0.2.0",
 		Platforms: map[string]daemon.UpdateInfo{
 			"windows-amd64.exe": {
@@ -126,7 +126,7 @@ func TestCheck_WithTrayInfo(t *testing.T) {
 }
 
 func TestCheck_AlreadyCurrent(t *testing.T) {
-	manifest := manifestResponse{
+	manifest := Manifest{
 		Version: "0.1.0",
 		Platforms: map[string]daemon.UpdateInfo{
 			"linux-amd64": {
@@ -150,7 +150,7 @@ func TestCheck_AlreadyCurrent(t *testing.T) {
 }
 
 func TestCheck_PlatformNotFound(t *testing.T) {
-	manifest := manifestResponse{
+	manifest := Manifest{
 		Version: "0.2.0",
 		Platforms: map[string]daemon.UpdateInfo{
 			"darwin-arm64": {
@@ -481,7 +481,7 @@ func TestCleanupTempFiles_RemovesExisting(t *testing.T) {
 }
 
 func TestCheck_DowngradeNotReturned(t *testing.T) {
-	manifest := manifestResponse{
+	manifest := Manifest{
 		Version: "0.1.0",
 		Platforms: map[string]daemon.UpdateInfo{
 			"linux-amd64": {

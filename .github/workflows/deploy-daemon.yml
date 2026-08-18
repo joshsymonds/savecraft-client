@@ -359,51 +359,17 @@ jobs:
           INSTALL_URL: ${{ needs.environment.outputs.install_url }}
           APP_NAME: ${{ needs.environment.outputs.app_name }}
         run: |
-          # Compute base64 DER public key from raw Ed25519 key
-          tmp_der=$(mktemp)
-          printf '\x30\x2a\x30\x05\x06\x03\x2b\x65\x70\x03\x21\x00' > "$tmp_der"
-          cat internal/signing/signing_key.pub >> "$tmp_der"
-          pubkey=$(base64 -w0 < "$tmp_der")
-          rm -f "$tmp_der"
-
-          # Build platforms and tray objects from checksums
-          platforms="{}"
-          tray="{}"
-          while read -r hash filename; do
-            # Skip sig files, MSI, and checksums file itself
-            case "$filename" in
-              *.sig|*.msi|checksums-*) continue ;;
-            esac
-            case "$filename" in
-              "${APP_NAME}"-tray-*)
-                # Extract platform from tray filename: {app_name}-tray-windows-amd64.exe → windows-amd64.exe
-                platform="${filename#"${APP_NAME}"-tray-}"
-                tray=$(echo "$tray" | jq \
-                  --arg p "$platform" \
-                  --arg url "${INSTALL_URL}/daemon/v${VERSION}/${filename}" \
-                  --arg sig "${INSTALL_URL}/daemon/v${VERSION}/${filename}.sig" \
-                  --arg hash "$hash" \
-                  '.[$p] = {url: $url, signatureUrl: $sig, sha256: $hash}')
-                ;;
-              "${APP_NAME}"-daemon-*)
-                # Extract platform from daemon filename: {app_name}-daemon-linux-amd64 → linux-amd64
-                platform="${filename#"${APP_NAME}"-daemon-}"
-                platforms=$(echo "$platforms" | jq \
-                  --arg p "$platform" \
-                  --arg url "${INSTALL_URL}/daemon/v${VERSION}/${filename}" \
-                  --arg sig "${INSTALL_URL}/daemon/v${VERSION}/${filename}.sig" \
-                  --arg hash "$hash" \
-                  '.[$p] = {url: $url, signatureUrl: $sig, sha256: $hash}')
-                ;;
-            esac
-          done < dist/checksums-sha256.txt
-
-          jq -n \
-            --arg version "$VERSION" \
-            --arg pubkey "$pubkey" \
-            --argjson platforms "$platforms" \
-            --argjson tray "$tray" \
-            '{version: $version, ed25519PublicKey: $pubkey, platforms: $platforms, tray: $tray}' > dist/daemon-manifest.json
+          # Keys platforms by GOOS-GOARCH (the daemon's own lookup key), never
+          # by artifact name — "windows-amd64.exe" keys left every Windows
+          # daemon unable to find itself and no Windows daemon ever
+          # self-updated. See selfupdate.BuildManifest and its tests.
+          go run ./cmd/savecraft-manifest \
+            -version "$VERSION" \
+            -install-url "$INSTALL_URL" \
+            -app-name "$APP_NAME" \
+            -checksums dist/checksums-sha256.txt \
+            -public-key internal/signing/signing_key.pub \
+            -out dist/daemon-manifest.json
 
           cat dist/daemon-manifest.json
 

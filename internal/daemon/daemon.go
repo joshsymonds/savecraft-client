@@ -208,7 +208,7 @@ type Updater interface {
 
 // UpdateInfo describes an available update for a single binary.
 type UpdateInfo struct {
-	Version      string `json:"version"`
+	Version      string `json:"version,omitempty"`
 	URL          string `json:"url"`
 	SignatureURL string `json:"signatureUrl"`
 	SHA256       string `json:"sha256"`
@@ -1785,17 +1785,24 @@ func (d *Daemon) parseAndPush(
 	generation := d.pluginGenerations[gameID]
 	d.mu.RUnlock()
 	d.log.DebugContext(ctx, "parsing save file", slog.String("game_id", gameID), slog.String("file_name", fileName))
-	if !quiet {
-		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ParseStarted{ParseStarted: &pb.ParseStarted{
-			GameId:   gameID,
-			FileName: fileName,
-		}}})
-	}
 
+	// Read before announcing: a file the scan listed but the game has since
+	// rotated away (Stellaris autosaves) is not a parse failure — there is
+	// nothing to parse — so it must not leave a dangling ParseStarted or a
+	// "read file: ... cannot find" ParseFailed behind.
 	saveBytes := preloadedData
 	if saveBytes == nil {
 		var err error
 		saveBytes, err = d.fs.ReadFile(fullPath)
+		if errors.Is(err, fs.ErrNotExist) {
+			d.log.DebugContext(
+				ctx,
+				"save file vanished before read",
+				slog.String("game_id", gameID),
+				slog.String("file_name", fileName),
+			)
+			return
+		}
 		if err != nil {
 			d.log.ErrorContext(
 				ctx,
@@ -1812,6 +1819,12 @@ func (d *Daemon) parseAndPush(
 			}}})
 			return
 		}
+	}
+	if !quiet {
+		d.sendMessage(ctx, &pb.Message{Payload: &pb.Message_ParseStarted{ParseStarted: &pb.ParseStarted{
+			GameId:   gameID,
+			FileName: fileName,
+		}}})
 	}
 
 	onStatus := func(message string) {

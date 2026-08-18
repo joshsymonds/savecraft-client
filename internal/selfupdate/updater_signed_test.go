@@ -21,7 +21,7 @@ import (
 // served. hitCount records download attempts to other paths so tests can prove
 // rejection happens before any download.
 func signedManifestServer(
-	t *testing.T, priv ed25519.PrivateKey, m manifestResponse,
+	t *testing.T, priv ed25519.PrivateKey, m Manifest,
 ) (*httptest.Server, *int) {
 	t.Helper()
 	body, err := json.Marshal(m)
@@ -54,7 +54,7 @@ func newTestUpdater(t *testing.T, srv *httptest.Server, pub ed25519.PublicKey) *
 
 func TestCheck_ValidSignedManifest(t *testing.T) {
 	pub, priv, _ := signing.GenerateKeypair()
-	m := manifestResponse{
+	m := Manifest{
 		Version: "0.2.0",
 		Platforms: map[string]daemon.UpdateInfo{
 			"linux-amd64": {URL: "u", SignatureURL: "s", SHA256: "abc"},
@@ -74,7 +74,7 @@ func TestCheck_ValidSignedManifest(t *testing.T) {
 
 func TestCheck_TamperedManifestRejected(t *testing.T) {
 	pub, priv, _ := signing.GenerateKeypair()
-	m := manifestResponse{
+	m := Manifest{
 		Version:   "0.2.0",
 		Platforms: map[string]daemon.UpdateInfo{"linux-amd64": {SHA256: "abc"}},
 	}
@@ -106,7 +106,7 @@ func TestCheck_TamperedManifestRejected(t *testing.T) {
 
 func TestCheck_MissingSignatureRejected(t *testing.T) {
 	pub, priv, _ := signing.GenerateKeypair()
-	m := manifestResponse{Version: "0.2.0"}
+	m := Manifest{Version: "0.2.0"}
 	body, _ := json.Marshal(m)
 	_ = priv
 
@@ -129,7 +129,7 @@ func TestCheck_MissingSignatureRejected(t *testing.T) {
 
 func TestApply_RejectsNonPinnedHostBeforeDownload(t *testing.T) {
 	pub, priv, _ := signing.GenerateKeypair()
-	srv, binHits := signedManifestServer(t, priv, manifestResponse{})
+	srv, binHits := signedManifestServer(t, priv, Manifest{})
 	u := newTestUpdater(t, srv, pub)
 
 	binaryPath := filepath.Join(t.TempDir(), "savecraft-daemon")
@@ -154,7 +154,7 @@ func TestApply_RejectsNonPinnedHostBeforeDownload(t *testing.T) {
 
 func TestApply_RejectsNonHTTPSURL(t *testing.T) {
 	pub, priv, _ := signing.GenerateKeypair()
-	srv, _ := signedManifestServer(t, priv, manifestResponse{})
+	srv, _ := signedManifestServer(t, priv, Manifest{})
 	u := newTestUpdater(t, srv, pub)
 
 	// Same host as the pinned origin but plaintext http:// → must be rejected.
@@ -174,7 +174,7 @@ func TestApply_RejectsNonHTTPSURL(t *testing.T) {
 
 func TestApply_RejectsSubdomainPrefixBypass(t *testing.T) {
 	pub, priv, _ := signing.GenerateKeypair()
-	srv, binHits := signedManifestServer(t, priv, manifestResponse{})
+	srv, binHits := signedManifestServer(t, priv, Manifest{})
 	u := newTestUpdater(t, srv, pub)
 
 	// Host that merely has the pinned host as a prefix must NOT pass.
