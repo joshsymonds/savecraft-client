@@ -123,6 +123,12 @@ const TYPE_HINTS: &[(&str, &str)] = &[
     ("worldSaveData.SupplySaveData.SupplyInfos.Key", "Guid"),
     ("worldSaveData.SupplySaveData.SupplyInfos.Value", "Struct"),
     // Current-build additions not present in the upstream Python table.
+    // A SetProperty of PalInstanceID structs (PlayerUId/InstanceId/DebugName),
+    // written once a world has a pal in a locker. Without this hint uesave
+    // reads each element as a bare 16-byte Guid, under-consumes the set,
+    // and misaligns every read after it -- so all of worldSaveData degrades
+    // to one Raw blob (live 2026-10-15).
+    ("worldSaveData.InLockerCharacterInstanceIDArray", "Struct"),
     ("worldSaveData.GuildExtraSaveDataMap.Key", "Guid"),
     ("worldSaveData.GuildExtraSaveDataMap.Value", "Struct"),
     (
@@ -164,6 +170,13 @@ pub fn decode(raw: Vec<u8>) -> Result<Save, GvasError> {
         decompress::decompress(payload, header.uncompressed_len).map_err(GvasError::Decompress)?;
     drop(raw);
 
+    read_gvas(gvas_bytes)
+}
+
+/// Parses decompressed GVAS bytes into a [`Save`] with Palworld's type
+/// hints -- the uesave half of [`decode`], split out so tests can feed it
+/// GVAS bytes directly without a PlM1/Kraken wrapper.
+fn read_gvas(gvas_bytes: Vec<u8>) -> Result<Save, GvasError> {
     SaveReader::new()
         .types(build_types())
         // Palworld's save format evolves between patches faster than this
@@ -177,4 +190,73 @@ pub fn decode(raw: Vec<u8>) -> Result<Save, GvasError> {
             offset: e.offset,
             message: e.error.to_string(),
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uesave::{Property, StructValue, ValueVec};
+
+    /// A minimal GVAS whose root is just `worldSaveData` holding a
+    /// two-element `InLockerCharacterInstanceIDArray` set, generated with
+    /// uesave from a real affected Level.sav's header and tags (synthetic
+    /// instance ids).
+    fn in_locker_gvas() -> Vec<u8> {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("testdata")
+            .join("in-locker-set.gvas");
+        std::fs::read(&path).unwrap_or_else(|e| panic!("reading fixture {path:?}: {e}"))
+    }
+
+    fn world_save_data(save: &Save) -> &Property {
+        save.root
+            .properties
+            .0
+            .iter()
+            .find(|(key, _)| key.1 == "worldSaveData")
+            .map(|(_, v)| v)
+            .expect("fixture has a worldSaveData root property")
+    }
+
+    #[test]
+    fn in_locker_set_decodes_as_struct_elements() {
+        let save = read_gvas(in_locker_gvas()).expect("decode in-locker fixture");
+
+        let Property::Struct(StructValue::Struct(wsd)) = world_save_data(&save) else {
+            panic!("worldSaveData should decode as a nested struct, got Raw or another shape");
+        };
+        let set = wsd
+            .0
+            .iter()
+            .find(|(key, _)| key.1 == "InLockerCharacterInstanceIDArray")
+            .map(|(_, v)| v)
+            .expect("InLockerCharacterInstanceIDArray present");
+        let Property::Set(ValueVec::Struct(elems)) = set else {
+            panic!("InLockerCharacterInstanceIDArray should be a set of structs: {set:?}");
+        };
+        assert_eq!(elems.len(), 2);
+        for elem in elems {
+            let StructValue::Struct(props) = elem else {
+                panic!("each element should be a PalInstanceID property list: {elem:?}");
+            };
+            let names: Vec<&str> = props.0.iter().map(|(key, _)| key.1.as_str()).collect();
+            assert_eq!(names, ["PlayerUId", "InstanceId", "DebugName"]);
+        }
+    }
+
+    #[test]
+    fn in_locker_set_without_its_hint_degrades_all_of_world_save_data() {
+        // The failure this hint fixes: with no hint, the misread set takes
+        // its whole parent down with it.
+        let save = SaveReader::new()
+            .types(Types::new())
+            .error_to_raw(true)
+            .read(std::io::Cursor::new(in_locker_gvas()))
+            .expect("raw-mode read still succeeds");
+
+        assert!(
+            matches!(world_save_data(&save), Property::Raw(_)),
+            "without the hint, worldSaveData should degrade to Raw"
+        );
+    }
 }

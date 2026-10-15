@@ -207,21 +207,25 @@ pub fn run() -> i32 {
 
     let built = sections::build_all(&level_save, level_meta_fields.as_ref(), &players);
 
-    // Level.sav decoded but its root has no worldSaveData at all: every
-    // section except overview would be empty. Pushing that as a "success"
+    // Level.sav decoded but yielded no usable worldSaveData: every section
+    // except overview would be empty. Pushing that as a "success"
     // overwrites whatever good sections the server already has for this
-    // world, so report it as the format-drift failure it is -- and name
-    // the root properties that were present, so the error itself documents
-    // the unrecognized layout.
-    if let Some(found_roots) = &built.missing_world_save_data {
-        ndjson::emit_error(
-            "unsupported_version",
-            &format!(
+    // world, so report it as the format-drift failure it is, saying which
+    // of the two cases it was.
+    if let Some(problem) = &built.world_save_data_problem {
+        let message = match problem {
+            sections::WorldSaveDataProblem::Missing { found_roots } => format!(
                 "Level.sav decoded but has no worldSaveData at its root (root properties: \
                  {found_roots}); this world's save layout is newer than this plugin version \
                  supports"
             ),
-        );
+            sections::WorldSaveDataProblem::Undecodable { raw_len } => format!(
+                "Level.sav's worldSaveData could not be decoded ({raw_len} bytes left \
+                 unparsed); this world contains save data this plugin version does not \
+                 recognize"
+            ),
+        };
+        ndjson::emit_error("unsupported_version", &message);
         return 1;
     }
 
@@ -293,7 +297,7 @@ pub(crate) fn build_sections_map(built: sections::BuildResult) -> HashMap<String
         warnings: _,
         unsupported_paths: _,
         critical_unsupported: _,
-        missing_world_save_data: _,
+        world_save_data_problem: _,
     } = built;
 
     let mut sections_map = HashMap::new();
