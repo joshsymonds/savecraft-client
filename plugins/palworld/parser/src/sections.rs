@@ -1558,17 +1558,45 @@ pub struct BuildResult {
     /// hard `unsupported_version` error instead of emitting a near-empty
     /// "successful" result.
     pub critical_unsupported: bool,
-    /// `Some` when Level.sav decoded but has no `worldSaveData` property at
-    /// its root at all -- every section except overview would be empty, so
-    /// the caller (`lib.rs`) escalates to a hard `unsupported_version`
-    /// error instead of pushing an all-empty "successful" result that
-    /// overwrites whatever good sections the server already has. The value
-    /// is the comma-joined list of root property names that *were* present
-    /// (or `(none)`), so the error itself documents the unrecognized
-    /// layout -- observed live 2026-08-06, where a real world's Level.sav
-    /// decoded cleanly yet had no worldSaveData root and shipped as seven
-    /// empty sections.
-    pub missing_world_save_data: Option<String>,
+    /// `Some` when Level.sav decoded but yielded no usable `worldSaveData`
+    /// -- every section except overview would be empty, so the caller
+    /// (`lib.rs`) escalates to a hard `unsupported_version` error instead
+    /// of pushing an all-empty "successful" result that overwrites
+    /// whatever good sections the server already has.
+    pub world_save_data_problem: Option<WorldSaveDataProblem>,
+}
+
+/// Why Level.sav produced no usable `worldSaveData`.
+#[derive(Debug, PartialEq, Eq)]
+pub enum WorldSaveDataProblem {
+    /// No `worldSaveData` property at the root at all. `found_roots` is the
+    /// comma-joined, sorted list of root property names that *were* present
+    /// (or `(none)`), so the error itself documents the unrecognized layout.
+    Missing { found_roots: String },
+    /// `worldSaveData` is present but uesave could not parse it and kept it
+    /// as a `Property::Raw` blob of `raw_len` bytes -- some property inside
+    /// it has a layout this plugin's type hints don't cover. Every
+    /// "no worldSaveData" report through 2026-10-15 (including the
+    /// 2026-08-06 day-100 world) was this case, misreported as Missing.
+    Undecodable { raw_len: usize },
+}
+
+/// Comma-joined, sorted names of every root property in `level`, or
+/// `(none)` for an empty root.
+fn found_root_names(level: &Save) -> String {
+    let mut found: Vec<String> = level
+        .root
+        .properties
+        .0
+        .iter()
+        .map(|(key, _)| key.1.clone())
+        .collect();
+    found.sort();
+    if found.is_empty() {
+        "(none)".to_string()
+    } else {
+        found.join(", ")
+    }
 }
 
 /// Builds every section from a decoded Level.sav, optionally-decoded
@@ -1584,20 +1612,17 @@ pub fn build_all(
     let mut overview = build_overview(level_meta, level);
     overview.player_count = players.len();
 
-    let wsd = find_property(&level.root.properties, "worldSaveData").and_then(as_nested_struct);
+    let wsd_prop = find_property(&level.root.properties, "worldSaveData");
+    let wsd = wsd_prop.and_then(as_nested_struct);
     let Some(wsd) = wsd else {
-        let mut found: Vec<String> = level
-            .root
-            .properties
-            .0
-            .iter()
-            .map(|(key, _)| key.1.clone())
-            .collect();
-        found.sort();
-        let found = if found.is_empty() {
-            "(none)".to_string()
+        let problem = if let Some(Property::Raw(bytes)) = wsd_prop {
+            WorldSaveDataProblem::Undecodable {
+                raw_len: bytes.len(),
+            }
         } else {
-            found.join(", ")
+            WorldSaveDataProblem::Missing {
+                found_roots: found_root_names(level),
+            }
         };
         return BuildResult {
             overview,
@@ -1611,7 +1636,7 @@ pub fn build_all(
             warnings,
             unsupported_paths: Vec::new(),
             critical_unsupported: false,
-            missing_world_save_data: Some(found),
+            world_save_data_problem: Some(problem),
         };
     };
 
@@ -1740,7 +1765,7 @@ fn assemble_sections(
         unsupported_paths: Vec::new(),
         critical_unsupported: false,
         // Reaching assemble_sections at all means worldSaveData was found.
-        missing_world_save_data: None,
+        world_save_data_problem: None,
     }
 }
 
@@ -2645,8 +2670,10 @@ mod tests {
             result.warnings
         );
         assert_eq!(
-            result.missing_world_save_data.as_deref(),
-            Some("SomeNewContainer, Timestamp"),
+            result.world_save_data_problem,
+            Some(WorldSaveDataProblem::Missing {
+                found_roots: "SomeNewContainer, Timestamp".to_string()
+            }),
             "the found-roots list should name every root property, sorted"
         );
     }
@@ -2657,7 +2684,29 @@ mod tests {
 
         let result = build_all(&level, None, &[]);
 
-        assert_eq!(result.missing_world_save_data.as_deref(), Some("(none)"));
+        assert_eq!(
+            result.world_save_data_problem,
+            Some(WorldSaveDataProblem::Missing {
+                found_roots: "(none)".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn build_all_raw_world_save_data_escalates_as_undecodable_not_missing() {
+        let mut root = Properties::default();
+        root.insert("Version", Property::Int(1));
+        root.insert("worldSaveData", Property::Raw(vec![0u8; 42]));
+        let level = synthetic_save(root);
+
+        let result = build_all(&level, None, &[]);
+
+        assert!(result.players.is_empty());
+        assert!(result.bases.is_empty());
+        assert_eq!(
+            result.world_save_data_problem,
+            Some(WorldSaveDataProblem::Undecodable { raw_len: 42 })
+        );
     }
 
     #[test]
